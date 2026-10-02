@@ -15,6 +15,7 @@ Date: 2026-10-02. Scope: disposable data, local Windows 11/Podman machine, Postg
 - Stopping the restored PostgreSQL container made authenticated readiness return 503. Starting the same container returned readiness to 200, and the same owner could authenticate and list the vault/item again. No database volume was removed.
 - A hostile test marker in a POST path/query/body received 405. The server's structured request log recorded only method, status and duration; the marker was absent from its container logs.
 - Server tests: 56 passed, one skipped. Rust workspace tests passed. `pnpm audit --prod --audit-level high` found no known production JavaScript vulnerabilities. `cargo audit` found one `rustls` advisory; the lockfile was upgraded from 0.23.44 to 0.23.45, after which it reported no vulnerabilities and seven warnings from other dependencies (principally desktop platform transitive crates). The Rust workspace tests passed after the update.
+- A focused tracked-file marker scan flagged `.env`: the initial local snapshot intentionally committed development database/readiness secrets. No remote exists, and the offline OCI bundle excludes `.env`. Rotate those old development secrets and export a clean, sanitized source history before any publication. This focused scan is not a full secret scanner.
 
 ## Limits
 
