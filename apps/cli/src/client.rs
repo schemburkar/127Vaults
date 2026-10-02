@@ -1410,6 +1410,23 @@ impl Session {
         }
         Ok(Value::Array(out))
     }
+    pub fn item_list_all(&mut self) -> Result<Value, String> {
+        let vaults = self.vault_list()?;
+        let mut combined = Vec::new();
+        for vault in vaults.as_array().ok_or("invalid vault list")? {
+            let vault_id = vault["vaultId"].as_str().ok_or("invalid vault list")?;
+            for mut item in self
+                .item_list(vault_id)?
+                .as_array()
+                .ok_or("invalid item list")?
+                .clone()
+            {
+                item["vaultId"] = json!(vault_id);
+                combined.push(item);
+            }
+        }
+        Ok(Value::Array(combined))
+    }
     #[allow(clippy::too_many_lines)]
     pub fn item_get(
         &mut self,

@@ -167,6 +167,8 @@ pub enum ItemCommand {
     List {
         #[arg(long)]
         vault: Option<String>,
+        #[arg(long, conflicts_with = "vault")]
+        all: bool,
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
@@ -1217,10 +1219,15 @@ pub fn run(cli: Cli) -> Result<String, String> {
         )?)
         .map_err(|_| "could not encode vault information".to_owned()),
         Command::Item {
-            command: ItemCommand::List { vault, config_dir },
+            command:
+                ItemCommand::List {
+                    vault,
+                    all,
+                    config_dir,
+                },
         } => serde_json::to_string_pretty(&agent::call(
             &effective_config_dir(&config_dir),
-            "item.list",
+            if all { "item.list.all" } else { "item.list" },
             serde_json::json!({"vault":vault}),
         )?)
         .map_err(|_| "could not encode item list".to_owned()),
@@ -1339,6 +1346,14 @@ mod tests {
                 "both"
             ])
             .is_err()
+        );
+    }
+    #[test]
+    fn all_vault_item_list_cannot_be_combined_with_single_vault_selector() {
+        assert!(Cli::try_parse_from(["127vaults", "item", "list", "--all"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["127vaults", "item", "list", "--all", "--vault", "Private"])
+                .is_err()
         );
     }
     #[test]

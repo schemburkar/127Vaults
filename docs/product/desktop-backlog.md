@@ -11,3 +11,4 @@ Updated 2026-10-02. Windows-first Tauri client; see [desktop scope](../../apps/d
 | DESK-005 | Open | Add supported packaging, signed updates and clean-machine installation for Windows; define macOS/Linux support separately. |
 | DESK-006 | Open | Finish desktop device lifecycle and credential rotation UX once server ceremonies and recovery policy are ready. |
 | DESK-007 | Open | Complete secret exposure review of WebView, clipboard, drag provider and local storage with independent review before production use. |
+| DESK-008 | Partial | Multiple private vaults can be created and selected. All-items view combines item summaries and requires a destination vault for new items. Named vaults, saved collections/default, safe removal, and live multi-device verification remain open. |

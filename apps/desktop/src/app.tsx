@@ -23,7 +23,7 @@ import {
   Vault,
 } from "lucide-react";
 
-type Summary = { itemId: string; title: string; website: string };
+type Summary = { itemId: string; title: string; website: string; vaultId?: string };
 type CustomField = { id: string; label: string; type: string; value: string };
 type Item = Summary & {
   username: string;
@@ -80,6 +80,8 @@ export function App() {
   const [vaultId, setVaultId] = useState(""),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("Locked");
+  const [viewMode, setViewMode] = useState<"single" | "all">("single");
+  const [itemVaultId, setItemVaultId] = useState("");
   const [items, setItems] = useState<Summary[]>([]),
     [selected, setSelected] = useState<Item | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
@@ -127,6 +129,8 @@ export function App() {
     setUnlocked(false);
     setVaults([]);
     setVaultId("");
+    setItemVaultId("");
+    setViewMode("single");
     setItems([]);
     setSelected(null);
     setEditOriginal(null);
@@ -171,7 +175,10 @@ export function App() {
   };
   const openItem = async (summary: Summary, vault = vaultId) => {
     try {
-      setSelected(await loadItem(summary, vault));
+      const ownerVault = summary.vaultId ?? vault;
+      setSelected(await loadItem(summary, ownerVault));
+      setVaultId(ownerVault);
+      setItemVaultId(ownerVault);
       setRevealed(new Set());
       setEditing(false);
       setEditOriginal(null);
@@ -237,6 +244,8 @@ export function App() {
         masterPassword,
       });
       setVaultId(result.vaultId);
+      setItemVaultId(result.vaultId);
+      setViewMode("single");
       setVaults(result.vaults);
       setItems(result.items);
       setOnline(result.online);
@@ -272,10 +281,12 @@ export function App() {
     }
   };
   const selectVault = async (nextVaultId: string) => {
-    if (nextVaultId === vaultId) return;
+    if (nextVaultId === vaultId && viewMode === "single") return;
     try {
       const nextItems = await invoke<Summary[]>("item_list", { vaultId: nextVaultId });
       setVaultId(nextVaultId);
+      setItemVaultId(nextVaultId);
+      setViewMode("single");
       setItems(nextItems);
       setSelected(null);
       setEditOriginal(null);
@@ -287,6 +298,24 @@ export function App() {
       if (nextItems[0]) await openItem(nextItems[0], nextVaultId);
     } catch (error) {
       notify("error", "Could not open vault", friendlyError(error));
+    }
+  };
+  const listAllItems = async () => {
+    const lists = await Promise.all(vaults.map(async (vault) =>
+      (await invoke<Summary[]>("item_list", { vaultId: vault.vaultId })).map((item) => ({ ...item, vaultId: vault.vaultId }))));
+    return lists.flat();
+  };
+  const selectAllVaults = async () => {
+    try {
+      const allItems = await listAllItems();
+      setViewMode("all");
+      setItems(allItems);
+      setSelected(null);
+      setItemVaultId("");
+      setEditing(false);
+      setRevealed(new Set());
+    } catch (error) {
+      notify("error", "Could not list vaults", friendlyError(error));
     }
   };
   const addVault = async () => {
@@ -301,6 +330,11 @@ export function App() {
   };
   const save = async (draft = selected, resolutionId = resolvingOperationId) => {
     if (!draft) return;
+    const destination = draft.itemId ? itemVaultId : viewMode === "single" ? vaultId : itemVaultId;
+    if (!destination) {
+      notify("error", "Choose a vault", "Select the destination vault before saving this item.");
+      return;
+    }
     const nextErrors: Record<string, string> = {};
     if (!draft.title.trim()) nextErrors.title = "Title is required.";
     visibleFields(draft.customFields).forEach((field) => {
@@ -322,7 +356,7 @@ export function App() {
         result: { queued?: boolean };
         items: Summary[];
       }>("item_save", {
-        vaultId,
+        vaultId: destination,
         itemId: draft.itemId || null,
         title: draft.title,
         website: draft.website,
@@ -331,7 +365,7 @@ export function App() {
         customFields: draft.customFields,
         resolvingOperationId: resolutionId,
       });
-      setItems(response.items);
+      setItems(viewMode === "all" ? await listAllItems() : response.items);
       setEditing(false);
       setEditOriginal(null);
       setResolvingOperationId(null);
@@ -352,7 +386,7 @@ export function App() {
       const saved =
         response.items.find((item) => item.itemId === draft.itemId) ||
         response.items.find((item) => item.title === draft.title);
-      if (saved) await openItem(saved);
+      if (saved) await openItem(saved, destination);
     } catch (e) {
       const message = String(e);
       if (message.includes("409")) {
@@ -375,16 +409,18 @@ export function App() {
         { vaultId },
       );
       setOnline(true);
-      setItems(result.items);
+      setItems(viewMode === "all" ? await listAllItems() : result.items);
       setLastSynced(new Date());
       setStatus(
         result.conflicts.length
           ? `Sync needs review · ${result.conflicts.length} pending conflict(s)`
           : `Sync complete · ${result.accepted} pending operation(s) accepted`,
       );
-      const pendingConflict = result.conflicts.find((row) => row.vaultId === vaultId);
+      const pendingConflict = result.conflicts.find((row) => viewMode === "all" || row.vaultId === vaultId);
       if (pendingConflict && !conflict) {
-        const draft = await invoke<Item>("conflict_draft", { vaultId, itemId: pendingConflict.itemId, operationId: pendingConflict.operationId });
+        setVaultId(pendingConflict.vaultId);
+        setItemVaultId(pendingConflict.vaultId);
+        const draft = await invoke<Item>("conflict_draft", { vaultId: pendingConflict.vaultId, itemId: pendingConflict.itemId, operationId: pendingConflict.operationId });
         setConflict({ draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
       }
       notify(result.conflicts.length ? "info" : "success", result.conflicts.length ? "Sync needs review" : "Sync complete", result.conflicts.length ? "Review the queued edit before saving." : `${result.accepted} pending change${result.accepted === 1 ? "" : "s"} accepted.`);
@@ -400,7 +436,7 @@ export function App() {
   const useServerVersion = async (itemId: string, operationId: string) => {
     try {
       const result = await invoke<{ items: Summary[] }>("discard_conflict", { vaultId, itemId, operationId });
-      setItems(result.items);
+      setItems(viewMode === "all" ? await listAllItems() : result.items);
       setOnline(true);
       setLastSynced(new Date());
       setEditing(false);
@@ -562,6 +598,7 @@ export function App() {
   const runOmniAction = (id: string) => {
     setQuery("");
     if (id === "create-item") {
+      setItemVaultId(viewMode === "all" ? "" : vaultId);
       setSelected({
         itemId: "",
         title: "",
@@ -811,7 +848,7 @@ export function App() {
           </span>
           <strong>127Vaults</strong>
         </div>
-        <Button variant="ghost" className="justify-start bg-white/7">
+        <Button variant="ghost" className={cn("justify-start", viewMode === "all" && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />
           <span>All items</span>
           <span className="ml-auto">{items.length}</span>
@@ -880,7 +917,7 @@ export function App() {
           )}
         </header>
         <div className="flex items-center justify-between px-5 pb-3 pt-5">
-          <h1 className="text-xl font-bold">All items</h1>
+          <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
           <Button
             size="icon"
             title="New item"
@@ -894,6 +931,7 @@ export function App() {
                 customFields: setItemType([], "login"),
               });
               setEditOriginal(null);
+              setItemVaultId(viewMode === "all" ? "" : vaultId);
               setEditing(true);
             }}
           >
@@ -915,7 +953,7 @@ export function App() {
               </span>
               <span>
                 <strong className="block truncate text-sm">{item.title}</strong>
-                <small className="text-slate-500">{item.website}</small>
+                <small className="text-slate-500">{item.website}{viewMode === "all" && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.code ?? item.vaultId}` : ""}</small>
               </span>
             </button>
           ))}
@@ -942,6 +980,12 @@ export function App() {
                     <Button onClick={() => void save()}>Save</Button>
                   </div>
                 </div>
+                {!selected.itemId && viewMode === "all" && <label className="mb-6 block text-sm text-slate-300">Destination vault
+                  <select className="mt-2 w-full rounded-xl border border-white/15 bg-[#11162b] p-3" value={itemVaultId} onChange={(event) => setItemVaultId(event.target.value)}>
+                    <option value="">Choose a vault</option>
+                    {vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
+                  </select>
+                </label>}
                 <section>
                   <div className="mb-6 grid gap-2 text-sm text-slate-400">Item type
                     <TypePicker value={itemType(selected.customFields)} onSelect={(type) => setSelected({ ...selected, customFields: setItemType(selected.customFields, type as ItemType) })} />

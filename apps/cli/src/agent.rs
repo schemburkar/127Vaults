@@ -155,6 +155,7 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
             let vault = vault_selector(session, request.vault.as_deref())?;
             session.item_list(&vault)
         }
+        "item.list.all" => session.item_list_all(),
         "item.get" => session.item_get(
             &vault_selector(session, request.vault.as_deref())?,
             request.item.as_deref().ok_or("item is required")?,

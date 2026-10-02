@@ -12,3 +12,4 @@ Updated 2026-10-02. The [CLI MVP guide](cli-mvp.md) remains usage documentation;
 | CLI-006 | Open | Add CLI device list/revoke and credential rotation only after the server ceremony and safety contract are complete. |
 | CLI-007 | Open | Define import/export and recovery commands after formats, key custody and release scope are approved. |
 | CLI-008 | Open | Run Windows and Linux packaging, secret-store, terminal/pipe disclosure and clean-machine verification before a first release. |
+| CLI-009 | Partial | Multiple private vaults can be created after schema 4 migration; `item list --all` includes vault IDs. Named vaults, saved collections/default, safe removal, and live multi-device verification remain open. |
