@@ -1,0 +1,97 @@
+# Private-network test distribution. Load both OCI image archives before up.
+services:
+  database:
+    image: docker.io/library/postgres:17-bookworm
+    user: postgres
+    environment:
+      POSTGRES_DB: vaults_experimental
+      POSTGRES_USER: vaults
+      POSTGRES_PASSWORD_FILE: /run/secrets/runtime/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - type: bind
+        source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/runtime
+        target: /run/secrets/runtime
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /run/postgresql:rw,nosuid,nodev,noexec,size=8m
+      - /tmp:rw,nosuid,nodev,noexec,size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    restart: unless-stopped
+    stop_grace_period: 30s
+    networks:
+      backend:
+        ipv4_address: ${VAULTS_DATABASE_IP:?Set VAULTS_DATABASE_IP}
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U vaults -d vaults_experimental']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  server:
+    image: localhost/127vaults-server:test
+    environment:
+      VAULTS_EXPERIMENTAL: '1'
+      VAULTS_ACCESS_MODE: ${VAULTS_ACCESS_MODE:-loopback}
+      VAULTS_BIND: ${VAULTS_SERVER_IP:?Set VAULTS_SERVER_IP}
+      VAULTS_ENDPOINT_HOST: ${VAULTS_ENDPOINT_HOST:-127.0.0.1}
+      VAULTS_PUBLISH_ADDRESS: ${VAULTS_PUBLISH_ADDRESS:-127.0.0.1}
+      VAULTS_TLS_CERT: /run/secrets/tls/server.crt
+      VAULTS_TLS_KEY: /run/secrets/tls/server.key
+      VAULTS_TOKEN_KEY_FILE: /run/secrets/runtime/token.key
+      VAULTS_CHECKPOINT_KEY_FILE: /run/secrets/runtime/checkpoint.key
+      VAULTS_OPAQUE_NODE_MODULE: /app/apps/server/wasm-auth/vaults_browser_fixture.cjs
+      VAULTS_BOOTSTRAP_OUTPUT: /run/runtime/bootstrap.txt
+      VAULTS_READINESS_TOKEN_FILE: /run/secrets/runtime/readiness-token
+      VAULTS_DATABASE_PASSWORD_FILE: /run/secrets/runtime/postgres-password
+      VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS: ${VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS:-0}
+    ports:
+      - ${VAULTS_PUBLISH_ADDRESS:-127.0.0.1}:${VAULTS_PUBLISH_PORT:-12780}:12780
+    volumes:
+      - type: bind
+        source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/live
+        target: /run/secrets/tls
+        read_only: true
+      - type: bind
+        source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/ca/ca.crt
+        target: /run/secrets/tls/ca.crt
+        read_only: true
+      - type: bind
+        source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/runtime
+        target: /run/secrets/runtime
+        read_only: true
+      - type: bind
+        source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/output
+        target: /run/runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    user: node
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    restart: unless-stopped
+    stop_grace_period: 10s
+    healthcheck:
+      test: [CMD, node, apps/server/src/healthcheck.mjs]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      backend:
+        ipv4_address: ${VAULTS_SERVER_IP:?Set VAULTS_SERVER_IP}
+networks:
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${VAULTS_BACKEND_SUBNET:?Set VAULTS_BACKEND_SUBNET}
+volumes:
+  postgres-data:

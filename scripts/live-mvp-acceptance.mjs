@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import wasm from '../apps/server/wasm-auth/vaults_browser_fixture.cjs';
 import { registrationActivationBytes, authenticationContextHash } from '../apps/server/src/opaque-adapter.mjs';
 import { deviceProofBytes } from '../apps/server/src/auth-policy.mjs';
+import { createSignedOperation } from '../packages/sync/src/index.mjs';
 
 const endpoint=process.argv[2],caPath=process.argv[3],bootstrapPath=process.argv[4];
 if(!endpoint||!caPath||!bootstrapPath)throw Error('Usage: node scripts/live-mvp-acceptance.mjs <https-url> <ca.crt> <bootstrap.txt>');
@@ -53,29 +54,36 @@ const attempt=un(ar.value.attemptId),contextHash=authenticationContextHash({orig
 const proof=deviceProofBytes({contextHash,transcriptHash,installation:id(tenant),account:id(accountId),device:id(deviceId),epoch:1,rootHash});
 const logged=await call(`/api/v1/auth/${ar.value.attemptId}/device-proof`,{method:'POST',body:{signature:b64(sign(null,proof,keys.privateKey))}});sessionCookie=logged.cookie;csrf=logged.value.csrf;
 
+async function signedMutation(kind,itemId,vaultId,catalogue,index,body){
+ const sync=(await call(`/api/v1/vaults/${vaultId}/operations?cursor=0&limit=500`,{cookie:sessionCookie})).value;
+ const previous=[...(sync.operations??[])].reverse().find(x=>x.operation.deviceId===deviceId)?.operation.opId??null;
+ const frame=parts=>Buffer.concat(parts.flatMap(part=>{const size=Buffer.alloc(4);size.writeUInt32BE(part.length);return [size,Buffer.from(part)]}));
+ return createSignedOperation({tenantId:tenant,vaultId,deviceId,epoch:1,causalBase:sync.cursor??0,previousDeviceOpId:previous,kind,itemId,payloadHash:createHash('sha256').update(frame([catalogue,index,body])).digest('hex')},keys.privateKey);
+}
+
 const made=core.create_private_vault(root,directory),vault=made.vault(),vaultId=[Buffer.from(vault.context()).subarray(33,49)].map(x=>[x.subarray(0,4),x.subarray(4,6),x.subarray(6,8),x.subarray(8,10),x.subarray(10)].map(y=>y.toString('hex')).join('-'))[0];
 const createBody={requestId:uuid(),baseDirectoryRevision:[Buffer.from(directory).subarray(36,52)].map(x=>[x.subarray(0,4),x.subarray(4,6),x.subarray(6,8),x.subarray(8,10),x.subarray(10)].map(y=>y.toString('hex')).join('-'))[0],directory:b64(made.directory()),vaultEnvelope:b64(vault.envelope()),catalogue:b64(made.catalogue())};
 const created=await call('/api/v1/vaults',{method:'POST',body:createBody,cookie:sessionCookie});
 assert.deepEqual((await call('/api/v1/vaults',{method:'POST',body:createBody,cookie:sessionCookie})).value,created.value);
 await call('/api/v1/vaults',{method:'POST',body:{...createBody,directory:createBody.directory.slice(0,-1)+'A'},cookie:sessionCookie,expected:409});
 const item=core.upsert_private_item(vault,made.catalogue(),undefined,new TextEncoder().encode('{"title":"Fictitious"}'),new TextEncoder().encode('{"password":"not-a-secret"}')),itemId=[Buffer.from(item.item())].map(x=>[x.subarray(0,4),x.subarray(4,6),x.subarray(6,8),x.subarray(8,10),x.subarray(10)].map(y=>y.toString('hex')).join('-'))[0];
-const itemBody={requestId:uuid(),baseCatalogueRevision:created.value.catalogueRevision,catalogue:b64(item.catalogue()),index:b64(item.index()),body:b64(item.body()),itemId};
+const itemBody={requestId:uuid(),baseCatalogueRevision:created.value.catalogueRevision,catalogue:b64(item.catalogue()),index:b64(item.index()),body:b64(item.body()),itemId,signedOperation:await signedMutation('item.create',itemId,vaultId,item.catalogue(),item.index(),item.body())};
 const saved=await call(`/api/v1/vaults/${vaultId}/items`,{method:'POST',body:itemBody,cookie:sessionCookie});
 const listed=await call(`/api/v1/vaults/${vaultId}/items`,{cookie:sessionCookie});assert.equal(listed.value.indices.length,1);
 const opened=await call(`/api/v1/vaults/${vaultId}/items/${itemId}?catalogueRevision=${saved.value.catalogueRevision}`,{cookie:sessionCookie});assert.ok(opened.value.envelope);
 assert.deepEqual(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(vault,item.catalogue(),item.item(),un(listed.value.indices[0].envelope),4))),{title:'Fictitious'});
 assert.deepEqual(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(vault,item.catalogue(),item.item(),un(opened.value.envelope),3))),{password:'not-a-secret'});
 const {itemId: _omitItemId,...staleUpdate}=itemBody;
-await call(`/api/v1/vaults/${vaultId}/items/${itemId}`,{method:'PUT',body:{...staleUpdate,requestId:uuid(),baseCatalogueRevision:created.value.catalogueRevision},cookie:sessionCookie,expected:409});
+await call(`/api/v1/vaults/${vaultId}/items/${itemId}`,{method:'PUT',body:{...staleUpdate,requestId:uuid(),baseCatalogueRevision:created.value.catalogueRevision,signedOperation:await signedMutation('item.update',itemId,vaultId,item.catalogue(),item.index(),item.body())},cookie:sessionCookie,expected:409});
 const next=core.upsert_private_item(vault,item.catalogue(),item.item(),new TextEncoder().encode('{"title":"Updated"}'),new TextEncoder().encode('{"password":"updated-fiction"}'));
-const update={requestId:uuid(),baseCatalogueRevision:saved.value.catalogueRevision,catalogue:b64(next.catalogue()),index:b64(next.index()),body:b64(next.body())};
+const update={requestId:uuid(),baseCatalogueRevision:saved.value.catalogueRevision,catalogue:b64(next.catalogue()),index:b64(next.index()),body:b64(next.body()),signedOperation:await signedMutation('item.update',itemId,vaultId,next.catalogue(),next.index(),next.body())};
 const duplicate=await Promise.all([rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,update),rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,update)]);assert.deepEqual(duplicate.map(x=>x.status),[200,200]);assert.deepEqual(duplicate[0].value,duplicate[1].value);
 const after=await call(`/api/v1/vaults/${vaultId}/items`,{cookie:sessionCookie});const afterBody=await call(`/api/v1/vaults/${vaultId}/items/${itemId}?catalogueRevision=${duplicate[0].value.catalogueRevision}`,{cookie:sessionCookie});
 assert.deepEqual(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(vault,next.catalogue(),next.item(),un(after.value.indices[0].envelope),4))),{title:'Updated'});assert.deepEqual(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(vault,next.catalogue(),next.item(),un(afterBody.value.envelope),3))),{password:'updated-fiction'});
 const raceA=core.upsert_private_item(vault,next.catalogue(),next.item(),new TextEncoder().encode('{"title":"Race A"}'),new TextEncoder().encode('{"password":"race-a"}')),raceB=core.upsert_private_item(vault,next.catalogue(),next.item(),new TextEncoder().encode('{"title":"Race B"}'),new TextEncoder().encode('{"password":"race-b"}'));
-const raceBody=x=>({requestId:uuid(),baseCatalogueRevision:duplicate[0].value.catalogueRevision,catalogue:b64(x.catalogue()),index:b64(x.index()),body:b64(x.body())}),races=await Promise.all([rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,raceBody(raceA)),rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,raceBody(raceB))]);assert.deepEqual(races.map(x=>x.status).sort(),[200,409]);
+const raceBody=async x=>({requestId:uuid(),baseCatalogueRevision:duplicate[0].value.catalogueRevision,catalogue:b64(x.catalogue()),index:b64(x.index()),body:b64(x.body()),signedOperation:await signedMutation('item.update',itemId,vaultId,x.catalogue(),x.index(),x.body())}),raceARequest=await raceBody(raceA),raceBRequest=await raceBody(raceB),races=await Promise.all([rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,raceARequest),rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,raceBRequest)]);assert.deepEqual(races.map(x=>x.status).sort(),[200,409]);
 const winner=races[0].status===200?raceA:raceB,winnerResponse=races.find(x=>x.status===200).value,current=await call(`/api/v1/vaults/${vaultId}/items`,{cookie:sessionCookie});
-const bad={requestId:uuid(),baseCatalogueRevision:winnerResponse.catalogueRevision,catalogue:b64(winner.catalogue()),index:b64(Buffer.alloc(10)),body:b64(winner.body())};await rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,bad).then(x=>assert.equal(x.status,400));assert.equal((await call(`/api/v1/vaults/${vaultId}/items`,{cookie:sessionCookie})).value.catalogue,current.value.catalogue);
+const badIndex=Buffer.alloc(10),bad={requestId:uuid(),baseCatalogueRevision:winnerResponse.catalogueRevision,catalogue:b64(winner.catalogue()),index:b64(badIndex),body:b64(winner.body()),signedOperation:await signedMutation('item.update',itemId,vaultId,winner.catalogue(),badIndex,winner.body())};await rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,bad).then(x=>assert.equal(x.status,400));assert.equal((await call(`/api/v1/vaults/${vaultId}/items`,{cookie:sessionCookie})).value.catalogue,current.value.catalogue);
 const invitation=await call('/api/v1/invitations',{method:'POST',body:{emails:['guest@example.invalid'],expiresInHours:24},cookie:sessionCookie});assert.match(invitation.value.token,/^127V-I1-/);
 core.lock();assert.throws(()=>core.decrypt_private_part(vault,item.catalogue(),item.item(),item.body(),3));
 console.log(JSON.stringify({ok:true,ownerBootstrap:true,login:true,invitation:true,vaultCreate:true,itemCreateRead:true,itemUpdateReload:true,decryptedIndexBody:true,parallelIdempotency:true,parallelStaleBase:true,transactionRollback:true,lock:true}));

@@ -1,0 +1,16 @@
+# Optional outbound SMTP path. Only attach the server; PostgreSQL stays private.
+services:
+  server:
+    environment:
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:?Set SMTP_USERNAME}
+      SMTP_PASSWORD_FILE: /run/secrets/runtime/smtp-password
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+      VAULTS_INSTALLATION_LABEL: ${VAULTS_INSTALLATION_LABEL:-127Vaults-test}
+    networks:
+      backend:
+        ipv4_address: ${VAULTS_SERVER_IP:?Set VAULTS_SERVER_IP}
+      smtp-egress: {}
+networks:
+  smtp-egress: {}

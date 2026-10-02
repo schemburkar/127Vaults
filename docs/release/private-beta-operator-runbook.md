@@ -1,8 +1,10 @@
 # Private-beta operator runbook (RB5 groundwork)
 
-Status: **groundwork only**. The current build is experimental and must not store
-real credentials. This document does not claim that migrations, upgrades, backup
-scheduling, or clean-host restore are release-tested.
+Status: **historical groundwork**, reviewed 2026-10-02. Use the
+[server test install and backup runbook](server-test-install.md) for current
+commands and the [server backlog](../product/server-backlog.md) for open gates.
+An encrypted backup and isolated restore have now been rehearsed, but the
+current build remains experimental and is not a supported real-credential release.
 
 ## Supported boundary
 

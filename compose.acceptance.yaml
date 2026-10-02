@@ -8,7 +8,7 @@ services:
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: '2465'
       SMTP_USERNAME: fixture
-      SMTP_PASSWORD: fixture-password
+      SMTP_PASSWORD_FILE: /run/secrets/runtime/smtp-password
       SMTP_FROM: no-reply@example.invalid
       VAULTS_INSTALLATION_LABEL: 127Vaults-test
   smtp-capture:

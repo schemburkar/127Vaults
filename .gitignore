@@ -29,6 +29,7 @@ id_ed25519
 *.sqlite3
 *.dump
 *.backup
+*.127vbak
 *.bak
 backups/
 .DS_Store

@@ -81,7 +81,9 @@ mv /tls/pending /tls/live
 mkdir -m 700 /tls/pending
 openssl x509 -in /tls/live/server.crt -noout -fingerprint -sha256 -dates -ext subjectAltName
 `;
-const run = spawnSync('podman', ['run', '--rm', '--network=none', '--read-only', '--cap-drop=all',
+const engine = process.env.VAULTS_ENGINE ?? 'podman';
+if (!['podman', 'docker'].includes(engine)) throw new Error('VAULTS_ENGINE must be podman or docker.');
+const run = spawnSync(engine, ['run', '--rm', '--network=none', '--read-only', '--cap-drop=all',
   '--security-opt=no-new-privileges', '--tmpfs', '/tmp:rw,noexec,nosuid,size=4m',
   '-e', `ACTION=${action}`, '-e', `SAN=${san}`, '-e', `HOST_WINDOWS=${process.platform === 'win32' ? '1' : '0'}`, '-v', `${realpathSync(target)}:/tls:Z`,
   '--entrypoint', 'sh', IMAGE, '-ceu', script],

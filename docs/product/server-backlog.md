@@ -1,16 +1,19 @@
 # Server backlog
 
-Updated 2026-10-02. The server is an **experimental internal MVP backend** for fictitious data. It is not ready for a public beta or first release.
+Updated 2026-10-02. The server is an **experimental internal MVP backend**. A local test bundle, backup/restore and migration rehearsals now exist; see [S1 evidence](../release/server-wave-s1-evidence.md). It is not ready for a supported real-credential first release or public beta.
 
 | ID | State | Outcome and acceptance |
 | --- | --- | --- |
 | SRV-001 | Done | Private HTTPS/Host/Origin boundary, PostgreSQL schema checks, owner/invite onboarding, OPAQUE sessions, device enrollment/lifecycle, encrypted private-vault routes and signed operation/checkpoint routes are mounted. Source: `apps/server/src/main.mjs`. |
-| SRV-002 | Partial | Schema v3 and migration code exist; prove supported upgrades, pre-migration backup, lock contention, incompatible-schema refusal and rollback rehearsal on a clean host. |
-| SRV-003 | Open | Automate and rehearse encrypted backup, clean restore and operator recovery; keep database and backup keys separate. |
-| SRV-004 | Open | Complete adversarial auth/device/sync tests for replay, rollback, forks, rotation, revocation, expiry, rate limits and cross-account isolation at the live HTTP/PostgreSQL boundary. |
-| SRV-005 | Open | Prove deployment hardening on supported Podman and Docker hosts: non-root/read-only image, private network binding, persistent volume, secret injection, safe shutdown and upgrades. |
-| SRV-006 | Open | Finish operational metrics, structured redacted logs, certificate renewal and incident/restore instructions; exercise failure modes. |
+| SRV-002 | Partial | Isolated 1→2→3 migration, encrypted pre-backup/restore, dry run, lock timeout and unknown-checksum refusal passed. Finish populated old-schema upgrade, authenticated rollback and clean-host procedure. |
+| SRV-003 | Partial | Automated encrypted database and identity backups passed; a second project restored both and authenticated an existing owner to read vault/item projections. Finish scripted guarded combined restore, off-host key custody and scheduled backup policy. |
+| SRV-004 | Partial | Unit tests and live owner encrypted-item/idempotency/race flow pass. Finish live device rotation/revocation, multi-device forks, rate limits and cross-account matrix. |
+| SRV-005 | Partial | Podman image is non-root/read-only with private PostgreSQL, loopback HTTPS and persistent volume; stop/start passed. Verify Docker, clean unrelated host, private LAN, safe shutdown under load and upgrade. |
+| SRV-006 | Partial | Bounded request telemetry, authenticated readiness metrics, CA-preserving certificate renewal and PostgreSQL outage/reconnect passed. Finish hostile-input log inspection and incident operation on a second host. |
 | SRV-007 | Open | Freeze crypto/protocol formats, compatibility rules and deterministic vectors; obtain independent review for real-secret use. |
-| SRV-008 | Open | Complete release provenance, dependency/secret/license scans, legal terms and public release gate in [beta readiness](../release/beta-readiness.md). |
+| SRV-008 | Partial | Production pnpm audit found no known vulnerabilities; `rustls` advisory fixed in `Cargo.lock`. Finish seven Rust warning triage, image digest pinning, secret/history scan, signing, legal terms and public release gate. |
+| SRV-009 | Open | Prove optional external SMTP-over-TLS egress and invited-user activation on the test bundle; keep password in a mounted secret file and PostgreSQL off the egress network. |
+| SRV-010 | Open | Run bundle on an unrelated Podman and Docker host, including CA trust, browser owner ceremony, LAN firewall, backup/restore and client reconnect. |
+| SRV-011 | Partial | [Pilot gate](../release/selected-real-data-pilot.md) is defined. Accept it only after intended-host browser/restore/device tests, independent crypto/application review, controlled data selection and a rotation/deletion plan. |
 
 Server readiness has three distinct levels: **internal MVP backend** means the narrow fictitious-data flow works; **first release** requires a supported installation and restore path; **public beta for real secrets** additionally requires the security and legal gates. Only the first level is evidenced today.

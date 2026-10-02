@@ -35,6 +35,7 @@ async function validateV2(client, before) {
 export async function migrateSchema1To2(client, { dryRun = false } = {}) {
   await client.query('BEGIN');
   try {
+    await client.query("SET LOCAL lock_timeout = '5s'");
     await client.query('SELECT pg_advisory_xact_lock(127, 1)');
     const manifest = await client.query('SELECT version, checksum FROM vaults.schema_version FOR UPDATE');
     if (manifest.rowCount !== 1 || Number(manifest.rows[0].version) !== 1 || manifest.rows[0].checksum !== schemaV1Checksum) {
@@ -57,6 +58,7 @@ export async function migrateSchema1To2(client, { dryRun = false } = {}) {
 export async function migrateSchema2To3(client, { dryRun = false } = {}) {
   await client.query('BEGIN');
   try {
+    await client.query("SET LOCAL lock_timeout = '5s'");
     await client.query('SELECT pg_advisory_xact_lock(127, 1)');
     const manifest = await client.query('SELECT version, checksum FROM vaults.schema_version FOR UPDATE');
     if (manifest.rowCount !== 1 || Number(manifest.rows[0].version) !== 2 || manifest.rows[0].checksum !== schemaV2Checksum) throw new Error(MANIFEST_ERROR);

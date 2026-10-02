@@ -2,6 +2,11 @@
 
 Status reviewed 2026-10-02: the fictitious-data **internal MVP backend and browser flow are implemented**, with final human browser/CA-trust evidence still pending. The CLI and desktop have additional experimental capabilities. The public beta and first supported release remain blocked. Current component status is tracked in the [product work index](../product/README.md); the older implementation-start narrative below is historical.
 
+The server test bundle now has a Podman loopback installation, encrypted backup,
+isolated restore and schema migration rehearsal. See the [server wave evidence](server-wave-s1-evidence.md).
+This does not close the independent review, Docker/clean-host, SMTP egress,
+client restore, release signing, legal or real-credential gates.
+
 ## Implementation may begin
 
 The architecture is sufficiently defined to implement a narrow end-to-end slice:

@@ -20,6 +20,8 @@ Current work and release documents:
 - [API v1 protocol and CLI naming](docs/architecture/api-v1-contract.md)
 - [Beta-readiness gates](docs/release/beta-readiness.md)
 - [Experimental development runbook](docs/release/experimental-development.md)
+- [Offline server test bundle and installation](docs/release/server-test-install.md)
+- [Selected real-data pilot gate](docs/release/selected-real-data-pilot.md)
 
 ## Repository map
 

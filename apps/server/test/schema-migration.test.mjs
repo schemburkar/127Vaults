@@ -39,7 +39,7 @@ test('migration locks, validates, writes manifest last, and commits', async () =
   const client = new MigrationClient();
   assert.deepEqual(await migrateSchema1To2(client), { from: 1, to: 2, dryRun: false });
   const sql = client.calls.map(call => call.sql);
-  assert.deepEqual(sql.slice(0, 3), ['BEGIN', 'SELECT pg_advisory_xact_lock(127, 1)', 'SELECT version, checksum FROM vaults.schema_version FOR UPDATE']);
+  assert.deepEqual(sql.slice(0, 4), ['BEGIN', "SET LOCAL lock_timeout = '5s'", 'SELECT pg_advisory_xact_lock(127, 1)', 'SELECT version, checksum FROM vaults.schema_version FOR UPDATE']);
   assert.equal(sql.at(-2), 'UPDATE vaults.schema_version SET version=2, checksum=$1 WHERE singleton=true');
   assert.equal(client.calls.at(-2).parameters[0], schemaV2Checksum);
   assert.equal(sql.at(-1), 'COMMIT');

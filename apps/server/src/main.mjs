@@ -22,10 +22,12 @@ import { createSignedSyncHandler } from './sync-handler.mjs';
 import { PgDeviceLifecycleStore } from './device-lifecycle-pg.mjs';
 import { createDeviceLifecycleHandler } from './device-lifecycle-handler.mjs';
 import { createDeviceEnrollmentHandler } from './device-enrollment-handler.mjs';
-import { readinessToken, runtimeDatabaseConfig } from './runtime-config.mjs';
+import { readSecretFile, readinessToken, runtimeDatabaseConfig } from './runtime-config.mjs';
+import { createOpsTelemetry } from './ops-log.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
 const env = process.env;
+const telemetry = createOpsTelemetry();
 function fail(message) { throw new Error(message); }
 if (env.VAULTS_EXPERIMENTAL !== '1') fail('Set VAULTS_EXPERIMENTAL=1; use disposable data only.');
 const transport = transportConfig(env);
@@ -46,7 +48,7 @@ const token = readinessToken(env);
 const database = runtimeDatabaseConfig(env);
 const pool = new pg.Pool({ ...database, max: 4,
   connectionTimeoutMillis: 2000, query_timeout: 2000, statement_timeout: 2000 });
-pool.on('error', () => console.error('PostgreSQL connection unavailable.'));
+pool.on('error', () => telemetry.event('database_pool_error'));
 const tokenKeyPath=env.VAULTS_TOKEN_KEY_FILE;
 const checkpointKeyPath=env.VAULTS_CHECKPOINT_KEY_FILE;
 const opaqueModulePath=env.VAULTS_OPAQUE_NODE_MODULE;
@@ -70,7 +72,12 @@ const installation=(await pool.query('SELECT id FROM vaults.installation WHERE s
 const registration=new RegistrationAdapter({opaque,setup,installation,serverPublicKey:publicKey,tokenKey,origin:transport.origin});
 const authHandler=createAuthHandler(authService,transport.origin);
 let mailer;
-try{mailer=new SmtpMailer({host:env.SMTP_HOST,port:Number(env.SMTP_PORT??465),username:env.SMTP_USERNAME,password:env.SMTP_PASSWORD,from:env.SMTP_FROM,installationLabel:env.VAULTS_INSTALLATION_LABEL});}catch{mailer={sendCode:async()=>{throw new Error('SMTP unavailable.');}};}
+if (env.SMTP_HOST) {
+  const password = readSecretFile(env.SMTP_PASSWORD_FILE, 'SMTP password', /^[\x21-\x7e]{1,512}$/,
+    { allowVirtualizedPermissions: env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS === '1' });
+  mailer = new SmtpMailer({ host: env.SMTP_HOST, port: Number(env.SMTP_PORT ?? 465), username: env.SMTP_USERNAME,
+    password, from: env.SMTP_FROM, installationLabel: env.VAULTS_INSTALLATION_LABEL });
+} else mailer = { sendCode: async () => { throw new Error('SMTP unavailable.'); } };
 const onboardingService=new OnboardingService({store:new PgOnboardingStore(pool),mailer,tokenKey});
 const onboardingHandler=createOnboardingHandler(onboardingService,createRegistrationCompletion(opaque,registration),transport.origin,token=>authService.authenticate(token),registration);
 const authenticate=token=>authService.authenticate(token);
@@ -93,6 +100,8 @@ const webFiles=new Map([
 ]);
 let stopping = false;
 const server = createServer(tls, async (req, res) => {
+  const began = Date.now();
+  res.once('finish', () => telemetry.request(req.method, res.statusCode, Date.now() - began, !req.url?.startsWith('/health/')));
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   const reply = (status, body) => {
@@ -128,7 +137,7 @@ const server = createServer(tls, async (req, res) => {
   }
   try {
     await requireSchema(pool);
-    reply(200, { status: 'ok', experimental: true, schemaVersion, scope: 'schema-only' });
+    reply(200, { status: 'ok', experimental: true, schemaVersion, scope: 'schema-only', ops: telemetry.snapshot() });
   } catch { reply(503, { status: 'unavailable' }); }
 });
 server.requestTimeout = 5000;
@@ -136,11 +145,12 @@ server.headersTimeout = 5000;
 server.keepAliveTimeout = 1000;
 server.maxHeadersCount = 32;
 server.on('upgrade', (_req, socket) => socket.destroy());
-server.on('error', () => { console.error('Server listener failed.'); process.exit(1); });
-server.listen(port, host, () => console.log(`127Vaults internal MVP listening on ${authority}; use fictitious data only.`));
+server.on('error', () => { telemetry.event('listener_error'); process.exit(1); });
+server.listen(port, host, () => telemetry.event('server_started'));
 async function shutdown() {
   if (stopping) return;
   stopping = true;
+  telemetry.event('server_stopping');
   const deadline = setTimeout(() => process.exit(1), 8000);
   deadline.unref();
   server.close(async () => {
