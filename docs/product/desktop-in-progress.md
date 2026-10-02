@@ -1,3 +1,3 @@
 # Desktop in progress — native safety wave D1
 
-Started 2026-10-02. Owner: next desktop implementer. Work: DESK-003 and DESK-004. First action: run the documented Windows drag target matrix and two-device queued-edit conflict matrix. Record OS/WebView versions and failure behavior; implement a revocable native provider before release acceptance. Record acceptance in `desktop-backlog.md`, then delete this file when D1 closes.
+Started 2026-10-02. Owner: desktop implementation. Current vault wave: DESK-008/009 with server and CLI. Implement encrypted synchronized names and collections, then move/archive removal with the user-selected saved preference. Preserve the native safety DESK-003/004 verification after this wave. Record acceptance in `desktop-backlog.md`.
