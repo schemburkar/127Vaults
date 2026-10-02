@@ -28,6 +28,7 @@ pub struct Session {
     device_id: String,
     epoch: u64,
     replica_store: ReplicaStore,
+    profile_dir: std::path::PathBuf,
     sync_transport: Option<HttpSyncTransport>,
     online: bool,
     vault_handles: std::collections::HashMap<String, KeyHandle>,
@@ -116,6 +117,7 @@ pub fn unlock_offline(
         device_id: record.device_id,
         epoch: record.epoch,
         replica_store: ReplicaStore::new(config_dir),
+        profile_dir: config_dir.to_path_buf(),
         sync_transport: None,
         online: false,
         vault_handles: std::collections::HashMap::new(),
@@ -486,6 +488,7 @@ pub fn unlock(
         device_id,
         epoch,
         replica_store: ReplicaStore::new(config_dir),
+        profile_dir: config_dir.to_path_buf(),
         sync_transport: Some(sync_transport),
         online: true,
         vault_handles: std::collections::HashMap::new(),
@@ -522,6 +525,43 @@ pub fn unlock_with_offline_fallback(
 }
 
 impl Session {
+    pub fn default_vault(&self) -> Result<Option<String>, String> {
+        let path = self.profile_dir.join("default-vault.txt");
+        let raw = match fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err("default vault preference is unavailable".to_owned()),
+        };
+        let id = raw.trim();
+        if uuid::Uuid::parse_str(id).is_err() {
+            return Err("default vault preference is invalid".to_owned());
+        }
+        let listed = self.vault_list()?;
+        Ok(listed
+            .as_array()
+            .and_then(|rows| rows.iter().find(|row| row["vaultId"] == id))
+            .map(|_| id.to_owned()))
+    }
+
+    pub fn set_default_vault(&self, selector: Option<&str>) -> Result<Option<String>, String> {
+        let path = self.profile_dir.join("default-vault.txt");
+        let Some(selector) = selector else {
+            match fs::remove_file(path) {
+                Ok(()) => return Ok(None),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(_) => return Err("default vault preference could not be cleared".to_owned()),
+            }
+        };
+        let id = self.resolve_vault_id(selector)?;
+        let mut file = atomic_write_file::AtomicWriteFile::open(path)
+            .map_err(|_| "default vault preference is unavailable")?;
+        use std::io::Write as _;
+        file.write_all(id.as_bytes())
+            .map_err(|_| "default vault preference could not be saved")?;
+        file.commit()
+            .map_err(|_| "default vault preference could not be saved")?;
+        Ok(Some(id))
+    }
     /// Approves a new device using this authenticated trusted device.
     pub fn approve_device_code(&self, code: &str) -> Result<(), String> {
         if !self.online {

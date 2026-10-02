@@ -31,7 +31,7 @@ type Item = Summary & {
   customFields: CustomField[];
 };
 type VaultSummary = { vaultId: string; name: string; code: string };
-type UnlockResult = { online: boolean; vaultId: string; vaults: VaultSummary[]; items: Summary[] };
+type UnlockResult = { online: boolean; vaultId: string; defaultVaultId: string | null; vaults: VaultSummary[]; items: Summary[] };
 type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
@@ -82,6 +82,7 @@ export function App() {
     [status, setStatus] = useState("Locked");
   const [viewMode, setViewMode] = useState<"single" | "all">("single");
   const [itemVaultId, setItemVaultId] = useState("");
+  const [defaultVaultId, setDefaultVaultId] = useState<string | null>(null);
   const [items, setItems] = useState<Summary[]>([]),
     [selected, setSelected] = useState<Item | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
@@ -130,6 +131,7 @@ export function App() {
     setVaults([]);
     setVaultId("");
     setItemVaultId("");
+    setDefaultVaultId(null);
     setViewMode("single");
     setItems([]);
     setSelected(null);
@@ -244,6 +246,7 @@ export function App() {
         masterPassword,
       });
       setVaultId(result.vaultId);
+      setDefaultVaultId(result.defaultVaultId);
       setItemVaultId(result.vaultId);
       setViewMode("single");
       setVaults(result.vaults);
@@ -326,6 +329,16 @@ export function App() {
       notify("success", "Private vault created", result.created.code);
     } catch (error) {
       notify("error", "Could not create vault", friendlyError(error));
+    }
+  };
+  const toggleDefaultVault = async () => {
+    try {
+      const next = defaultVaultId === vaultId ? null : vaultId;
+      const result = await invoke<{ defaultVaultId: string | null }>("vault_default", { vaultId: next });
+      setDefaultVaultId(result.defaultVaultId);
+      notify("success", result.defaultVaultId ? "Default vault saved" : "Default vault cleared");
+    } catch (error) {
+      notify("error", "Could not save preference", friendlyError(error));
     }
   };
   const save = async (draft = selected, resolutionId = resolvingOperationId) => {
@@ -859,8 +872,12 @@ export function App() {
         {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={cn("justify-start", vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
+          {defaultVaultId === vault.vaultId && <span className="text-[10px] text-[#E0BB95]">Default</span>}
           <span className="ml-auto text-[10px] text-slate-500">{vault.code}</span>
         </Button>)}
+        {viewMode === "single" && <Button variant="ghost" className="justify-start text-xs" onClick={() => void toggleDefaultVault()}>
+          {defaultVaultId === vaultId ? "Clear default" : "Set as default"}
+        </Button>}
         <Button variant="ghost" className="justify-start" onClick={() => void addVault()} disabled={!online}>
           <Plus size={17} />
           <span>Add private vault</span>

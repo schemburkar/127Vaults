@@ -161,6 +161,14 @@ pub enum VaultCommand {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    /// Show, set, or clear this profile's preferred vault at unlock.
+    Default {
+        vault: Option<String>,
+        #[arg(long, conflicts_with = "vault")]
+        clear: bool,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
 }
 #[derive(Debug, Subcommand)]
 pub enum ItemCommand {
@@ -1218,6 +1226,19 @@ pub fn run(cli: Cli) -> Result<String, String> {
             serde_json::json!({"vault":vault}),
         )?)
         .map_err(|_| "could not encode vault information".to_owned()),
+        Command::Vault {
+            command:
+                VaultCommand::Default {
+                    vault,
+                    clear,
+                    config_dir,
+                },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.default",
+            serde_json::json!({"vault":vault,"clear":clear}),
+        )?)
+        .map_err(|_| "could not encode default vault".to_owned()),
         Command::Item {
             command:
                 ItemCommand::List {

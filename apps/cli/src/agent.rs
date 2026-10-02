@@ -37,6 +37,8 @@ struct Request {
     #[serde(default)]
     vault: Option<String>,
     #[serde(default)]
+    clear: bool,
+    #[serde(default)]
     item: Option<String>,
     #[serde(default)]
     operation_id: Option<String>,
@@ -150,6 +152,16 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
         "vault.info" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
             session.vault_info(&vault)
+        }
+        "vault.default" => {
+            let id = if request.clear {
+                session.set_default_vault(None)?
+            } else if let Some(vault) = request.vault.as_deref() {
+                session.set_default_vault(Some(vault))?
+            } else {
+                session.default_vault()?
+            };
+            Ok(json!({"defaultVaultId":id}))
         }
         "item.list" => {
             let vault = vault_selector(session, request.vault.as_deref())?;

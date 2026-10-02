@@ -41,6 +41,7 @@ cargo run -p vaults-cli -- item get I-0123456789
 cargo run -p vaults-cli -- item create --field title=Example --field website=example.com --field username=owner
 cargo run -p vaults-cli -- item edit I-0123456789 --json '{"title":"Example","website":"https://example.com","username":"owner","password":"replacement"}'
 cargo run -p vaults-cli -- item list --all
+cargo run -p vaults-cli -- vault default V-0123456789
 cargo run -p vaults-cli -- sync
 cargo run -p vaults-cli -- conflict list
 ```
@@ -51,6 +52,10 @@ If the account has exactly one vault, item commands can omit `--vault`; accounts
 with zero or multiple vaults receive an explicit selection error.
 `item list --all` returns item summaries from every local vault with their
 vault IDs; create, edit, and get still require an unambiguous destination.
+`vault default` shows the preferred vault for this local profile; pass a vault
+selector to set it, or `--clear` to remove the preference. The desktop opens
+that vault on unlock when it uses the same profile directory. This preference
+stores only the vault UUID locally and works offline.
 
 `sync` submits queued operations, refreshes verified replicas, and reports how
 many operations remain pending. Conflicts keep their signed local request until

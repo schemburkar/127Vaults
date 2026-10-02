@@ -144,16 +144,16 @@ async fn unlock(
         )?;
         let online = session.is_online();
         let vaults = session.vault_list()?;
-        let vault = vaults
+        let default_vault = session.default_vault()?;
+        let vault = default_vault.clone().or_else(|| vaults
             .as_array()
             .and_then(|rows| rows.first())
             .and_then(|row| row["vaultId"].as_str())
-            .ok_or("no local vault is available")?
-            .to_owned();
+            .map(str::to_owned)).ok_or("no local vault is available")?;
         let items = session.item_list(&vault)?;
         Ok::<_, String>((
             session,
-            json!({"online":online,"vaultId":vault,"vaults":vaults,"items":items}),
+            json!({"online":online,"vaultId":vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items}),
         ))
     })
     .await
@@ -175,6 +175,16 @@ fn vault_create(state: tauri::State<'_, DesktopState>) -> Result<Value, String> 
     with_session(&state, |session| {
         let created = session.vault_create()?;
         Ok(json!({"created":created,"vaults":session.vault_list()?}))
+    })
+}
+
+#[tauri::command]
+fn vault_default(
+    state: tauri::State<'_, DesktopState>,
+    vault_id: Option<String>,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        Ok(json!({"defaultVaultId":session.set_default_vault(vault_id.as_deref())?}))
     })
 }
 
@@ -385,6 +395,7 @@ fn main() {
             unlock,
             item_list,
             vault_create,
+            vault_default,
             item_get,
             item_secret,
             item_save,
