@@ -2,6 +2,8 @@
 
 Status: experimental test distribution, 2026-10-02. This is the chosen shipping form for the server: OCI image archives (127Vaults, PostgreSQL and the isolated OpenSSL certificate helper), one Compose file and small operator scripts. An MSI or standalone binary would add a second database/service/update path without improving this private server deployment. Do not publish the bundle or use it as a supported real-credential release yet.
 
+**Usability verdict:** this is suitable for a technical operator running a supervised test, not a self-service client installer. The recipient still needs a container engine, Compose, Node 24, private CA trust, firewall configuration and backup-key custody. A one-click installer would hide operational and recovery decisions that are not settled yet.
+
 ## Build once on the development machine
 
 Install the pinned Rust/WASM generator, Node/pnpm dependencies and Podman as in [experimental development](experimental-development.md). From the repository root, use a new output directory **outside** the checkout:

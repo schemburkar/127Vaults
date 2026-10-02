@@ -15,5 +15,6 @@ Updated 2026-10-02. The server is an **experimental internal MVP backend**. A lo
 | SRV-009 | Open | Prove optional external SMTP-over-TLS egress and invited-user activation on the test bundle; keep password in a mounted secret file and PostgreSQL off the egress network. |
 | SRV-010 | Open | Run bundle on an unrelated Podman and Docker host, including CA trust, browser owner ceremony, LAN firewall, backup/restore and client reconnect. |
 | SRV-011 | Partial | [Pilot gate](../release/selected-real-data-pilot.md) is defined. Accept it only after intended-host browser/restore/device tests, independent crypto/application review, controlled data selection and a rotation/deletion plan. |
+| SRV-012 | Open | Make client evaluation self-service only after installer UX, CA trust, signed artifact verification, backup/key setup and safe upgrade/rollback can be guided and tested without a developer present. Current bundle is operator-led. |
 
 Server readiness has three distinct levels: **internal MVP backend** means the narrow fictitious-data flow works; **first release** requires a supported installation and restore path; **public beta for real secrets** additionally requires the security and legal gates. Only the first level is evidenced today.
