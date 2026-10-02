@@ -375,6 +375,59 @@ impl Core {
         .encode(&r.bytes)
         .map_err(record_error)
     }
+    /// Encrypts bounded account settings (vault labels and collections) with
+    /// the user root key. The envelope carries its authenticated revision.
+    pub fn encrypt_account_settings(
+        &self,
+        root: KeyHandle,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        let entry = self.keys.get(&root).ok_or(Error::InvalidHandle)?;
+        if entry.kind != Kind::Root {
+            return Err(Error::InvalidHandle);
+        }
+        let mut context = [0u8; CONTEXT];
+        context[0] = 5;
+        context[1..17].copy_from_slice(&entry.tenant);
+        context[17..33].copy_from_slice(&entry.account);
+        context[65..81].copy_from_slice(&random_revision().map_err(record_error)?);
+        context[81..85].copy_from_slice(&1u32.to_be_bytes());
+        context[85..93].copy_from_slice(&entry.epoch.to_be_bytes());
+        let key = derive(
+            entry.bytes.as_ref(),
+            b"127Vaults/ECF1/root-subkeys",
+            b"127Vaults/ECF1/account-settings\0",
+            &context,
+        )?;
+        seal(&context, &[0; 16], 0, 0, 0, &key, plaintext)
+    }
+
+    /// Authenticates and decrypts root-scoped settings from a stored envelope.
+    pub fn decrypt_account_settings(
+        &self,
+        root: KeyHandle,
+        envelope: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, Error> {
+        let entry = self.keys.get(&root).ok_or(Error::InvalidHandle)?;
+        if entry.kind != Kind::Root || envelope.len() < HEADER {
+            return Err(Error::InvalidHandle);
+        }
+        let context = envelope.get(11..104).ok_or(Error::InvalidInput)?;
+        let parsed = parse(envelope, context, 5)?;
+        if id(context, 1) != entry.tenant
+            || id(context, 17) != entry.account
+            || epoch(context) != entry.epoch
+        {
+            return Err(Error::ContextMismatch);
+        }
+        let key = derive(
+            entry.bytes.as_ref(),
+            b"127Vaults/ECF1/root-subkeys",
+            b"127Vaults/ECF1/account-settings\0",
+            context,
+        )?;
+        open(&parsed, &key)
+    }
     /// Encrypts and composes one complete create/update proposal in memory.
     /// # Errors
     /// Rejects invalid authenticated state, scope, mode, plaintext, or entropy.
@@ -665,6 +718,7 @@ fn validate_context(c: &[u8], p: u8) -> Result<(), Error> {
         1 => valid_uuid(a, false) && v == zero && o == zero,
         2 => valid_uuid(a, false) && valid_uuid(v, false) && o == v,
         3 | 4 => a == zero && valid_uuid(v, false) && valid_uuid(o, false),
+        5 => valid_uuid(a, false) && v == zero && o == zero,
         _ => false,
     };
     if good {
@@ -678,6 +732,7 @@ fn check_plain(p: u8, n: usize) -> Result<(), Error> {
         1 | 2 => n == 32,
         3 => (1..=1_048_576).contains(&n),
         4 => (1..=65_536).contains(&n),
+        5 => (1..=16_384).contains(&n),
         _ => false,
     };
     if ok {
@@ -1006,6 +1061,35 @@ mod tests {
         assert!(
             core.open_private_vault(handle, &second.directory, second_id, &second.vault.envelope)
                 .is_ok()
+        );
+    }
+    #[test]
+    fn account_settings_are_root_scoped_and_authenticated() {
+        let mut core = Core::new();
+        let root = core
+            .create_root(&template(1), b"password", &[9; 32])
+            .unwrap();
+        let handle = root.handle.unwrap();
+        let sealed = core
+            .encrypt_account_settings(handle, b"{\"version\":1}")
+            .unwrap();
+        assert_eq!(
+            core.decrypt_account_settings(handle, &sealed)
+                .unwrap()
+                .as_slice(),
+            b"{\"version\":1}"
+        );
+        let mut tampered = sealed.clone();
+        *tampered.last_mut().unwrap() ^= 1;
+        assert_eq!(
+            core.decrypt_account_settings(handle, &tampered)
+                .unwrap_err(),
+            Error::AuthenticationFailed
+        );
+        core.lock();
+        assert_eq!(
+            core.decrypt_account_settings(handle, &sealed).unwrap_err(),
+            Error::InvalidHandle
         );
     }
     #[test]
