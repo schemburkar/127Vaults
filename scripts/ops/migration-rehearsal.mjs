@@ -43,6 +43,21 @@ try {
   await run(engine, ['exec', name, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-v', 'ON_ERROR_STOP=1', '-f', '/tmp/schema.sql']);
   const installation = randomUUID();
   await psql(`INSERT INTO vaults.schema_version(singleton,version,checksum) VALUES(true,1,'${schemaV1Checksum}'); INSERT INTO vaults.installation(id) VALUES('${installation}');`);
+  const account = randomUUID(), device = randomUUID(), vault = randomUUID(), item = randomUUID();
+  const revision = randomUUID();
+  await psql(`INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state)
+    VALUES('${installation}','${account}','FixtureOwner','Fixture Owner','fixture@example.invalid','owner','active');
+    INSERT INTO vaults.devices(tenant_id,account_id,id,signing_public_key,credential_epoch)
+    VALUES('${installation}','${account}','${device}',decode(repeat('11',32),'hex'),1);
+    INSERT INTO vaults.sessions(tenant_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at)
+    VALUES('${installation}',decode(repeat('22',32),'hex'),'${account}','${device}',1,decode(repeat('33',32),'hex'),decode(repeat('44',60),'hex'),now()+interval '1 hour');
+    INSERT INTO vaults.private_vaults(tenant_id,id,account_id,epoch,vault_envelope_revision,vault_envelope,catalogue_revision,catalogue)
+    VALUES('${installation}','${vault}','${account}',1,'${revision}',decode('55','hex'),'${revision}',decode('66','hex'));
+    INSERT INTO vaults.private_items(tenant_id,vault_id,item_id,logical_revision,index_revision,body_revision,index_envelope,body_envelope)
+    VALUES('${installation}','${vault}','${item}','${revision}','${revision}','${revision}',decode('77','hex'),decode('88','hex'));`);
+  const expectedRows = '1 1 1 1 1';
+  const rowCounts = () => psql("SELECT (SELECT count(*) FROM vaults.accounts)::text || ' ' || (SELECT count(*) FROM vaults.devices)::text || ' ' || (SELECT count(*) FROM vaults.sessions)::text || ' ' || (SELECT count(*) FROM vaults.private_vaults)::text || ' ' || (SELECT count(*) FROM vaults.private_items)::text");
+  if (await rowCounts() !== expectedRows) throw Error('Populated schema-1 fixture was not created.');
   const dump = join(temp, 'before.dump');
   const key = join(temp, 'backup.key');
   const sealed = join(temp, 'before.127vbak');
@@ -55,6 +70,7 @@ try {
   if (await psql('SELECT version FROM vaults.schema_version') !== '1') throw Error('Dry run changed the schema.');
   await migration('apply');
   if (await psql('SELECT version FROM vaults.schema_version') !== '2') throw Error('Schema 1 -> 2 failed.');
+  if (await rowCounts() !== expectedRows) throw Error('Schema 1 -> 2 changed populated row counts.');
   await run(engine, ['exec', '-d', name, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-c', 'BEGIN; SELECT pg_advisory_xact_lock(127,1); SELECT pg_sleep(12); COMMIT;']);
   let locked = false;
   for (let i = 0; i < 20; i++) {
@@ -73,6 +89,7 @@ try {
   await migration('apply');
   const final = await psql('SELECT version::text || \' \' || checksum FROM vaults.schema_version');
   if (final !== `3 ${schemaChecksum}`) throw Error('Schema 2 -> 3 checksum mismatch.');
+  if (await rowCounts() !== expectedRows) throw Error('Schema 2 -> 3 changed populated row counts.');
   await psql("UPDATE vaults.schema_version SET checksum=repeat('0',64)");
   await run(engine, ['run', '--rm', '--network', `container:${name}`, '-v', `${passwordFile}:/run/secrets/runtime/postgres-password:ro`,
     '-e', 'VAULTS_EXPERIMENTAL=1', '-e', 'VAULTS_DATABASE_HOST=127.0.0.1', '-e', 'VAULTS_DATABASE_PASSWORD_FILE=/run/secrets/runtime/postgres-password',

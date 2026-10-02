@@ -5,7 +5,7 @@ Updated 2026-10-02. The server is an **experimental internal MVP backend**. A lo
 | ID | State | Outcome and acceptance |
 | --- | --- | --- |
 | SRV-001 | Done | Private HTTPS/Host/Origin boundary, PostgreSQL schema checks, owner/invite onboarding, OPAQUE sessions, device enrollment/lifecycle, encrypted private-vault routes and signed operation/checkpoint routes are mounted. Source: `apps/server/src/main.mjs`. |
-| SRV-002 | Partial | Isolated 1→2→3 migration, encrypted pre-backup/restore, dry run, lock timeout and unknown-checksum refusal passed. Finish populated old-schema upgrade, authenticated rollback and clean-host procedure. |
+| SRV-002 | Partial | Isolated 1→2→3 migration, encrypted pre-backup/restore, dry run, lock timeout and unknown-checksum refusal passed. A populated schema-1 fictitious fixture is now staged; run it and finish authenticated rollback and clean-host procedure. |
 | SRV-003 | Partial | Automated encrypted database and identity backups passed; a second project restored both and authenticated an existing owner to read vault/item projections. Guarded `server.mjs install restore` now imports into a new empty project only; run it end-to-end before acceptance. Off-host key custody and scheduled backup policy remain operator decisions. |
 | SRV-004 | Partial | Unit tests and live owner encrypted-item/idempotency/race flow pass. Finish live device rotation/revocation, multi-device forks, rate limits and cross-account matrix. |
 | SRV-005 | Partial | Podman image is non-root/read-only with private PostgreSQL, loopback HTTPS and persistent volume; stop/start passed. Verify Docker, clean unrelated host, private LAN, safe shutdown under load and upgrade. |

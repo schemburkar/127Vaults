@@ -132,9 +132,8 @@ async function restoreDatabase() {
       } catch { await new Promise(done => setTimeout(done, 1000)); }
     }
     if (!empty) throw Error('Restore target is unreadable or already contains a schema; no database import was attempted.');
-    const project = /^VAULTS_PROJECT=(vaults-test-[a-f0-9]{12})$/m.exec(content)?.[1];
-    if (!project) throw Error('Restore project identity is missing.');
-    const databaseContainer = `${project}_database_1`;
+    const databaseContainer = await runCompose(['ps', '-q', 'database'], { quiet: true });
+    if (!/^[a-f0-9]{12,64}$/.test(databaseContainer)) throw Error('Could not identify the isolated database container.');
     await run(engine, ['cp', dump, `${databaseContainer}:/tmp/database.dump`]);
     try {
       await runCompose(['exec', '-T', 'database', 'pg_restore', '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', '-U', 'vaults', '-d', 'vaults_experimental', '/tmp/database.dump']);
