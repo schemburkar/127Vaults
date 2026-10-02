@@ -24,7 +24,7 @@ async function ensureRuntimeSecrets(){const runtime=join(values.VAULTS_TLS_DIR,'
 const readBootstrap=()=>composeRun(['exec','-T','server','sh','-c','if test -s /run/runtime/bootstrap.txt; then cat /run/runtime/bootstrap.txt; fi'],{capture:true});
 const ensureBootstrap=()=>{
  let token=readBootstrap();
- if(!token){composeRun(['exec','-T','server','node','apps/server/src/provision.mjs','create-bootstrap-token']);token=readBootstrap();}
+ if(!token){composeRun(['exec','-T','server','node','apps/server/src/entry.mjs', 'provision','create-bootstrap-token']);token=readBootstrap();}
  if(!token)throw Error('Bootstrap token generation did not produce the expected restricted output file.');
  return token;
 };
@@ -51,14 +51,14 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  // can claim that address while PostgreSQL and its evidence volume stay up.
  composeRun(['stop','server','smtp-capture']);
  run(podman,['rm','-f','--ignore',serverContainer,`${project}_smtp-capture_1`]);
- composeRun(['run','--rm','--no-deps','server','node','apps/server/src/migrate-schema.mjs','dry-run']);
- composeRun(['run','--rm','--no-deps','server','node','apps/server/src/migrate-schema.mjs','apply']);
+ composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs', 'schema','dry-run']);
+ composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs', 'schema','apply']);
  composeRun(['up','-d','--no-build','--force-recreate','server']);
  console.log('Schema migration applied transactionally and the server restarted.');
 }else if(action==='exercise'){
  if(!composeRun(['ps'],{capture:true}).includes('server'))throw Error('Run pnpm mvp:start first.');
  const ca=join(root,'.tools','acceptance-ca.crt');await mkdir(dirname(ca),{recursive:true});copyCa(ca);
- const state=JSON.parse(composeRun(['exec','-T','server','node','apps/server/src/provision.mjs','status'],{capture:true}));
+ const state=JSON.parse(composeRun(['exec','-T','server','node','apps/server/src/entry.mjs', 'provision','status'],{capture:true}));
  const bootstrap=state.bootstrapRequired?ensureBootstrap():'';
  const nodeEnv={...environment,NODE_EXTRA_CA_CERTS:ca};
  if(bootstrap)run(process.execPath,['scripts/live-mvp-acceptance.mjs','https://127.0.0.1:12780',ca,'-'],{env:nodeEnv,input:bootstrap});
@@ -71,7 +71,7 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
 }else if(action==='browser'){
  if(!composeRun(['ps'],{capture:true}).includes('server'))throw Error('Run pnpm mvp:start first.');
  const ca=join(root,'.tools','acceptance-ca.crt');await mkdir(dirname(ca),{recursive:true});copyCa(ca);
- const state=JSON.parse(composeRun(['exec','-T','server','node','apps/server/src/provision.mjs','status'],{capture:true}));
+ const state=JSON.parse(composeRun(['exec','-T','server','node','apps/server/src/entry.mjs', 'provision','status'],{capture:true}));
  console.log(`Trust this local CA in your browser/OS: ${ca}`);
  console.log('Open https://127.0.0.1:12780');
  if(state.bootstrapRequired)console.log(`One-time first-owner bootstrap code: ${ensureBootstrap()}`);

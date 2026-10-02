@@ -141,7 +141,7 @@ async function status(podman) {
     if (body.status !== 'ok' || (path === 'ready' && (body.experimental !== true || body.schemaVersion !== 3))) throw new Error('Unexpected health response; check port ownership and server version.');
     console.log(`${path}: OK`);
   }
-  const state = JSON.parse(await run(podman, ['exec', server, 'node', 'apps/server/src/provision.mjs', 'status']));
+  const state = JSON.parse(await run(podman, ['exec', server, 'node', 'apps/server/src/entry.mjs', 'provision', 'status']));
   console.log(`Schema ${state.schemaVersion}; ${state.pending_accounts} account(s). Authentication routes are available.`);
     console.log(`Open https://${credentials.VAULTS_ENDPOINT_HOST ?? '127.0.0.1'}:12780/health/live after installing the local CA.`);
 }
@@ -171,7 +171,7 @@ try {
       console.log('Starting server and PostgreSQL…');
       await compose(['up', '-d', '--no-build', '--force-recreate']);
       console.log('Checking/initializing schema (existing data is never reset)…');
-      await run(podman, ['exec', server, 'node', 'apps/server/src/provision.mjs', 'initialize']);
+      await run(podman, ['exec', server, 'node', 'apps/server/src/entry.mjs', 'provision', 'initialize']);
       await statusAfterStartup(podman);
     }
   }

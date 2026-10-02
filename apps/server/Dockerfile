@@ -34,4 +34,4 @@ COPY apps/web/mvp-client.mjs apps/web/mvp-client.mjs
 COPY apps/web/wasm apps/web/wasm
 USER node
 EXPOSE 12780
-CMD ["sh", "-c", "node apps/server/src/provision.mjs initialize && exec node apps/server/src/main.mjs"]
+CMD ["node", "apps/server/src/entry.mjs", "serve"]

@@ -3,6 +3,7 @@ import { get } from 'node:https';
 import { checkServerIdentity } from 'node:tls';
 
 // Container liveness only. Schema-aware readiness remains operator-authenticated.
+export async function runHealthcheck() {
 const host = process.env.VAULTS_BIND ?? '127.0.0.1';
 const port = process.env.PORT ?? '12780';
 const endpoint = process.env.VAULTS_ENDPOINT_HOST ?? '127.0.0.1';
@@ -19,3 +20,4 @@ try {
   });
   if (JSON.parse(body).status !== 'ok') process.exitCode = 1;
 } catch { process.exitCode = 1; }
+}

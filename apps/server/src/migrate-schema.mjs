@@ -2,9 +2,9 @@ import pg from 'pg';
 import { runtimeDatabaseConfig } from './runtime-config.mjs';
 import { migrateSchema1To2, migrateSchema2To3, schemaStatus } from './schema-migration.mjs';
 
+export async function runMigration(action) {
 const fail = message => { throw new Error(message); };
 if (process.env.VAULTS_EXPERIMENTAL !== '1') fail('Experimental opt-in required.');
-const action = process.argv[2];
 if (!['status','dry-run','apply'].includes(action)) fail('Choose status, dry-run, or apply.');
 const client = new pg.Client({ ...runtimeDatabaseConfig(process.env), connectionTimeoutMillis: 3000, statement_timeout: 30000 });
 try {
@@ -31,4 +31,5 @@ try {
   process.exitCode = 1;
 } finally {
   await client.end().catch(() => {});
+}
 }

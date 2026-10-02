@@ -29,7 +29,7 @@ async function run(program, argv, { output, expectFailure = false } = {}) {
 const psql = sql => run(engine, ['exec', name, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', sql]);
 const migration = (action, expectFailure = false) => run(engine, ['run', '--rm', '--network', `container:${name}`, '-v', `${passwordFile}:/run/secrets/runtime/postgres-password:ro`,
   '-e', 'VAULTS_EXPERIMENTAL=1', '-e', 'VAULTS_DATABASE_HOST=127.0.0.1', '-e', 'VAULTS_DATABASE_PASSWORD_FILE=/run/secrets/runtime/postgres-password',
-  '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/migrate-schema.mjs', action], { expectFailure });
+  '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/entry.mjs', 'schema', action], { expectFailure });
 try {
   await run(engine, ['run', '-d', '--name', name, '--network', 'none', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_USER=vaults', '-e', 'POSTGRES_DB=vaults_experimental', 'docker.io/library/postgres:17-bookworm']);
   started = true;
@@ -76,7 +76,7 @@ try {
   await psql("UPDATE vaults.schema_version SET checksum=repeat('0',64)");
   await run(engine, ['run', '--rm', '--network', `container:${name}`, '-v', `${passwordFile}:/run/secrets/runtime/postgres-password:ro`,
     '-e', 'VAULTS_EXPERIMENTAL=1', '-e', 'VAULTS_DATABASE_HOST=127.0.0.1', '-e', 'VAULTS_DATABASE_PASSWORD_FILE=/run/secrets/runtime/postgres-password',
-    '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/provision.mjs', 'status'], { expectFailure: true });
+    '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { expectFailure: true });
   console.log(`Disposable migration passed: verified encrypted pre-backup, dry runs, lock contention refusal, schema 1 -> 2 -> 3, checksum ${schemaChecksum}.`);
 } finally {
   if (started) await run(engine, ['rm', '-f', name]).catch(() => {});

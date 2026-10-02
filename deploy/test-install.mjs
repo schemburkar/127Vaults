@@ -132,11 +132,11 @@ else {
   } else if (action === 'stop') await runCompose(['down']);
   else if (action === 'status') await runCompose(['ps']);
   else {
-    const info = await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/provision.mjs', 'status'], { quiet: true });
+    const info = await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true });
     const status = JSON.parse(info);
     if (!status.bootstrapRequired) { console.log('Owner already exists; bootstrap is closed.'); }
     else {
-      await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/provision.mjs', 'create-bootstrap-token'], { quiet: true });
+      await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'create-bootstrap-token'], { quiet: true });
       const token = await runCompose(['exec', '-T', 'server', 'cat', '/run/runtime/bootstrap.txt'], { quiet: true });
       console.log(`One-time owner setup code (expires in 60 minutes): ${token}`);
     }

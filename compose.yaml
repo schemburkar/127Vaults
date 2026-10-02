@@ -82,7 +82,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     healthcheck:
-      test: [CMD, node, apps/server/src/healthcheck.mjs]
+      test: [CMD, node, apps/server/src/entry.mjs, healthcheck]
       interval: 10s
       timeout: 5s
       retries: 3

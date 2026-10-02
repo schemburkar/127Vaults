@@ -6,9 +6,9 @@ import { tokenDigest } from './onboarding.mjs';
 import { runtimeDatabaseConfig } from './runtime-config.mjs';
 
 // Host-local installation and single-use owner bootstrap capability generation.
+export async function runProvision(action) {
 const reject = message => { throw new Error(message); };
 if (process.env.VAULTS_EXPERIMENTAL !== '1') reject('Experimental opt-in required.');
-const action = process.argv[2];
 if (!['initialize', 'create-bootstrap-token', 'status'].includes(action)) {
   reject('Choose initialize, create-bootstrap-token, or status.');
 }
@@ -64,3 +64,4 @@ try {
   console.error(safeMessages.includes(error.message) ? error.message : `Provisioning failed${error.code === '23505' ? ': duplicate identity' : ''}. No changes committed.`);
   process.exitCode = 1;
 } finally { await client.end().catch(() => {}); }
+}
