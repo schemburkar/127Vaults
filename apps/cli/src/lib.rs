@@ -4,6 +4,7 @@ mod agent;
 pub mod client;
 pub mod replica;
 mod sync_transport;
+pub mod vault_settings;
 
 use std::{
     fmt::Write as _,
@@ -72,6 +73,10 @@ pub enum Command {
     Vault {
         #[command(subcommand)]
         command: VaultCommand,
+    },
+    Collection {
+        #[command(subcommand)]
+        command: CollectionCommand,
     },
     /// Encrypted item operations.
     Item {
@@ -149,7 +154,7 @@ pub enum VaultCommand {
         config_dir: PathBuf,
     },
     Create {
-        /// MVP vault name. The current format supports only `Private`.
+        /// Encrypted vault name.
         #[arg(default_value = "Private")]
         name: String,
         #[arg(long, default_value = ".127vaults")]
@@ -161,11 +166,75 @@ pub enum VaultCommand {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    Rename {
+        vault: String,
+        name: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    Settings {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    SettingsSync {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    SettingsReview {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    SettingsResolve {
+        #[arg(long, value_parser = ["server", "local"])]
+        keep: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    RemovalPreference {
+        #[arg(long, value_parser = ["move", "archive"])]
+        choice: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    DefaultView {
+        #[arg(value_parser = ["all", "vault", "collection"])]
+        kind: String,
+        selector: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     /// Show, set, or clear this profile's preferred vault at unlock.
     Default {
         vault: Option<String>,
         #[arg(long, conflicts_with = "vault")]
         clear: bool,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CollectionCommand {
+    List {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    Save {
+        name: String,
+        #[arg(long)]
+        id: Option<String>,
+        #[arg(long = "vault", required = true)]
+        vaults: Vec<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    Remove {
+        id: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    Items {
+        id: String,
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
@@ -1208,16 +1277,117 @@ pub fn run(cli: Cli) -> Result<String, String> {
             command: VaultCommand::Create { name, config_dir },
         } => {
             let config_dir = effective_config_dir(&config_dir);
-            if !name.eq_ignore_ascii_case("private") {
-                return Err("the MVP format currently supports only the Private vault".to_owned());
-            }
             serde_json::to_string_pretty(&agent::call(
                 &config_dir,
                 "vault.create",
-                serde_json::json!({}),
+                serde_json::json!({"name":name}),
             )?)
             .map_err(|_| "could not encode vault result".to_owned())
         }
+        Command::Vault {
+            command:
+                VaultCommand::Rename {
+                    vault,
+                    name,
+                    config_dir,
+                },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.rename",
+            serde_json::json!({"vault":vault,"name":name}),
+        )?)
+        .map_err(|_| "could not encode vault settings".to_owned()),
+        Command::Vault {
+            command: VaultCommand::SettingsSync { config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.settings.sync",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode vault settings".to_owned()),
+        Command::Vault {
+            command: VaultCommand::SettingsReview { config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.settings.review",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode vault settings".to_owned()),
+        Command::Vault {
+            command: VaultCommand::SettingsResolve { keep, config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.settings.resolve",
+            serde_json::json!({"keep":keep}),
+        )?)
+        .map_err(|_| "could not encode vault settings".to_owned()),
+        Command::Vault {
+            command: VaultCommand::RemovalPreference { choice, config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.settings.preference",
+            serde_json::json!({"choice":choice}),
+        )?)
+        .map_err(|_| "could not encode vault settings".to_owned()),
+        Command::Vault {
+            command:
+                VaultCommand::DefaultView {
+                    kind,
+                    selector,
+                    config_dir,
+                },
+        } => {
+            if kind != "all" && selector.is_none() {
+                return Err("vault or collection selector is required".to_owned());
+            }
+            serde_json::to_string_pretty(&agent::call(
+                &effective_config_dir(&config_dir),
+                "vault.settings.default-view",
+                serde_json::json!({"view_kind":kind,"vault":selector,"collection_id":selector}),
+            )?)
+            .map_err(|_| "could not encode vault settings".to_owned())
+        }
+        Command::Collection { command } => {
+            let (config_dir, action, body) = match command {
+                CollectionCommand::List { config_dir } => {
+                    (config_dir, "vault.settings", serde_json::json!({}))
+                }
+                CollectionCommand::Save {
+                    name,
+                    id,
+                    vaults,
+                    config_dir,
+                } => (
+                    config_dir,
+                    "collection.save",
+                    serde_json::json!({"name":name,"collection_id":id,"vault_ids":vaults}),
+                ),
+                CollectionCommand::Remove { id, config_dir } => (
+                    config_dir,
+                    "collection.remove",
+                    serde_json::json!({"collection_id":id}),
+                ),
+                CollectionCommand::Items { id, config_dir } => (
+                    config_dir,
+                    "collection.items",
+                    serde_json::json!({"collection_id":id}),
+                ),
+            };
+            serde_json::to_string_pretty(&agent::call(
+                &effective_config_dir(&config_dir),
+                action,
+                body,
+            )?)
+            .map_err(|_| "could not encode collection result".to_owned())
+        }
+        Command::Vault {
+            command: VaultCommand::Settings { config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.settings",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode vault settings".to_owned()),
         Command::Vault {
             command: VaultCommand::Info { vault, config_dir },
         } => serde_json::to_string_pretty(&agent::call(

@@ -31,7 +31,9 @@ type Item = Summary & {
   customFields: CustomField[];
 };
 type VaultSummary = { vaultId: string; name: string; code: string };
-type UnlockResult = { online: boolean; vaultId: string; defaultVaultId: string | null; vaults: VaultSummary[]; items: Summary[] };
+type CollectionSummary = { id: string; name: string; vault_ids: string[] };
+type VaultSettings = { collections: CollectionSummary[]; defaultView: { kind: string; id?: string } | null; removalPreference: string | null; pending: boolean; conflict: boolean };
+type UnlockResult = { online: boolean; vaultId: string; defaultVaultId: string | null; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null };
 type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
@@ -80,9 +82,19 @@ export function App() {
   const [vaultId, setVaultId] = useState(""),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("Locked");
-  const [viewMode, setViewMode] = useState<"single" | "all">("single");
+  const [viewMode, setViewMode] = useState<"single" | "all" | "collection">("single");
   const [itemVaultId, setItemVaultId] = useState("");
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [settingsConflict, setSettingsConflict] = useState(false);
+  const [settingsReview, setSettingsReview] = useState<{local: unknown; server: unknown} | null>(null);
+  const [defaultView, setDefaultView] = useState<VaultSettings["defaultView"]>(null);
+  const [collectionDialog, setCollectionDialog] = useState<"create" | "edit" | null>(null);
+  const [collectionNameDraft, setCollectionNameDraft] = useState("");
+  const [collectionVaultDraft, setCollectionVaultDraft] = useState<string[]>([]);
   const [defaultVaultId, setDefaultVaultId] = useState<string | null>(null);
+  const [vaultDialog, setVaultDialog] = useState<"create" | "rename" | null>(null);
+  const [vaultNameDraft, setVaultNameDraft] = useState("");
   const [items, setItems] = useState<Summary[]>([]),
     [selected, setSelected] = useState<Item | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
@@ -133,6 +145,10 @@ export function App() {
     setItemVaultId("");
     setDefaultVaultId(null);
     setViewMode("single");
+    setCollections([]);
+    setSelectedCollectionId(null);
+    setSettingsConflict(false);
+    setDefaultView(null);
     setItems([]);
     setSelected(null);
     setEditOriginal(null);
@@ -248,7 +264,11 @@ export function App() {
       setVaultId(result.vaultId);
       setDefaultVaultId(result.defaultVaultId);
       setItemVaultId(result.vaultId);
-      setViewMode("single");
+      setViewMode(result.viewKind === "all" ? "all" : result.viewKind === "collection" ? "collection" : "single");
+      setSelectedCollectionId(result.collectionId);
+      setCollections(result.settings.collections);
+      setSettingsConflict(result.settings.conflict);
+      setDefaultView(result.settings.defaultView);
       setVaults(result.vaults);
       setItems(result.items);
       setOnline(result.online);
@@ -290,6 +310,7 @@ export function App() {
       setVaultId(nextVaultId);
       setItemVaultId(nextVaultId);
       setViewMode("single");
+      setSelectedCollectionId(null);
       setItems(nextItems);
       setSelected(null);
       setEditOriginal(null);
@@ -308,10 +329,18 @@ export function App() {
       (await invoke<Summary[]>("item_list", { vaultId: vault.vaultId })).map((item) => ({ ...item, vaultId: vault.vaultId }))));
     return lists.flat();
   };
+  const listVisibleItems = async () => {
+    if (viewMode === "collection" && selectedCollectionId) {
+      const result = await invoke<{ items: Summary[] }>("collection_items", { collectionId: selectedCollectionId });
+      return result.items;
+    }
+    return listAllItems();
+  };
   const selectAllVaults = async () => {
     try {
       const allItems = await listAllItems();
       setViewMode("all");
+      setSelectedCollectionId(null);
       setItems(allItems);
       setSelected(null);
       setItemVaultId("");
@@ -321,14 +350,71 @@ export function App() {
       notify("error", "Could not list vaults", friendlyError(error));
     }
   };
+  const selectCollection = async (collectionId: string) => {
+    try {
+      const result = await invoke<{ items: Summary[]; unavailableVaultIds: string[] }>("collection_items", { collectionId });
+      setViewMode("collection");
+      setSelectedCollectionId(collectionId);
+      setItems(result.items);
+      setSelected(null);
+      setItemVaultId("");
+      setEditing(false);
+      if (result.unavailableVaultIds.length) notify("info", "Some vaults are unavailable", result.unavailableVaultIds.join(", "));
+    } catch (error) { notify("error", "Could not open collection", friendlyError(error)); }
+  };
+  const saveCollection = async () => {
+    try {
+      const result = await invoke<VaultSettings>("collection_save", { collectionId: collectionDialog === "edit" ? selectedCollectionId : null, name: collectionNameDraft, vaultIds: collectionVaultDraft });
+      setCollections(result.collections);
+      setSettingsConflict(result.conflict);
+      setDefaultView(result.defaultView);
+      setCollectionDialog(null);
+      setCollectionNameDraft("");
+      notify("success", "Collection saved");
+    } catch (error) { notify("error", "Could not save collection", friendlyError(error)); }
+  };
+  const removeCollection = async () => {
+    if (!selectedCollectionId) return;
+    try {
+      const result = await invoke<VaultSettings>("collection_remove", { collectionId: selectedCollectionId });
+      setCollections(result.collections);
+      setDefaultView(result.defaultView);
+      setSettingsConflict(result.conflict);
+      setSelectedCollectionId(null);
+      await selectAllVaults();
+    } catch (error) { notify("error", "Could not remove collection", friendlyError(error)); }
+  };
+  const saveDefaultView = async () => {
+    const kind = viewMode === "single" ? "vault" : viewMode;
+    const selector = kind === "vault" ? vaultId : kind === "collection" ? selectedCollectionId : null;
+    try {
+      const result = await invoke<VaultSettings>("vault_default_view", { kind, selector });
+      setDefaultView(result.defaultView);
+      setSettingsConflict(result.conflict);
+      notify("success", "Default view saved");
+    } catch (error) { notify("error", "Could not save default view", friendlyError(error)); }
+  };
   const addVault = async () => {
     try {
-      const result = await invoke<{ created: VaultSummary; vaults: VaultSummary[] }>("vault_create");
+      const result = await invoke<{ created: VaultSummary; vaults: VaultSummary[] }>("vault_create", { name: vaultNameDraft });
       setVaults(result.vaults);
       await selectVault(result.created.vaultId);
-      notify("success", "Private vault created", result.created.code);
+      setVaultDialog(null);
+      setVaultNameDraft("");
+      notify("success", "Vault created", result.created.code);
     } catch (error) {
       notify("error", "Could not create vault", friendlyError(error));
+    }
+  };
+  const renameVault = async () => {
+    try {
+      const result = await invoke<{ vaults: VaultSummary[] }>("vault_rename", { vaultId, name: vaultNameDraft });
+      setVaults(result.vaults);
+      setVaultDialog(null);
+      setVaultNameDraft("");
+      notify("success", "Vault renamed");
+    } catch (error) {
+      notify("error", "Could not rename vault", friendlyError(error));
     }
   };
   const toggleDefaultVault = async () => {
@@ -378,7 +464,7 @@ export function App() {
         customFields: draft.customFields,
         resolvingOperationId: resolutionId,
       });
-      setItems(viewMode === "all" ? await listAllItems() : response.items);
+      setItems(viewMode === "single" ? response.items : await listVisibleItems());
       setEditing(false);
       setEditOriginal(null);
       setResolvingOperationId(null);
@@ -417,19 +503,25 @@ export function App() {
   };
   const synchronize = async () => {
     try {
-      const result = await invoke<{ accepted: number; items: Summary[]; conflicts: EngineConflict[] }>(
+      const result = await invoke<{ accepted: number; items: Summary[]; vaults: VaultSummary[]; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
         "sync",
         { vaultId },
       );
       setOnline(true);
-      setItems(viewMode === "all" ? await listAllItems() : result.items);
+      setVaults(result.vaults);
+      if (result.vaultSettings?.collections) {
+        setCollections(result.vaultSettings.collections);
+        setDefaultView(result.vaultSettings.defaultView);
+        setSettingsConflict(result.vaultSettings.conflict);
+      }
+      setItems(viewMode === "single" ? result.items : await listVisibleItems());
       setLastSynced(new Date());
       setStatus(
         result.conflicts.length
           ? `Sync needs review · ${result.conflicts.length} pending conflict(s)`
           : `Sync complete · ${result.accepted} pending operation(s) accepted`,
       );
-      const pendingConflict = result.conflicts.find((row) => viewMode === "all" || row.vaultId === vaultId);
+      const pendingConflict = result.conflicts.find((row) => viewMode !== "single" || row.vaultId === vaultId);
       if (pendingConflict && !conflict) {
         setVaultId(pendingConflict.vaultId);
         setItemVaultId(pendingConflict.vaultId);
@@ -449,7 +541,7 @@ export function App() {
   const useServerVersion = async (itemId: string, operationId: string) => {
     try {
       const result = await invoke<{ items: Summary[] }>("discard_conflict", { vaultId, itemId, operationId });
-      setItems(viewMode === "all" ? await listAllItems() : result.items);
+      setItems(viewMode === "single" ? result.items : await listVisibleItems());
       setOnline(true);
       setLastSynced(new Date());
       setEditing(false);
@@ -611,7 +703,7 @@ export function App() {
   const runOmniAction = (id: string) => {
     setQuery("");
     if (id === "create-item") {
-      setItemVaultId(viewMode === "all" ? "" : vaultId);
+      setItemVaultId(viewMode === "single" ? vaultId : "");
       setSelected({
         itemId: "",
         title: "",
@@ -869,7 +961,7 @@ export function App() {
         <p className="mb-2 mt-7 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">
           VAULTS
         </p>
-        {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={cn("justify-start", vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
+        {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={cn("justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
           {defaultVaultId === vault.vaultId && <span className="text-[10px] text-[#E0BB95]">Default</span>}
@@ -878,10 +970,26 @@ export function App() {
         {viewMode === "single" && <Button variant="ghost" className="justify-start text-xs" onClick={() => void toggleDefaultVault()}>
           {defaultVaultId === vaultId ? "Clear default" : "Set as default"}
         </Button>}
-        <Button variant="ghost" className="justify-start" onClick={() => void addVault()} disabled={!online}>
+        <Button variant="ghost" className="justify-start" onClick={() => { setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>
           <Plus size={17} />
-          <span>Add private vault</span>
+          <span>Add vault</span>
         </Button>
+        {viewMode === "single" && <Button variant="ghost" className="justify-start text-xs" onClick={() => { setVaultNameDraft(vaults.find((vault) => vault.vaultId === vaultId)?.name ?? ""); setVaultDialog("rename"); }}>
+          Rename vault
+        </Button>}
+        <p className="mb-2 mt-6 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">COLLECTIONS</p>
+        {collections.map((collection) => <Button key={collection.id} variant="ghost" className={cn("justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
+          <LayoutList size={17} /><span className="truncate">{collection.name}</span>
+        </Button>)}
+        <Button variant="ghost" className="justify-start text-xs" onClick={() => { setCollectionNameDraft(""); setCollectionVaultDraft([]); setCollectionDialog("create"); }}>Add collection</Button>
+        {viewMode === "collection" && selectedCollectionId && <div className="flex gap-1">
+          <Button variant="ghost" className="text-xs" onClick={() => { const current = collections.find((row) => row.id === selectedCollectionId); if (current) { setCollectionNameDraft(current.name); setCollectionVaultDraft(current.vault_ids); setCollectionDialog("edit"); } }}>Edit</Button>
+          <Button variant="ghost" className="text-xs" onClick={() => void removeCollection()}>Remove</Button>
+        </div>}
+        <Button variant="ghost" className="justify-start text-xs" onClick={() => void saveDefaultView()}>
+          {defaultView?.kind === (viewMode === "single" ? "vault" : viewMode) && (viewMode === "all" || defaultView.id === (viewMode === "single" ? vaultId : selectedCollectionId)) ? "Default view" : "Set as default view"}
+        </Button>
+        {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         <div className="mt-auto grid gap-1">
           <Button
             variant="ghost"
@@ -934,7 +1042,7 @@ export function App() {
           )}
         </header>
         <div className="flex items-center justify-between px-5 pb-3 pt-5">
-          <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
+          <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : viewMode === "collection" ? collections.find((row) => row.id === selectedCollectionId)?.name ?? "Collection" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
           <Button
             size="icon"
             title="New item"
@@ -948,7 +1056,7 @@ export function App() {
                 customFields: setItemType([], "login"),
               });
               setEditOriginal(null);
-              setItemVaultId(viewMode === "all" ? "" : vaultId);
+              setItemVaultId(viewMode === "single" ? vaultId : "");
               setEditing(true);
             }}
           >
@@ -970,7 +1078,7 @@ export function App() {
               </span>
               <span>
                 <strong className="block truncate text-sm">{item.title}</strong>
-                <small className="text-slate-500">{item.website}{viewMode === "all" && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.code ?? item.vaultId}` : ""}</small>
+                <small className="text-slate-500">{item.website}{viewMode !== "single" && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.code ?? item.vaultId}` : ""}</small>
               </span>
             </button>
           ))}
@@ -997,10 +1105,10 @@ export function App() {
                     <Button onClick={() => void save()}>Save</Button>
                   </div>
                 </div>
-                {!selected.itemId && viewMode === "all" && <label className="mb-6 block text-sm text-slate-300">Destination vault
+                {!selected.itemId && viewMode !== "single" && <label className="mb-6 block text-sm text-slate-300">Destination vault
                   <select className="mt-2 w-full rounded-xl border border-white/15 bg-[#11162b] p-3" value={itemVaultId} onChange={(event) => setItemVaultId(event.target.value)}>
                     <option value="">Choose a vault</option>
-                    {vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
+                    {vaults.filter((vault) => viewMode !== "collection" || collections.find((row) => row.id === selectedCollectionId)?.vault_ids.includes(vault.vaultId)).map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
                   </select>
                 </label>}
                 <section>
@@ -1419,6 +1527,41 @@ export function App() {
           </div>
         ))}
       </div>
+      {settingsReview && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="settings-review-title">
+        <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100">
+          <h2 id="settings-review-title" className="text-lg font-semibold">Review vault settings conflict</h2>
+          <p className="mt-2 text-sm text-slate-400">Compare vault names, collections, default view, and removal preference. Choose which complete settings version to keep.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2"><div><h3 className="mb-2 font-medium">This device</h3><pre className="max-h-64 overflow-auto rounded bg-black/30 p-3 text-xs">{JSON.stringify(settingsReview.local, null, 2)}</pre></div><div><h3 className="mb-2 font-medium">Server</h3><pre className="max-h-64 overflow-auto rounded bg-black/30 p-3 text-xs">{JSON.stringify(settingsReview.server, null, 2)}</pre></div></div>
+          <div className="mt-5 flex justify-end gap-2"><Button variant="ghost" onClick={() => setSettingsReview(null)}>Cancel</Button>{(["local", "server"] as const).map((keep) => <Button key={keep} onClick={() => void invoke<VaultSettings>("vault_settings_resolve", { keep }).then((result) => { setCollections(result.collections); setDefaultView(result.defaultView); setSettingsConflict(result.conflict); setSettingsReview(null); notify("success", "Vault settings resolved"); }).catch((error) => notify("error", "Could not resolve settings", friendlyError(error)))}>Keep {keep}</Button>)}</div>
+        </div>
+      </div>}
+      {collectionDialog && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title">
+        <section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#11162b] p-7 shadow-2xl">
+          <h2 id="collection-dialog-title" className="text-xl font-bold">{collectionDialog === "create" ? "Create collection" : "Edit collection"}</h2>
+          <label className="mt-5 block text-sm text-slate-300">Collection name
+            <Input autoFocus className="mt-2" maxLength={80} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} />
+          </label>
+          <p className="mt-5 text-sm text-slate-300">Included vaults</p>
+          <div className="mt-2 grid gap-2">{vaults.map((vault) => <label key={vault.vaultId} className="flex items-center gap-3 rounded-lg border border-white/10 p-2 text-sm">
+            <input type="checkbox" checked={collectionVaultDraft.includes(vault.vaultId)} onChange={(event) => setCollectionVaultDraft((current) => event.target.checked ? [...current, vault.vaultId] : current.filter((id) => id !== vault.vaultId))} />
+            {vault.name} <small className="ml-auto text-slate-500">{vault.code}</small>
+          </label>)}</div>
+          <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" onClick={() => setCollectionDialog(null)}>Cancel</Button>
+            <Button disabled={!collectionNameDraft.trim() || !collectionVaultDraft.length} onClick={() => void saveCollection()}>Save collection</Button></div>
+        </section>
+      </div>}
+      {vaultDialog && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title">
+        <section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#11162b] p-7 shadow-2xl">
+          <h2 id="vault-dialog-title" className="text-xl font-bold">{vaultDialog === "create" ? "Create vault" : "Rename vault"}</h2>
+          <label className="mt-5 block text-sm text-slate-300">Vault name
+            <Input autoFocus className="mt-2" maxLength={80} value={vaultNameDraft} onChange={(event) => setVaultNameDraft(event.target.value)} />
+          </label>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setVaultDialog(null)}>Cancel</Button>
+            <Button disabled={!vaultNameDraft.trim()} onClick={() => void (vaultDialog === "create" ? addVault() : renameVault())}>{vaultDialog === "create" ? "Create" : "Save name"}</Button>
+          </div>
+        </section>
+      </div>}
       {conflict && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6 backdrop-blur-sm"

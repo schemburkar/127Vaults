@@ -37,6 +37,16 @@ struct Request {
     #[serde(default)]
     vault: Option<String>,
     #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    vault_ids: Vec<String>,
+    #[serde(default)]
+    view_kind: Option<String>,
+    #[serde(default)]
+    choice: Option<String>,
+    #[serde(default)]
     clear: bool,
     #[serde(default)]
     item: Option<String>,
@@ -148,7 +158,48 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
                     .ok_or("resolution choice is required")?,
             )
         }
-        "vault.create" => session.vault_create(),
+        "vault.create" => session.vault_create(request.name.as_deref().unwrap_or("Private")),
+        "vault.settings" => Ok(session.vault_settings()),
+        "vault.settings.sync" => session.sync_vault_settings(),
+        "vault.settings.review" => session.vault_settings_review(),
+        "vault.settings.resolve" => session.resolve_vault_settings_conflict(
+            request
+                .keep
+                .as_deref()
+                .ok_or("resolution choice is required")?,
+        ),
+        "vault.rename" => session.rename_vault(
+            request.vault.as_deref().ok_or("vault is required")?,
+            request.name.as_deref().ok_or("name is required")?,
+        ),
+        "vault.settings.preference" => session.set_removal_preference(request.choice.as_deref()),
+        "vault.settings.default-view" => session.set_default_view(
+            request
+                .view_kind
+                .as_deref()
+                .ok_or("view kind is required")?,
+            request
+                .vault
+                .as_deref()
+                .or(request.collection_id.as_deref()),
+        ),
+        "collection.save" => session.save_collection(
+            request.collection_id.as_deref(),
+            request.name.as_deref().ok_or("name is required")?,
+            &request.vault_ids,
+        ),
+        "collection.remove" => session.remove_collection(
+            request
+                .collection_id
+                .as_deref()
+                .ok_or("collection ID is required")?,
+        ),
+        "collection.items" => session.collection_items(
+            request
+                .collection_id
+                .as_deref()
+                .ok_or("collection ID is required")?,
+        ),
         "vault.info" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
             session.vault_info(&vault)

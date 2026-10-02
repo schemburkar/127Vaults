@@ -150,10 +150,29 @@ async fn unlock(
             .and_then(|rows| rows.first())
             .and_then(|row| row["vaultId"].as_str())
             .map(str::to_owned)).ok_or("no local vault is available")?;
-        let items = session.item_list(&vault)?;
+        let settings = session.vault_settings();
+        let default_view = settings["defaultView"].clone();
+        let view_kind = default_view["kind"].as_str().unwrap_or("vault");
+        let (items, collection_id) = match view_kind {
+            "all" => (session.item_list_all()?, None),
+            "collection" => {
+                let id = default_view["id"].as_str().ok_or("default collection is invalid")?;
+                (session.collection_items(id)?["items"].clone(), Some(id.to_owned()))
+            }
+            "vault" => {
+                let selected = default_view["id"].as_str().unwrap_or(&vault);
+                if vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == selected)) {
+                    (session.item_list(selected)?, None)
+                } else { (session.item_list(&vault)?, None) }
+            }
+            _ => (session.item_list(&vault)?, None),
+        };
+        let initial_vault = if view_kind == "vault" {
+            default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected))).unwrap_or(&vault).to_owned()
+        } else { vault.clone() };
         Ok::<_, String>((
             session,
-            json!({"online":online,"vaultId":vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items}),
+            json!({"online":online,"vaultId":initial_vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id}),
         ))
     })
     .await
@@ -171,10 +190,91 @@ fn item_list(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<
 }
 
 #[tauri::command]
-fn vault_create(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+fn vault_create(state: tauri::State<'_, DesktopState>, name: String) -> Result<Value, String> {
     with_session(&state, |session| {
-        let created = session.vault_create()?;
+        let created = session.vault_create(&name)?;
         Ok(json!({"created":created,"vaults":session.vault_list()?}))
+    })
+}
+
+#[tauri::command]
+fn vault_rename(
+    state: tauri::State<'_, DesktopState>,
+    vault_id: String,
+    name: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        let settings = session.rename_vault(&vault_id, &name)?;
+        Ok(json!({"settings":settings,"vaults":session.vault_list()?}))
+    })
+}
+
+#[tauri::command]
+fn vault_settings(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| Ok(session.vault_settings()))
+}
+
+#[tauri::command]
+fn vault_settings_review(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.vault_settings_review())
+}
+
+#[tauri::command]
+fn vault_settings_resolve(
+    state: tauri::State<'_, DesktopState>,
+    keep: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        session.resolve_vault_settings_conflict(&keep)
+    })
+}
+
+#[tauri::command]
+fn collection_save(
+    state: tauri::State<'_, DesktopState>,
+    collection_id: Option<String>,
+    name: String,
+    vault_ids: Vec<String>,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        session.save_collection(collection_id.as_deref(), &name, &vault_ids)
+    })
+}
+
+#[tauri::command]
+fn collection_remove(
+    state: tauri::State<'_, DesktopState>,
+    collection_id: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| session.remove_collection(&collection_id))
+}
+
+#[tauri::command]
+fn collection_items(
+    state: tauri::State<'_, DesktopState>,
+    collection_id: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| session.collection_items(&collection_id))
+}
+
+#[tauri::command]
+fn vault_default_view(
+    state: tauri::State<'_, DesktopState>,
+    kind: String,
+    selector: Option<String>,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        session.set_default_view(&kind, selector.as_deref())
+    })
+}
+
+#[tauri::command]
+fn vault_removal_preference(
+    state: tauri::State<'_, DesktopState>,
+    choice: Option<String>,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        session.set_removal_preference(choice.as_deref())
     })
 }
 
@@ -271,7 +371,7 @@ fn sync(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value
         let result = session.sync_now()?;
         let items = session.item_list(&vault_id)?;
         Ok(
-            json!({"accepted": result["accepted"], "pending":result["pending"], "conflicts":result["conflicts"], "items": items}),
+            json!({"accepted": result["accepted"], "pending":result["pending"], "conflicts":result["conflicts"], "vaultSettings":result["vaultSettings"], "vaults":session.vault_list()?, "items": items}),
         )
     })
 }
@@ -395,6 +495,15 @@ fn main() {
             unlock,
             item_list,
             vault_create,
+            vault_rename,
+            vault_settings,
+            vault_settings_review,
+            vault_settings_resolve,
+            collection_save,
+            collection_remove,
+            collection_items,
+            vault_default_view,
+            vault_removal_preference,
             vault_default,
             item_get,
             item_secret,

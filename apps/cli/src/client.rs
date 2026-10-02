@@ -4,6 +4,7 @@ use std::{fs, path::Path};
 use crate::{
     replica::{PendingMutation, Replica, ReplicaItem, ReplicaStore, verify_remote_progress},
     sync_transport::{HttpSyncTransport, SyncTransport},
+    vault_settings::{self, SettingsData, SettingsRecord, SettingsStore},
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey};
@@ -29,6 +30,11 @@ pub struct Session {
     epoch: u64,
     replica_store: ReplicaStore,
     profile_dir: std::path::PathBuf,
+    settings_store: SettingsStore,
+    settings_record: SettingsRecord,
+    settings_data: SettingsData,
+    settings_conflict: bool,
+    settings_remote: Option<(Option<String>, Option<String>)>,
     sync_transport: Option<HttpSyncTransport>,
     online: bool,
     vault_handles: std::collections::HashMap<String, KeyHandle>,
@@ -48,6 +54,25 @@ struct OfflineUnlockRecord {
 
 fn offline_record_path(config_dir: &Path) -> std::path::PathBuf {
     config_dir.join("offline-unlock.json")
+}
+
+fn local_settings(
+    config_dir: &Path,
+    core: &Core,
+    root: KeyHandle,
+) -> Result<(SettingsStore, SettingsRecord, SettingsData), String> {
+    let store = SettingsStore::new(config_dir);
+    let record = store.load()?;
+    let envelope = record
+        .pending
+        .as_ref()
+        .map(|p| &p.envelope)
+        .or(record.verified_envelope.as_ref());
+    let data = match envelope {
+        Some(value) => vault_settings::decrypt(core, root, value)?,
+        None => SettingsData::empty(),
+    };
+    Ok((store, record, data))
 }
 
 fn save_offline_record(config_dir: &Path, record: &OfflineUnlockRecord) -> Result<(), String> {
@@ -105,6 +130,7 @@ pub fn unlock_offline(
         .map_err(|_| "offline authentication failed".to_owned())?;
     let (_, origin, server_id, _) = http_client(config_dir)?;
     let signing = stored_signing_key(config_dir, &server_id, &record.device_id)?;
+    let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
     Ok(Session {
         client: Client::new(),
         origin,
@@ -118,6 +144,11 @@ pub fn unlock_offline(
         epoch: record.epoch,
         replica_store: ReplicaStore::new(config_dir),
         profile_dir: config_dir.to_path_buf(),
+        settings_store,
+        settings_record,
+        settings_data,
+        settings_conflict: false,
+        settings_remote: None,
         sync_transport: None,
         online: false,
         vault_handles: std::collections::HashMap::new(),
@@ -476,6 +507,7 @@ pub fn unlock(
         session_cookie.clone(),
         csrf.clone(),
     );
+    let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
     let mut session = Session {
         client,
         origin,
@@ -489,11 +521,17 @@ pub fn unlock(
         epoch,
         replica_store: ReplicaStore::new(config_dir),
         profile_dir: config_dir.to_path_buf(),
+        settings_store,
+        settings_record,
+        settings_data,
+        settings_conflict: false,
+        settings_remote: None,
         sync_transport: Some(sync_transport),
         online: true,
         vault_handles: std::collections::HashMap::new(),
     };
     session.hydrate_replicas()?;
+    session.sync_vault_settings()?;
     save_offline_record(
         config_dir,
         &OfflineUnlockRecord {
@@ -525,6 +563,276 @@ pub fn unlock_with_offline_fallback(
 }
 
 impl Session {
+    pub fn vault_settings(&self) -> Value {
+        json!({"names":self.settings_data.names,"collections":self.settings_data.collections,
+            "defaultView":self.settings_data.default_view,"removalPreference":self.settings_data.removal_preference,
+            "pending":self.settings_record.pending.is_some(),"conflict":self.settings_conflict})
+    }
+
+    pub fn vault_settings_review(&self) -> Result<Value, String> {
+        if !self.settings_conflict {
+            return Err("vault settings conflict is unavailable".to_owned());
+        }
+        let (revision, envelope) = self
+            .settings_remote
+            .as_ref()
+            .ok_or("vault settings conflict is unavailable")?;
+        let server = match envelope {
+            Some(value) => vault_settings::decrypt(&self.core, self.root, value)?,
+            None => SettingsData::empty(),
+        };
+        Ok(
+            json!({"local":self.settings_data,"server":server,"serverRevision":revision,
+            "localPending":self.settings_record.pending.is_some()}),
+        )
+    }
+
+    pub fn sync_vault_settings(&mut self) -> Result<Value, String> {
+        if !self.online {
+            return Err("vault settings sync unavailable while offline".to_owned());
+        }
+        let remote = self.get("/api/v1/vault-settings")?;
+        let revision = remote["revision"].as_str().map(str::to_owned);
+        let envelope = remote["envelope"].as_str().map(str::to_owned);
+        if revision.is_some() != envelope.is_some() {
+            return Err("invalid vault settings response".to_owned());
+        }
+        if let Some(ref value) = envelope {
+            if Some(vault_settings::revision(value)?) != revision {
+                return Err("invalid vault settings response".to_owned());
+            }
+            vault_settings::decrypt(&self.core, self.root, value)?;
+        }
+        if let Some(pending) = self.settings_record.pending.clone() {
+            if pending.base_revision != revision {
+                self.settings_conflict = true;
+                self.settings_remote = Some((revision, envelope));
+                return Ok(self.vault_settings());
+            }
+            let next_revision = vault_settings::revision(&pending.envelope)?;
+            self.post_auth("/api/v1/vault-settings", reqwest::Method::PUT,
+                &json!({"baseRevision":revision,"revision":next_revision,"envelope":pending.envelope}))?;
+            self.settings_record.remote_revision = Some(next_revision);
+            self.settings_record.verified_envelope = Some(pending.envelope);
+            self.settings_record.pending = None;
+            self.settings_store.commit(&self.settings_record)?;
+            self.settings_conflict = false;
+            self.settings_remote = None;
+        } else if self.settings_record.remote_revision != revision {
+            if self.settings_record.remote_revision.is_some() {
+                self.settings_conflict = true;
+                self.settings_remote = Some((revision, envelope));
+                return Ok(self.vault_settings());
+            }
+            self.settings_data = match envelope.as_ref() {
+                Some(value) => vault_settings::decrypt(&self.core, self.root, value)?,
+                None => SettingsData::empty(),
+            };
+            self.settings_record.remote_revision = revision;
+            self.settings_record.verified_envelope = envelope;
+            self.settings_store.commit(&self.settings_record)?;
+        } else if self.settings_record.verified_envelope != envelope {
+            self.settings_conflict = true;
+            self.settings_remote = Some((revision, envelope));
+            return Ok(self.vault_settings());
+        }
+        Ok(self.vault_settings())
+    }
+
+    pub fn resolve_vault_settings_conflict(&mut self, keep: &str) -> Result<Value, String> {
+        if !self.online || !self.settings_conflict {
+            return Err("vault settings conflict is unavailable".to_owned());
+        }
+        let (revision, envelope) = self
+            .settings_remote
+            .clone()
+            .ok_or("vault settings conflict is unavailable")?;
+        match keep {
+            "server" => {
+                self.settings_data = match envelope.as_ref() {
+                    Some(value) => vault_settings::decrypt(&self.core, self.root, value)?,
+                    None => SettingsData::empty(),
+                };
+                self.settings_record.remote_revision = revision;
+                self.settings_record.verified_envelope = envelope;
+                self.settings_record.pending = None;
+                self.settings_store.commit(&self.settings_record)?;
+            }
+            "local" => {
+                let sealed = vault_settings::encrypt(&self.core, self.root, &self.settings_data)?;
+                self.settings_record.remote_revision = revision.clone();
+                self.settings_record.verified_envelope = envelope;
+                self.settings_record.pending = Some(vault_settings::PendingSettings {
+                    base_revision: revision,
+                    envelope: sealed,
+                });
+                self.settings_store.commit(&self.settings_record)?;
+            }
+            _ => return Err("choose server or local".to_owned()),
+        }
+        self.settings_conflict = false;
+        self.settings_remote = None;
+        if keep == "local" {
+            self.sync_vault_settings()?;
+        }
+        Ok(self.vault_settings())
+    }
+
+    fn edit_vault_settings(
+        &mut self,
+        change: impl FnOnce(&mut SettingsData) -> Result<(), String>,
+    ) -> Result<Value, String> {
+        if self.settings_conflict {
+            return Err("resolve the vault settings conflict first".to_owned());
+        }
+        let mut next = self.settings_data.clone();
+        change(&mut next)?;
+        let envelope = vault_settings::encrypt(&self.core, self.root, &next)?;
+        self.settings_record.pending = Some(vault_settings::PendingSettings {
+            base_revision: self.settings_record.remote_revision.clone(),
+            envelope,
+        });
+        self.settings_store.commit(&self.settings_record)?;
+        self.settings_data = next;
+        if self.online {
+            let _ = self.sync_vault_settings();
+        }
+        Ok(self.vault_settings())
+    }
+
+    pub fn rename_vault(&mut self, selector: &str, name: &str) -> Result<Value, String> {
+        let id = self.resolve_vault_id(selector)?;
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 80 {
+            return Err("vault name must contain 1 to 80 characters".to_owned());
+        }
+        self.edit_vault_settings(|settings| {
+            settings.names.insert(id, name.to_owned());
+            Ok(())
+        })
+    }
+
+    pub fn save_collection(
+        &mut self,
+        id: Option<&str>,
+        name: &str,
+        vaults: &[String],
+    ) -> Result<Value, String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 80 || vaults.is_empty() {
+            return Err("collection needs a name and at least one vault".to_owned());
+        }
+        let mut ids = Vec::new();
+        for vault in vaults {
+            let resolved = self.resolve_vault_id(vault)?;
+            if !ids.contains(&resolved) {
+                ids.push(resolved);
+            }
+        }
+        let id = match id {
+            Some(id) => uuid::Uuid::parse_str(id)
+                .map_err(|_| "invalid collection ID")?
+                .to_string(),
+            None => uuid::Uuid::new_v4().to_string(),
+        };
+        self.edit_vault_settings(|settings| {
+            if let Some(existing) = settings.collections.iter_mut().find(|row| row.id == id) {
+                existing.name = name.to_owned();
+                existing.vault_ids = ids;
+            } else {
+                settings.collections.push(vault_settings::Collection {
+                    id,
+                    name: name.to_owned(),
+                    vault_ids: ids,
+                });
+            }
+            Ok(())
+        })
+    }
+
+    pub fn remove_collection(&mut self, id: &str) -> Result<Value, String> {
+        self.edit_vault_settings(|settings| {
+            let before = settings.collections.len();
+            settings.collections.retain(|row| row.id != id);
+            if before == settings.collections.len() { return Err("collection is unavailable".to_owned()); }
+            if matches!(&settings.default_view, Some(vault_settings::View::Collection(current)) if current == id) { settings.default_view = None; }
+            Ok(())
+        })
+    }
+
+    pub fn set_removal_preference(&mut self, choice: Option<&str>) -> Result<Value, String> {
+        if choice.is_some_and(|value| !matches!(value, "move" | "archive")) {
+            return Err("choose move or archive".to_owned());
+        }
+        self.edit_vault_settings(|settings| {
+            settings.removal_preference = choice.map(str::to_owned);
+            Ok(())
+        })
+    }
+
+    pub fn set_default_view(
+        &mut self,
+        kind: &str,
+        selector: Option<&str>,
+    ) -> Result<Value, String> {
+        let view = match kind {
+            "all" => vault_settings::View::All,
+            "vault" => vault_settings::View::Vault(
+                self.resolve_vault_id(selector.ok_or("vault is required")?)?,
+            ),
+            "collection" => {
+                let id = selector.ok_or("collection ID is required")?;
+                if !self
+                    .settings_data
+                    .collections
+                    .iter()
+                    .any(|row| row.id == id)
+                {
+                    return Err("collection is unavailable".to_owned());
+                }
+                vault_settings::View::Collection(id.to_owned())
+            }
+            _ => return Err("choose all, vault, or collection".to_owned()),
+        };
+        self.edit_vault_settings(|settings| {
+            settings.default_view = Some(view);
+            Ok(())
+        })
+    }
+
+    pub fn collection_items(&mut self, id: &str) -> Result<Value, String> {
+        let collection = self
+            .settings_data
+            .collections
+            .iter()
+            .find(|row| row.id == id)
+            .ok_or("collection is unavailable")?
+            .clone();
+        let available = self.vault_list()?;
+        let mut items = Vec::new();
+        let mut unavailable = Vec::new();
+        for vault_id in collection.vault_ids {
+            if !available
+                .as_array()
+                .ok_or("invalid vault list")?
+                .iter()
+                .any(|row| row["vaultId"] == vault_id)
+            {
+                unavailable.push(vault_id);
+                continue;
+            }
+            for mut item in self
+                .item_list(&vault_id)?
+                .as_array()
+                .ok_or("invalid item list")?
+                .clone()
+            {
+                item["vaultId"] = json!(vault_id);
+                items.push(item);
+            }
+        }
+        Ok(json!({"items":items,"unavailableVaultIds":unavailable}))
+    }
     pub fn default_vault(&self) -> Result<Option<String>, String> {
         let path = self.profile_dir.join("default-vault.txt");
         let raw = match fs::read_to_string(path) {
@@ -887,8 +1195,11 @@ impl Session {
             .iter()
             .map(|replica| replica.pending.len())
             .sum::<usize>();
+        let settings = self
+            .sync_vault_settings()
+            .unwrap_or_else(|error| json!({"pending":true,"error":error}));
         Ok(
-            json!({"accepted":accepted,"rebased":rebased,"pending":pending,"online":true,"conflicts":conflicts}),
+            json!({"accepted":accepted,"rebased":rebased,"pending":pending,"online":true,"conflicts":conflicts,"vaultSettings":settings}),
         )
     }
 
@@ -1309,7 +1620,7 @@ impl Session {
                 .iter()
                 .map(|v| {
                     let id = &v.vault_id;
-                    json!({"name":"Private","code":Self::reference("V",id),"vaultId":id})
+                    json!({"name":self.settings_data.names.get(id).map(String::as_str).unwrap_or("Private"),"code":Self::reference("V",id),"vaultId":id})
                 })
                 .collect(),
         ))
@@ -1346,9 +1657,15 @@ impl Session {
             .map(str::to_owned)
             .ok_or_else(|| "invalid vault list".to_owned())
     }
-    pub fn vault_create(&mut self) -> Result<Value, String> {
+    pub fn vault_create(&mut self, name: &str) -> Result<Value, String> {
         if !self.online {
             return Err("vault creation requires an online session".to_owned());
+        }
+        if self.settings_conflict {
+            return Err("resolve the vault settings conflict first".to_owned());
+        }
+        if name.trim().is_empty() || name.chars().count() > 80 {
+            return Err("vault name must contain 1 to 80 characters".to_owned());
         }
         let current = self.get("/api/v1/vaults")?;
         let directory = bytes(&current, "directory")?;
@@ -1375,8 +1692,9 @@ impl Session {
         .to_string();
         let response=self.post_auth("/api/v1/vaults",reqwest::Method::POST,&json!({"requestId":uuid::Uuid::new_v4(),"baseDirectoryRevision":base,"directory":URL_SAFE_NO_PAD.encode(made.directory),"vaultEnvelope":URL_SAFE_NO_PAD.encode(made.vault.envelope),"catalogue":URL_SAFE_NO_PAD.encode(made.catalogue)}))?;
         self.hydrate_replicas()?;
+        let metadata = self.rename_vault(&vault_id, name)?;
         Ok(
-            json!({"name":"Private","code":Self::reference("V",&vault_id),"vaultId":vault_id,"result":response}),
+            json!({"name":name,"code":Self::reference("V",&vault_id),"vaultId":vault_id,"result":response,"settingsPending":metadata["pending"]}),
         )
     }
     pub fn vault_info(&mut self, selector: &str) -> Result<Value, String> {
@@ -1387,7 +1705,7 @@ impl Session {
             .ok_or("invalid item list")?
             .len();
         Ok(
-            json!({"name":"Private","code":Self::reference("V",&vault_id),"vaultId":vault_id,"itemCount":item_count}),
+            json!({"name":self.settings_data.names.get(&vault_id).map(String::as_str).unwrap_or("Private"),"code":Self::reference("V",&vault_id),"vaultId":vault_id,"itemCount":item_count}),
         )
     }
     fn open_vault(&mut self, selector: &str) -> Result<(String, KeyHandle, Vec<u8>), String> {
