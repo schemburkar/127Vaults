@@ -729,6 +729,7 @@ impl Session {
                 ids.push(resolved);
             }
         }
+        let editing = id.is_some();
         let id = match id {
             Some(id) => uuid::Uuid::parse_str(id)
                 .map_err(|_| "invalid collection ID")?
@@ -740,6 +741,7 @@ impl Session {
                 existing.name = name.to_owned();
                 existing.vault_ids = ids;
             } else {
+                if editing { return Err("collection is unavailable".to_owned()); }
                 settings.collections.push(vault_settings::Collection {
                     id,
                     name: name.to_owned(),

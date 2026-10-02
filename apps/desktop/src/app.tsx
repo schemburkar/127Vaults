@@ -89,6 +89,7 @@ export function App() {
   const [settingsConflict, setSettingsConflict] = useState(false);
   const [settingsReview, setSettingsReview] = useState<{local: unknown; server: unknown} | null>(null);
   const [defaultView, setDefaultView] = useState<VaultSettings["defaultView"]>(null);
+  const [removalPreference, setRemovalPreference] = useState<string | null>(null);
   const [collectionDialog, setCollectionDialog] = useState<"create" | "edit" | null>(null);
   const [collectionNameDraft, setCollectionNameDraft] = useState("");
   const [collectionVaultDraft, setCollectionVaultDraft] = useState<string[]>([]);
@@ -269,6 +270,7 @@ export function App() {
       setCollections(result.settings.collections);
       setSettingsConflict(result.settings.conflict);
       setDefaultView(result.settings.defaultView);
+      setRemovalPreference(result.settings.removalPreference);
       setVaults(result.vaults);
       setItems(result.items);
       setOnline(result.online);
@@ -512,6 +514,7 @@ export function App() {
       if (result.vaultSettings?.collections) {
         setCollections(result.vaultSettings.collections);
         setDefaultView(result.vaultSettings.defaultView);
+        setRemovalPreference(result.vaultSettings.removalPreference);
         setSettingsConflict(result.vaultSettings.conflict);
       }
       setItems(viewMode === "single" ? result.items : await listVisibleItems());
@@ -989,6 +992,11 @@ export function App() {
         <Button variant="ghost" className="justify-start text-xs" onClick={() => void saveDefaultView()}>
           {defaultView?.kind === (viewMode === "single" ? "vault" : viewMode) && (viewMode === "all" || defaultView.id === (viewMode === "single" ? vaultId : selectedCollectionId)) ? "Default view" : "Set as default view"}
         </Button>
+        <label className="grid gap-1 px-3 text-xs text-slate-400">When removing a vault
+          <select className="rounded border border-white/10 bg-[#11162b] px-2 py-1 text-slate-100" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}>
+            <option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option>
+          </select>
+        </label>
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         <div className="mt-auto grid gap-1">
           <Button
