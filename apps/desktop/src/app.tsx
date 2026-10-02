@@ -30,7 +30,8 @@ type Item = Summary & {
   password: string;
   customFields: CustomField[];
 };
-type UnlockResult = { online: boolean; vaultId: string; items: Summary[] };
+type VaultSummary = { vaultId: string; name: string; code: string };
+type UnlockResult = { online: boolean; vaultId: string; vaults: VaultSummary[]; items: Summary[] };
 type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
@@ -81,6 +82,7 @@ export function App() {
     [status, setStatus] = useState("Locked");
   const [items, setItems] = useState<Summary[]>([]),
     [selected, setSelected] = useState<Item | null>(null);
+  const [vaults, setVaults] = useState<VaultSummary[]>([]);
   const [editOriginal, setEditOriginal] = useState<Item | null>(null);
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null),
     [username, setUsername] = useState("");
@@ -123,6 +125,9 @@ export function App() {
   const lock = async (reason = "Locked") => {
     await invoke("lock").catch(() => undefined);
     setUnlocked(false);
+    setVaults([]);
+    setVaultId("");
+    setItems([]);
     setSelected(null);
     setEditOriginal(null);
     setRevealed(new Set());
@@ -232,6 +237,7 @@ export function App() {
         masterPassword,
       });
       setVaultId(result.vaultId);
+      setVaults(result.vaults);
       setItems(result.items);
       setOnline(result.online);
       setUnlocked(true);
@@ -263,6 +269,24 @@ export function App() {
       notify("error", "Could not unlock the vault", detail);
     } finally {
       setBusy(false);
+    }
+  };
+  const selectVault = async (nextVaultId: string) => {
+    if (nextVaultId === vaultId) return;
+    try {
+      const nextItems = await invoke<Summary[]>("item_list", { vaultId: nextVaultId });
+      setVaultId(nextVaultId);
+      setItems(nextItems);
+      setSelected(null);
+      setEditOriginal(null);
+      setConflict(null);
+      setRevealed(new Set());
+      setEditing(false);
+      dragSession.lock();
+      dragSession.unlock();
+      if (nextItems[0]) await openItem(nextItems[0], nextVaultId);
+    } catch (error) {
+      notify("error", "Could not open vault", friendlyError(error));
     }
   };
   const save = async (draft = selected, resolutionId = resolvingOperationId) => {
@@ -338,6 +362,7 @@ export function App() {
     try {
       const result = await invoke<{ accepted: number; items: Summary[]; conflicts: EngineConflict[] }>(
         "sync",
+        { vaultId },
       );
       setOnline(true);
       setItems(result.items);
@@ -784,10 +809,11 @@ export function App() {
         <p className="mb-2 mt-7 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">
           VAULTS
         </p>
-        <Button variant="ghost" className="justify-start">
+        {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={cn("justify-start", vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
-          <span>Private</span>
-        </Button>
+          <span className="truncate">{vault.name}</span>
+          <span className="ml-auto text-[10px] text-slate-500">{vault.code}</span>
+        </Button>)}
         <div className="mt-auto grid gap-1">
           <Button
             variant="ghost"

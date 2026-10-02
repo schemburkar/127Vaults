@@ -4,7 +4,7 @@ Updated 2026-10-02. Windows-first Tauri client; see [desktop scope](../../apps/d
 
 | ID | State | Outcome and acceptance |
 | --- | --- | --- |
-| DESK-001 | Done | Reuse Rust session and encrypted replica for online/offline unlock, queued encrypted edits and explicit sync. Source: `apps/desktop/src-tauri/src/main.rs`, `apps/desktop/src/app.tsx`. |
+| DESK-001 | Done | Reuse Rust session and encrypted replica for online/offline unlock, queued encrypted edits and explicit sync. Vault selector switches the displayed replica and explicit sync refreshes that selection. Source: `apps/desktop/src-tauri/src/main.rs`, `apps/desktop/src/app.tsx`. |
 | DESK-002 | Done | First-party item types, typed sections, Wi-Fi QR, field-level conflict choice and secret reveal/copy controls are present. |
 | DESK-003 | Partial | Outbound text drag is an integrated development experiment. Complete the manual target matrix, revocable native payload, OS lock signal and accessibility review before a release claim. |
 | DESK-004 | Open | Verify field-aware pending-operation rebase, delete/edit conflicts and checkpoint rollback with two real devices and restart. |

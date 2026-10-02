@@ -153,7 +153,7 @@ async fn unlock(
         let items = session.item_list(&vault)?;
         Ok::<_, String>((
             session,
-            json!({"online":online,"vaultId":vault,"items":items}),
+            json!({"online":online,"vaultId":vault,"vaults":vaults,"items":items}),
         ))
     })
     .await
@@ -163,6 +163,11 @@ async fn unlock(
         .lock()
         .map_err(|_| "desktop vault state is unavailable")? = Some(session);
     Ok(result)
+}
+
+#[tauri::command]
+fn item_list(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
+    with_session(&state, |session| session.item_list(&vault_id))
 }
 
 #[tauri::command]
@@ -243,18 +248,13 @@ fn item_save(
 }
 
 #[tauri::command]
-fn sync(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+fn sync(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
     with_session(&state, |session| {
         let result = session.sync_now()?;
-        let vault = session
-            .vault_list()?
-            .as_array()
-            .and_then(|rows| rows.first())
-            .and_then(|row| row["vaultId"].as_str())
-            .ok_or("no local vault is available")?
-            .to_owned();
-        let items = session.item_list(&vault)?;
-        Ok(json!({"accepted": result["accepted"], "conflicts":result["conflicts"], "items": items}))
+        let items = session.item_list(&vault_id)?;
+        Ok(
+            json!({"accepted": result["accepted"], "pending":result["pending"], "conflicts":result["conflicts"], "items": items}),
+        )
     })
 }
 
@@ -375,6 +375,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             desktop_info,
             unlock,
+            item_list,
             item_get,
             item_secret,
             item_save,
