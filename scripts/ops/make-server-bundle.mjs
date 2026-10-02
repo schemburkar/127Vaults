@@ -22,6 +22,7 @@ async function hash(path) {
   return digest.digest('hex');
 }
 await mkdir(destination, { recursive: false });
+await mkdir(join(destination, 'lib'));
 await run(process.execPath, ['scripts/build-fixture.mjs']);
 await run(engine, ['build', '-t', 'localhost/127vaults-server:test', '-f', 'apps/server/Dockerfile', '.']);
 await run(engine, ['pull', 'docker.io/library/postgres:17-bookworm']);
@@ -32,17 +33,18 @@ await run(engine, ['save', '-o', join(destination, 'openssl-image.tar'), 'docker
 for (const [source, target] of [
   ['deploy/compose.test.yaml', 'compose.test.yaml'],
   ['deploy/compose.smtp.yaml', 'compose.smtp.yaml'],
-  ['deploy/test-install.mjs', 'test-install.mjs'],
-  ['scripts/tls.mjs', 'tls.mjs'],
-  ['scripts/ops/backup-envelope.mjs', 'backup-envelope.mjs'],
-  ['scripts/ops/server-data.mjs', 'server-data.mjs'],
-  ['scripts/ops/identity-backup.mjs', 'identity-backup.mjs'],
+  ['server.mjs', 'server.mjs'],
+  ['deploy/test-install.mjs', 'lib/test-install.mjs'],
+  ['scripts/tls.mjs', 'lib/tls.mjs'],
+  ['scripts/ops/backup-envelope.mjs', 'lib/backup-envelope.mjs'],
+  ['scripts/ops/server-data.mjs', 'lib/server-data.mjs'],
+  ['scripts/ops/identity-backup.mjs', 'lib/identity-backup.mjs'],
   ['docs/release/server-test-install.md', 'README.md'],
   ['LICENSE-POLICY.md', 'LICENSE-POLICY.md']
 ]) await copyFile(source, join(destination, target));
 const revision = await run('git', ['rev-parse', 'HEAD'], { capture: true });
 const changed = await run('git', ['status', '--porcelain'], { capture: true });
 const files = {};
-for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'test-install.mjs', 'tls.mjs', 'backup-envelope.mjs', 'server-data.mjs', 'identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
+for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'lib/test-install.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
 await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image: 'localhost/127vaults-server:test', files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);

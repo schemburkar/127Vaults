@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "server": "node server.mjs",
     "fixture:build": "node scripts/build-fixture.mjs",
     "fixture:serve": "node apps/web/fixture-server.mjs",
     "fixture:dev": "node scripts/build-fixture.mjs && node apps/web/fixture-server.mjs",

@@ -2,8 +2,8 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 const action = process.argv[2];
@@ -12,7 +12,7 @@ const endpoint = process.argv.find((value, index) => process.argv[index - 1] ===
 const restoredIdentity = process.argv.find((value, index) => process.argv[index - 1] === '--restore-identity');
 const privateDir = resolve(restoredIdentity ?? process.argv.find((value, index) => process.argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
 const provider = process.argv.find((value, index) => process.argv[index - 1] === '--compose-provider');
-if (!['init', 'start', 'status', 'stop', 'bootstrap'].includes(action)) throw Error('Use init, start, status, stop, or bootstrap.');
+if (!['init', 'start', 'status', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, stop, bootstrap, or restore.');
 if (!/^(127\.0\.0\.1|localhost|(?:10|192\.168)\.(?:\d{1,3}\.){2}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.){2})$/.test(endpoint)) throw Error('Use loopback or a private IPv4 endpoint.');
 
 async function run(program, argv, { quiet = false } = {}) {
@@ -31,7 +31,7 @@ async function verifyBundle() {
   const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
   if (manifest.format !== 1 || !manifest.files || typeof manifest.files !== 'object') throw Error('Unknown bundle manifest.');
   for (const [name, expected] of Object.entries(manifest.files)) {
-    if (!/^[A-Za-z0-9.-]+$/.test(name) || !/^[a-f0-9]{64}$/.test(expected)) throw Error('Invalid bundle manifest.');
+    if (!/^(?:lib\/)?[A-Za-z0-9.-]+$/.test(name) || !/^[a-f0-9]{64}$/.test(expected)) throw Error('Invalid bundle manifest.');
     const digest = createHash('sha256');
     for await (const bytes of createReadStream(name)) digest.update(bytes);
     if (digest.digest('hex') !== expected) throw Error(`Bundle checksum mismatch: ${name}`);
@@ -66,7 +66,7 @@ async function initialize() {
     }
   } else {
     await run(engine, ['load', '-i', 'openssl-image.tar']);
-    await run(process.execPath, ['tls.mjs', 'init', endpoint, privateDir]);
+    await run(process.execPath, [existsSync('manifest.json') ? 'lib/tls.mjs' : 'scripts/tls.mjs', 'init', endpoint, privateDir]);
     const runtime = join(privateDir, 'runtime');
     await mkdir(runtime, { recursive: true, mode: 0o700 });
     await mkdir(join(privateDir, 'output'), { recursive: true, mode: 0o700 });
@@ -103,12 +103,62 @@ async function initialize() {
     : 'Installation identity created. Keep the private directory and its keys backed up separately from the database.');
 }
 
+async function restoreDatabase() {
+  await verifyBundle();
+  const content = await readFile('.env', 'utf8');
+  const restoreId = /^VAULTS_RESTORE_ID=([0-9a-f-]{36})$/m.exec(content)?.[1];
+  if (!restoreId) throw Error('Initialize a new restore installation first; existing installations cannot be overwritten.');
+  const input = process.argv.find((value, index) => process.argv[index - 1] === '--input');
+  const key = process.argv.find((value, index) => process.argv[index - 1] === '--key-file');
+  if (!input || !key) throw Error('Restore requires --input <encrypted database backup> and --key-file <backup key>.');
+  const temporary = await mkdtemp(join(tmpdir(), '127vaults-restore-'));
+  const dump = join(temporary, 'database.dump');
+  let databaseStarted = false;
+  try {
+    await chmod(temporary, 0o700).catch(() => {});
+    const envelope = existsSync('manifest.json') ? 'lib/backup-envelope.mjs' : 'scripts/ops/backup-envelope.mjs';
+    const metadata = JSON.parse(await run(process.execPath, [envelope, 'open', '--input', input, '--output', dump, '--key-file', key], { quiet: true }));
+    if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-3') {
+      throw Error('Database backup does not match this restore identity or supported schema.');
+    }
+    await run(engine, ['load', '-i', 'postgres-image.tar']);
+    await runCompose(['up', '-d', 'database']);
+    databaseStarted = true;
+    let empty = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        empty = (await runCompose(['exec', '-T', 'database', 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', "SELECT to_regclass('vaults.schema_version') IS NULL"], { quiet: true })) === 't';
+        break;
+      } catch { await new Promise(done => setTimeout(done, 1000)); }
+    }
+    if (!empty) throw Error('Restore target is unreadable or already contains a schema; no database import was attempted.');
+    const project = /^VAULTS_PROJECT=(vaults-test-[a-f0-9]{12})$/m.exec(content)?.[1];
+    if (!project) throw Error('Restore project identity is missing.');
+    const databaseContainer = `${project}_database_1`;
+    await run(engine, ['cp', dump, `${databaseContainer}:/tmp/database.dump`]);
+    try {
+      await runCompose(['exec', '-T', 'database', 'pg_restore', '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', '-U', 'vaults', '-d', 'vaults_experimental', '/tmp/database.dump']);
+    } finally {
+      await runCompose(['exec', '-T', 'database', 'rm', '-f', '/tmp/database.dump']).catch(() => {});
+    }
+    const state = await runCompose(['exec', '-T', 'database', 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', "SELECT i.id::text || ' ' || s.version::text FROM vaults.installation i CROSS JOIN vaults.schema_version s"], { quiet: true });
+    if (state !== `${restoreId} 3`) throw Error('Restored database installation or schema differs from the backup metadata.');
+    console.log('Database restored into the new project and matched to the restored identity. Run install start, then verify an existing client login and item read.');
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+    if (databaseStarted) console.log('The new database project and volume were preserved for inspection.');
+  }
+}
+
 if (action === 'init') { await verifyBundle(); await initialize(); }
 else {
   if (!existsSync('.env')) throw Error('Run init first.');
-  if (action === 'start') {
+  if (action === 'restore') await restoreDatabase();
+  else if (action === 'start') {
     await verifyBundle();
     const content = await readFile('.env', 'utf8');
+    const configuredEndpoint = /^VAULTS_ENDPOINT_HOST=(.+)$/m.exec(content)?.[1];
+    if (!configuredEndpoint || (process.argv.includes('--endpoint') && endpoint !== configuredEndpoint)) throw Error('Start endpoint must match the initialized installation.');
     if (/^SMTP_HOST=(.+)$/m.test(content)) {
       const dir = /^VAULTS_TLS_DIR=(.+)$/m.exec(content)?.[1];
       if (!dir || !existsSync(join(dir, 'runtime', 'smtp-password'))) throw Error('Configured SMTP requires runtime/smtp-password outside the bundle.');
@@ -128,7 +178,7 @@ else {
       if (actual !== restoreId) throw Error('Restored database and identity installation IDs differ; server start refused.');
     }
     await runCompose(['up', '-d', '--no-build']);
-    console.log(`Open https://${endpoint}:12780 after verifying and trusting the local CA.`);
+    console.log(`Open https://${configuredEndpoint}:12780 after verifying and trusting the local CA.`);
   } else if (action === 'stop') await runCompose(['down']);
   else if (action === 'status') await runCompose(['ps']);
   else {
