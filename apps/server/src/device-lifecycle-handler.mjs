@@ -1,0 +1,12 @@
+import { AUTH_COOKIE, AuthError, requireUnsafeRequest, strictJson } from './auth-policy.mjs';
+import { DeviceLifecycleStoreError } from './device-lifecycle-pg.mjs';
+import { HttpBoundaryError, readRequestBody, writeError, writeJson } from './http-boundary.mjs';
+const routes={
+ '/api/v1/devices/enrollments':['newDeviceId','newDevicePublicKey','protectionClass','protectionVerified'],
+ '/api/v1/devices/enrollments/approve':['enrollmentId','code','approvalSignature','possessionSignature'],
+ '/api/v1/devices/revoke':['deviceId'],
+ '/api/v1/devices/rotate-password':[],
+ '/api/v1/devices/rotate-account-secret':['replacementDeviceId','replacementPublicKey']};
+const token=req=>{const xs=String(req.headers.cookie??'').split(';').map(x=>x.trim()).filter(x=>x.startsWith(`${AUTH_COOKIE}=`));const v=xs.length===1?xs[0].slice(AUTH_COOKIE.length+1):'';return /^[A-Za-z0-9_-]{43}$/.test(v)?v:null};
+export function createDeviceLifecycleHandler(store,authenticate,origin){if(!store||typeof authenticate!=='function'||!origin?.startsWith('https://'))throw new Error('Device store, authenticator, and HTTPS origin required.');return async(req,res)=>{const url=new URL(req.url,origin),path=url.pathname;if(path!=='/api/v1/devices'&&!(path in routes))return false;const reply=(s,v)=>writeJson(res,s,v);try{const session=token(req);if(!session)throw new AuthError();const auth=await authenticate(session);if(!auth?.tenantId||!auth?.accountId||!auth?.deviceId)throw new AuthError();if(req.method==='GET'&&path==='/api/v1/devices'){reply(200,await store.list(auth));return true}if(req.method!=='POST'||!(path in routes)){writeError(res,405,'method_not_allowed');return true}requireUnsafeRequest(req,origin,req.headers['x-127v-csrf'],auth.csrf);const value=strictJson(req,await readRequestBody(req),routes[path]);const methods={
+ '/api/v1/devices/enrollments':'beginEnrollment','/api/v1/devices/enrollments/approve':'approveEnrollment','/api/v1/devices/revoke':'revoke','/api/v1/devices/rotate-password':'rotatePassword','/api/v1/devices/rotate-account-secret':'rotateAccountSecret'};reply(200,await store[methods[path]](auth,value));return true}catch(e){const status=e instanceof AuthError?401:e instanceof DeviceLifecycleStoreError||e instanceof HttpBoundaryError?e.status:503;writeError(res,status,status===401?'authentication_required':status===413?'invalid_request':status===503?'unavailable':e.code??'invalid_request');return true}}}

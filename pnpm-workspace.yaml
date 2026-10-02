@@ -1,0 +1,6 @@
+packages:
+  - "apps/server"
+  - "apps/web"
+  - "apps/extension"
+  - "apps/desktop"
+  - "packages/*"

@@ -1,0 +1,33 @@
+{
+  "name": "127vaults",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "fixture:build": "node scripts/build-fixture.mjs",
+    "fixture:serve": "node apps/web/fixture-server.mjs",
+    "fixture:dev": "node scripts/build-fixture.mjs && node apps/web/fixture-server.mjs",
+    "dev:up": "node scripts/dev.mjs up",
+    "dev:status": "node scripts/dev.mjs status",
+    "dev:down": "node scripts/dev.mjs down",
+    "mvp:start": "node scripts/mvp-acceptance.mjs start",
+    "mvp:dev": "node scripts/mvp-acceptance.mjs dev",
+    "mvp:migrate": "node scripts/mvp-acceptance.mjs migrate",
+    "mvp:exercise": "node scripts/mvp-acceptance.mjs exercise",
+    "mvp:view": "node scripts/mvp-acceptance.mjs view",
+    "mvp:browser": "node scripts/mvp-acceptance.mjs browser",
+    "mvp:reset": "node scripts/mvp-acceptance.mjs reset",
+    "mvp:assets": "node scripts/browser-assets-smoke.mjs",
+    "mvp:stop": "node scripts/mvp-acceptance.mjs stop",
+    "ux:prototype": "node apps/ux-prototype/server.mjs",
+    "tls:init": "node scripts/tls.mjs init",
+    "tls:renew": "node scripts/tls.mjs renew",
+    "check:contracts": "tsc -p tsconfig.contracts.json",
+    "check": "node --check scripts/dev.mjs && node --check scripts/build-fixture.mjs && pnpm -r check && pnpm check:contracts",
+    "check:rust:core": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo run -p vaults-crypto --example feasibility && cargo build -p vaults-crypto --target wasm32-unknown-unknown",
+    "check:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

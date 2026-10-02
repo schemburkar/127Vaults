@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>127Vaults · Rust browser fixture</title>
+  <link rel="stylesheet" href="/fixture/style.css">
+  <script type="module" src="/src/fixture-demo.mjs"></script>
+</head>
+<body>
+  <main>
+    <header><span class="brand">127Vaults</span><span class="badge">EXPERIMENTAL · BATCH 2</span></header>
+    <h1>Rust, running in your browser.</h1>
+    <p class="intro">Create a disposable fixture, then lock its Rust store. The old handle must become invalid.</p>
+    <aside>Fixture only. No credentials, encryption, authentication, or persistent storage. Never enter real secrets here.</aside>
+    <section aria-labelledby="core-heading">
+      <div class="heading"><h2 id="core-heading">WASM core</h2><span id="loading">Loading…</span></div>
+      <p id="error" role="alert" hidden></p>
+      <dl><div><dt>Interface revision</dt><dd id="revision">—</dd></div><div><dt>Crypto formats</dt><dd id="formats">—</dd></div></dl>
+    </section>
+    <section aria-labelledby="session-heading">
+      <div class="heading"><h2 id="session-heading">Fixture session</h2><span id="session">Locked</span></div>
+      <div class="actions"><button id="create" disabled>Create fixture</button><button id="lock" class="secondary" disabled>Lock</button><button id="verify" class="secondary" disabled>Check handles</button></div>
+      <dl><div><dt>Current handle</dt><dd id="current">None</dd></div><div><dt>Previous handle</dt><dd id="previous">None</dd></div></dl>
+      <p id="result" role="status" aria-live="polite">Waiting for the compiled Rust module.</p>
+      <p class="muted">Auto-lock: 30 minutes idle. Lock clears the Rust-owned fixture and client session state. Memory clearing is best effort; this is not a production-security claim.</p>
+    </section>
+    <footer><a href="/login-item">Open encrypted login-item demo</a><a href="/?wasm=missing">Check missing-WASM error</a><a href="/ecf1-smoke">Run ECF1 smoke</a><span>Local development · no network accounts</span></footer>
+  </main>
+</body>
+</html>

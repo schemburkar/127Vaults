@@ -1,0 +1,10 @@
+{
+  "name": "@127vaults/extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/main.mjs",
+    "test": "node --test"
+  }
+}

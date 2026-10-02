@@ -1,0 +1,32 @@
+# Explicitly test-only SMTP capture. Never include this override in deployment.
+services:
+  server:
+    ports:
+      - '127.0.0.1:1465:1465'
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/secrets/tls/ca.crt
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '2465'
+      SMTP_USERNAME: fixture
+      SMTP_PASSWORD: fixture-password
+      SMTP_FROM: no-reply@example.invalid
+      VAULTS_INSTALLATION_LABEL: 127Vaults-test
+  smtp-capture:
+    image: localhost/127vaults-server:experimental
+    network_mode: service:server
+    user: node
+    command: [node, /app/scripts/test-smtp-capture.mjs]
+    environment:
+      SMTP_FIXTURE_TLS_DIR: /tls
+    volumes:
+      - type: bind
+        source: '${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/live'
+        target: /tls
+        read_only: true
+      - type: bind
+        source: ./scripts/test-smtp-capture.mjs
+        target: /app/scripts/test-smtp-capture.mjs
+        read_only: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

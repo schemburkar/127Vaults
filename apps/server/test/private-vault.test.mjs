@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {bytes,directory,catalogue,VaultError} from '../src/private-vault.mjs';
+const raw=n=>{let b=Buffer.alloc(n);b[6]=0x40;b[8]=0x80;return b};
+test('strict base64url and record bounds',()=>{assert.deepEqual(bytes(Buffer.from('x').toString('base64url'),2),Buffer.from('x'));assert.throws(()=>bytes('eA==',2),VaultError);let d=Buffer.alloc(102);d.write('PVD1');d[10]=0x40;d[12]=0x80;d[26]=0x40;d[28]=0x80;d[42]=0x40;d[44]=0x80;assert.equal(directory(d).entries.length,0);let m=Buffer.alloc(110);m.write('PVM1');m[10]=0x40;m[12]=0x80;m[26]=0x40;m[28]=0x80;m.writeBigUInt64BE(1n,36);m[50]=0x40;m[52]=0x80;assert.equal(catalogue(m).entries.length,0)});

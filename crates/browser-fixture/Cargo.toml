@@ -1,0 +1,19 @@
+[package]
+name = "vaults-browser-fixture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+vaults-crypto = { path = "../crypto" }
+wasm-bindgen = "=0.2.126"
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "=0.4.3", default-features = false, features = ["wasm_js"] }
+
+[lints]
+workspace = true

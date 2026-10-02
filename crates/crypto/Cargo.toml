@@ -1,0 +1,26 @@
+[package]
+name = "vaults-crypto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+argon2 = { version = "=0.6.0", default-features = false, features = ["zeroize"] }
+blake2 = { version = "=0.11.0", default-features = false, features = ["zeroize"] }
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["zeroize"] }
+getrandom = { version = "=0.4.3", default-features = false }
+hkdf = { version = "=0.13.0", default-features = false }
+hmac = { version = "=0.13.0", default-features = false, features = ["zeroize"] }
+poly1305 = { version = "=0.9.1", default-features = false, features = ["zeroize"] }
+sha2 = { version = "=0.11.0", default-features = false, features = ["zeroize"] }
+zeroize = { version = "=1.8.2", default-features = false, features = ["alloc"] }
+argon2-opaque = { package = "argon2", version = "=0.5.3", default-features = false, features = ["alloc", "zeroize"] }
+opaque-ke = { version = "=4.0.1", default-features = false, features = ["ristretto255"] }
+rand_chacha = { version = "=0.3.1", default-features = false }
+sha2-opaque = { package = "sha2", version = "=0.10.9", default-features = false }
+hkdf-opaque = { package = "hkdf", version = "=0.12.4", default-features = false }
+hmac-opaque = { package = "hmac", version = "=0.12.1", default-features = false, features = ["reset"] }

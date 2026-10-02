@@ -1,0 +1,17 @@
+{
+  "name": "@127vaults/api-contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./openapi-v1": "./openapi-v1.json",
+    "./contracts": { "types": "./src/contracts.ts" },
+    "./client-contracts": { "types": "./src/client-contracts.ts" },
+    "./lifecycle-contracts": { "types": "./src/lifecycle-contracts.ts" }
+  },
+  "scripts": {
+    "check": "node --check src/index.mjs",
+    "test": "node --test"
+  }
+}

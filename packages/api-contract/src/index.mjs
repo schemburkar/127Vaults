@@ -1,0 +1,1 @@
+export const INITIAL_PROTOCOL_VERSION = 1;
