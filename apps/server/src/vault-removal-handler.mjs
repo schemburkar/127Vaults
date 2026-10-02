@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { AuthError, AUTH_COOKIE, requireUnsafeRequest } from './auth-policy.mjs';
 import { HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJson } from './http-boundary.mjs';
-import { VaultError, catalogue, exact, uuid } from './private-vault.mjs';
+import { VaultError, bytes, catalogue, exact, uuid } from './private-vault.mjs';
+import { validateSettingsEnvelope } from './vault-settings-handler.mjs';
 
 const cookie = req => {
   const value = String(req.headers.cookie ?? '').split(';').map(x => x.trim()).find(x => x.startsWith(`${AUTH_COOKIE}=`))?.slice(AUTH_COOKIE.length + 1);
@@ -17,13 +18,17 @@ export function parseRestore(value) {
 }
 
 export function parseRemoval(value) {
-  exact(value, ['requestId', 'choice', 'destinationVaultId', 'sourceCatalogueRevision', 'destinationCatalogueRevision', 'itemMappings']);
+  exact(value, ['requestId', 'choice', 'destinationVaultId', 'sourceCatalogueRevision', 'destinationCatalogueRevision', 'itemMappings', 'settings']);
   const requestId = uuid(value.requestId);
   const sourceCatalogueRevision = uuid(value.sourceCatalogueRevision);
+  exact(value.settings, ['baseRevision', 'revision', 'envelope']);
+  const settings = { baseRevision: value.settings.baseRevision === null ? null : uuid(value.settings.baseRevision),
+    revision: uuid(value.settings.revision), envelope: bytes(value.settings.envelope, 16557) };
+  if (settings.revision === settings.baseRevision) throw new VaultError();
   if (!Array.isArray(value.itemMappings) || value.itemMappings.length > 50) throw new VaultError();
   if (value.choice === 'archive') {
     if (value.destinationVaultId !== null || value.destinationCatalogueRevision !== null || value.itemMappings.length) throw new VaultError();
-    return { requestId, choice: 'archive', destinationVaultId: null, sourceCatalogueRevision, destinationCatalogueRevision: null, itemMappings: [] };
+    return { requestId, choice: 'archive', destinationVaultId: null, sourceCatalogueRevision, destinationCatalogueRevision: null, itemMappings: [], settings };
   }
   if (value.choice !== 'move') throw new VaultError();
   const destinationVaultId = uuid(value.destinationVaultId);
@@ -36,7 +41,7 @@ export function parseRemoval(value) {
     sources.add(sourceItemId); destinations.add(destinationItemId);
     return { sourceItemId, destinationItemId };
   });
-  return { requestId, choice: 'move', destinationVaultId, sourceCatalogueRevision, destinationCatalogueRevision, itemMappings };
+  return { requestId, choice: 'move', destinationVaultId, sourceCatalogueRevision, destinationCatalogueRevision, itemMappings, settings };
 }
 
 export class PgVaultRemovalStore {
@@ -75,8 +80,12 @@ export class PgVaultRemovalStore {
         const checkpoint = (await client.query('SELECT cursor FROM vaults.sync_checkpoints WHERE tenant_id=$1 AND vault_id=$2 AND checkpoint_sequence=$3', [auth.tenantId, state.vault_id, state.latest_checkpoint_sequence])).rows[0];
         if (!checkpoint || Number(checkpoint.cursor) !== Number(state.next_cursor) - 1) throw new VaultError(409, 'SYNC_NOT_SETTLED');
       }
+      const settingsRow = (await client.query('SELECT revision FROM vaults.private_account_settings WHERE tenant_id=$1 AND account_id=$2 FOR UPDATE', [auth.tenantId, auth.accountId])).rows[0];
+      if ((settingsRow?.revision ?? null) !== choice.settings.baseRevision) throw new VaultError(409, 'BASE_CHANGED');
       for (const row of choice.itemMappings) await client.query('INSERT INTO vaults.private_vault_move_items(tenant_id,source_vault_id,source_item_id,destination_vault_id,destination_item_id) VALUES($1,$2,$3,$4,$5)', [auth.tenantId, sourceVaultId, row.sourceItemId, choice.destinationVaultId, row.destinationItemId]);
       await client.query('UPDATE vaults.private_vaults SET retired_at=now(),retirement_choice=$3,retirement_destination=$4,updated_at=now() WHERE tenant_id=$1 AND id=$2', [auth.tenantId, sourceVaultId, choice.choice, choice.destinationVaultId]);
+      if (settingsRow) await client.query('UPDATE vaults.private_account_settings SET revision=$3,envelope=$4,updated_at=now() WHERE tenant_id=$1 AND account_id=$2', [auth.tenantId, auth.accountId, choice.settings.revision, choice.settings.envelope]);
+      else await client.query('INSERT INTO vaults.private_account_settings(tenant_id,account_id,revision,envelope) VALUES($1,$2,$3,$4)', [auth.tenantId, auth.accountId, choice.settings.revision, choice.settings.envelope]);
       const response = { requestId: choice.requestId, vaultId: sourceVaultId, choice: choice.choice, destinationVaultId: choice.destinationVaultId, itemCount: sourceItems.length, recoverable: true };
       await client.query('INSERT INTO vaults.private_vault_removal_receipts(tenant_id,account_id,request_id,fingerprint,response) VALUES($1,$2,$3,$4,$5)', [auth.tenantId, auth.accountId, choice.requestId, fp, response]);
       await client.query('COMMIT'); return response;
@@ -127,7 +136,11 @@ export function createVaultRemovalHandler(store, authenticate, origin) {
       const raw = await readRequestBody(req, 16 * 1024);
       const value = parseJsonObject(req, raw);
       if (match[2] === 'restore') writeJson(res, 200, await store.restore(auth, uuid(match[1]), parseRestore(value), url.pathname, raw));
-      else writeJson(res, 200, await store.remove(auth, uuid(match[1]), parseRemoval(value), url.pathname, raw));
+      else {
+        const choice = parseRemoval(value);
+        validateSettingsEnvelope(choice.settings.envelope, auth, choice.settings.revision);
+        writeJson(res, 200, await store.remove(auth, uuid(match[1]), choice, url.pathname, raw));
+      }
     } catch (error) {
       const status = error instanceof AuthError ? 401 : error instanceof VaultError || error instanceof HttpBoundaryError ? error.status : 503;
       writeError(res, status, error instanceof VaultError || error instanceof HttpBoundaryError ? error.code : status === 401 ? 'authentication_required' : 'unavailable');

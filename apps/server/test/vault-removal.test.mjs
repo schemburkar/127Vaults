@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { parseRemoval, parseRestore, PgVaultRemovalStore } from '../src/vault-removal-handler.mjs';
 
 const ids = () => ({ source: randomUUID(), destination: randomUUID(), sourceItem: randomUUID(), destinationItem: randomUUID(), sourceRevision: randomUUID(), destinationRevision: randomUUID(), requestId: randomUUID() });
-const choice = x => ({ requestId: x.requestId, choice: 'archive', destinationVaultId: null, sourceCatalogueRevision: x.sourceRevision, destinationCatalogueRevision: null, itemMappings: [] });
+const choice = x => ({ requestId: x.requestId, choice: 'archive', destinationVaultId: null, sourceCatalogueRevision: x.sourceRevision, destinationCatalogueRevision: null, itemMappings: [],
+  settings: { baseRevision: null, revision: randomUUID(), envelope: Buffer.from('test').toString('base64url') } });
 const bytes = id => Buffer.from(id.replaceAll('-', ''), 'hex');
 function catalogue(vault, revision, items = []) {
   const b = Buffer.alloc(110 + items.length * 136);
@@ -22,6 +23,7 @@ function database(x, sourceItems = []) {
     if (sql.startsWith('SELECT fingerprint,response')) return { rows: [] };
     if (sql.startsWith('SELECT id,catalogue')) return { rows: params[2].length === 2 ? [source, destination] : [source] };
     if (sql.startsWith('SELECT item_id FROM vaults.sync_operations')) return { rows: [{ item_id: x.destinationItem }] };
+    if (sql.startsWith('SELECT revision FROM vaults.private_account_settings')) return { rows: [] };
     if (sql.startsWith('SELECT vault_id,next_cursor')) return { rows: params[1].map(vault_id => ({ vault_id, next_cursor: 1, latest_checkpoint_sequence: 1 })) };
     if (sql.startsWith('SELECT cursor FROM vaults.sync_checkpoints')) return { rows: [{ cursor: 0 }] };
     return { rows: [] };
@@ -44,6 +46,7 @@ test('archive retires the vault while retaining its item rows', async () => {
   assert.equal(result.itemCount, 1);
   assert.equal(result.recoverable, true);
   assert.ok(db.calls.some(row => row.sql.startsWith('UPDATE vaults.private_vaults SET retired_at')));
+  assert.ok(db.calls.some(row => row.sql.startsWith('INSERT INTO vaults.private_account_settings')));
   assert.equal(db.calls.some(row => /DELETE FROM vaults\.private_items/.test(row.sql)), false);
   assert.equal(db.calls.at(-1).sql, 'COMMIT');
 });
