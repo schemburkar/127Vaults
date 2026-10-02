@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, requireSchema
+  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, requireSchema
 } from '../src/schema.mjs';
-import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, schemaStatus } from '../src/schema-migration.mjs';
+import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, schemaStatus } from '../src/schema-migration.mjs';
 
 const counts = { accounts: '2', devices: '2', sessions: '1', vaults: '1', items: '3' };
 class MigrationClient {
@@ -58,8 +58,9 @@ test('schema status and runtime requirement distinguish known manifests', async 
   assert.deepEqual(await schemaStatus(old), { state: 'migration-required', version: 2 });
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 3, checksum: schemaV3Checksum })), { state: 'migration-required', version: 3 });
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 4, checksum: schemaV4Checksum })), { state: 'migration-required', version: 4 });
-  const current = new MigrationClient({ version: 5, checksum: schemaChecksum });
-  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 5 });
+  assert.deepEqual(await schemaStatus(new MigrationClient({ version: 5, checksum: schemaV5Checksum })), { state: 'migration-required', version: 5 });
+  const current = new MigrationClient({ version: 6, checksum: schemaChecksum });
+  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 6 });
   await requireSchema(current);
   await assert.rejects(requireSchema(new MigrationClient()), /automatic upgrades are disabled/);
 });
@@ -85,6 +86,14 @@ test('schema 5 migration adds opaque account settings without changing vault row
   const client = new MigrationClient({ version: 4, checksum: schemaV4Checksum });
   assert.deepEqual(await migrateSchema4To5(client), { from: 4, to: 5, dryRun: false });
   assert.ok(schemaV5MigrationSql.includes('envelope bytea NOT NULL'));
+  assert.equal(client.calls.at(-2).parameters[0], schemaV5Checksum);
+});
+
+test('schema 6 migration adds recoverable retirement without changing vault or item rows', async () => {
+  const client = new MigrationClient({ version: 5, checksum: schemaV5Checksum });
+  assert.deepEqual(await migrateSchema5To6(client), { from: 5, to: 6, dryRun: false });
+  assert.ok(schemaV6MigrationSql.includes('retirement_choice'));
+  assert.ok(schemaV6MigrationSql.includes('private_vault_move_items'));
   assert.equal(client.calls.at(-2).parameters[0], schemaChecksum);
 });
 

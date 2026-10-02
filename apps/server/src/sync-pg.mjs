@@ -10,7 +10,7 @@ export class PgSignedSyncStore {
   constructor(pool, checkpointPrivateKey) { if(!pool||!checkpointPrivateKey)throw new Error('PostgreSQL pool and checkpoint signing key are required.');this.pool=pool;this.checkpointPrivateKey=checkpointPrivateKey; }
   async #tx(fn){const c=await this.pool.connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='5s'");await c.query("SET LOCAL lock_timeout='5s'");const out=await fn(c);await c.query('COMMIT');return out}catch(error){await c.query('ROLLBACK').catch(()=>{});if(error instanceof SyncProtocolError)throw error;throw new SyncProtocolError('unavailable')}finally{c.release();}}
   async #authorized(c,auth,vaultId,lock=false){
-    const row=(await c.query(`SELECT s.epoch,s.next_cursor,s.operation_head_hash,s.latest_checkpoint_sequence,s.latest_checkpoint_hash,s.state,d.signing_public_key,d.credential_epoch
+    const row=(await c.query(`SELECT s.epoch,s.next_cursor,s.operation_head_hash,s.latest_checkpoint_sequence,s.latest_checkpoint_hash,s.state,v.retired_at,d.signing_public_key,d.credential_epoch
       FROM vaults.sync_vault_state s JOIN vaults.private_vaults v ON(v.tenant_id=s.tenant_id AND v.id=s.vault_id)
       JOIN vaults.devices d ON(d.tenant_id=v.tenant_id AND d.account_id=v.account_id AND d.id=$4)
       WHERE s.tenant_id=$1 AND s.vault_id=$2 AND v.account_id=$3 AND d.lifecycle_status='active'${lock?' FOR UPDATE OF s':''}`,
@@ -23,6 +23,7 @@ export class PgSignedSyncStore {
   async append(auth,operation){return this.#tx(c=>this.appendInTransaction(c,auth,operation));}
   async appendInTransaction(c,auth,operation){
     const state=await this.#authorized(c,auth,operation.vaultId,true);
+    if(state.retired_at)throw new SyncProtocolError('vault_frozen');
     if(operation.tenantId!==auth.tenantId||operation.deviceId!==auth.deviceId)throw new SyncProtocolError('forbidden');
     verifySignedOperation(operation,{tenantId:auth.tenantId,vaultId:operation.vaultId,deviceId:auth.deviceId,epoch:Number(state.epoch),publicKey:rawEd25519(state.signing_public_key)});
     const duplicate=(await c.query('SELECT cursor,signature FROM vaults.sync_operations WHERE tenant_id=$1 AND vault_id=$2 AND operation_id=$3',[auth.tenantId,operation.vaultId,hex(operation.opId)])).rows[0];

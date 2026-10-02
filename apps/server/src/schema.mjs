@@ -16,9 +16,11 @@ export const schemaV3Checksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-b
 export const schemaV4MigrationSql = await readFile(new URL('./schema-v4-migration.sql', import.meta.url), 'utf8');
 export const schemaV4Checksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}`);
 export const schemaV5MigrationSql = await readFile(new URL('./schema-v5-migration.sql', import.meta.url), 'utf8');
-export const schemaChecksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}\n-- schema-5-boundary\n${normalize(schemaV5MigrationSql)}`);
-export const schemaVersion = 5;
-export const schemaSql = `${schemaV1Sql}\n${schemaV2MigrationSql}\n${schemaV3MigrationSql}\n${schemaV4MigrationSql}\n${schemaV5MigrationSql}`;
+export const schemaV5Checksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}\n-- schema-5-boundary\n${normalize(schemaV5MigrationSql)}`);
+export const schemaV6MigrationSql = await readFile(new URL('./schema-v6-migration.sql', import.meta.url), 'utf8');
+export const schemaChecksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}\n-- schema-5-boundary\n${normalize(schemaV5MigrationSql)}\n-- schema-6-boundary\n${normalize(schemaV6MigrationSql)}`);
+export const schemaVersion = 6;
+export const schemaSql = `${schemaV1Sql}\n${schemaV2MigrationSql}\n${schemaV3MigrationSql}\n${schemaV4MigrationSql}\n${schemaV5MigrationSql}\n${schemaV6MigrationSql}`;
 
 export async function requireSchema(client) {
   const result = await client.query('SELECT version, checksum FROM vaults.schema_version');

@@ -5,7 +5,7 @@ import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { schemaV1Checksum, schemaChecksum, schemaV3Checksum } from '../../apps/server/src/schema.mjs';
+import { schemaV1Checksum, schemaChecksum, schemaV3Checksum, schemaV5Checksum } from '../../apps/server/src/schema.mjs';
 
 const engine = process.argv.includes('--docker') ? 'docker' : 'podman';
 const name = `127vaults-migrate-${randomBytes(6).toString('hex')}`;
@@ -94,13 +94,16 @@ try {
   if (await psql('SELECT version FROM vaults.schema_version') !== '4') throw Error('Schema 3 -> 4 failed.');
   await migration('apply');
   const current = await psql('SELECT version::text || \' \' || checksum FROM vaults.schema_version');
-  if (current !== `5 ${schemaChecksum}`) throw Error('Schema 4 -> 5 checksum mismatch.');
-  if (await rowCounts() !== expectedRows) throw Error('Schema 3 -> 5 changed populated row counts.');
+  if (current !== `5 ${schemaV5Checksum}`) throw Error('Schema 4 -> 5 checksum mismatch.');
+  await migration('apply');
+  const latest = await psql('SELECT version::text || \' \' || checksum FROM vaults.schema_version');
+  if (latest !== `6 ${schemaChecksum}`) throw Error('Schema 5 -> 6 checksum mismatch.');
+  if (await rowCounts() !== expectedRows) throw Error('Schema 3 -> 6 changed populated row counts.');
   await psql("UPDATE vaults.schema_version SET checksum=repeat('0',64)");
   await run(engine, ['run', '--rm', '--network', `container:${name}`, '-v', `${passwordFile}:/run/secrets/runtime/postgres-password:ro`,
     '-e', 'VAULTS_EXPERIMENTAL=1', '-e', 'VAULTS_DATABASE_HOST=127.0.0.1', '-e', 'VAULTS_DATABASE_PASSWORD_FILE=/run/secrets/runtime/postgres-password',
     '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { expectFailure: true });
-  console.log(`Disposable migration passed: verified encrypted pre-backup, dry runs, lock contention refusal, schema 1 -> 2 -> 3 -> 4 -> 5, checksum ${schemaChecksum}.`);
+  console.log(`Disposable migration passed: verified encrypted pre-backup, dry runs, lock contention refusal, schema 1 -> 2 -> 3 -> 4 -> 5 -> 6, checksum ${schemaChecksum}.`);
 } finally {
   if (started) await run(engine, ['rm', '-f', name]).catch(() => {});
   const parent = resolve(tmpdir()) + sep;
