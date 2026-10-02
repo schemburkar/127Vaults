@@ -1307,14 +1307,10 @@ impl Session {
             .ok_or_else(|| "invalid vault list".to_owned())
     }
     pub fn vault_create(&mut self) -> Result<Value, String> {
-        let current = self.get("/api/v1/vaults")?;
-        if !current["vaultEnvelopes"]
-            .as_array()
-            .ok_or("invalid vault list")?
-            .is_empty()
-        {
-            return Err("this MVP currently supports one private vault".to_owned());
+        if !self.online {
+            return Err("vault creation requires an online session".to_owned());
         }
+        let current = self.get("/api/v1/vaults")?;
         let directory = bytes(&current, "directory")?;
         let base = uuid::Uuid::from_bytes(
             directory
@@ -1338,6 +1334,7 @@ impl Session {
         )
         .to_string();
         let response=self.post_auth("/api/v1/vaults",reqwest::Method::POST,&json!({"requestId":uuid::Uuid::new_v4(),"baseDirectoryRevision":base,"directory":URL_SAFE_NO_PAD.encode(made.directory),"vaultEnvelope":URL_SAFE_NO_PAD.encode(made.vault.envelope),"catalogue":URL_SAFE_NO_PAD.encode(made.catalogue)}))?;
+        self.hydrate_replicas()?;
         Ok(
             json!({"name":"Private","code":Self::reference("V",&vault_id),"vaultId":vault_id,"result":response}),
         )

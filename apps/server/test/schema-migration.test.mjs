@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV2MigrationSql, schemaV3MigrationSql, requireSchema
+  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, requireSchema
 } from '../src/schema.mjs';
-import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, schemaStatus } from '../src/schema-migration.mjs';
+import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, schemaStatus } from '../src/schema-migration.mjs';
 
 const counts = { accounts: '2', devices: '2', sessions: '1', vaults: '1', items: '3' };
 class MigrationClient {
@@ -56,8 +56,9 @@ test('schema status and runtime requirement distinguish known manifests', async 
   assert.deepEqual(await schemaStatus(new MigrationClient()), { state: 'migration-required', version: 1 });
   const old = new MigrationClient({ version: 2, checksum: schemaV2Checksum });
   assert.deepEqual(await schemaStatus(old), { state: 'migration-required', version: 2 });
-  const current = new MigrationClient({ version: 3, checksum: schemaChecksum });
-  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 3 });
+  assert.deepEqual(await schemaStatus(new MigrationClient({ version: 3, checksum: schemaV3Checksum })), { state: 'migration-required', version: 3 });
+  const current = new MigrationClient({ version: 4, checksum: schemaChecksum });
+  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 4 });
   await requireSchema(current);
   await assert.rejects(requireSchema(new MigrationClient()), /automatic upgrades are disabled/);
 });
@@ -67,6 +68,14 @@ test('schema 3 migration is transactional and creates bounded enrollment rendezv
   assert.deepEqual(await migrateSchema2To3(client), { from: 2, to: 3, dryRun: false });
   assert.ok(schemaV3MigrationSql.includes('poll_token_digest bytea NOT NULL'));
   assert.ok(schemaV3MigrationSql.includes('proposed_signing_public_key bytea NOT NULL'));
+  assert.equal(client.calls.at(-2).parameters[0], schemaV3Checksum);
+  assert.equal(client.calls.at(-1).sql, 'COMMIT');
+});
+
+test('schema 4 migration permits multiple vaults without changing item rows', async () => {
+  const client = new MigrationClient({ version: 3, checksum: schemaV3Checksum });
+  assert.deepEqual(await migrateSchema3To4(client), { from: 3, to: 4, dryRun: false });
+  assert.ok(schemaV4MigrationSql.includes('DROP CONSTRAINT private_vaults_tenant_id_account_id_key'));
   assert.equal(client.calls.at(-2).parameters[0], schemaChecksum);
   assert.equal(client.calls.at(-1).sql, 'COMMIT');
 });

@@ -258,20 +258,20 @@ impl Core {
             handle: Some(handle),
         })
     }
-    /// Creates the sole vault plus authenticated directory and empty catalogue atomically in memory.
+    /// Appends a vault to an authenticated directory and creates its empty catalogue.
     /// # Errors
     /// Rejects an invalid empty directory, root scope, entropy failure, or record failure.
     pub fn create_private_vault(
         &mut self,
         root: KeyHandle,
-        empty_directory: &[u8],
+        current_directory: &[u8],
     ) -> Result<PrivateVaultCreated, Error> {
         let r = self.keys.get(&root).ok_or(Error::InvalidHandle)?;
         let tenant = r.tenant;
         let account = r.account;
-        let old =
-            Directory::decode(empty_directory, &r.bytes, tenant, account).map_err(record_error)?;
-        if !old.entries.is_empty() {
+        let old = Directory::decode(current_directory, &r.bytes, tenant, account)
+            .map_err(record_error)?;
+        if old.entries.len() >= 5 {
             return Err(Error::InvalidInput);
         }
         let vault_id = random_revision().map_err(record_error)?;
@@ -296,19 +296,22 @@ impl Core {
         }
         .encode(&v.bytes)
         .map_err(record_error)?;
+        let mut entries = old.entries;
+        entries.push(DirectoryEntry {
+            vault: vault_id,
+            epoch: 1,
+            envelope_revision: made.context[65..81]
+                .try_into()
+                .map_err(|_| Error::InternalError)?,
+            envelope_sha256: sha256(&made.envelope),
+        });
+        entries.sort_by_key(|entry| entry.vault);
         let directory = Directory {
             tenant,
             account,
             revision: random_revision().map_err(record_error)?,
             base: old.revision,
-            entries: vec![DirectoryEntry {
-                vault: vault_id,
-                epoch: 1,
-                envelope_revision: made.context[65..81]
-                    .try_into()
-                    .map_err(|_| Error::InternalError)?,
-                envelope_sha256: sha256(&made.envelope),
-            }],
+            entries,
         }
         .encode(&self.keys.get(&root).ok_or(Error::InvalidHandle)?.bytes)
         .map_err(record_error)?;
@@ -981,6 +984,28 @@ mod tests {
             c.decrypt_private_part(vh, &proposal.catalogue, proposal.item, &bad, 3)
                 .unwrap_err(),
             Error::AuthenticationFailed
+        );
+    }
+    #[test]
+    fn private_directory_keeps_existing_vault_when_appending() {
+        let mut core = Core::new();
+        let root = core
+            .create_root(&template(1), b"password", &[9; 32])
+            .unwrap();
+        let handle = root.handle.unwrap();
+        let empty = core.create_empty_directory(handle).unwrap();
+        let first = core.create_private_vault(handle, &empty).unwrap();
+        let second = core.create_private_vault(handle, &first.directory).unwrap();
+        let first_id = first.vault.context[33..49].try_into().unwrap();
+        let second_id = second.vault.context[33..49].try_into().unwrap();
+        assert_ne!(first_id, second_id);
+        assert!(
+            core.open_private_vault(handle, &second.directory, first_id, &first.vault.envelope)
+                .is_ok()
+        );
+        assert!(
+            core.open_private_vault(handle, &second.directory, second_id, &second.vault.envelope)
+                .is_ok()
         );
     }
     #[test]
