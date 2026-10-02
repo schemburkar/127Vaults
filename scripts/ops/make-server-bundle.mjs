@@ -3,11 +3,12 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve, join, sep } from 'node:path';
 
 export async function runMakeBundle(argv) {
 const destination = resolve(argv[0] ?? '');
-if (!argv[0] || destination === resolve('.')) throw Error('Supply a new output directory outside the checkout.');
+const checkout = resolve('.');
+if (!argv[0] || destination === checkout || destination.startsWith(checkout + sep)) throw Error('Supply a new output directory outside the checkout.');
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
 async function run(program, args, { capture = false } = {}) {
   const child = spawn(program, args, { stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', windowsHide: true });

@@ -60,7 +60,7 @@ try {
     const source = options['--container'];
     const installation = await run(engine, ['exec', source, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', 'SELECT id FROM vaults.installation WHERE singleton=true']);
     const schema = await run(engine, ['exec', source, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', 'SELECT version FROM vaults.schema_version WHERE singleton=true']);
-    if (!/^[0-9a-f-]{36}$/.test(installation) || schema !== '3') throw Error('Source installation or schema is not the expected v3 database.');
+    if (!/^[0-9a-f-]{36}$/.test(installation) || !['1', '2', '3'].includes(schema)) throw Error('Source installation or schema is not a supported database.');
     await run(engine, ['exec', source, 'pg_dump', '-U', 'vaults', '-d', 'vaults_experimental', '--format=custom', '--no-owner', '--no-acl'], { output: createWriteStream(dump, { flags: 'wx', mode: 0o600 }), timeout: 600000 });
     await run(process.execPath, [operator, 'envelope', 'seal', '--input', dump, '--output', options['--output'], '--key-file', options['--key-file'], '--database', 'vaults_experimental', '--server-id', installation, '--required-version', `schema-${schema}`]);
     await run(process.execPath, [operator, 'envelope', 'verify', '--input', options['--output'], '--key-file', options['--key-file']]);
