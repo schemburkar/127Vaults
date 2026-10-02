@@ -6,11 +6,11 @@ import { existsSync } from 'node:fs';
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const envelope = fileURLToPath(new URL('./backup-envelope.mjs', import.meta.url));
-const action = process.argv[2];
-const args = process.argv.slice(3);
+const operator = resolve(process.cwd(), 'server.mjs');
+export async function runIdentityBackup(argv) {
+const action = argv[0];
+const args = argv.slice(1);
 const options = {};
 for (let i = 0; i < args.length; i += 2) {
   if (!args[i]?.startsWith('--') || !args[i + 1] || options[args[i]]) throw Error('Invalid arguments.');
@@ -25,7 +25,7 @@ const identityFiles = [
 const optionalFiles = ['runtime/smtp-password'];
 
 async function run(argv) {
-  const child = spawn(process.execPath, [envelope, ...argv], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const child = spawn(process.execPath, [operator, 'envelope', ...argv], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let output = '';
   child.stdout.on('data', chunk => { output = (output + chunk).slice(-65536); });
   child.stderr.on('data', () => {});
@@ -93,4 +93,5 @@ try {
   const path = resolve(temporary);
   if (!path.startsWith(parent) || !path.split(sep).at(-1).startsWith('127vaults-identity-')) throw Error('Unsafe temporary cleanup path.');
   await rm(path, { recursive: true, force: true });
+}
 }

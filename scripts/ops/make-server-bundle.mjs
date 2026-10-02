@@ -5,9 +5,10 @@ import { createReadStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
-const destination = resolve(process.argv[2] ?? '');
-if (!process.argv[2] || destination === resolve('.')) throw Error('Supply a new output directory outside the checkout.');
-const engine = process.argv.includes('--docker') ? 'docker' : 'podman';
+export async function runMakeBundle(argv) {
+const destination = resolve(argv[0] ?? '');
+if (!argv[0] || destination === resolve('.')) throw Error('Supply a new output directory outside the checkout.');
+const engine = argv.includes('--docker') ? 'docker' : 'podman';
 async function run(program, args, { capture = false } = {}) {
   const child = spawn(program, args, { stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', windowsHide: true });
   let output = '';
@@ -48,3 +49,4 @@ const files = {};
 for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'lib/test-install.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
 await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image: 'localhost/127vaults-server:test', files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);
+}

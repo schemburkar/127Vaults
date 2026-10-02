@@ -48,9 +48,9 @@ try {
   const sealed = join(temp, 'before.127vbak');
   await writeFile(key, randomBytes(32), { mode: 0o600 });
   await run(engine, ['exec', name, 'pg_dump', '-U', 'vaults', '-d', 'vaults_experimental', '--format=custom', '--no-owner', '--no-acl'], { output: createWriteStream(dump, { flags: 'wx', mode: 0o600 }) });
-  await run(process.execPath, ['scripts/ops/backup-envelope.mjs', 'seal', '--input', dump, '--output', sealed, '--key-file', key, '--server-id', installation, '--required-version', 'schema-1']);
-  await run(process.execPath, ['scripts/ops/backup-envelope.mjs', 'verify', '--input', sealed, '--key-file', key]);
-  await run(process.execPath, ['scripts/ops/server-data.mjs', 'rehearse', '--engine', engine, '--input', sealed, '--key-file', key]);
+  await run(process.execPath, ['server.mjs', 'envelope', 'seal', '--input', dump, '--output', sealed, '--key-file', key, '--server-id', installation, '--required-version', 'schema-1']);
+  await run(process.execPath, ['server.mjs', 'envelope', 'verify', '--input', sealed, '--key-file', key]);
+  await run(process.execPath, ['server.mjs', 'database', 'rehearse', '--engine', engine, '--input', sealed, '--key-file', key]);
   await migration('dry-run');
   if (await psql('SELECT version FROM vaults.schema_version') !== '1') throw Error('Dry run changed the schema.');
   await migration('apply');

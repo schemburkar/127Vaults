@@ -7,10 +7,10 @@ import { createWriteStream, existsSync } from 'node:fs';
 import { mkdtemp, rm, chmod, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const envelope = fileURLToPath(new URL('./backup-envelope.mjs', import.meta.url));
-const args = process.argv.slice(2);
+const operator = resolve(process.cwd(), 'server.mjs');
+export async function runServerData(argv) {
+const args = [...argv];
 const action = args.shift();
 const options = {};
 for (let i = 0; i < args.length; i += 2) {
@@ -24,7 +24,7 @@ if (action === 'keygen') {
   if (!options['--output']) throw Error('Keygen requires --output.');
   await writeFile(options['--output'], randomBytes(32), { flag: 'wx', mode: 0o600 });
   console.log('Created a 32-byte backup key. Protect and copy it separately from the backup.');
-  process.exit(0);
+  return;
 }
 if (!options['--key-file']) throw Error('--key-file is required.');
 if (action === 'backup' && (!options['--container'] || !options['--output'])) throw Error('Backup requires --container and --output.');
@@ -62,11 +62,11 @@ try {
     const schema = await run(engine, ['exec', source, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', 'SELECT version FROM vaults.schema_version WHERE singleton=true']);
     if (!/^[0-9a-f-]{36}$/.test(installation) || schema !== '3') throw Error('Source installation or schema is not the expected v3 database.');
     await run(engine, ['exec', source, 'pg_dump', '-U', 'vaults', '-d', 'vaults_experimental', '--format=custom', '--no-owner', '--no-acl'], { output: createWriteStream(dump, { flags: 'wx', mode: 0o600 }), timeout: 600000 });
-    await run(process.execPath, [envelope, 'seal', '--input', dump, '--output', options['--output'], '--key-file', options['--key-file'], '--database', 'vaults_experimental', '--server-id', installation, '--required-version', `schema-${schema}`]);
-    await run(process.execPath, [envelope, 'verify', '--input', options['--output'], '--key-file', options['--key-file']]);
+    await run(process.execPath, [operator, 'envelope', 'seal', '--input', dump, '--output', options['--output'], '--key-file', options['--key-file'], '--database', 'vaults_experimental', '--server-id', installation, '--required-version', `schema-${schema}`]);
+    await run(process.execPath, [operator, 'envelope', 'verify', '--input', options['--output'], '--key-file', options['--key-file']]);
     console.log('Encrypted backup created and authenticated. Rehearse restoration before relying on it.');
   } else {
-    const metadata = JSON.parse(await run(process.execPath, [envelope, 'open', '--input', options['--input'], '--output', dump, '--key-file', options['--key-file']]));
+    const metadata = JSON.parse(await run(process.execPath, [operator, 'envelope', 'open', '--input', options['--input'], '--output', dump, '--key-file', options['--key-file']]));
     if (metadata.database !== 'vaults_experimental' || !/^schema-[123]$/.test(metadata.requiredVersion) || !/^[0-9a-f-]{36}$/.test(metadata.serverId)) throw Error('Backup identity or schema is not supported for rehearsal.');
     const name = `127vaults-rehearse-${randomBytes(6).toString('hex')}`;
     const password = randomBytes(32).toString('hex');
@@ -89,4 +89,5 @@ try {
 } finally {
   if (rehearsalContainer) await run(engine, ['rm', '-f', rehearsalContainer]).catch(() => {});
   await cleanTemporary(temporary);
+}
 }

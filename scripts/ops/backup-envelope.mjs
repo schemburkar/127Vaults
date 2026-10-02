@@ -9,7 +9,7 @@ const MAX_HEADER_BYTES = 64 * 1024;
 
 function fail(message) { throw new Error(message); }
 function usage() {
-  fail('Usage: backup-envelope.mjs seal|verify|open --input <file> [--output <file>] --key-file <file> [--database <name> --server-id <id> --required-version <version>]');
+  fail('Usage: node server.mjs envelope seal|verify|open --input <file> [--output <file>] --key-file <file> [--database <name> --server-id <id> --required-version <version>]');
 }
 function argsOf(values) {
   const result = { action: values[0] };
@@ -106,8 +106,8 @@ async function decrypt(args, destination) {
   if (bytes !== info.header.plaintextBytes || hash.digest('hex') !== info.header.plaintextSha256) fail('Authenticated plaintext does not match its manifest.');
   return info.header;
 }
-async function main() {
-  const args = argsOf(process.argv.slice(2));
+export async function runEnvelope(argv) {
+  const args = argsOf(argv);
   if (!args.input || !args['key-file']) usage();
   if (args.action === 'seal') return seal(args);
   if (args.action === 'verify') {
@@ -123,5 +123,3 @@ async function main() {
   }
   usage();
 }
-
-main().catch(error => { console.error(`backup-envelope: ${error.message}`); process.exitCode = 1; });

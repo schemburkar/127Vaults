@@ -6,8 +6,8 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const script = fileURLToPath(new URL('./backup-envelope.mjs', import.meta.url));
-function run(args) { return spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' }); }
+const script = fileURLToPath(new URL('../../server.mjs', import.meta.url));
+function run(args) { return spawnSync(process.execPath, [script, 'envelope', ...args], { encoding: 'utf8' }); }
 
 test('seals, verifies, and opens an authenticated backup', () => {
   const dir = mkdtempSync(join(tmpdir(), '127vaults-backup-'));

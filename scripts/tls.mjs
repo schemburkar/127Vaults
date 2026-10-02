@@ -4,11 +4,12 @@ import { isIP } from 'node:net';
 import { relative, resolve } from 'node:path';
 
 const IMAGE = 'docker.io/alpine/openssl:3.5.4';
-const action = process.argv[2];
-const endpoint = process.argv[3];
-const targetArg = process.argv[4];
+export function runTls(argv) {
+const action = argv[0];
+const endpoint = argv[1];
+const targetArg = argv[2];
 if (!['init', 'renew'].includes(action) || !targetArg || !(endpoint === 'localhost' || isIP(endpoint))) {
-  throw new Error('Usage: node scripts/tls.mjs init|renew localhost|<literal-ip> <absolute-private-directory>');
+  throw new Error('Usage: node server.mjs tls init|renew localhost|<literal-ip> <absolute-private-directory>');
 }
 if (isIP(endpoint) === 0 && endpoint !== 'localhost') throw new Error('Custom DNS names are forbidden.');
 const target = resolve(targetArg);
@@ -91,3 +92,4 @@ const run = spawnSync(engine, ['run', '--rm', '--network=none', '--read-only', '
 if (run.error || run.status !== 0) throw new Error('Certificate operation failed; the previous live pair was preserved until validation completed.');
 console.log(`Public CA: ${resolve(target, 'ca', 'ca.crt')}`);
 console.log('Install that CA explicitly only after verifying its displayed SHA-256 fingerprint. Never distribute ca.key.');
+}

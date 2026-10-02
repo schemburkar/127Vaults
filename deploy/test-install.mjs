@@ -6,12 +6,13 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { homedir, tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
-const action = process.argv[2];
-const engine = process.argv.includes('--docker') ? 'docker' : 'podman';
-const endpoint = process.argv.find((value, index) => process.argv[index - 1] === '--endpoint') ?? '127.0.0.1';
-const restoredIdentity = process.argv.find((value, index) => process.argv[index - 1] === '--restore-identity');
-const privateDir = resolve(restoredIdentity ?? process.argv.find((value, index) => process.argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
-const provider = process.argv.find((value, index) => process.argv[index - 1] === '--compose-provider');
+export async function runTestInstall(argv) {
+const action = argv[0];
+const engine = argv.includes('--docker') ? 'docker' : 'podman';
+const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?? '127.0.0.1';
+const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
+const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
+const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
 if (!['init', 'start', 'status', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, stop, bootstrap, or restore.');
 if (!/^(127\.0\.0\.1|localhost|(?:10|192\.168)\.(?:\d{1,3}\.){2}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.){2})$/.test(endpoint)) throw Error('Use loopback or a private IPv4 endpoint.');
 
@@ -66,7 +67,7 @@ async function initialize() {
     }
   } else {
     await run(engine, ['load', '-i', 'openssl-image.tar']);
-    await run(process.execPath, [existsSync('manifest.json') ? 'lib/tls.mjs' : 'scripts/tls.mjs', 'init', endpoint, privateDir]);
+    await run(process.execPath, ['server.mjs', 'tls', 'init', endpoint, privateDir], { env: { ...process.env, VAULTS_ENGINE: engine } });
     const runtime = join(privateDir, 'runtime');
     await mkdir(runtime, { recursive: true, mode: 0o700 });
     await mkdir(join(privateDir, 'output'), { recursive: true, mode: 0o700 });
@@ -108,16 +109,15 @@ async function restoreDatabase() {
   const content = await readFile('.env', 'utf8');
   const restoreId = /^VAULTS_RESTORE_ID=([0-9a-f-]{36})$/m.exec(content)?.[1];
   if (!restoreId) throw Error('Initialize a new restore installation first; existing installations cannot be overwritten.');
-  const input = process.argv.find((value, index) => process.argv[index - 1] === '--input');
-  const key = process.argv.find((value, index) => process.argv[index - 1] === '--key-file');
+  const input = argv.find((value, index) => argv[index - 1] === '--input');
+  const key = argv.find((value, index) => argv[index - 1] === '--key-file');
   if (!input || !key) throw Error('Restore requires --input <encrypted database backup> and --key-file <backup key>.');
   const temporary = await mkdtemp(join(tmpdir(), '127vaults-restore-'));
   const dump = join(temporary, 'database.dump');
   let databaseStarted = false;
   try {
     await chmod(temporary, 0o700).catch(() => {});
-    const envelope = existsSync('manifest.json') ? 'lib/backup-envelope.mjs' : 'scripts/ops/backup-envelope.mjs';
-    const metadata = JSON.parse(await run(process.execPath, [envelope, 'open', '--input', input, '--output', dump, '--key-file', key], { quiet: true }));
+    const metadata = JSON.parse(await run(process.execPath, ['server.mjs', 'envelope', 'open', '--input', input, '--output', dump, '--key-file', key], { quiet: true }));
     if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-3') {
       throw Error('Database backup does not match this restore identity or supported schema.');
     }
@@ -158,7 +158,7 @@ else {
     await verifyBundle();
     const content = await readFile('.env', 'utf8');
     const configuredEndpoint = /^VAULTS_ENDPOINT_HOST=(.+)$/m.exec(content)?.[1];
-    if (!configuredEndpoint || (process.argv.includes('--endpoint') && endpoint !== configuredEndpoint)) throw Error('Start endpoint must match the initialized installation.');
+    if (!configuredEndpoint || (argv.includes('--endpoint') && endpoint !== configuredEndpoint)) throw Error('Start endpoint must match the initialized installation.');
     if (/^SMTP_HOST=(.+)$/m.test(content)) {
       const dir = /^VAULTS_TLS_DIR=(.+)$/m.exec(content)?.[1];
       if (!dir || !existsSync(join(dir, 'runtime', 'smtp-password'))) throw Error('Configured SMTP requires runtime/smtp-password outside the bundle.');
@@ -191,4 +191,5 @@ else {
       console.log(`One-time owner setup code (expires in 60 minutes): ${token}`);
     }
   }
+}
 }
