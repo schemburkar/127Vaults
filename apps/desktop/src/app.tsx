@@ -289,6 +289,16 @@ export function App() {
       notify("error", "Could not open vault", friendlyError(error));
     }
   };
+  const addVault = async () => {
+    try {
+      const result = await invoke<{ created: VaultSummary; vaults: VaultSummary[] }>("vault_create");
+      setVaults(result.vaults);
+      await selectVault(result.created.vaultId);
+      notify("success", "Private vault created", result.created.code);
+    } catch (error) {
+      notify("error", "Could not create vault", friendlyError(error));
+    }
+  };
   const save = async (draft = selected, resolutionId = resolvingOperationId) => {
     if (!draft) return;
     const nextErrors: Record<string, string> = {};
@@ -814,6 +824,10 @@ export function App() {
           <span className="truncate">{vault.name}</span>
           <span className="ml-auto text-[10px] text-slate-500">{vault.code}</span>
         </Button>)}
+        <Button variant="ghost" className="justify-start" onClick={() => void addVault()} disabled={!online}>
+          <Plus size={17} />
+          <span>Add private vault</span>
+        </Button>
         <div className="mt-auto grid gap-1">
           <Button
             variant="ghost"

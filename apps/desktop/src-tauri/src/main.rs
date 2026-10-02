@@ -171,6 +171,14 @@ fn item_list(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<
 }
 
 #[tauri::command]
+fn vault_create(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| {
+        let created = session.vault_create()?;
+        Ok(json!({"created":created,"vaults":session.vault_list()?}))
+    })
+}
+
+#[tauri::command]
 fn item_get(
     state: tauri::State<'_, DesktopState>,
     vault_id: String,
@@ -376,6 +384,7 @@ fn main() {
             desktop_info,
             unlock,
             item_list,
+            vault_create,
             item_get,
             item_secret,
             item_save,
