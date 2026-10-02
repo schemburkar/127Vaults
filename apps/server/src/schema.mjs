@@ -14,9 +14,11 @@ export const schemaV2Checksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-b
 export const schemaV3MigrationSql = await readFile(new URL('./schema-v3-migration.sql', import.meta.url), 'utf8');
 export const schemaV3Checksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}`);
 export const schemaV4MigrationSql = await readFile(new URL('./schema-v4-migration.sql', import.meta.url), 'utf8');
-export const schemaChecksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}`);
-export const schemaVersion = 4;
-export const schemaSql = `${schemaV1Sql}\n${schemaV2MigrationSql}\n${schemaV3MigrationSql}\n${schemaV4MigrationSql}`;
+export const schemaV4Checksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}`);
+export const schemaV5MigrationSql = await readFile(new URL('./schema-v5-migration.sql', import.meta.url), 'utf8');
+export const schemaChecksum = sha256(`${normalize(schemaV1Sql)}\n-- schema-2-boundary\n${normalize(schemaV2MigrationSql)}\n-- schema-3-boundary\n${normalize(schemaV3MigrationSql)}\n-- schema-4-boundary\n${normalize(schemaV4MigrationSql)}\n-- schema-5-boundary\n${normalize(schemaV5MigrationSql)}`);
+export const schemaVersion = 5;
+export const schemaSql = `${schemaV1Sql}\n${schemaV2MigrationSql}\n${schemaV3MigrationSql}\n${schemaV4MigrationSql}\n${schemaV5MigrationSql}`;
 
 export async function requireSchema(client) {
   const result = await client.query('SELECT version, checksum FROM vaults.schema_version');

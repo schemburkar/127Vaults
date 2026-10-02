@@ -17,6 +17,7 @@ import { createOnboardingHandler } from './onboarding-handler.mjs';
 import { SmtpMailer } from './smtp.mjs';
 import { PgPrivateVaultStore } from './private-vault-pg.mjs';
 import { createPrivateVaultHandler } from './private-vault-handler.mjs';
+import { PgVaultSettingsStore, createVaultSettingsHandler } from './vault-settings-handler.mjs';
 import { PgSignedSyncStore } from './sync-pg.mjs';
 import { createSignedSyncHandler } from './sync-handler.mjs';
 import { PgDeviceLifecycleStore } from './device-lifecycle-pg.mjs';
@@ -83,6 +84,7 @@ const onboardingHandler=createOnboardingHandler(onboardingService,createRegistra
 const authenticate=token=>authService.authenticate(token);
 const syncStore=new PgSignedSyncStore(pool,checkpointPrivateKey);
 const privateVaultHandler=createPrivateVaultHandler(new PgPrivateVaultStore(pool,syncStore),authenticate,transport.origin);
+const vaultSettingsHandler=createVaultSettingsHandler(new PgVaultSettingsStore(pool),authenticate,transport.origin);
 const syncHandler=createSignedSyncHandler(syncStore,authenticate,transport.origin,{checkpointPublicKey});
 const deviceStore=new PgDeviceLifecycleStore(pool);
 const deviceLifecycleHandler=createDeviceLifecycleHandler(deviceStore,authenticate,transport.origin);
@@ -127,6 +129,7 @@ const server = createServer(tls, async (req, res) => {
   if(await deviceLifecycleHandler(req,res))return;
   if(await syncHandler(req,res))return;
   if(await privateVaultHandler(req,res))return;
+  if(await vaultSettingsHandler(req,res))return;
   if (req.method !== 'GET') { reply(405, { error: 'method_not_allowed' }); return; }
   if (req.url === '/health/live') { reply(200, { status: 'ok' }); return; }
   if (req.url !== '/health/ready') { reply(404, { error: 'not_found' }); return; }

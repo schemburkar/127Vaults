@@ -138,7 +138,7 @@ async function status(podman) {
     catch { throw new Error('Server unreachable at localhost:12780. Run pnpm dev:up and check Podman.'); }
     if (response.status !== 200) throw new Error(`${path} returned HTTP ${response.status}. Check schema compatibility or local credentials; do not reset the database.`);
     const body = await response.json();
-    if (body.status !== 'ok' || (path === 'ready' && (body.experimental !== true || body.schemaVersion !== 3))) throw new Error('Unexpected health response; check port ownership and server version.');
+    if (body.status !== 'ok' || (path === 'ready' && (body.experimental !== true || body.schemaVersion !== 5))) throw new Error('Unexpected health response; check port ownership and server version.');
     console.log(`${path}: OK`);
   }
   const state = JSON.parse(await run(podman, ['exec', server, 'node', 'apps/server/src/entry.mjs', 'provision', 'status']));
