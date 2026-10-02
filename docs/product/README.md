@@ -2,7 +2,7 @@
 
 Updated 2026-10-02. The four component backlogs below are the only live task lists. Each row has a stable ID, a state, and an acceptance condition. Change a row to **Done** only after its acceptance is recorded in the same backlog. A component's `in-progress.md` contains only the current wave, its owner, next action, and verification. Delete that file when the wave is complete; start a new one only when work starts. Evidence reports, ADRs, protocols, and runbooks remain reference material, not competing task lists.
 
-Audit verification on 2026-10-02: server tests 55 passed/1 skipped; web 14 passed; desktop 8 passed; CLI 22 passed. These are local tests, not a clean-host deployment, human browser ceremony, backup/restore rehearsal, or security review.
+Audit verification on 2026-10-02: server tests 56 passed/1 skipped; web 14 passed; desktop 8 passed; CLI 22 passed. These are local tests; separate restore and deployment evidence is linked from the server backlog. Human browser acceptance and security review remain open.
 
 | Component | Backlog | Active wave |
 | --- | --- | --- |

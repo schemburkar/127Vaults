@@ -1,6 +1,8 @@
 # Install the private server test bundle
 
-Status: experimental test distribution, 2026-10-02. This is the chosen shipping form for the server: OCI image archives (127Vaults, PostgreSQL and the isolated OpenSSL certificate helper), one Compose file and one operator command and internal helpers. An MSI or standalone binary would add a second database/service/update path without improving this private server deployment. Do not publish the bundle or use it as a supported real-credential release yet.
+Status: experimental test distribution, 2026-10-02. This is the chosen shipping form for the server: OCI image archives (127Vaults, PostgreSQL and the isolated OpenSSL certificate helper), a base Compose file with an optional SMTP overlay, and one operator command with internal helpers. An MSI or standalone binary would add a second database/service/update path without improving this private server deployment. Do not publish the bundle or use it as a supported real-credential release yet.
+
+The server image runs `apps/server/src/entry.mjs serve`; that entry dispatches provisioning, schema migration, and liveness checks to modules in `apps/server/src`. In the source checkout and extracted bundle, `node server.mjs` is the operator entry. Bundle helpers live under `lib/` and are included in the hash manifest. Development acceptance scripts under `scripts/` are test harnesses, not separate installation methods.
 
 **Usability verdict:** this is suitable for a technical operator running a supervised test, not a self-service client installer. The recipient still needs a container engine, Compose, Node 24, private CA trust, firewall configuration and backup-key custody. A one-click installer would hide operational and recovery decisions that are not settled yet.
 
