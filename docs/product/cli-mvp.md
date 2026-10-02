@@ -40,12 +40,23 @@ cargo run -p vaults-cli -- item list
 cargo run -p vaults-cli -- item get I-0123456789
 cargo run -p vaults-cli -- item create --field title=Example --field website=example.com --field username=owner
 cargo run -p vaults-cli -- item edit I-0123456789 --json '{"title":"Example","website":"https://example.com","username":"owner","password":"replacement"}'
+cargo run -p vaults-cli -- sync
+cargo run -p vaults-cli -- conflict list
 ```
 
 A successful login remembers its profile path, so later commands can omit
 `--config-dir`. Supplying a non-default path still selects that profile explicitly.
 If the account has exactly one vault, item commands can omit `--vault`; accounts
 with zero or multiple vaults receive an explicit selection error.
+
+`sync` submits queued operations, refreshes verified replicas, and reports how
+many operations remain pending. Conflicts keep their signed local request until
+an explicit choice. `conflict list` shows operation IDs and field names;
+`conflict show <operation-id>` shows the local draft with password fields redacted.
+Use `conflict resolve <operation-id> --keep server` to discard only that queued
+operation, or `--keep local` to encrypt and queue the local draft against the
+current verified item. Add `--vault` when multiple vaults are available. A
+remote deletion cannot be overwritten by `--keep local` through this command.
 
 Create and edit are noninteractive by default. They accept an inline JSON object,
 JSON from stdin (`--json -`), JSON from a file (`--json @path`), or repeatable

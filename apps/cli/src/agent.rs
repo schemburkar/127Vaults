@@ -39,6 +39,10 @@ struct Request {
     #[serde(default)]
     item: Option<String>,
     #[serde(default)]
+    operation_id: Option<String>,
+    #[serde(default)]
+    keep: Option<String>,
+    #[serde(default)]
     password_field: Option<String>,
     #[serde(default)]
     title: Option<String>,
@@ -105,6 +109,43 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),
+        "sync" => session.sync_now(),
+        "conflict.list" => {
+            let vault = vault_selector(session, request.vault.as_deref())?;
+            session.conflict_list(&vault)
+        }
+        "conflict.show" => {
+            let vault = vault_selector(session, request.vault.as_deref())?;
+            let operation = request
+                .operation_id
+                .as_deref()
+                .ok_or("operation ID is required")?;
+            let (vault_id, item_id) = session.conflict_item_id(&vault, operation)?;
+            let mut draft = session.conflict_draft(&vault_id, &item_id, operation)?;
+            draft["password"] = json!("[redacted]");
+            if let Some(fields) = draft["customFields"].as_array_mut() {
+                for field in fields {
+                    if field["type"] == "password" {
+                        field["value"] = json!("[redacted]");
+                    }
+                }
+            }
+            Ok(json!({"operationId":operation,"draft":draft}))
+        }
+        "conflict.resolve" => {
+            let vault = vault_selector(session, request.vault.as_deref())?;
+            session.resolve_conflict(
+                &vault,
+                request
+                    .operation_id
+                    .as_deref()
+                    .ok_or("operation ID is required")?,
+                request
+                    .keep
+                    .as_deref()
+                    .ok_or("resolution choice is required")?,
+            )
+        }
         "vault.create" => session.vault_create(),
         "vault.info" => {
             let vault = vault_selector(session, request.vault.as_deref())?;

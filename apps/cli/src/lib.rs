@@ -78,6 +78,16 @@ pub enum Command {
         #[command(subcommand)]
         command: ItemCommand,
     },
+    /// Upload queued edits and refresh verified encrypted replicas.
+    Sync {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    /// Review and resolve quarantined local edits.
+    Conflict {
+        #[command(subcommand)]
+        command: ConflictCommand,
+    },
     /// Report the CLI's per-command lock behavior.
     Lock {
         #[arg(long, default_value = ".127vaults")]
@@ -186,6 +196,34 @@ pub enum ItemCommand {
         id: String,
         #[command(flatten)]
         input: ItemInputArgs,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConflictCommand {
+    List {
+        #[arg(long)]
+        vault: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    /// Show a local draft with secret fields redacted.
+    Show {
+        operation_id: String,
+        #[arg(long)]
+        vault: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    /// Keep the verified server item or resubmit the local draft.
+    Resolve {
+        operation_id: String,
+        #[arg(long, value_parser = ["server", "local"])]
+        keep: String,
+        #[arg(long)]
+        vault: Option<String>,
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
@@ -1116,6 +1154,46 @@ pub fn run(cli: Cli) -> Result<String, String> {
             serde_json::json!({}),
         )?)
         .map_err(|_| "could not encode vault list".to_owned()),
+        Command::Sync { config_dir } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "sync",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode sync result".to_owned()),
+        Command::Conflict { command } => {
+            let (config_dir, action, body) = match command {
+                ConflictCommand::List { vault, config_dir } => (
+                    config_dir,
+                    "conflict.list",
+                    serde_json::json!({"vault":vault}),
+                ),
+                ConflictCommand::Show {
+                    operation_id,
+                    vault,
+                    config_dir,
+                } => (
+                    config_dir,
+                    "conflict.show",
+                    serde_json::json!({"vault":vault,"operation_id":operation_id}),
+                ),
+                ConflictCommand::Resolve {
+                    operation_id,
+                    keep,
+                    vault,
+                    config_dir,
+                } => (
+                    config_dir,
+                    "conflict.resolve",
+                    serde_json::json!({"vault":vault,"operation_id":operation_id,"keep":keep}),
+                ),
+            };
+            serde_json::to_string_pretty(&agent::call(
+                &effective_config_dir(&config_dir),
+                action,
+                body,
+            )?)
+            .map_err(|_| "could not encode conflict result".to_owned())
+        }
         Command::Vault {
             command: VaultCommand::Create { name, config_dir },
         } => {
@@ -1229,6 +1307,36 @@ mod tests {
                 "https://localhost",
                 "--code",
                 "secret"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn sync_and_conflict_commands_require_explicit_resolution_choice() {
+        assert!(Cli::try_parse_from(["127vaults", "sync"]).is_ok());
+        assert!(Cli::try_parse_from(["127vaults", "conflict", "list"]).is_ok());
+        assert!(Cli::try_parse_from(["127vaults", "conflict", "show", "operation-id"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "127vaults",
+                "conflict",
+                "resolve",
+                "operation-id",
+                "--keep",
+                "local"
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["127vaults", "conflict", "resolve", "operation-id"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "127vaults",
+                "conflict",
+                "resolve",
+                "operation-id",
+                "--keep",
+                "both"
             ])
             .is_err()
         );

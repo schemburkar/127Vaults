@@ -591,6 +591,77 @@ impl Session {
         Ok(())
     }
 
+    pub fn conflict_list(&self, vault_selector: &str) -> Result<Value, String> {
+        let vault_id = self.resolve_vault_id(vault_selector)?;
+        let replica = self
+            .replica_store
+            .load(&vault_id)?
+            .ok_or("local replica is unavailable")?;
+        Ok(
+            json!({"vaultId":vault_id,"pending":replica.pending.len(),"conflicts":replica.conflicts,"syncError":replica.sync_error}),
+        )
+    }
+
+    pub fn conflict_item_id(
+        &self,
+        vault_selector: &str,
+        operation_id: &str,
+    ) -> Result<(String, String), String> {
+        let vault_id = self.resolve_vault_id(vault_selector)?;
+        let replica = self
+            .replica_store
+            .load(&vault_id)?
+            .ok_or("local replica is unavailable")?;
+        let row = replica
+            .conflicts
+            .iter()
+            .find(|row| row["operationId"] == operation_id)
+            .ok_or("pending conflict is unavailable")?;
+        let item_id = row["itemId"]
+            .as_str()
+            .ok_or("pending conflict is invalid")?;
+        if !replica.pending.iter().any(|entry| {
+            entry.operation["opId"] == operation_id && entry.operation["itemId"] == item_id
+        }) {
+            return Err("pending conflict is unavailable".to_owned());
+        }
+        Ok((vault_id, item_id.to_owned()))
+    }
+
+    pub fn resolve_conflict(
+        &mut self,
+        vault_selector: &str,
+        operation_id: &str,
+        keep: &str,
+    ) -> Result<Value, String> {
+        let (vault_id, item_id) = self.conflict_item_id(vault_selector, operation_id)?;
+        if keep == "server" {
+            self.discard_conflict(&vault_id, &item_id, operation_id)?;
+            return Ok(json!({"resolved":operation_id,"kept":"server"}));
+        }
+        if keep != "local" {
+            return Err("choose server or local".to_owned());
+        }
+        let draft = self.conflict_draft(&vault_id, &item_id, operation_id)?;
+        let result = self.item_upsert_resolving(
+            &vault_id,
+            &item_id,
+            operation_id,
+            draft["title"].as_str().ok_or("pending item is invalid")?,
+            draft["website"].as_str().ok_or("pending item is invalid")?,
+            draft["username"]
+                .as_str()
+                .ok_or("pending item is invalid")?,
+            draft["password"]
+                .as_str()
+                .ok_or("pending item is invalid")?,
+            draft["customFields"]
+                .as_array()
+                .ok_or("pending item is invalid")?,
+        )?;
+        Ok(json!({"resolved":operation_id,"kept":"local","result":result}))
+    }
+
     /// Decrypt a quarantined draft only in memory for the merge UI. The replica
     /// retains the original ciphertext request and never stores this result.
     pub fn conflict_draft(
@@ -770,7 +841,15 @@ impl Session {
             .into_iter()
             .flat_map(|replica| replica.conflicts)
             .collect::<Vec<_>>();
-        Ok(json!({"accepted":accepted,"rebased":rebased,"online":true,"conflicts":conflicts}))
+        let pending = self
+            .replica_store
+            .list()?
+            .iter()
+            .map(|replica| replica.pending.len())
+            .sum::<usize>();
+        Ok(
+            json!({"accepted":accepted,"rebased":rebased,"pending":pending,"online":true,"conflicts":conflicts}),
+        )
     }
 
     #[allow(clippy::too_many_lines)]
