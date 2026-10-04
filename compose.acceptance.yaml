@@ -4,7 +4,7 @@ services:
     ports:
       - '127.0.0.1:1465:1465'
     environment:
-      NODE_EXTRA_CA_CERTS: /run/secrets/tls/ca.crt
+      NODE_EXTRA_CA_CERTS: /run/secrets/ca.crt
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: '2465'
       SMTP_USERNAME: fixture

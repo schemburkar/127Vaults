@@ -16,6 +16,7 @@ COPY apps/web/tsconfig.json apps/web/tsconfig.json
 COPY apps/web/vite.config.ts apps/web/vite.config.ts
 COPY apps/web/style.css apps/web/style.css
 COPY apps/web/src apps/web/src
+COPY apps/desktop/src/item-types.ts apps/desktop/src/item-types.ts
 COPY packages/ui/src packages/ui/src
 RUN pnpm --filter @127vaults/web build
 

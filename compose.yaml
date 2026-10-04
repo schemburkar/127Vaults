@@ -62,7 +62,7 @@ services:
         read_only: true
       - type: bind
         source: '${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR to the private TLS directory}/ca/${VAULTS_CA_CERT_FILE:-ca.crt}'
-        target: /run/secrets/tls/ca.crt
+        target: /run/secrets/ca.crt
         read_only: true
       - type: bind
         source: '${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR to the private TLS directory}/runtime'

@@ -57,7 +57,7 @@ services:
         read_only: true
       - type: bind
         source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/ca/ca.crt
-        target: /run/secrets/tls/ca.crt
+        target: /run/secrets/ca.crt
         read_only: true
       - type: bind
         source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/runtime

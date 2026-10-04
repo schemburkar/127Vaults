@@ -17,8 +17,14 @@ const environment={...process.env,...values,VAULTS_ENDPOINT_HOST:'127.0.0.1',VAU
 function run(command,args,{capture=false,env=environment,input}={}){const result=spawnSync(command,args,{cwd:root,env,input,encoding:'utf8',stdio:input!==undefined?['pipe','inherit','inherit']:capture?'pipe':'inherit',windowsHide:true});if(result.status!==0)throw Error((result.stderr||result.stdout||`${command} failed`).trim());return result.stdout?.trim()??''}
 const composeRun=(args,options)=>run(composeProvider,[...compose,...args],options);
 const serverContainer=`${project}_server_1`;
-const copyCa=destination=>run(podman,['cp',`${serverContainer}:/run/secrets/tls/ca.crt`,destination]);
+const copyCa=destination=>run(podman,['cp',`${serverContainer}:/run/secrets/ca.crt`,destination]);
 const exists=async path=>{try{await access(path);return true}catch{return false}};
+async function ensureTlsReady(){
+ const directory=values.VAULTS_TLS_DIR;
+ if(!directory)throw Error('VAULTS_TLS_DIR is missing from .env. Complete the TLS setup in docs/release/experimental-development.md.');
+ const required=[join(directory,'live','server.crt'),join(directory,'live','server.key'),join(directory,'ca',values.VAULTS_CA_CERT_FILE||'ca.crt')];
+ if(!(await Promise.all(required.map(exists))).every(Boolean))throw Error(`Local TLS files are missing in ${directory}. Run pnpm tls:init -- 127.0.0.1 "${directory}" before pnpm mvp:${action}.`);
+}
 const portOpen=port=>new Promise(resolve=>{const socket=connect({host:'127.0.0.1',port});socket.setTimeout(1000);socket.on('connect',()=>{socket.destroy();resolve(true)});socket.on('error',()=>resolve(false));socket.on('timeout',()=>{socket.destroy();resolve(false)})});
 async function ensureRuntimeSecrets(){const runtime=join(values.VAULTS_TLS_DIR,'runtime');await mkdir(runtime,{recursive:true});for(const name of ['token.key','checkpoint.key']){const path=join(runtime,name);if(!await exists(path))await writeFile(path,randomBytes(32),{flag:'wx',mode:0o600});if((await readFile(path)).length!==32)throw Error(`${name} must contain exactly 32 bytes.`);if(process.platform!=='win32')await chmod(path,0o600)}for(const [name,key] of [['postgres-password','POSTGRES_PASSWORD'],['readiness-token','VAULTS_READINESS_TOKEN']]){if(!/^[a-f0-9]{64}$/.test(values[key]??''))throw Error(`Missing ${key} in .env`);await writeFile(join(runtime,name),values[key],{mode:0o600});if(process.platform!=='win32')await chmod(join(runtime,name),0o600)}const smtp=join(runtime,'smtp-password');if(!await exists(smtp))await writeFile(smtp,'fixture-password',{flag:'wx',mode:0o600});if(process.platform!=='win32')await chmod(smtp,0o600)}
 const readBootstrap=()=>composeRun(['exec','-T','server','sh','-c','if test -s /run/runtime/bootstrap.txt; then cat /run/runtime/bootstrap.txt; fi'],{capture:true});
@@ -31,6 +37,7 @@ const ensureBootstrap=()=>{
 if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  console.log('The hot-reload UI and API are already running at https://127.0.0.1:12780.');
 }else if(action==='start'||action==='dev'){
+ await ensureTlsReady();
  await ensureRuntimeSecrets();
  run(process.execPath,['scripts/build-fixture.mjs']);
  run(podman,['build','-t','localhost/127vaults-server:experimental','-f','apps/server/Dockerfile','.']);

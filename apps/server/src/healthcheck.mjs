@@ -11,7 +11,7 @@ try {
   const body = await new Promise((resolve, reject) => {
     const request = get({ hostname: host, port, path: '/health/live',
       headers: { host: `${endpoint.includes(':') ? `[${endpoint}]` : endpoint}:${port}` },
-      ca: readFileSync('/run/secrets/tls/ca.crt'), servername: '',
+      ca: readFileSync('/run/secrets/ca.crt'), servername: '',
       checkServerIdentity: (_name, certificate) => checkServerIdentity(endpoint, certificate), timeout: 3000 }, response => {
       let data = ''; response.on('data', chunk => { data += chunk; });
       response.on('end', () => response.statusCode === 200 ? resolve(data) : reject(new Error('bad status')));

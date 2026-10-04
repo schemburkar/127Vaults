@@ -77,7 +77,7 @@ if [ "$HOST_WINDOWS" = 1 ]; then chmod 644 /tls/ca/ca.key /tls/pending/server.ke
 chmod 644 /tls/ca/ca.crt /tls/pending/server.crt
 if [ "$HOST_WINDOWS" != 1 ]; then chown 1000:1000 /tls/pending/server.key /tls/pending/server.crt; fi
 rm -rf /tls/previous
-if [ -e /tls/live/server.crt ]; then mv /tls/live /tls/previous; else rmdir /tls/live; fi
+if [ -n "$(ls -A /tls/live)" ]; then mv /tls/live /tls/previous; else rmdir /tls/live; fi
 mv /tls/pending /tls/live
 mkdir -m 700 /tls/pending
 openssl x509 -in /tls/live/server.crt -noout -fingerprint -sha256 -dates -ext subjectAltName
@@ -89,6 +89,13 @@ const run = spawnSync(engine, ['run', '--rm', '--network=none', '--read-only', '
   '-e', `ACTION=${action}`, '-e', `SAN=${san}`, '-e', `HOST_WINDOWS=${process.platform === 'win32' ? '1' : '0'}`, '-v', `${realpathSync(target)}:/tls:Z`,
   '--entrypoint', 'sh', IMAGE, '-ceu', script],
   { stdio: 'inherit', windowsHide: true });
+if (process.platform === 'win32') {
+  // chmod inside the Podman VM can replace host ACLs on bind-mounted files.
+  const identity = process.env.USERDOMAIN && process.env.USERNAME ? `${process.env.USERDOMAIN}\\${process.env.USERNAME}` : process.env.USERNAME;
+  if (!identity) throw new Error('Cannot identify the provisioning operator for the TLS-directory ACL.');
+  const acl = spawnSync('icacls', [target, '/grant:r', `${identity}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '/T', '/C'], { stdio: 'inherit', windowsHide: true });
+  if (acl.error || acl.status !== 0) throw new Error('Could not restore the TLS-directory ACL after container provisioning.');
+}
 if (run.error || run.status !== 0) throw new Error('Certificate operation failed; the previous live pair was preserved until validation completed.');
 console.log(`Public CA: ${resolve(target, 'ca', 'ca.crt')}`);
 console.log('Install that CA explicitly only after verifying its displayed SHA-256 fingerprint. Never distribute ca.key.');
