@@ -270,7 +270,8 @@ export function App() {
     void save(merged, conflict.operationId ?? null);
   };
   const unlock = async () => {
-    if (busy) return;
+    if (busy) return false;
+    const wasUnlocked = unlocked;
     const nextErrors: Record<string, string> = {};
     if (!username.trim()) nextErrors.username = "Enter your username.";
     if ((!rememberedSecret || showSecretEntry || accountSecret.length > 0) && !/^[0-9a-fA-F]{64}$/.test(accountSecret))
@@ -279,7 +280,7 @@ export function App() {
       nextErrors.masterPassword =
         "Master password must be at least 20 characters.";
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) return false;
     setBusy(true);
     setStatus("Verifying credentials and opening the encrypted replica…");
     await new Promise<void>((resolve) =>
@@ -316,13 +317,12 @@ export function App() {
       );
       setLastSynced(result.online ? new Date() : null);
       notify(
-        "success",
-        "Vault unlocked",
-        result.online
-          ? "The server replica is up to date."
-          : "Working from the encrypted offline replica.",
+        result.online ? "success" : "info",
+        wasUnlocked ? (result.online ? "Connection restored" : "Still offline") : "Vault unlocked",
+        result.online ? "The server replica is up to date." : "Working from the encrypted offline replica.",
       );
       if (result.items[0]) await openItem(result.items[0], result.vaultId);
+      return result.online;
     } catch (e) {
       const message = String(e);
       const detail =
@@ -333,6 +333,7 @@ export function App() {
       setStatus(detail);
       if (message.includes("account secret is required on this device")) { setRememberedSecret(false); setShowSecretEntry(true); }
       notify("error", "Could not unlock the vault", detail);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1000,7 +1001,7 @@ export function App() {
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
         </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setVaultActionId(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button></div></details></div>)}
-        <Button variant="ghost" className="justify-start" onClick={() => { setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>
+        <Button variant="ghost" className="justify-start" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}>
           <Plus size={17} />
           <span>Add vault</span>
         </Button>
@@ -1553,9 +1554,9 @@ export function App() {
           <Button variant="ghost" className="desktop-settings-close absolute right-3 top-3 z-10 !size-9 !min-h-9 !justify-center !p-0" aria-label="Close settings" title="Close settings" onClick={() => setSettingsOpen(false)}><X size={18} /></Button>
           <aside className="desktop-settings-nav flex flex-col border-r border-white/10 p-4"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500">SETTINGS</p><h2 id="desktop-settings-title" className="mb-5 mt-2 text-xl font-bold">Settings</h2>{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} role="tab" aria-selected={settingsTab === tab} variant="ghost" className={cn("justify-start", settingsTab === tab && "bg-[#E0BB95]/12 text-[#E0BB95]")} onClick={() => { setSettingsTab(tab); if (tab === "devices") void loadDevices(); }}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</aside>
           <div className="desktop-settings-body overflow-auto p-8 pr-12 text-sm">
-            {settingsTab === "profile" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Profile</h3><p className="mt-1 text-slate-400">Your account on this device.</p></div><p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p><p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p><Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button></div>}
+            {settingsTab === "profile" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Profile</h3><p className="mt-1 text-slate-400">Your account on this device.</p></div><p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p><p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p>{online ? <Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button> : <div className="grid gap-2 rounded-xl border border-white/10 p-4"><strong>Reconnect to create vaults and manage devices</strong><p className="text-xs text-slate-400">Enter your master password to verify a live session.</p>{(!rememberedSecret || showSecretEntry) && <Input aria-label="Account secret for reconnect" type="password" autoComplete="off" placeholder="Account secret" value={accountSecret} onChange={(event) => setAccountSecret(event.target.value)} />}{errors.accountSecret && <p className="text-xs text-red-300">{errors.accountSecret}</p>}<Input aria-label="Master password for reconnect" type="password" autoComplete="current-password" placeholder="Master password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />{errors.masterPassword && <p className="text-xs text-red-300">{errors.masterPassword}</p>}<Button className="w-fit" disabled={busy} onClick={() => void unlock().then((connected) => { if (connected) setSettingsOpen(false); })}>Reconnect</Button></div>}</div>}
             {settingsTab === "devices" && <div><h3 className="text-2xl font-bold">Devices</h3><p className="mt-1 text-slate-400">Devices registered to this account.</p>{deviceError && <p className="mt-5 text-amber-300">{deviceError}</p>}<div className="mt-5 grid gap-2">{devices.map((device) => <div key={device.deviceId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/3 p-3"><div><strong>{device.deviceId === currentDeviceId ? "This desktop" : `Device ${device.deviceId.slice(0, 8)}`}</strong><p className="mt-1 text-xs text-slate-400">{device.protectionClass ?? "Unknown"} protection · credential {device.credentialState ?? "unknown"} · {device.status ?? "unknown"}</p></div>{device.deviceId !== currentDeviceId && device.status === "active" && <Button variant="ghost" className="text-red-300" onClick={() => void revokeDevice(device.deviceId)}>Revoke</Button>}</div>)}</div><Button variant="secondary" className="mt-5" onClick={() => void loadDevices()}>Refresh devices</Button></div>}
-            {settingsTab === "vaults" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Vaults</h3><p className="mt-1 text-slate-400">Manage your encrypted vaults.</p></div><div className="grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center justify-between rounded-xl border border-white/10 p-3"><span>{vault.name}</span><span className="text-xs text-slate-500">{vault.code}</span></div>)}</div><label className="grid gap-2">Default vault<select className="desktop-settings-select" value={vaults.length === 1 ? vaults[0].vaultId : defaultVaultId ?? ""} disabled={vaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>{vaults.length === 1 && <p className="text-xs text-slate-400">Your only vault is selected automatically.</p>}<Button variant="secondary" className="w-fit" onClick={() => { setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>Create vault</Button>{!online && <p className="text-xs text-amber-300">Creating a vault requires an online session. Reconnect and unlock again to continue.</p>}</div>}
+            {settingsTab === "vaults" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Vaults</h3><p className="mt-1 text-slate-400">Manage your encrypted vaults.</p></div><div className="grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center justify-between rounded-xl border border-white/10 p-3"><span>{vault.name}</span><span className="text-xs text-slate-500">{vault.code}</span></div>)}</div><label className="grid gap-2">Default vault<select className="desktop-settings-select" value={vaults.length === 1 ? vaults[0].vaultId : defaultVaultId ?? ""} disabled={vaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>{vaults.length === 1 && <p className="text-xs text-slate-400">Your only vault is selected automatically.</p>}<Button variant="secondary" className="w-fit" onClick={() => { if (!online) { setSettingsTab("profile"); return; } setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }}>{online ? "Create vault" : "Reconnect to create vault"}</Button>{!online && <p className="text-xs text-amber-300">Creating a vault requires an online session.</p>}</div>}
             {settingsTab === "preferences" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Preferences</h3><p className="mt-1 text-slate-400">Choose what opens first and how vault removal is handled.</p></div><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{vaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
           </div>
         </section>
