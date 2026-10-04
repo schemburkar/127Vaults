@@ -319,6 +319,9 @@ pub struct ItemInputArgs {
     /// Repeatable KEY=VALUE field. Values on the command line may be visible to other processes.
     #[arg(long, value_name = "KEY=VALUE")]
     field: Vec<String>,
+    /// First-party item type (defaults to login).
+    #[arg(long = "type", value_parser = ["login", "bank", "card", "wifi", "router", "ssh", "password"])]
+    item_type: Option<String>,
 }
 
 pub trait SecretPrompt {
@@ -1020,7 +1023,14 @@ fn item_fields_from_args(
     ),
     String,
 > {
+    let requested_type = args.item_type.clone();
     if args.interactive {
+        if requested_type
+            .as_deref()
+            .is_some_and(|kind| kind != "login")
+        {
+            return Err("typed items require --json or --field input".to_owned());
+        }
         if args.json.is_some() || !args.field.is_empty() {
             return Err("--interactive cannot be combined with --json or --field".to_owned());
         }
@@ -1053,7 +1063,7 @@ fn item_fields_from_args(
             if key.is_empty() {
                 return Err("item field names must be non-empty and unique".to_owned());
             }
-            if matches!(key, "title" | "website" | "username" | "password") {
+            if matches!(key, "title" | "website" | "username" | "password" | "type") {
                 if object
                     .insert(key.to_owned(), serde_json::Value::String(value.to_owned()))
                     .is_some()
@@ -1083,7 +1093,28 @@ fn item_fields_from_args(
                 } else {
                     value.to_owned()
                 };
-                custom_fields.push(serde_json::json!({"id":uuid::Uuid::new_v4().to_string(),"label":label,"type":kind,"value":value}));
+                let id = if matches!(
+                    label,
+                    "bank_name"
+                        | "account_number"
+                        | "bank_pin"
+                        | "card_number"
+                        | "cardholder"
+                        | "expiry"
+                        | "cvv"
+                        | "card_pin"
+                        | "ssid"
+                        | "wifi_security"
+                        | "router_address"
+                        | "host"
+                        | "port"
+                ) {
+                    label.to_owned()
+                } else {
+                    uuid::Uuid::new_v4().to_string()
+                };
+                custom_fields
+                    .push(serde_json::json!({"id":id,"label":label,"type":kind,"value":value}));
             }
         }
         object.insert(
@@ -1095,6 +1126,32 @@ fn item_fields_from_args(
         return Err("provide --json, one or more --field values, or --interactive".to_owned());
     };
     let object = value.as_object().ok_or("item JSON must be an object")?;
+    let embedded_type = object
+        .get("customFields")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|fields| {
+            fields
+                .iter()
+                .find(|field| field["id"] == "__127vaults_item_type")
+        })
+        .and_then(|field| field["value"].as_str());
+    let kind = requested_type
+        .as_deref()
+        .or_else(|| object.get("type").and_then(serde_json::Value::as_str))
+        .or(embedded_type)
+        .unwrap_or("login");
+    if !matches!(
+        kind,
+        "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password"
+    ) {
+        return Err("item type is unsupported".to_owned());
+    }
+    if requested_type
+        .as_deref()
+        .is_some_and(|requested| object.get("type").is_some_and(|given| given != requested))
+    {
+        return Err("--type and item type disagree".to_owned());
+    }
     let field = |name: &str, required: bool| -> Result<String, String> {
         match object.get(name) {
             Some(serde_json::Value::String(value)) => Ok(value.to_owned()),
@@ -1124,7 +1181,15 @@ fn item_fields_from_args(
             .filter(|label| !label.is_empty())
             .ok_or("each custom field needs a non-empty label")?
             .to_owned();
-        if !labels.insert(label.to_lowercase()) {
+        let id = custom
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let is_marker = id == "__127vaults_item_type" || id.starts_with("__127vaults_section:");
+        if !is_marker
+            && !id.starts_with("__127vaults_field:")
+            && !labels.insert(label.to_lowercase())
+        {
             return Err("custom field labels must be unique".to_owned());
         }
         let kind = custom
@@ -1133,7 +1198,7 @@ fn item_fields_from_args(
             .ok_or("each custom field needs a supported type")?;
         if !matches!(
             kind,
-            "text" | "password" | "url" | "date" | "email" | "number" | "note"
+            "text" | "password" | "url" | "date" | "email" | "number" | "note" | "metadata"
         ) {
             return Err("each custom field needs a supported type".to_owned());
         }
@@ -1151,6 +1216,17 @@ fn item_fields_from_args(
             .entry("id")
             .or_insert_with(|| serde_json::Value::String(uuid::Uuid::new_v4().to_string()));
     }
+    let marker = custom_fields
+        .iter()
+        .position(|field| field["id"] == "__127vaults_item_type");
+    if let Some(index) = marker {
+        if custom_fields[index]["type"] != "metadata" || custom_fields[index]["value"] != kind {
+            return Err("item type marker is invalid".to_owned());
+        }
+    } else if kind != "login" {
+        custom_fields.insert(0, serde_json::json!({"id":"__127vaults_item_type","label":"Item type","type":"metadata","value":kind}));
+    }
+    validate_typed_fields(&custom_fields, kind)?;
     Ok((
         title,
         website,
@@ -1158,6 +1234,58 @@ fn item_fields_from_args(
         Zeroizing::new(field("password", false)?),
         custom_fields,
     ))
+}
+
+fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(), String> {
+    let mut ids = std::collections::HashSet::new();
+    let mut sections = std::collections::HashSet::new();
+    for field in fields {
+        let id = field["id"]
+            .as_str()
+            .ok_or("custom field ID must be a string")?;
+        if id.is_empty() || !ids.insert(id) {
+            return Err("custom field IDs must be non-empty and unique".to_owned());
+        }
+        if id == "__127vaults_item_type" {
+            if field["type"] != "metadata" || field["value"] != kind {
+                return Err("item type marker is invalid".to_owned());
+            }
+        } else if let Some(section) = id.strip_prefix("__127vaults_section:") {
+            let section_type = field["value"]
+                .as_str()
+                .unwrap_or("")
+                .split('|')
+                .next()
+                .unwrap_or("");
+            if section.is_empty()
+                || field["type"] != "metadata"
+                || !matches!(
+                    section_type,
+                    "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password" | "security"
+                )
+            {
+                return Err("section marker is invalid".to_owned());
+            }
+            sections.insert(section);
+        } else if field["type"] == "metadata" || id.starts_with("__127vaults_") {
+            if !id.starts_with("__127vaults_field:") || field["type"] == "metadata" {
+                return Err("reserved item field is invalid".to_owned());
+            }
+        }
+    }
+    for field in fields {
+        if let Some(rest) = field["id"]
+            .as_str()
+            .unwrap_or("")
+            .strip_prefix("__127vaults_field:")
+        {
+            let section = rest.split(':').next().unwrap_or("");
+            if !sections.contains(section) || !rest.contains(':') {
+                return Err("section field has no matching section".to_owned());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Executes the currently implemented offline CLI command surface.
@@ -1625,6 +1753,7 @@ mod tests {
         let values = item_fields_from_args(ItemInputArgs {
             interactive: false,
             json: None,
+            item_type: None,
             field: vec![
                 "title=Example".to_owned(),
                 "website=example.com".to_owned(),
@@ -1638,6 +1767,7 @@ mod tests {
         let custom = item_fields_from_args(ItemInputArgs {
             interactive: false,
             json: None,
+            item_type: None,
             field: vec!["title=Codes".to_owned(), "pin:password=1234".to_owned()],
         })
         .unwrap();
@@ -1649,8 +1779,37 @@ mod tests {
             item_fields_from_args(ItemInputArgs {
                 interactive: false,
                 json: Some(r#"{"title":""}"#.to_owned()),
+                item_type: None,
                 field: Vec::new(),
             })
+            .is_err()
+        );
+    }
+    #[test]
+    fn typed_item_and_sections_keep_desktop_format() {
+        let item = item_fields_from_args(ItemInputArgs {
+            interactive: false,
+            json: Some(r#"{"title":"Travel card","type":"card","customFields":[{"id":"card_number","label":"Card number","type":"password","value":"4111"},{"id":"__127vaults_section:sec1","label":"Section","type":"metadata","value":"security|Security info"},{"id":"__127vaults_field:sec1:answer","label":"Answer","type":"password","value":"rose"}]}"#.to_owned()),
+            field: Vec::new(),
+            item_type: None,
+        }).unwrap();
+        assert_eq!(item.4[0]["value"], "card");
+        assert_eq!(item.4[1]["id"], "card_number");
+        assert_eq!(item.4[3]["value"], "rose");
+        let shorthand = item_fields_from_args(ItemInputArgs {
+            interactive: false,
+            json: None,
+            field: vec!["title=My Wi-Fi".to_owned(), "ssid=Home".to_owned()],
+            item_type: Some("wifi".to_owned()),
+        })
+        .unwrap();
+        assert_eq!(shorthand.4[0]["value"], "wifi");
+        assert_eq!(shorthand.4[1]["id"], "ssid");
+        assert!(
+            validate_typed_fields(
+                &[serde_json::json!({"id":"__127vaults_field:missing:answer","type":"password"})],
+                "login"
+            )
             .is_err()
         );
     }

@@ -76,6 +76,19 @@ custom field, for example `--field pin:password=1234`. JSON uses the web-compati
 prefer `--json @item.json` or pipe a here-string to `--json -` to avoid shell quoting
 of an inline JSON object.
 
+First-party types are `login`, `bank`, `card`, `wifi`, `router`, `ssh`, and
+`password`. Select one with `--type` or a JSON `type` property. For example,
+`item create --type wifi --field title=Home --field ssid=Home --field password=...`
+stores the same encrypted type marker used by desktop and web. Known field IDs
+such as `card_number`, `cvv`, `ssid`, `host`, and `port` retain their first-party
+identity when supplied with `--field`. Use `:password` for sensitive typed
+fields, such as `card_number:password=...`. JSON `customFields` also accepts the
+desktop section marker and section field IDs, so a desktop item can be edited
+without changing its section structure. `item get` reports `itemType` and keeps
+password-class values redacted; `--password FIELD` remains the explicit reveal
+path. `item list` shows every type by its encrypted title/website index without
+opening item bodies, so it does not display type or section labels.
+
 Vault selectors accept the displayed name (`Private`), generated `V-…` code, or
 internal UUID. Item selectors accept a unique title, generated `I-…` code, or
 internal UUID. Generated codes are stable, non-name-derived references; an

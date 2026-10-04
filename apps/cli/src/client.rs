@@ -1940,8 +1940,13 @@ impl Session {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let item_type = custom_fields
+            .iter()
+            .find(|field| field["id"] == "__127vaults_item_type")
+            .and_then(|field| field["value"].as_str())
+            .unwrap_or("login");
         Ok(
-            json!({"code":summary["code"],"itemId":item_id,"title":summary["title"],"website":summary["website"],"username":body["username"],"password":"[redacted]","customFields":custom_fields}),
+            json!({"code":summary["code"],"itemId":item_id,"title":summary["title"],"itemType":item_type,"website":summary["website"],"username":body["username"],"password":"[redacted]","customFields":custom_fields}),
         )
     }
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
