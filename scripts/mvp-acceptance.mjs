@@ -26,6 +26,15 @@ async function ensureTlsReady(){
  if(!(await Promise.all(required.map(exists))).every(Boolean))throw Error(`Local TLS files are missing in ${directory}. Run pnpm tls:init -- 127.0.0.1 "${directory}" before pnpm mvp:${action}.`);
 }
 const portOpen=port=>new Promise(resolve=>{const socket=connect({host:'127.0.0.1',port});socket.setTimeout(1000);socket.on('connect',()=>{socket.destroy();resolve(true)});socket.on('error',()=>resolve(false));socket.on('timeout',()=>{socket.destroy();resolve(false)})});
+async function waitForServerReady(){
+ for(let attempt=0;attempt<30;attempt++){
+  let state='';
+  try { state=run(podman,['inspect',serverContainer,'--format','{{.State.Status}} {{.State.Health.Status}}'],{capture:true}); } catch {}
+  if(state.trim()==='running healthy')return;
+  await new Promise(resolve=>setTimeout(resolve,2000));
+ }
+ throw Error('The acceptance server did not become healthy. Inspect its logs; if the schema is behind, run pnpm mvp:migrate, then pnpm mvp:dev. Do not reset the database.');
+}
 async function ensureRuntimeSecrets(){const runtime=join(values.VAULTS_TLS_DIR,'runtime');await mkdir(runtime,{recursive:true});for(const name of ['token.key','checkpoint.key']){const path=join(runtime,name);if(!await exists(path))await writeFile(path,randomBytes(32),{flag:'wx',mode:0o600});if((await readFile(path)).length!==32)throw Error(`${name} must contain exactly 32 bytes.`);if(process.platform!=='win32')await chmod(path,0o600)}for(const [name,key] of [['postgres-password','POSTGRES_PASSWORD'],['readiness-token','VAULTS_READINESS_TOKEN']]){if(!/^[a-f0-9]{64}$/.test(values[key]??''))throw Error(`Missing ${key} in .env`);await writeFile(join(runtime,name),values[key],{mode:0o600});if(process.platform!=='win32')await chmod(join(runtime,name),0o600)}const smtp=join(runtime,'smtp-password');if(!await exists(smtp))await writeFile(smtp,'fixture-password',{flag:'wx',mode:0o600});if(process.platform!=='win32')await chmod(smtp,0o600)}
 const readBootstrap=()=>composeRun(['exec','-T','server','sh','-c','if test -s /run/runtime/bootstrap.txt; then cat /run/runtime/bootstrap.txt; fi'],{capture:true});
 const ensureBootstrap=()=>{
@@ -35,6 +44,7 @@ const ensureBootstrap=()=>{
  return token;
 };
 if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
+ await waitForServerReady();
  console.log('The hot-reload UI and API are already running at https://127.0.0.1:12780.');
 }else if(action==='start'||action==='dev'){
  await ensureTlsReady();
@@ -43,6 +53,7 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  run(podman,['build','-t','localhost/127vaults-server:experimental','-f','apps/server/Dockerfile','.']);
  composeRun(['down','--remove-orphans']);
  composeRun(['up','-d','--no-build','--force-recreate','database','server']);
+ await waitForServerReady();
  if(action==='start')console.log('Acceptance stack ready at https://127.0.0.1:12780 (disposable fictitious data only).');
  else {
   console.log('Containerized API ready behind the local hot-reload UI at https://127.0.0.1:12780.');
@@ -50,6 +61,10 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
   else run(process.execPath,[join(root,'apps','web','node_modules','vite','bin','vite.js'),'apps/web','--host','127.0.0.1']);
  }
 }else if(action==='migrate'){
+ // Keep the backend on its existing published port when the hot-reload UI is running.
+ let mappedPort;
+ try { mappedPort=run(podman,['port',serverContainer,'12780/tcp'],{capture:true}).match(/:(12780|12781)\s*$/)?.[1]; } catch {}
+ if(mappedPort)environment.VAULTS_PUBLISH_PORT=mappedPort;
  await ensureRuntimeSecrets();
  composeRun(['up','-d','database']);
  run(podman,['build','-t','localhost/127vaults-server:experimental','-f','apps/server/Dockerfile','.']);
@@ -58,9 +73,17 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  // can claim that address while PostgreSQL and its evidence volume stay up.
  composeRun(['stop','server','smtp-capture']);
  run(podman,['rm','-f','--ignore',serverContainer,`${project}_smtp-capture_1`]);
- composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs', 'schema','dry-run']);
- composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs', 'schema','apply']);
+ for(let step=0;step<5;step++){
+  const output=composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs','schema','status'],{capture:true});
+  const state=JSON.parse(output.split('\n').at(-1));
+  if(state.state==='current')break;
+  if(state.state!=='migration-required')throw Error('Unknown schema state; no migration was applied.');
+  composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs','schema','dry-run']);
+  composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs','schema','apply']);
+  if(step===4)throw Error('Schema remains behind after five migration steps.');
+ }
  composeRun(['up','-d','--no-build','--force-recreate','server']);
+ await waitForServerReady();
  console.log('Schema migration applied transactionally and the server restarted.');
 }else if(action==='exercise'){
  if(!composeRun(['ps'],{capture:true}).includes('server'))throw Error('Run pnpm mvp:start first.');

@@ -75,6 +75,10 @@ client and port 12781 for its containerized API. Stop the hot-reload command
 with Ctrl+C, then run `pnpm mvp:stop` to stop the acceptance containers while
 retaining their database volume. For a served, non-hot-reload browser run, use
 `pnpm mvp:start` instead of `pnpm mvp:dev`.
+If startup reports an older database schema, run `pnpm mvp:migrate` once; it
+checks and applies each pending migration in order, then restarts the server.
+Run `pnpm mvp:dev` again afterward. Do not reset the database to fix a schema
+version mismatch.
 
 ## Repeat the internal-MVP acceptance
 
