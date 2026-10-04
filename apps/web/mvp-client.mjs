@@ -655,7 +655,7 @@ function renderItems(items) {
   );
   let actions = query
     ? [
-        { id: "new-item", label: "New item", description: "Create a login", terms: "new create add item login" },
+        { id: "new-item", label: "New item", description: "Create a vault item", terms: "new create add item login bank card wifi router ssh password" },
         { id: "edit-item", label: "Edit selected item", description: currentItem ? currentItem.index.title : "Select an item first", terms: "edit modify selected item" },
         { id: "create-vault", label: "Create vault", description: vault ? "A private vault already exists" : "Create your private vault", terms: "new create vault" },
         { id: "reload", label: "Reload vault", description: "Refresh encrypted data", terms: "reload refresh sync vault" },
@@ -1231,6 +1231,7 @@ function clearItem() {
   window.dispatchEvent(
     new CustomEvent("vaults:set-editor-fields", { detail: [] }),
   );
+  renderCustomFields([], "");
   $("save").textContent = "Save";
   showEmpty();
 }

@@ -570,7 +570,7 @@ function ItemDetail() {
           <KeyRound aria-hidden="true" />
         </div>
         <h2>Select an item</h2>
-        <p>Choose an item from the list or create a new login.</p>
+        <p>Choose an item from the list or create a new item.</p>
       </div>
       <article id="item-view" hidden>
         <div className="flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">

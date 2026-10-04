@@ -948,8 +948,8 @@ export function App() {
       </main>
     );
   return (
-    <div className="grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]">
-      <aside className="row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3">
+    <div className="desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]">
+      <aside className="desktop-sidebar row-span-2 flex flex-col overflow-auto border-r border-white/7 bg-[#0a0e21] p-3">
         <div className="mb-7 flex items-center gap-3 px-2 py-3">
           <span className="grid size-9 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
             127
@@ -1016,7 +1016,7 @@ export function App() {
           </Button>
         </div>
       </aside>
-      <section className="overflow-hidden border-r border-white/7 bg-[#080c1d]">
+      <section className="desktop-list overflow-hidden border-r border-white/7 bg-[#080c1d]">
         <header className="border-b border-white/7 p-4">
           <div className="relative">
             <Search
@@ -1092,7 +1092,8 @@ export function App() {
           ))}
         </div>
       </section>
-      <main className="overflow-auto p-7">
+      <main className={cn("desktop-detail overflow-auto p-7", selected && "detail-selected")}>
+        {selected && <Button variant="ghost" className="desktop-back mb-4 hidden" onClick={() => { setSelected(null); setEditing(false); }}>← All items</Button>}
         {selected ? (
           <div className="mx-auto max-w-3xl">
             {editing ? (
@@ -1240,7 +1241,7 @@ export function App() {
                     {ordinaryFields(selected.customFields).map((field) => (
                       <div
                         key={field.id}
-                        className="grid grid-cols-[minmax(8rem,1fr)_8rem_minmax(10rem,2fr)_auto] gap-2"
+                        className="desktop-custom-field grid grid-cols-[minmax(8rem,1fr)_8rem_minmax(10rem,2fr)_auto] gap-2"
                       >
                         <Input
                           aria-label="Field name"
@@ -1356,7 +1357,7 @@ export function App() {
                       <div
                         key={field.key}
                         className={cn(
-                          "grid min-h-16 grid-cols-[7rem_1fr_auto] items-center gap-4 px-4",
+                          "desktop-field-row grid min-h-16 grid-cols-[7rem_1fr_auto] items-center gap-4 px-4",
                           index > 0 && "border-t border-white/7",
                         )}
                       >
@@ -1417,7 +1418,7 @@ export function App() {
                   </div>
                   {sections(selected.customFields).map((section) => <section key={section.id} className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-white/3">
                     <h3 className="border-b border-white/8 px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#E0BB95]">{section.label}</h3>
-                    {section.fields.map((field) => <div key={field.id} className="grid min-h-16 grid-cols-[7rem_1fr_auto] items-center gap-4 border-b border-white/7 px-4 last:border-0">
+                    {section.fields.map((field) => <div key={field.id} className="desktop-field-row grid min-h-16 grid-cols-[7rem_1fr_auto] items-center gap-4 border-b border-white/7 px-4 last:border-0">
                       <span className="text-xs text-slate-500">{field.label}</span>
                       <strong className="min-w-0 truncate text-sm">{field.type === "password" && !revealed.has(field.id) ? "••••••••••••" : field.value || "—"}</strong>
                       <div className="flex gap-1">
