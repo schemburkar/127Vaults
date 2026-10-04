@@ -18,8 +18,10 @@ import {
   LoaderCircle,
   LockKeyhole,
   Menu,
+  MoreHorizontal,
   Plus,
   Search,
+  Settings,
   Trash2,
   Vault,
 } from "lucide-react";
@@ -112,6 +114,8 @@ export function App() {
   const [resolvingOperationId, setResolvingOperationId] = useState<string | null>(null);
   const [footerMenu, setFooterMenu] = useState(false);
   const [compactNavOpen, setCompactNavOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"profile" | "vaults" | "preferences">("preferences");
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [lastLocalChange, setLastLocalChange] = useState<Date | null>(null);
   const notify = (kind: Notice["kind"], title: string, detail?: string) => {
@@ -377,10 +381,10 @@ export function App() {
       notify("success", "Collection saved");
     } catch (error) { notify("error", "Could not save collection", friendlyError(error)); }
   };
-  const removeCollection = async () => {
-    if (!selectedCollectionId) return;
+  const removeCollection = async (collectionId = selectedCollectionId) => {
+    if (!collectionId) return;
     try {
-      const result = await invoke<VaultSettings>("collection_remove", { collectionId: selectedCollectionId });
+      const result = await invoke<VaultSettings>("collection_remove", { collectionId });
       setCollections(result.collections);
       setDefaultView(result.defaultView);
       setSettingsConflict(result.conflict);
@@ -388,9 +392,7 @@ export function App() {
       await selectAllVaults();
     } catch (error) { notify("error", "Could not remove collection", friendlyError(error)); }
   };
-  const saveDefaultView = async () => {
-    const kind = viewMode === "single" ? "vault" : viewMode;
-    const selector = kind === "vault" ? vaultId : kind === "collection" ? selectedCollectionId : null;
+  const saveDefaultView = async (kind: string, selector: string | null) => {
     try {
       const result = await invoke<VaultSettings>("vault_default_view", { kind, selector });
       setDefaultView(result.defaultView);
@@ -421,10 +423,9 @@ export function App() {
       notify("error", "Could not rename vault", friendlyError(error));
     }
   };
-  const toggleDefaultVault = async () => {
+  const toggleDefaultVault = async (nextVaultId: string | null) => {
     try {
-      const next = defaultVaultId === vaultId ? null : vaultId;
-      const result = await invoke<{ defaultVaultId: string | null }>("vault_default", { vaultId: next });
+      const result = await invoke<{ defaultVaultId: string | null }>("vault_default", { vaultId: nextVaultId });
       setDefaultVaultId(result.defaultVaultId);
       notify("success", result.defaultVaultId ? "Default vault saved" : "Default vault cleared");
     } catch (error) {
@@ -616,7 +617,6 @@ export function App() {
     setSelected(editOriginal);
     setEditOriginal(null);
     setEditing(false);
-    setStatus("Edit cancelled");
   };
   const enrollDesktop = async () => {
     if (enrolling) return;
@@ -951,14 +951,15 @@ export function App() {
     );
   return (
     <div className="desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]">
-      <aside className={cn("desktop-sidebar row-span-2 flex flex-col overflow-auto border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")} onClick={(event) => { if ((event.target as HTMLElement).closest("button:not(.desktop-menu-toggle)")) setCompactNavOpen(false); }}>
-        <Button variant="ghost" className="desktop-menu-toggle hidden" aria-expanded={compactNavOpen} aria-label="Vaults and actions" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults and actions</span></Button>
-        <div className="mb-7 flex items-center gap-3 px-2 py-3">
+      <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
+        <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
           <span className="grid size-9 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
             127
           </span>
           <strong>127Vaults</strong>
         </div>
+        <Button variant="ghost" className="desktop-menu-toggle" aria-expanded={compactNavOpen} aria-label="Toggle navigation" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
+        <nav className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
         <Button variant="ghost" className={cn("justify-start", viewMode === "all" && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />
           <span>All items</span>
@@ -967,41 +968,22 @@ export function App() {
         <p className="mb-2 mt-7 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">
           VAULTS
         </p>
-        {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={cn("justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
+        {vaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
-          {defaultVaultId === vault.vaultId && <span className="text-[10px] text-[#E0BB95]">Default</span>}
-          <span className="ml-auto text-[10px] text-slate-500">{vault.code}</span>
-        </Button>)}
-        {viewMode === "single" && <Button variant="ghost" className="justify-start text-xs" onClick={() => void toggleDefaultVault()}>
-          {defaultVaultId === vaultId ? "Clear default" : "Set as default"}
-        </Button>}
+        </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { void selectVault(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button></div></details></div>)}
         <Button variant="ghost" className="justify-start" onClick={() => { setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>
           <Plus size={17} />
           <span>Add vault</span>
         </Button>
-        {viewMode === "single" && <Button variant="ghost" className="justify-start text-xs" onClick={() => { setVaultNameDraft(vaults.find((vault) => vault.vaultId === vaultId)?.name ?? ""); setVaultDialog("rename"); }}>
-          Rename vault
-        </Button>}
         <p className="mb-2 mt-6 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">COLLECTIONS</p>
-        {collections.map((collection) => <Button key={collection.id} variant="ghost" className={cn("justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
+        {collections.map((collection) => <div className="desktop-nav-row" key={collection.id}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
           <LayoutList size={17} /><span className="truncate">{collection.name}</span>
-        </Button>)}
+        </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${collection.name}`} title={`Actions for ${collection.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setSelectedCollectionId(collection.id); setCollectionNameDraft(collection.name); setCollectionVaultDraft(collection.vault_ids); setCollectionDialog("edit"); }}>Edit collection</button><button onClick={() => void removeCollection(collection.id)}>Remove collection</button></div></details></div>)}
         <Button variant="ghost" className="justify-start text-xs" onClick={() => { setCollectionNameDraft(""); setCollectionVaultDraft([]); setCollectionDialog("create"); }}>Add collection</Button>
-        {viewMode === "collection" && selectedCollectionId && <div className="flex gap-1">
-          <Button variant="ghost" className="text-xs" onClick={() => { const current = collections.find((row) => row.id === selectedCollectionId); if (current) { setCollectionNameDraft(current.name); setCollectionVaultDraft(current.vault_ids); setCollectionDialog("edit"); } }}>Edit</Button>
-          <Button variant="ghost" className="text-xs" onClick={() => void removeCollection()}>Remove</Button>
-        </div>}
-        <Button variant="ghost" className="justify-start text-xs" onClick={() => void saveDefaultView()}>
-          {defaultView?.kind === (viewMode === "single" ? "vault" : viewMode) && (viewMode === "all" || defaultView.id === (viewMode === "single" ? vaultId : selectedCollectionId)) ? "Default view" : "Set as default view"}
-        </Button>
-        <label className="grid gap-1 px-3 text-xs text-slate-400">When removing a vault
-          <select className="rounded border border-white/10 bg-[#11162b] px-2 py-1 text-slate-100" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}>
-            <option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option>
-          </select>
-        </label>
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         <div className="mt-auto grid gap-1">
+          <Button variant="ghost" className="justify-start" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></Button>
           <Button
             variant="ghost"
             className="justify-start"
@@ -1018,6 +1000,7 @@ export function App() {
             <span>Lock</span>
           </Button>
         </div>
+        </nav>
       </aside>
       <section className="desktop-list overflow-hidden border-r border-white/7 bg-[#080c1d]">
         <header className="border-b border-white/7 p-4">
@@ -1096,7 +1079,7 @@ export function App() {
         </div>
       </section>
       <main className={cn("desktop-detail overflow-auto p-7", selected && "detail-selected")}>
-        {selected && <Button variant="ghost" className="desktop-back mb-4 hidden" onClick={() => { setSelected(null); setEditing(false); }}>← All items</Button>}
+        {selected && <div className="desktop-back-row"><Button variant="ghost" onClick={() => { setSelected(null); setEditing(false); }}>← Items</Button></div>}
         {selected ? (
           <div className="mx-auto max-w-3xl">
             {editing ? (
@@ -1458,8 +1441,6 @@ export function App() {
           )}
         ></span>
         <strong>{online ? "Online" : "Offline"}</strong>
-        <span>·</span>
-        <span role="status">{status}</span>
         <span className="ml-auto">
           Local change{" "}
           {lastLocalChange
@@ -1539,6 +1520,15 @@ export function App() {
           </div>
         ))}
       </div>
+      {settingsOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-4" role="dialog" aria-modal="true" aria-labelledby="desktop-settings-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
+        <section className="desktop-settings w-full max-w-xl overflow-auto rounded-2xl border border-white/10 bg-[#11162b] p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4"><div><h2 id="desktop-settings-title" className="text-xl font-bold">Settings</h2><p className="mt-1 text-sm text-slate-400">Manage this device and your vault preferences.</p></div><Button variant="ghost" onClick={() => setSettingsOpen(false)}>Close</Button></div>
+          <div className="mt-6 flex gap-2 border-b border-white/10 pb-3" role="tablist" aria-label="Settings sections">{(["profile", "vaults", "preferences"] as const).map((tab) => <Button key={tab} role="tab" aria-selected={settingsTab === tab} variant={settingsTab === tab ? "secondary" : "ghost"} onClick={() => setSettingsTab(tab)}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</div>
+          {settingsTab === "profile" && <div className="mt-6 grid gap-3 text-sm"><p><span className="text-slate-400">Account</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p><Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button></div>}
+          {settingsTab === "vaults" && <div className="mt-6 grid gap-4 text-sm"><label className="grid gap-2">Default vault<select className="desktop-settings-select" value={vaults.length === 1 ? vaults[0].vaultId : defaultVaultId ?? ""} disabled={vaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>{vaults.length === 1 && <p className="text-xs text-slate-400">Your only vault is selected automatically.</p>}<Button variant="secondary" className="w-fit" onClick={() => { setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>Add vault</Button></div>}
+          {settingsTab === "preferences" && <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{vaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
+        </section>
+      </div>}
       {settingsReview && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="settings-review-title">
         <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100">
           <h2 id="settings-review-title" className="text-lg font-semibold">Review vault settings conflict</h2>
