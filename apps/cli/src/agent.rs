@@ -37,6 +37,8 @@ struct Request {
     #[serde(default)]
     vault: Option<String>,
     #[serde(default)]
+    destination: Option<String>,
+    #[serde(default)]
     name: Option<String>,
     #[serde(default)]
     collection_id: Option<String>,
@@ -48,6 +50,8 @@ struct Request {
     choice: Option<String>,
     #[serde(default)]
     clear: bool,
+    #[serde(default)]
+    keep_copies: bool,
     #[serde(default)]
     item: Option<String>,
     #[serde(default)]
@@ -119,6 +123,7 @@ fn vault_selector(session: &Session, requested: Option<&str>) -> Result<String, 
         .ok_or_else(|| "invalid vault list".to_owned())
 }
 
+#[allow(clippy::too_many_lines)]
 fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, String> {
     let result = match request.action.as_str() {
         "status" => Ok(
@@ -180,6 +185,21 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
         "vault.settings.preference" => session.set_removal_preference(request.choice.as_deref()),
         "vault.archive" => {
             session.archive_vault(request.vault.as_deref().ok_or("vault is required")?)
+        }
+        "vault.move" => session.move_vault(
+            request.vault.as_deref().ok_or("vault is required")?,
+            request
+                .destination
+                .as_deref()
+                .ok_or("destination is required")?,
+        ),
+        "vault.removal.status" => session.removal_status(),
+        "vault.move.abort" => {
+            if request.keep_copies {
+                session.abort_move_plan()
+            } else {
+                Err("--keep-copies is required".to_owned())
+            }
         }
         "vault.restore" => {
             session.restore_archived_vault(request.vault.as_deref().ok_or("vault is required")?)

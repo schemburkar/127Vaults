@@ -439,15 +439,34 @@ impl Core {
         index: &[u8],
         body: &[u8],
     ) -> Result<PrivateItemCreated, Error> {
+        let item_id = match item {
+            Some(existing) => existing,
+            None => random_revision().map_err(record_error)?,
+        };
+        self.upsert_private_item_at_id(vault, old_catalogue, item_id, item.is_some(), index, body)
+    }
+
+    /// Encrypts a create at a caller-reserved random item ID, or an update at an existing ID.
+    /// Reserving the ID before a multi-item move permits exact retry after interruption.
+    /// # Errors
+    /// Rejects an ID already present for create or absent for update, plus invalid state or input.
+    pub fn upsert_private_item_at_id(
+        &mut self,
+        vault: KeyHandle,
+        old_catalogue: &[u8],
+        item_id: [u8; 16],
+        update: bool,
+        index: &[u8],
+        body: &[u8],
+    ) -> Result<PrivateItemCreated, Error> {
         let v = self.keys.get(&vault).ok_or(Error::InvalidHandle)?;
         let tenant = v.tenant;
         let vault_id = v.vault;
         let ep = v.epoch;
         let mut old = Catalogue::decode(old_catalogue, &v.bytes, tenant, vault_id, ep)
             .map_err(record_error)?;
-        let item_id = item.unwrap_or(random_revision().map_err(record_error)?);
         let position = old.entries.iter().position(|e| e.item == item_id);
-        if item.is_some() != position.is_some() {
+        if update != position.is_some() {
             return Err(Error::InvalidInput);
         }
         let template = |purpose: u8| {
@@ -1026,6 +1045,23 @@ mod tests {
         let m = Catalogue::decode(&proposal.catalogue, &v.bytes, v.tenant, v.vault, 1).unwrap();
         assert_eq!(m.entries.len(), 1);
         assert_eq!(m.entries[0].item, proposal.item);
+        let mut reserved = proposal.item;
+        reserved[15] ^= 1;
+        let copied = c
+            .upsert_private_item_at_id(
+                vh,
+                &proposal.catalogue,
+                reserved,
+                false,
+                b"{\"title\":\"Copy\"}",
+                b"{\"password\":\"fake\"}",
+            )
+            .unwrap();
+        assert_eq!(copied.item, reserved);
+        assert!(matches!(
+            c.upsert_private_item_at_id(vh, &copied.catalogue, reserved, false, b"{}", b"{}"),
+            Err(Error::InvalidInput)
+        ));
         assert_eq!(sha256(&proposal.index), m.entries[0].index_sha256);
         assert_eq!(sha256(&proposal.body), m.entries[0].body_sha256);
         assert_eq!(

@@ -65,6 +65,18 @@ request before sending it, so repeating the same archive command resumes a
 request whose response was lost. `vault list` marks retired vaults; unqualified
 item commands and `item list --all` use active vaults.
 
+`vault move SOURCE --to DESTINATION` copies each decrypted item into fresh
+destination ciphertext and retires the source only after every copy, signed
+create operation, checkpoint, and plaintext comparison succeeds. The move
+reserves destination item IDs in a local journal before copying; repeating the
+command resumes the same IDs after interruption. The server keeps the retired
+source recoverable. `vault removal-status` shows the pending plan and item IDs.
+If a source changes during copying, the CLI stops with both vaults intact;
+`vault abort-move --keep-copies` clears an unfinished plan after the operator
+reviews destination copies. A final removal request must be retried instead of
+aborted. The saved removal preference records the preferred choice; archive and
+move commands still require an explicit source and move requires a destination.
+
 `sync` submits queued operations, refreshes verified replicas, and reports how
 many operations remain pending. Conflicts keep their signed local request until
 an explicit choice. `conflict list` shows operation IDs and field names;

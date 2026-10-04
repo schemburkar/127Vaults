@@ -201,6 +201,24 @@ pub enum VaultCommand {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    Move {
+        vault: String,
+        #[arg(long = "to")]
+        destination: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    RemovalStatus {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    AbortMove {
+        /// Acknowledge that destination copies may remain and must be reviewed.
+        #[arg(long, required = true)]
+        keep_copies: bool,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     Restore {
         vault: String,
         #[arg(long, default_value = ".127vaults")]
@@ -1277,10 +1295,10 @@ fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(),
                 return Err("section marker is invalid".to_owned());
             }
             sections.insert(section);
-        } else if field["type"] == "metadata" || id.starts_with("__127vaults_") {
-            if !id.starts_with("__127vaults_field:") || field["type"] == "metadata" {
-                return Err("reserved item field is invalid".to_owned());
-            }
+        } else if field["type"] == "metadata"
+            || id.starts_with("__127vaults_") && !id.starts_with("__127vaults_field:")
+        {
+            return Err("reserved item field is invalid".to_owned());
         }
     }
     for field in fields {
@@ -1475,6 +1493,39 @@ pub fn run(cli: Cli) -> Result<String, String> {
             serde_json::json!({"vault":vault}),
         )?)
         .map_err(|_| "could not encode vault archive result".to_owned()),
+        Command::Vault {
+            command:
+                VaultCommand::Move {
+                    vault,
+                    destination,
+                    config_dir,
+                },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.move",
+            serde_json::json!({"vault":vault,"destination":destination}),
+        )?)
+        .map_err(|_| "could not encode vault move result".to_owned()),
+        Command::Vault {
+            command: VaultCommand::RemovalStatus { config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.removal.status",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode vault removal status".to_owned()),
+        Command::Vault {
+            command:
+                VaultCommand::AbortMove {
+                    keep_copies,
+                    config_dir,
+                },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.move.abort",
+            serde_json::json!({"keep_copies":keep_copies}),
+        )?)
+        .map_err(|_| "could not encode vault move abort".to_owned()),
         Command::Vault {
             command: VaultCommand::Restore { vault, config_dir },
         } => serde_json::to_string_pretty(&agent::call(
@@ -1838,6 +1889,23 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn move_requires_destination_and_abort_requires_copy_acknowledgement() {
+        assert!(Cli::try_parse_from(["127vaults", "vault", "move", "Source"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "127vaults",
+                "vault",
+                "move",
+                "Source",
+                "--to",
+                "Destination"
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["127vaults", "vault", "abort-move"]).is_err());
+        assert!(Cli::try_parse_from(["127vaults", "vault", "abort-move", "--keep-copies"]).is_ok());
     }
     #[test]
     fn status_is_redacted() {

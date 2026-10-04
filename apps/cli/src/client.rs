@@ -59,7 +59,20 @@ struct OfflineUnlockRecord {
 struct VaultRemovalJournal {
     source_vault_id: String,
     choice: String,
+    #[serde(default)]
+    destination_vault_id: Option<String>,
+    #[serde(default)]
+    source_catalogue_revision: Option<String>,
+    #[serde(default)]
+    item_mappings: Vec<ItemMoveMapping>,
     request: Value,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ItemMoveMapping {
+    source_item_id: String,
+    destination_item_id: String,
 }
 
 fn removal_journal_path(config_dir: &Path) -> std::path::PathBuf {
@@ -67,8 +80,12 @@ fn removal_journal_path(config_dir: &Path) -> std::path::PathBuf {
 }
 
 fn save_removal_journal(config_dir: &Path, journal: &VaultRemovalJournal) -> Result<(), String> {
+    journal.validate()?;
     let path = removal_journal_path(config_dir);
     let bytes = serde_json::to_vec(journal).map_err(|_| "vault removal could not be prepared")?;
+    if bytes.len() > 32 * 1024 {
+        return Err("vault removal journal is too large".to_owned());
+    }
     let mut file = atomic_write_file::AtomicWriteFile::open(path)
         .map_err(|_| "vault removal journal is unavailable")?;
     file.write_all(&bytes)
@@ -79,12 +96,97 @@ fn save_removal_journal(config_dir: &Path, journal: &VaultRemovalJournal) -> Res
 
 fn load_removal_journal(config_dir: &Path) -> Result<Option<VaultRemovalJournal>, String> {
     match fs::read(removal_journal_path(config_dir)) {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map(Some)
-            .map_err(|_| "vault removal journal is invalid".to_owned()),
+        Ok(bytes) => {
+            if bytes.len() > 32 * 1024 {
+                return Err("vault removal journal is too large".to_owned());
+            }
+            let journal: VaultRemovalJournal = serde_json::from_slice(&bytes)
+                .map_err(|_| "vault removal journal is invalid".to_owned())?;
+            journal.validate()?;
+            Ok(Some(journal))
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(_) => Err("vault removal journal is unavailable".to_owned()),
     }
+}
+
+impl VaultRemovalJournal {
+    fn validate(&self) -> Result<(), String> {
+        let invalid = || "vault removal journal is invalid".to_owned();
+        uuid::Uuid::parse_str(&self.source_vault_id).map_err(|_| invalid())?;
+        match self.choice.as_str() {
+            "archive" | "restore"
+                if self.destination_vault_id.is_none()
+                    && self.item_mappings.is_empty()
+                    && self.request.is_object() =>
+            {
+                Ok(())
+            }
+            "move" => {
+                let destination = self.destination_vault_id.as_deref().ok_or_else(invalid)?;
+                uuid::Uuid::parse_str(destination).map_err(|_| invalid())?;
+                if destination == self.source_vault_id
+                    || self
+                        .source_catalogue_revision
+                        .as_deref()
+                        .is_none_or(|revision| uuid::Uuid::parse_str(revision).is_err())
+                    || self.item_mappings.len() > 50
+                    || !(self.request.is_null() || self.request.is_object())
+                {
+                    return Err(invalid());
+                }
+                let mut sources = std::collections::HashSet::new();
+                let mut destinations = std::collections::HashSet::new();
+                for mapping in &self.item_mappings {
+                    uuid::Uuid::parse_str(&mapping.source_item_id).map_err(|_| invalid())?;
+                    uuid::Uuid::parse_str(&mapping.destination_item_id).map_err(|_| invalid())?;
+                    if !sources.insert(&mapping.source_item_id)
+                        || !destinations.insert(&mapping.destination_item_id)
+                    {
+                        return Err(invalid());
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(invalid()),
+        }
+    }
+}
+
+fn settings_after_archive(mut settings: SettingsData, source: &str) -> SettingsData {
+    for collection in &mut settings.collections {
+        collection.vault_ids.retain(|id| id != source);
+    }
+    settings
+        .collections
+        .retain(|collection| !collection.vault_ids.is_empty());
+    if matches!(&settings.default_view, Some(vault_settings::View::Vault(id)) if id == source)
+        || matches!(&settings.default_view, Some(vault_settings::View::Collection(id)) if !settings.collections.iter().any(|collection| &collection.id == id))
+    {
+        settings.default_view = None;
+    }
+    settings
+}
+
+fn settings_after_move(
+    mut settings: SettingsData,
+    source: &str,
+    destination: &str,
+) -> SettingsData {
+    settings.names.remove(source);
+    for collection in &mut settings.collections {
+        for id in &mut collection.vault_ids {
+            if id == source {
+                destination.clone_into(id);
+            }
+        }
+        collection.vault_ids.sort();
+        collection.vault_ids.dedup();
+    }
+    if matches!(&settings.default_view, Some(vault_settings::View::Vault(id)) if id == source) {
+        settings.default_view = Some(vault_settings::View::Vault(destination.to_owned()));
+    }
+    settings
 }
 
 fn offline_record_path(config_dir: &Path) -> std::path::PathBuf {
@@ -892,15 +994,24 @@ impl Session {
         .to_string())
     }
 
-    fn finish_removal(&mut self, journal: VaultRemovalJournal) -> Result<Value, String> {
+    fn finish_removal(&mut self, journal: &VaultRemovalJournal) -> Result<Value, String> {
         let source = &journal.source_vault_id;
         let response = self.post_auth(
             &format!("/api/v1/vaults/{source}/removal"),
             reqwest::Method::POST,
             &journal.request,
         )?;
-        if response["vaultId"] != *source || response["choice"] != journal.choice {
+        if response["requestId"] != journal.request["requestId"]
+            || response["vaultId"] != *source
+            || response["choice"] != journal.choice
+        {
             return Err("vault removal receipt is invalid".to_owned());
+        }
+        if journal.choice == "move"
+            && (response["destinationVaultId"].as_str() != journal.destination_vault_id.as_deref()
+                || response["itemCount"].as_u64() != Some(journal.item_mappings.len() as u64))
+        {
+            return Err("vault move receipt is invalid".to_owned());
         }
         let envelope = journal.request["settings"]["envelope"]
             .as_str()
@@ -921,6 +1032,32 @@ impl Session {
         Ok(response)
     }
 
+    pub fn removal_status(&self) -> Result<Value, String> {
+        let Some(journal) = load_removal_journal(&self.profile_dir)? else {
+            return Ok(json!({"pending":false}));
+        };
+        Ok(
+            json!({"pending":true,"choice":journal.choice,"sourceVaultId":journal.source_vault_id,
+            "destinationVaultId":journal.destination_vault_id,"itemMappings":journal.item_mappings,
+            "stage":if journal.request.is_null() {"copying"} else {"finalizing"}}),
+        )
+    }
+
+    pub fn abort_move_plan(&self) -> Result<Value, String> {
+        let journal =
+            load_removal_journal(&self.profile_dir)?.ok_or("vault move plan is unavailable")?;
+        if journal.choice != "move" || !journal.request.is_null() {
+            return Err("finalized requests must be retried, not abandoned".to_owned());
+        }
+        fs::remove_file(removal_journal_path(&self.profile_dir))
+            .map_err(|_| "vault move plan could not be cleared")?;
+        Ok(
+            json!({"aborted":true,"sourceVaultId":journal.source_vault_id,
+            "destinationVaultId":journal.destination_vault_id,"copiedItemsMayRemain":true,
+            "itemMappings":journal.item_mappings}),
+        )
+    }
+
     pub fn archive_vault(&mut self, selector: &str) -> Result<Value, String> {
         if !self.online {
             return Err("vault removal requires an online session".to_owned());
@@ -931,46 +1068,252 @@ impl Session {
             {
                 return Err("resume the pending vault removal first".to_owned());
             }
-            return self.finish_removal(journal);
+            return self.finish_removal(&journal);
         }
         self.sync_now()?;
         if self.settings_conflict || self.settings_record.pending.is_some() {
             return Err("resolve vault settings before removing a vault".to_owned());
         }
         let source = self.resolve_vault_id(selector)?;
+        self.checkpoint_now(&source)?;
         let replica = self.ensure_vault_settled(&source)?;
-        let mut settings = self.settings_data.clone();
-        for collection in &mut settings.collections {
-            collection.vault_ids.retain(|id| id != &source);
-        }
-        settings
-            .collections
-            .retain(|collection| !collection.vault_ids.is_empty());
-        if matches!(&settings.default_view, Some(vault_settings::View::Vault(id)) if id == &source)
-        {
-            settings.default_view = None;
-        }
-        if matches!(&settings.default_view, Some(vault_settings::View::Collection(id)) if !settings.collections.iter().any(|collection| &collection.id == id))
-        {
-            settings.default_view = None;
-        }
+        let settings = settings_after_archive(self.settings_data.clone(), &source);
         let envelope = vault_settings::encrypt(&self.core, self.root, &settings)?;
         let request = json!({"requestId":uuid::Uuid::new_v4(),"choice":"archive","destinationVaultId":null,"sourceCatalogueRevision":Self::catalogue_revision(&replica)?,"destinationCatalogueRevision":null,"itemMappings":[],"settings":{"baseRevision":self.settings_record.remote_revision,"revision":vault_settings::revision(&envelope)?,"envelope":envelope}});
         let journal = VaultRemovalJournal {
             source_vault_id: source,
             choice: "archive".to_owned(),
+            destination_vault_id: None,
+            source_catalogue_revision: None,
+            item_mappings: Vec::new(),
             request,
         };
         save_removal_journal(&self.profile_dir, &journal)?;
-        self.finish_removal(journal)
+        self.finish_removal(&journal)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub fn move_vault(
+        &mut self,
+        source_selector: &str,
+        destination_selector: &str,
+    ) -> Result<Value, String> {
+        if !self.online {
+            return Err("vault removal requires an online session".to_owned());
+        }
+        let mut journal = if let Some(journal) = load_removal_journal(&self.profile_dir)? {
+            if journal.choice != "move"
+                || self.resolve_vault_id(source_selector)? != journal.source_vault_id
+                || self.resolve_vault_id(destination_selector)?
+                    != journal.destination_vault_id.as_deref().unwrap_or("")
+            {
+                return Err("resume the pending vault removal first".to_owned());
+            }
+            journal
+        } else {
+            self.sync_now()?;
+            if self.settings_conflict || self.settings_record.pending.is_some() {
+                return Err("resolve vault settings before removing a vault".to_owned());
+            }
+            let source = self.resolve_vault_id(source_selector)?;
+            let destination = self.resolve_vault_id(destination_selector)?;
+            if source == destination {
+                return Err("move destination must differ from the source".to_owned());
+            }
+            self.checkpoint_now(&source)?;
+            self.checkpoint_now(&destination)?;
+            let source_replica = self.ensure_vault_settled(&source)?;
+            self.ensure_vault_settled(&destination)?;
+            if source_replica.items.len() > 50 {
+                return Err("move exceeds the 50-item server limit".to_owned());
+            }
+            let journal = VaultRemovalJournal {
+                source_vault_id: source,
+                choice: "move".to_owned(),
+                destination_vault_id: Some(destination),
+                source_catalogue_revision: Some(Self::catalogue_revision(&source_replica)?),
+                item_mappings: source_replica
+                    .items
+                    .iter()
+                    .map(|item| ItemMoveMapping {
+                        source_item_id: item.item_id.clone(),
+                        destination_item_id: uuid::Uuid::new_v4().to_string(),
+                    })
+                    .collect(),
+                request: Value::Null,
+            };
+            save_removal_journal(&self.profile_dir, &journal)?;
+            journal
+        };
+        if !journal.request.is_null() {
+            return self.finish_removal(&journal);
+        }
+        self.sync_now()?;
+        let source = journal.source_vault_id.clone();
+        let destination = journal
+            .destination_vault_id
+            .clone()
+            .ok_or("vault removal journal is invalid")?;
+        self.checkpoint_now(&source)?;
+        let source_replica = self.ensure_vault_settled(&source)?;
+        if Some(Self::catalogue_revision(&source_replica)?) != journal.source_catalogue_revision {
+            return Err(
+                "source changed during move; copied items were preserved for review".to_owned(),
+            );
+        }
+        let destination_replica = self
+            .replica_store
+            .load(&destination)?
+            .ok_or("local replica is unavailable")?;
+        if destination_replica.retired
+            || !destination_replica.pending.is_empty()
+            || !destination_replica.conflicts.is_empty()
+        {
+            return Err(
+                "resolve destination pending edits and conflicts before continuing move".to_owned(),
+            );
+        }
+        for mapping in &journal.item_mappings {
+            let source_item = source_replica
+                .items
+                .iter()
+                .find(|item| item.item_id == mapping.source_item_id)
+                .ok_or("source item changed during move")?;
+            let draft = self.decrypt_item_parts(
+                &source,
+                &source_item.item_id,
+                &source_replica.catalogue,
+                &source_item.index,
+                &source_item.body,
+            )?;
+            let destination_replica = self
+                .replica_store
+                .load(&destination)?
+                .ok_or("local replica is unavailable")?;
+            if let Some(existing) = destination_replica
+                .items
+                .iter()
+                .find(|item| item.item_id == mapping.destination_item_id)
+            {
+                let copied = self.decrypt_item_parts(
+                    &destination,
+                    &existing.item_id,
+                    &destination_replica.catalogue,
+                    &existing.index,
+                    &existing.body,
+                )?;
+                for field in ["title", "website", "username", "password", "customFields"] {
+                    if copied[field] != draft[field] {
+                        return Err("destination copy changed during move; review it before retiring the source".to_owned());
+                    }
+                }
+                continue;
+            }
+            self.item_upsert_at_id(
+                &destination,
+                None,
+                Some(&mapping.destination_item_id),
+                draft["title"].as_str().ok_or("source item is invalid")?,
+                draft["website"].as_str().ok_or("source item is invalid")?,
+                draft["username"].as_str().ok_or("source item is invalid")?,
+                draft["password"].as_str().ok_or("source item is invalid")?,
+                draft["customFields"]
+                    .as_array()
+                    .ok_or("source item is invalid")?,
+            )?;
+            // Refresh the signed device head before the next create. The
+            // catalogue advances locally, but the operation log advances only
+            // after the server accepts and the replica is hydrated.
+            self.sync_now()?;
+            let current_source = self
+                .replica_store
+                .load(&source)?
+                .ok_or("local replica is unavailable")?;
+            if Some(Self::catalogue_revision(&current_source)?) != journal.source_catalogue_revision
+            {
+                return Err(
+                    "source changed during move; copied items were preserved for review".to_owned(),
+                );
+            }
+            let current_destination = self
+                .replica_store
+                .load(&destination)?
+                .ok_or("local replica is unavailable")?;
+            if !current_destination.pending.is_empty() || !current_destination.conflicts.is_empty()
+            {
+                return Err(
+                    "destination copy is pending or conflicted; resume the move after resolving it"
+                        .to_owned(),
+                );
+            }
+        }
+        self.sync_now()?;
+        self.checkpoint_now(&destination)?;
+        let source_replica = self.ensure_vault_settled(&source)?;
+        let destination_replica = self.ensure_vault_settled(&destination)?;
+        if Some(Self::catalogue_revision(&source_replica)?) != journal.source_catalogue_revision {
+            return Err(
+                "source changed during move; copied items were preserved for review".to_owned(),
+            );
+        }
+        for mapping in &journal.item_mappings {
+            let source_item = source_replica
+                .items
+                .iter()
+                .find(|item| item.item_id == mapping.source_item_id)
+                .ok_or("source item changed during move")?;
+            let destination_item = destination_replica
+                .items
+                .iter()
+                .find(|item| item.item_id == mapping.destination_item_id)
+                .ok_or("destination copy is missing")?;
+            let original = self.decrypt_item_parts(
+                &source,
+                &source_item.item_id,
+                &source_replica.catalogue,
+                &source_item.index,
+                &source_item.body,
+            )?;
+            let copied = self.decrypt_item_parts(
+                &destination,
+                &destination_item.item_id,
+                &destination_replica.catalogue,
+                &destination_item.index,
+                &destination_item.body,
+            )?;
+            for field in ["title", "website", "username", "password", "customFields"] {
+                if original[field] != copied[field] {
+                    return Err(
+                        "destination copy differs from source; source was preserved".to_owned()
+                    );
+                }
+            }
+        }
+        if self.settings_conflict || self.settings_record.pending.is_some() {
+            return Err("resolve vault settings before retiring the source".to_owned());
+        }
+        let settings = settings_after_move(self.settings_data.clone(), &source, &destination);
+        let envelope = vault_settings::encrypt(&self.core, self.root, &settings)?;
+        journal.request = json!({"requestId":uuid::Uuid::new_v4(),"choice":"move","destinationVaultId":destination,
+            "sourceCatalogueRevision":Self::catalogue_revision(&source_replica)?,
+            "destinationCatalogueRevision":Self::catalogue_revision(&destination_replica)?,
+            "itemMappings":journal.item_mappings.iter().map(|mapping| json!({"sourceItemId":mapping.source_item_id,"destinationItemId":mapping.destination_item_id})).collect::<Vec<_>>(),
+            "settings":{"baseRevision":self.settings_record.remote_revision,"revision":vault_settings::revision(&envelope)?,"envelope":envelope}});
+        save_removal_journal(&self.profile_dir, &journal)?;
+        self.finish_removal(&journal)
     }
 
     pub fn restore_archived_vault(&mut self, selector: &str) -> Result<Value, String> {
         if !self.online {
             return Err("vault restore requires an online session".to_owned());
         }
-        if load_removal_journal(&self.profile_dir)?.is_some() {
-            return Err("resume the pending vault removal first".to_owned());
+        if let Some(journal) = load_removal_journal(&self.profile_dir)? {
+            if journal.choice != "restore"
+                || self.resolve_vault_id(selector)? != journal.source_vault_id
+            {
+                return Err("resume the pending vault removal first".to_owned());
+            }
+            return self.finish_restore(&journal);
         }
         self.hydrate_replicas()?;
         let source = self.resolve_vault_id(selector)?;
@@ -982,15 +1325,34 @@ impl Session {
             return Err("vault is not archived".to_owned());
         }
         let request = json!({"requestId":uuid::Uuid::new_v4(),"sourceCatalogueRevision":Self::catalogue_revision(&replica)?});
+        let journal = VaultRemovalJournal {
+            source_vault_id: source,
+            choice: "restore".to_owned(),
+            destination_vault_id: None,
+            source_catalogue_revision: None,
+            item_mappings: Vec::new(),
+            request,
+        };
+        save_removal_journal(&self.profile_dir, &journal)?;
+        self.finish_restore(&journal)
+    }
+
+    fn finish_restore(&mut self, journal: &VaultRemovalJournal) -> Result<Value, String> {
+        let source = &journal.source_vault_id;
         let response = self.post_auth(
             &format!("/api/v1/vaults/{source}/restore"),
             reqwest::Method::POST,
-            &request,
+            &journal.request,
         )?;
-        if response["vaultId"] != source || response["restored"] != true {
+        if response["requestId"] != journal.request["requestId"]
+            || response["vaultId"] != *source
+            || response["restored"] != true
+        {
             return Err("vault restore receipt is invalid".to_owned());
         }
         self.hydrate_replicas()?;
+        fs::remove_file(removal_journal_path(&self.profile_dir))
+            .map_err(|_| "vault restore journal could not be cleared")?;
         Ok(response)
     }
 
@@ -1087,7 +1449,6 @@ impl Session {
         let id = self.resolve_vault_id(selector)?;
         let mut file = atomic_write_file::AtomicWriteFile::open(path)
             .map_err(|_| "default vault preference is unavailable")?;
-        use std::io::Write as _;
         file.write_all(id.as_bytes())
             .map_err(|_| "default vault preference could not be saved")?;
         file.commit()
@@ -1430,6 +1791,8 @@ impl Session {
     #[allow(clippy::too_many_lines)]
     fn rebase_nonoverlapping_conflicts(&mut self) -> Result<u64, String> {
         let mut rebased = 0;
+        let move_plan = load_removal_journal(&self.profile_dir)?
+            .filter(|journal| journal.choice == "move" && journal.request.is_null());
         for replica in self.replica_store.list()? {
             for conflict in replica.conflicts.clone() {
                 let Some(operation_id) = conflict["operationId"].as_str() else {
@@ -1446,6 +1809,17 @@ impl Session {
                     continue;
                 };
                 if pending.operation["kind"] == "item.create" {
+                    if move_plan.as_ref().is_some_and(|journal| {
+                        journal.destination_vault_id.as_deref() == Some(&replica.vault_id)
+                            && journal
+                                .item_mappings
+                                .iter()
+                                .any(|mapping| mapping.destination_item_id == item_id)
+                    }) {
+                        // A move's reserved destination ID must never be
+                        // replaced by the generic stale-create rebase.
+                        continue;
+                    }
                     if replica.items.iter().any(|row| row.item_id == item_id) {
                         self.replica_store.update(&replica.vault_id, |current| {
                             if let Some(row) = current
@@ -1847,7 +2221,7 @@ impl Session {
                 .iter()
                 .map(|v| {
                     let id = &v.vault_id;
-                    json!({"name":self.settings_data.names.get(id).map(String::as_str).unwrap_or("Private"),"code":Self::reference("V",id),"vaultId":id,"retired":v.retired,"retirementChoice":v.retirement_choice})
+                    json!({"name":self.settings_data.names.get(id).map_or("Private", String::as_str),"code":Self::reference("V",id),"vaultId":id,"retired":v.retired,"retirementChoice":v.retirement_choice})
                 })
                 .collect(),
         ))
@@ -2145,6 +2519,33 @@ impl Session {
         password: &str,
         custom_fields: &[Value],
     ) -> Result<Value, String> {
+        self.item_upsert_at_id(
+            vault_selector,
+            item_selector,
+            None,
+            title,
+            website,
+            username,
+            password,
+            custom_fields,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn item_upsert_at_id(
+        &mut self,
+        vault_selector: &str,
+        item_selector: Option<&str>,
+        create_id: Option<&str>,
+        title: &str,
+        website: &str,
+        username: &str,
+        password: &str,
+        custom_fields: &[Value],
+    ) -> Result<Value, String> {
+        if item_selector.is_some() && create_id.is_some() {
+            return Err("item operation is invalid".to_owned());
+        }
         let target_vault = self.resolve_vault_id(vault_selector)?;
         if self
             .replica_store
@@ -2208,22 +2609,26 @@ impl Session {
         )
         .to_string();
         let item = resolved_item.as_deref().map(uuid_bytes).transpose()?;
-        let made = self
-            .core
-            .upsert_private_item(
+        let index = serde_json::to_vec(&json!({"title":title,"website":website}))
+            .map_err(|_| "invalid item")?;
+        let body = serde_json::to_vec(
+            &json!({"username":username,"password":password,"customFields":custom_fields}),
+        )
+        .map_err(|_| "invalid item")?;
+        let made = if let Some(id) = create_id {
+            self.core.upsert_private_item_at_id(
                 vault,
                 &catalogue,
-                item,
-                serde_json::to_string(&json!({"title":title,"website":website}))
-                    .map_err(|_| "invalid item")?
-                    .as_bytes(),
-                serde_json::to_string(
-                    &json!({"username":username,"password":password,"customFields":custom_fields}),
-                )
-                .map_err(|_| "invalid item")?
-                .as_bytes(),
+                uuid_bytes(id)?,
+                false,
+                &index,
+                &body,
             )
-            .map_err(|_| "item encryption failed".to_owned())?;
+        } else {
+            self.core
+                .upsert_private_item(vault, &catalogue, item, &index, &body)
+        }
+        .map_err(|_| "item encryption failed".to_owned())?;
         let new_id = uuid::Uuid::from_bytes(made.item).to_string();
         let current_replica = self
             .replica_store
@@ -2467,6 +2872,9 @@ mod tests {
         let journal = VaultRemovalJournal {
             source_vault_id: uuid::Uuid::new_v4().to_string(),
             choice: "archive".to_owned(),
+            destination_vault_id: None,
+            source_catalogue_revision: None,
+            item_mappings: Vec::new(),
             request: json!({"requestId":uuid::Uuid::new_v4(),"settings":{"envelope":"ciphertext"}}),
         };
         save_removal_journal(&dir, &journal).unwrap();
@@ -2476,6 +2884,61 @@ mod tests {
         fs::write(removal_journal_path(&dir), b"{").unwrap();
         assert!(load_removal_journal(&dir).is_err());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn move_journal_rejects_duplicate_destination_ids() {
+        let source = uuid::Uuid::new_v4().to_string();
+        let destination = uuid::Uuid::new_v4().to_string();
+        let source_a = uuid::Uuid::new_v4().to_string();
+        let source_b = uuid::Uuid::new_v4().to_string();
+        let copied = uuid::Uuid::new_v4().to_string();
+        let plan = VaultRemovalJournal {
+            source_vault_id: source,
+            choice: "move".to_owned(),
+            destination_vault_id: Some(destination),
+            source_catalogue_revision: Some(uuid::Uuid::new_v4().to_string()),
+            item_mappings: vec![
+                ItemMoveMapping {
+                    source_item_id: source_a,
+                    destination_item_id: copied.clone(),
+                },
+                ItemMoveMapping {
+                    source_item_id: source_b,
+                    destination_item_id: copied,
+                },
+            ],
+            request: Value::Null,
+        };
+        assert!(plan.validate().is_err());
+    }
+
+    #[test]
+    fn removal_settings_keep_archive_name_and_retarget_move_views() {
+        let source = uuid::Uuid::new_v4().to_string();
+        let destination = uuid::Uuid::new_v4().to_string();
+        let collection_id = uuid::Uuid::new_v4().to_string();
+        let mut settings = SettingsData::empty();
+        settings.names.insert(source.clone(), "Source".to_owned());
+        settings.collections.push(vault_settings::Collection {
+            id: collection_id.clone(),
+            name: "Group".to_owned(),
+            vault_ids: vec![source.clone(), destination.clone()],
+        });
+        settings.default_view = Some(vault_settings::View::Vault(source.clone()));
+        let archive = settings_after_archive(settings.clone(), &source);
+        assert_eq!(
+            archive.names.get(&source).map(String::as_str),
+            Some("Source")
+        );
+        assert_eq!(archive.collections[0].vault_ids, vec![destination.clone()]);
+        assert!(archive.default_view.is_none());
+        let moved = settings_after_move(settings, &source, &destination);
+        assert!(!moved.names.contains_key(&source));
+        assert_eq!(moved.collections[0].vault_ids, vec![destination.clone()]);
+        assert!(
+            matches!(moved.default_view, Some(vault_settings::View::Vault(id)) if id == destination)
+        );
     }
 
     #[test]
