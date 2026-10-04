@@ -102,6 +102,48 @@ fn profile(path: &std::path::Path, key: &str) -> Option<String> {
         .find_map(|line| line.strip_prefix(&format!("{key}=")).map(str::to_owned))
 }
 
+fn secret_cache_path(config: &Path) -> PathBuf { config.join("account-secret-cache.json") }
+
+fn secret_cache_key(config: &Path, username: &str) -> Option<String> {
+    let server = profile(&config.join("trust.conf"), "server_id")?;
+    let device = profile(&config.join("device.conf"), "device_id")?;
+    Some(format!("{server}:{device}:{username}"))
+}
+
+fn now_seconds() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
+fn cache_expiry() -> u64 { now_seconds() + 30 * 24 * 60 * 60 }
+
+fn cached_username(config: &Path) -> Option<String> {
+    let record: Value = serde_json::from_slice(&fs::read(secret_cache_path(config)).ok()?).ok()?;
+    let username = record["username"].as_str()?;
+    let expires_at = record["expiresAt"].as_u64()?;
+    if expires_at <= now_seconds() { return None; }
+    Some(username.to_owned())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn cached_account_secret(config: &Path, username: &str) -> Option<String> {
+    if cached_username(config)?.as_str() != username { return None; }
+    let entry = keyring::Entry::new("127Vaults account secret", &secret_cache_key(config, username)?).ok()?;
+    let secret = String::from_utf8(entry.get_secret().ok()?).ok()?;
+    (secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit())).then_some(secret)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn cached_account_secret(_config: &Path, _username: &str) -> Option<String> { None }
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn remember_account_secret(config: &Path, username: &str, secret: &str) -> Result<(), String> {
+    let key = secret_cache_key(config, username).ok_or("device identity is unavailable")?;
+    let entry = keyring::Entry::new("127Vaults account secret", &key).map_err(|_| "OS credential storage is unavailable")?;
+    entry.set_secret(secret.as_bytes()).map_err(|_| "account secret could not be protected by the OS")?;
+    let record = json!({"username":username,"expiresAt":cache_expiry()});
+    fs::write(secret_cache_path(config), serde_json::to_vec(&record).map_err(|_| "account secret cache metadata is invalid")?).map_err(|_| "account secret cache metadata could not be saved".to_owned())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn remember_account_secret(_config: &Path, _username: &str, _secret: &str) -> Result<(), String> { Err("OS credential storage is unavailable".to_owned()) }
+
 #[tauri::command]
 fn desktop_info() -> Result<Value, String> {
     let config = config_directory()?;
@@ -110,6 +152,9 @@ fn desktop_info() -> Result<Value, String> {
         "configured": config.join("trust.conf").is_file() && config.join("device.conf").is_file(),
         "configurationPath": config,
         "registrationUrl": origin.map(|url| format!("{url}/?register=1")),
+        "cachedUsername": cached_username(&config),
+        "hasCachedSecret": cached_username(&config).and_then(|username| cached_account_secret(&config, &username)).is_some(),
+        "deviceId": profile(&config.join("device.conf"), "device_id"),
     }))
 }
 
@@ -135,11 +180,15 @@ async fn unlock(
     // can all be expensive. Keep them off the webview command thread so the
     // unlock progress UI remains responsive.
     let config = config_directory()?;
+    let supplied_secret = !account_secret.is_empty();
+    let secret = if account_secret.is_empty() {
+        cached_account_secret(&config, &username).ok_or("account secret is required on this device or after 30 days")?
+    } else { account_secret };
     let (session, result) = tauri::async_runtime::spawn_blocking(move || {
         let mut session = unlock_with_offline_fallback(
             &config,
             &username,
-            &account_secret,
+            &secret,
             master_password.as_bytes(),
         )?;
         let online = session.is_online();
@@ -170,9 +219,10 @@ async fn unlock(
         let initial_vault = if view_kind == "vault" {
             default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
+        let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
         Ok::<_, String>((
             session,
-            json!({"online":online,"vaultId":initial_vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id}),
+            json!({"online":online,"vaultId":initial_vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered}),
         ))
     })
     .await
@@ -187,6 +237,11 @@ async fn unlock(
 #[tauri::command]
 fn item_list(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
     with_session(&state, |session| session.item_list(&vault_id))
+}
+
+#[tauri::command]
+fn device_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.device_list())
 }
 
 #[tauri::command]
@@ -495,6 +550,7 @@ fn main() {
             unlock,
             item_list,
             vault_create,
+            device_list,
             vault_rename,
             vault_settings,
             vault_settings_review,

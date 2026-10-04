@@ -24,6 +24,7 @@ import {
   Settings,
   Trash2,
   Vault,
+  X,
 } from "lucide-react";
 
 type Summary = { itemId: string; title: string; website: string; vaultId?: string };
@@ -36,11 +37,14 @@ type Item = Summary & {
 type VaultSummary = { vaultId: string; name: string; code: string };
 type CollectionSummary = { id: string; name: string; vault_ids: string[] };
 type VaultSettings = { collections: CollectionSummary[]; defaultView: { kind: string; id?: string } | null; removalPreference: string | null; pending: boolean; conflict: boolean };
-type UnlockResult = { online: boolean; vaultId: string; defaultVaultId: string | null; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null };
+type UnlockResult = { online: boolean; vaultId: string; defaultVaultId: string | null; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null; secretRemembered: boolean };
 type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
   registrationUrl: string | null;
+  cachedUsername: string | null;
+  hasCachedSecret: boolean;
+  deviceId: string | null;
 };
 type EnrollmentStatus = {
   state?: "starting" | "approval" | "complete" | "error";
@@ -108,6 +112,8 @@ export function App() {
     [username, setUsername] = useState("");
   const [accountSecret, setAccountSecret] = useState(""),
     [masterPassword, setMasterPassword] = useState("");
+  const [rememberedSecret, setRememberedSecret] = useState(false);
+  const [showSecretEntry, setShowSecretEntry] = useState(false);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [notices, setNotices] = useState<Notice[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -116,7 +122,10 @@ export function App() {
   const [footerMenu, setFooterMenu] = useState(false);
   const [compactNavOpen, setCompactNavOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"profile" | "vaults" | "preferences">("preferences");
+  const [settingsTab, setSettingsTab] = useState<"profile" | "devices" | "vaults" | "preferences">("profile");
+  const [devices, setDevices] = useState<{ deviceId: string; protectionClass?: string; credentialState?: string; status?: string }[]>([]);
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
+  const [deviceError, setDeviceError] = useState("");
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [lastLocalChange, setLastLocalChange] = useState<Date | null>(null);
   const notify = (kind: Notice["kind"], title: string, detail?: string) => {
@@ -144,6 +153,14 @@ export function App() {
       return "The server could not be reached. Your local vault is unchanged.";
     return message;
   };
+  const loadDevices = async () => {
+    setDeviceError("");
+    try {
+      const result = await invoke<{ devices: typeof devices; currentDeviceId: string }>("device_list");
+      setDevices(result.devices ?? []);
+      setCurrentDeviceId(result.currentDeviceId);
+    } catch (error) { setDeviceError(friendlyError(error)); }
+  };
 
   const lock = async (reason = "Locked") => {
     await invoke("lock").catch(() => undefined);
@@ -168,7 +185,7 @@ export function App() {
   };
   useEffect(() => {
     void invoke<DesktopInfo>("desktop_info")
-      .then(setDesktopInfo)
+      .then((info) => { setDesktopInfo(info); setRememberedSecret(info.hasCachedSecret); if (info.cachedUsername) setUsername(info.cachedUsername); })
       .catch((e) => setStatus(String(e)));
     // Focus and visibility changes are not lock signals. Users routinely switch
     // apps while retrieving an account secret or completing login.
@@ -251,7 +268,7 @@ export function App() {
     if (busy) return;
     const nextErrors: Record<string, string> = {};
     if (!username.trim()) nextErrors.username = "Enter your username.";
-    if (!/^[0-9a-fA-F]{64}$/.test(accountSecret))
+    if ((!rememberedSecret || showSecretEntry || accountSecret.length > 0) && !/^[0-9a-fA-F]{64}$/.test(accountSecret))
       nextErrors.accountSecret = "Enter the 64-character account secret.";
     if ([...masterPassword].length < 20)
       nextErrors.masterPassword =
@@ -284,6 +301,8 @@ export function App() {
       setUnlocked(true);
       dragSession.unlock();
       setAccountSecret("");
+      setRememberedSecret(result.secretRemembered);
+      setShowSecretEntry(false);
       setMasterPassword("");
       setStatus(
         result.online
@@ -307,6 +326,7 @@ export function App() {
           ? "This device was rejected by the server and has no offline replica yet. Register this device, then complete one online unlock to enable offline access."
           : friendlyError(e);
       setStatus(detail);
+      if (message.includes("account secret is required on this device")) { setRememberedSecret(false); setShowSecretEntry(true); }
       notify("error", "Could not unlock the vault", detail);
     } finally {
       setBusy(false);
@@ -860,7 +880,7 @@ export function App() {
             {errors.username && (
               <p className="-mt-2 text-xs text-red-300">{errors.username}</p>
             )}
-            <Input
+            {(!rememberedSecret || showSecretEntry) && <Input
               aria-label="Account secret"
               aria-invalid={!!errors.accountSecret}
               className={
@@ -873,12 +893,14 @@ export function App() {
               value={accountSecret}
               onChange={(e) => setAccountSecret(e.target.value)}
               placeholder="Account secret"
-            />
+            />}
             {errors.accountSecret && (
               <p className="-mt-2 text-xs text-red-300">
                 {errors.accountSecret}
               </p>
             )}
+            {rememberedSecret && !showSecretEntry && <button className="w-fit text-left text-xs text-[#E0BB95]" onClick={() => setShowSecretEntry(true)}>Use account secret instead</button>}
+            {rememberedSecret && showSecretEntry && <button className="w-fit text-left text-xs text-[#E0BB95]" onClick={() => { setShowSecretEntry(false); setAccountSecret(""); }}>Use this device’s saved secret</button>}
             <Input
               aria-label="Master password"
               aria-invalid={!!errors.masterPassword}
@@ -1522,12 +1544,15 @@ export function App() {
         ))}
       </div>
       {settingsOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-4" role="dialog" aria-modal="true" aria-labelledby="desktop-settings-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
-        <section className="desktop-settings w-full max-w-xl overflow-auto rounded-2xl border border-white/10 bg-[#11162b] p-6 shadow-2xl">
-          <div className="flex items-start justify-between gap-4"><div><h2 id="desktop-settings-title" className="text-xl font-bold">Settings</h2><p className="mt-1 text-sm text-slate-400">Manage this device and your vault preferences.</p></div><Button variant="ghost" onClick={() => setSettingsOpen(false)}>Close</Button></div>
-          <div className="mt-6 flex gap-2 border-b border-white/10 pb-3" role="tablist" aria-label="Settings sections">{(["profile", "vaults", "preferences"] as const).map((tab) => <Button key={tab} role="tab" aria-selected={settingsTab === tab} variant={settingsTab === tab ? "secondary" : "ghost"} onClick={() => setSettingsTab(tab)}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</div>
-          {settingsTab === "profile" && <div className="mt-6 grid gap-3 text-sm"><p><span className="text-slate-400">Account</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p><Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button></div>}
-          {settingsTab === "vaults" && <div className="mt-6 grid gap-4 text-sm"><label className="grid gap-2">Default vault<select className="desktop-settings-select" value={vaults.length === 1 ? vaults[0].vaultId : defaultVaultId ?? ""} disabled={vaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>{vaults.length === 1 && <p className="text-xs text-slate-400">Your only vault is selected automatically.</p>}<Button variant="secondary" className="w-fit" onClick={() => { setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>Add vault</Button></div>}
-          {settingsTab === "preferences" && <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{vaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
+        <section className="desktop-settings relative grid w-full max-w-3xl grid-cols-[12rem_minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#080c1f] shadow-2xl">
+          <Button variant="ghost" className="desktop-settings-close absolute right-3 top-3 z-10 !size-9 !min-h-9 !justify-center !p-0" aria-label="Close settings" title="Close settings" onClick={() => setSettingsOpen(false)}><X size={18} /></Button>
+          <aside className="desktop-settings-nav flex flex-col border-r border-white/10 p-4"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500">SETTINGS</p><h2 id="desktop-settings-title" className="mb-5 mt-2 text-xl font-bold">Settings</h2>{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} role="tab" aria-selected={settingsTab === tab} variant="ghost" className={cn("justify-start", settingsTab === tab && "bg-[#E0BB95]/12 text-[#E0BB95]")} onClick={() => { setSettingsTab(tab); if (tab === "devices") void loadDevices(); }}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</aside>
+          <div className="desktop-settings-body overflow-auto p-8 pr-12 text-sm">
+            {settingsTab === "profile" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Profile</h3><p className="mt-1 text-slate-400">Your account on this device.</p></div><p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p><p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p><Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button></div>}
+            {settingsTab === "devices" && <div><h3 className="text-2xl font-bold">Devices</h3><p className="mt-1 text-slate-400">Devices registered to this account.</p>{deviceError && <p className="mt-5 text-amber-300">{deviceError}</p>}<div className="mt-5 grid gap-2">{devices.map((device) => <div key={device.deviceId} className="rounded-xl border border-white/10 bg-white/3 p-3"><strong>{device.deviceId === currentDeviceId ? "This desktop" : `Device ${device.deviceId.slice(0, 8)}`}</strong><p className="mt-1 text-xs text-slate-400">{device.protectionClass ?? "Unknown"} protection · credential {device.credentialState ?? "unknown"} · {device.status ?? "unknown"}</p></div>)}</div><Button variant="secondary" className="mt-5" onClick={() => void loadDevices()}>Refresh devices</Button></div>}
+            {settingsTab === "vaults" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Vaults</h3><p className="mt-1 text-slate-400">Manage your encrypted vaults.</p></div><div className="grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center justify-between rounded-xl border border-white/10 p-3"><span>{vault.name}</span><span className="text-xs text-slate-500">{vault.code}</span></div>)}</div><label className="grid gap-2">Default vault<select className="desktop-settings-select" value={vaults.length === 1 ? vaults[0].vaultId : defaultVaultId ?? ""} disabled={vaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>{vaults.length === 1 && <p className="text-xs text-slate-400">Your only vault is selected automatically.</p>}<Button variant="secondary" className="w-fit" onClick={() => { setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>Create vault</Button>{!online && <p className="text-xs text-amber-300">Creating a vault requires an online session. Reconnect and unlock again to continue.</p>}</div>}
+            {settingsTab === "preferences" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Preferences</h3><p className="mt-1 text-slate-400">Choose what opens first and how vault removal is handled.</p></div><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{vaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
+          </div>
         </section>
       </div>}
       {settingsReview && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="settings-review-title">

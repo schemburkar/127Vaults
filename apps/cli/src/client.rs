@@ -563,6 +563,12 @@ pub fn unlock_with_offline_fallback(
 }
 
 impl Session {
+    pub fn device_list(&self) -> Result<Value, String> {
+        if !self.online { return Err("device list is unavailable while offline".to_owned()); }
+        let mut response = self.get("/api/v1/devices")?;
+        response["currentDeviceId"] = json!(self.device_id);
+        Ok(response)
+    }
     pub fn vault_settings(&self) -> Value {
         json!({"names":self.settings_data.names,"collections":self.settings_data.collections,
             "defaultView":self.settings_data.default_view,"removalPreference":self.settings_data.removal_preference,
