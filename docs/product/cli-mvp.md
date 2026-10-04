@@ -57,6 +57,14 @@ selector to set it, or `--clear` to remove the preference. The desktop opens
 that vault on unlock when it uses the same profile directory. This preference
 stores only the vault UUID locally and works offline.
 
+`vault archive VAULT` retires a vault while keeping its encrypted items
+recoverable; `vault restore VAULT` makes an archived vault writable again.
+Archive requires an online, synchronized vault with no pending edits or conflicts
+and a settled signed checkpoint. The CLI saves an encrypted-settings removal
+request before sending it, so repeating the same archive command resumes a
+request whose response was lost. `vault list` marks retired vaults; unqualified
+item commands and `item list --all` use active vaults.
+
 `sync` submits queued operations, refreshes verified replicas, and reports how
 many operations remain pending. Conflicts keep their signed local request until
 an explicit choice. `conflict list` shows operation IDs and field names;

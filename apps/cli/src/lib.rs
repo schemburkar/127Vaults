@@ -196,6 +196,16 @@ pub enum VaultCommand {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    Archive {
+        vault: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    Restore {
+        vault: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     DefaultView {
         #[arg(value_parser = ["all", "vault", "collection"])]
         kind: String,
@@ -1457,6 +1467,22 @@ pub fn run(cli: Cli) -> Result<String, String> {
             serde_json::json!({"choice":choice}),
         )?)
         .map_err(|_| "could not encode vault settings".to_owned()),
+        Command::Vault {
+            command: VaultCommand::Archive { vault, config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.archive",
+            serde_json::json!({"vault":vault}),
+        )?)
+        .map_err(|_| "could not encode vault archive result".to_owned()),
+        Command::Vault {
+            command: VaultCommand::Restore { vault, config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "vault.restore",
+            serde_json::json!({"vault":vault}),
+        )?)
+        .map_err(|_| "could not encode vault restore result".to_owned()),
         Command::Vault {
             command:
                 VaultCommand::DefaultView {

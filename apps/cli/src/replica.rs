@@ -37,6 +37,10 @@ pub struct Replica {
     pub version: u32,
     pub tenant_id: String,
     pub vault_id: String,
+    #[serde(default)]
+    pub retired: bool,
+    #[serde(default)]
+    pub retirement_choice: Option<String>,
     pub epoch: u64,
     pub directory: String,
     pub vault_envelope: String,
@@ -58,6 +62,8 @@ impl Replica {
             version: FORMAT_VERSION,
             tenant_id,
             vault_id,
+            retired: false,
+            retirement_choice: None,
             epoch,
             directory: String::new(),
             vault_envelope: String::new(),

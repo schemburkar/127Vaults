@@ -1,4 +1,5 @@
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
+use std::io::Write as _;
 use std::{fs, path::Path};
 
 use crate::{
@@ -51,6 +52,39 @@ struct OfflineUnlockRecord {
     epoch: u64,
     descriptor: String,
     envelope: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct VaultRemovalJournal {
+    source_vault_id: String,
+    choice: String,
+    request: Value,
+}
+
+fn removal_journal_path(config_dir: &Path) -> std::path::PathBuf {
+    config_dir.join("vault-removal.json")
+}
+
+fn save_removal_journal(config_dir: &Path, journal: &VaultRemovalJournal) -> Result<(), String> {
+    let path = removal_journal_path(config_dir);
+    let bytes = serde_json::to_vec(journal).map_err(|_| "vault removal could not be prepared")?;
+    let mut file = atomic_write_file::AtomicWriteFile::open(path)
+        .map_err(|_| "vault removal journal is unavailable")?;
+    file.write_all(&bytes)
+        .map_err(|_| "vault removal journal could not be saved")?;
+    file.commit()
+        .map_err(|_| "vault removal journal could not be saved".to_owned())
+}
+
+fn load_removal_journal(config_dir: &Path) -> Result<Option<VaultRemovalJournal>, String> {
+    match fs::read(removal_journal_path(config_dir)) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|_| "vault removal journal is invalid".to_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err("vault removal journal is unavailable".to_owned()),
+    }
 }
 
 fn offline_record_path(config_dir: &Path) -> std::path::PathBuf {
@@ -813,6 +847,151 @@ impl Session {
             settings.removal_preference = choice.map(str::to_owned);
             Ok(())
         })
+    }
+
+    fn ensure_vault_settled(&self, vault_id: &str) -> Result<Replica, String> {
+        let replica = self
+            .replica_store
+            .load(vault_id)?
+            .ok_or("local replica is unavailable")?;
+        if replica.retired {
+            return Err("vault is already retired".to_owned());
+        }
+        if !replica.pending.is_empty()
+            || !replica.conflicts.is_empty()
+            || replica.sync_error.is_some()
+        {
+            return Err(
+                "resolve pending edits and conflicts before removing this vault".to_owned(),
+            );
+        }
+        if replica
+            .checkpoint
+            .as_ref()
+            .and_then(|checkpoint| checkpoint["cursor"].as_u64())
+            != Some(replica.cursor)
+        {
+            return Err(
+                "vault checkpoint is not settled; sync before removing this vault".to_owned(),
+            );
+        }
+        Ok(replica)
+    }
+
+    fn catalogue_revision(replica: &Replica) -> Result<String, String> {
+        let catalogue = URL_SAFE_NO_PAD
+            .decode(&replica.catalogue)
+            .map_err(|_| "local replica is invalid")?;
+        Ok(uuid::Uuid::from_bytes(
+            catalogue
+                .get(44..60)
+                .ok_or("local replica is invalid")?
+                .try_into()
+                .map_err(|_| "local replica is invalid")?,
+        )
+        .to_string())
+    }
+
+    fn finish_removal(&mut self, journal: VaultRemovalJournal) -> Result<Value, String> {
+        let source = &journal.source_vault_id;
+        let response = self.post_auth(
+            &format!("/api/v1/vaults/{source}/removal"),
+            reqwest::Method::POST,
+            &journal.request,
+        )?;
+        if response["vaultId"] != *source || response["choice"] != journal.choice {
+            return Err("vault removal receipt is invalid".to_owned());
+        }
+        let envelope = journal.request["settings"]["envelope"]
+            .as_str()
+            .ok_or("vault removal journal is invalid")?;
+        let data = vault_settings::decrypt(&self.core, self.root, envelope)?;
+        self.settings_record.remote_revision = journal.request["settings"]["revision"]
+            .as_str()
+            .map(str::to_owned);
+        self.settings_record.verified_envelope = Some(envelope.to_owned());
+        self.settings_record.pending = None;
+        self.settings_store.commit(&self.settings_record)?;
+        self.settings_data = data;
+        self.settings_conflict = false;
+        self.settings_remote = None;
+        self.hydrate_replicas()?;
+        fs::remove_file(removal_journal_path(&self.profile_dir))
+            .map_err(|_| "vault removal journal could not be cleared")?;
+        Ok(response)
+    }
+
+    pub fn archive_vault(&mut self, selector: &str) -> Result<Value, String> {
+        if !self.online {
+            return Err("vault removal requires an online session".to_owned());
+        }
+        if let Some(journal) = load_removal_journal(&self.profile_dir)? {
+            if journal.choice != "archive"
+                || self.resolve_vault_id(selector)? != journal.source_vault_id
+            {
+                return Err("resume the pending vault removal first".to_owned());
+            }
+            return self.finish_removal(journal);
+        }
+        self.sync_now()?;
+        if self.settings_conflict || self.settings_record.pending.is_some() {
+            return Err("resolve vault settings before removing a vault".to_owned());
+        }
+        let source = self.resolve_vault_id(selector)?;
+        let replica = self.ensure_vault_settled(&source)?;
+        let mut settings = self.settings_data.clone();
+        for collection in &mut settings.collections {
+            collection.vault_ids.retain(|id| id != &source);
+        }
+        settings
+            .collections
+            .retain(|collection| !collection.vault_ids.is_empty());
+        if matches!(&settings.default_view, Some(vault_settings::View::Vault(id)) if id == &source)
+        {
+            settings.default_view = None;
+        }
+        if matches!(&settings.default_view, Some(vault_settings::View::Collection(id)) if !settings.collections.iter().any(|collection| &collection.id == id))
+        {
+            settings.default_view = None;
+        }
+        let envelope = vault_settings::encrypt(&self.core, self.root, &settings)?;
+        let request = json!({"requestId":uuid::Uuid::new_v4(),"choice":"archive","destinationVaultId":null,"sourceCatalogueRevision":Self::catalogue_revision(&replica)?,"destinationCatalogueRevision":null,"itemMappings":[],"settings":{"baseRevision":self.settings_record.remote_revision,"revision":vault_settings::revision(&envelope)?,"envelope":envelope}});
+        let journal = VaultRemovalJournal {
+            source_vault_id: source,
+            choice: "archive".to_owned(),
+            request,
+        };
+        save_removal_journal(&self.profile_dir, &journal)?;
+        self.finish_removal(journal)
+    }
+
+    pub fn restore_archived_vault(&mut self, selector: &str) -> Result<Value, String> {
+        if !self.online {
+            return Err("vault restore requires an online session".to_owned());
+        }
+        if load_removal_journal(&self.profile_dir)?.is_some() {
+            return Err("resume the pending vault removal first".to_owned());
+        }
+        self.hydrate_replicas()?;
+        let source = self.resolve_vault_id(selector)?;
+        let replica = self
+            .replica_store
+            .load(&source)?
+            .ok_or("local replica is unavailable")?;
+        if !replica.retired || replica.retirement_choice.as_deref() != Some("archive") {
+            return Err("vault is not archived".to_owned());
+        }
+        let request = json!({"requestId":uuid::Uuid::new_v4(),"sourceCatalogueRevision":Self::catalogue_revision(&replica)?});
+        let response = self.post_auth(
+            &format!("/api/v1/vaults/{source}/restore"),
+            reqwest::Method::POST,
+            &request,
+        )?;
+        if response["vaultId"] != source || response["restored"] != true {
+            return Err("vault restore receipt is invalid".to_owned());
+        }
+        self.hydrate_replicas()?;
+        Ok(response)
     }
 
     pub fn set_default_view(
@@ -1597,6 +1776,9 @@ impl Session {
                 }
             }
             let mut replica = Replica::new(self.tenant_id.clone(), vault_id.clone(), self.epoch);
+            replica.retired = envelope_row["retired"].as_bool().unwrap_or(false);
+            replica.retirement_choice =
+                envelope_row["retirementChoice"].as_str().map(str::to_owned);
             replica.directory = URL_SAFE_NO_PAD.encode(&directory_bytes);
             replica.vault_envelope = URL_SAFE_NO_PAD.encode(envelope);
             replica.catalogue = URL_SAFE_NO_PAD.encode(catalogue);
@@ -1665,7 +1847,7 @@ impl Session {
                 .iter()
                 .map(|v| {
                     let id = &v.vault_id;
-                    json!({"name":self.settings_data.names.get(id).map(String::as_str).unwrap_or("Private"),"code":Self::reference("V",id),"vaultId":id})
+                    json!({"name":self.settings_data.names.get(id).map(String::as_str).unwrap_or("Private"),"code":Self::reference("V",id),"vaultId":id,"retired":v.retired,"retirementChoice":v.retirement_choice})
                 })
                 .collect(),
         ))
@@ -1820,6 +2002,9 @@ impl Session {
         let vaults = self.vault_list()?;
         let mut combined = Vec::new();
         for vault in vaults.as_array().ok_or("invalid vault list")? {
+            if vault["retired"] == true {
+                continue;
+            }
             let vault_id = vault["vaultId"].as_str().ok_or("invalid vault list")?;
             for mut item in self
                 .item_list(vault_id)?
@@ -1960,6 +2145,14 @@ impl Session {
         password: &str,
         custom_fields: &[Value],
     ) -> Result<Value, String> {
+        let target_vault = self.resolve_vault_id(vault_selector)?;
+        if self
+            .replica_store
+            .load(&target_vault)?
+            .is_some_and(|replica| replica.retired)
+        {
+            return Err("retired vault is read-only".to_owned());
+        }
         let resolved_item = if let Some(selector) = item_selector {
             let vault_id = self.resolve_vault_id(vault_selector)?;
             if self.replica_store.load(&vault_id)?.is_some_and(|replica| {
@@ -2266,6 +2459,24 @@ impl Drop for Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removal_journal_preserves_exact_retry_request() {
+        let dir = std::env::temp_dir().join(format!("127vaults-removal-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let journal = VaultRemovalJournal {
+            source_vault_id: uuid::Uuid::new_v4().to_string(),
+            choice: "archive".to_owned(),
+            request: json!({"requestId":uuid::Uuid::new_v4(),"settings":{"envelope":"ciphertext"}}),
+        };
+        save_removal_journal(&dir, &journal).unwrap();
+        let loaded = load_removal_journal(&dir).unwrap().unwrap();
+        assert_eq!(loaded.source_vault_id, journal.source_vault_id);
+        assert_eq!(loaded.request, journal.request);
+        fs::write(removal_journal_path(&dir), b"{").unwrap();
+        assert!(load_removal_journal(&dir).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn device_proof_context_excludes_trailing_opaque_server_key() {

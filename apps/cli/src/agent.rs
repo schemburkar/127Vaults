@@ -102,7 +102,12 @@ fn vault_selector(session: &Session, requested: Option<&str>) -> Result<String, 
         return Ok(value.to_owned());
     }
     let listed = session.vault_list()?;
-    let rows = listed.as_array().ok_or("invalid vault list")?;
+    let rows = listed
+        .as_array()
+        .ok_or("invalid vault list")?
+        .iter()
+        .filter(|row| row["retired"] != true)
+        .collect::<Vec<_>>();
     if rows.len() != 1 {
         return Err(
             "--vault is required when the account does not have exactly one vault".to_owned(),
@@ -173,6 +178,12 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
             request.name.as_deref().ok_or("name is required")?,
         ),
         "vault.settings.preference" => session.set_removal_preference(request.choice.as_deref()),
+        "vault.archive" => {
+            session.archive_vault(request.vault.as_deref().ok_or("vault is required")?)
+        }
+        "vault.restore" => {
+            session.restore_archived_vault(request.vault.as_deref().ok_or("vault is required")?)
+        }
         "vault.settings.default-view" => session.set_default_view(
             request
                 .view_kind
