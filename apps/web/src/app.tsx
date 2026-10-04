@@ -776,8 +776,8 @@ function Settings() {
   return (
     <dialog id="settings" className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#04071d] p-0 text-slate-100 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm max-[560px]:inset-0 max-[560px]:m-0 max-[560px]:h-dvh max-[560px]:max-h-none max-[560px]:w-screen max-[560px]:max-w-none max-[560px]:rounded-none max-[560px]:border-0">
       <div className="grid min-h-[31rem] grid-cols-[12rem_1fr] max-[560px]:min-h-full max-[560px]:grid-cols-1 max-[560px]:grid-rows-[auto_1fr]">
-        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-4 max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
-          <div className="max-[560px]:col-span-4">
+        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-2 max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
+          <div className="max-[560px]:col-span-2">
             <p className={eyebrow}>SETTINGS</p>
             <h2 className="text-xl font-bold">Settings</h2>
           </div>
