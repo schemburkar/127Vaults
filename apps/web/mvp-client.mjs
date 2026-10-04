@@ -1251,12 +1251,13 @@ function wipeInputs(all = true) {
 }
 function arm() {
   clearTimeout(sessionTimer);
+  const minutes = Number(localStorage.getItem("127vaults:lock-minutes") || 30);
   sessionTimer = setTimeout(
     () => {
       lock();
-      msg("Locked after 30 minutes of inactivity.");
+      msg(`Locked after ${minutes} minutes of inactivity.`);
     },
-    30 * 60 * 1000,
+    minutes * 60 * 1000,
   );
 }
 async function lock(logout = true) {
@@ -1367,6 +1368,7 @@ function showSettingsView(name) {
   }
   $("settings-profile").hidden = name !== "profile";
   $("settings-devices").hidden = name !== "devices";
+  $("settings-preferences").hidden = name !== "preferences";
   if (name === "devices") reloadDevices();
 }
 function showDeviceRegistration(show) {
@@ -1454,6 +1456,11 @@ $("cancel-edit").onclick = () =>
 $("close-item-detail").onclick = () => { clearItem(); renderItems(loadedItems); };
 $("nav-all-items").onclick = () => { clearItem(); renderItems(loadedItems); };
 $("reload").onclick = () => reload().catch(() => {});
+for (const [id, key, fallback] of [["preference-lock-minutes", "127vaults:lock-minutes", "30"], ["preference-clipboard-seconds", "127vaults:clipboard-seconds", "30"]]) {
+  const control = $(id);
+  control.value = localStorage.getItem(key) || fallback;
+  control.onchange = () => { localStorage.setItem(key, control.value); if (id === "preference-lock-minutes" && root) arm(); };
+}
 $("mobile-sync").onclick = async () => {
   try { await reload(); toast("Sync complete", "The latest server version is loaded.", "success"); }
   catch (error) { toast("Sync failed", safeError(error), "error"); }
@@ -1506,7 +1513,7 @@ $("toggle-edit-password").onclick = () => {
 async function copyField(value) {
   if (!value) return;
   await navigator.clipboard.writeText(value);
-  setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), 30000);
+  setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), Number(localStorage.getItem("127vaults:clipboard-seconds") || 30) * 1000);
 }
 $("copy-username").onclick = () => copyField(currentItem?.body.username);
 $("copy-password").onclick = () => copyField(currentItem?.body.password);

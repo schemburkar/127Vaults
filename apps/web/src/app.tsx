@@ -3,6 +3,7 @@ import {
   KeyRound,
   LayoutList,
   LockKeyhole,
+  Menu,
   Plus,
   RefreshCw,
   Search,
@@ -214,7 +215,7 @@ function CustomFieldsView() {
   const copy = async (value?: string) => {
     if (!value) return;
     await navigator.clipboard.writeText(value);
-    setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), 30000);
+    setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), Number(localStorage.getItem("127vaults:clipboard-seconds") || 30) * 1000);
   };
   const renderField = (field: ItemField) => {
     const secret = field.type === "password", shown = revealed.has(field.id);
@@ -361,7 +362,7 @@ function DeviceList() {
 }
 function Brand({ entry = false }: { entry?: boolean }) {
   return (
-    <div className={`flex items-center gap-3 ${entry ? "entry-brand mb-8" : "brand px-2 pb-7 pt-2 max-[560px]:hidden"}`}>
+    <div className={`flex items-center gap-3 ${entry ? "entry-brand mb-8" : "brand px-2 pb-7 pt-2 max-[560px]:p-1"}`}>
       <i className={`grid place-items-center rounded-xl bg-[#9D1F32] text-[11px] font-black not-italic text-white shadow-sm ${entry ? "size-10" : "size-9"}`}>127</i>
       <b className="text-[15px] font-bold tracking-[-0.02em] text-white max-[800px]:hidden">127Vaults</b>
       {entry && (
@@ -537,10 +538,13 @@ function Authentication() {
 }
 
 function Sidebar() {
+  const [menuOpen, setMenuOpen] = useState(false);
   const nav = "nav !min-h-11 w-full justify-start !border-0 !bg-transparent !px-3 text-slate-400 shadow-none hover:!bg-[#E0BB95]/10 hover:!text-[#E0BB95] max-[560px]:h-14 max-[560px]:min-w-0 max-[560px]:flex-1 max-[560px]:gap-1.5 max-[560px]:!px-2 max-[560px]:text-[10px] [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:shrink [&>span]:truncate [&>span]:text-left [&>b]:ml-auto [&>b]:rounded-full [&>b]:bg-white/10 [&>b]:px-2 [&>b]:py-0.5 [&>b]:text-[10px] max-[560px]:[&>b]:hidden";
   return (
-    <aside className="sidebar row-span-2 flex flex-col p-3 text-white max-[560px]:fixed max-[560px]:inset-x-0 max-[560px]:bottom-0 max-[560px]:z-20 max-[560px]:h-[calc(4.5rem+env(safe-area-inset-bottom))] max-[560px]:flex-row max-[560px]:items-start max-[560px]:gap-2 max-[560px]:border-t max-[560px]:border-white/10 max-[560px]:px-3 max-[560px]:pb-[env(safe-area-inset-bottom)] max-[560px]:pt-1.5">
+    <aside className={`sidebar row-span-2 flex flex-col p-3 text-white ${menuOpen ? "menu-open" : ""}`}>
       <Brand />
+      <Button variant="ghost" className="mobile-menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
+      <nav className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
       <Button id="nav-all-items" variant="ghost" className={`${nav} active !bg-[#E0BB95]/12 !text-[#E0BB95]`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
@@ -550,6 +554,7 @@ function Sidebar() {
         <VaultIcon aria-hidden="true" /> <span>Private</span>
       </Button>
       <div className="mt-auto space-y-1 max-[560px]:contents">
+        <Button id="reload" variant="ghost" className={`${nav} max-[560px]:hidden`} title="Sync now"><RefreshCw aria-hidden="true" /><span>Sync</span></Button>
         <Button id="mobile-sync" variant="ghost" className={`${nav} hidden max-[560px]:flex`}>
           <RefreshCw aria-hidden="true" /> <span>Sync</span>
         </Button>
@@ -560,13 +565,14 @@ function Sidebar() {
           <LockKeyhole aria-hidden="true" /> <span>Lock</span>
         </Button>
       </div>
+      </nav>
     </aside>
   );
 }
 
 function ItemDetail() {
   return (
-    <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-[560px]:left-0 max-[560px]:top-0 max-[560px]:max-h-none max-[560px]:rounded-none max-[560px]:px-4 max-[560px]:py-5`}>
+    <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:left-0 max-[560px]:max-h-[84dvh] max-[560px]:px-4 max-[560px]:py-5`}>
       <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex">← All items</Button>
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">
@@ -707,9 +713,9 @@ function ItemDetail() {
 
 function Vault() {
   return (
-    <div id="vault" className="grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:block max-[560px]:pb-[calc(4.5rem+env(safe-area-inset-bottom))]" hidden>
+    <div id="vault" className="grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:grid-cols-1 max-[560px]:grid-rows-[3.75rem_minmax(0,1fr)]" hidden>
       <Sidebar />
-      <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[560px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
+      <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[560px]:col-start-1 max-[560px]:row-start-2 max-[560px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
         <header className="flex items-center justify-between gap-5 border-b border-white/5 px-5 backdrop-blur max-[560px]:px-3">
           <div className="flex h-12 w-full max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,.03)] transition focus-within:border-[#E0BB95]/60 focus-within:bg-white/8 focus-within:ring-4 focus-within:ring-[#E0BB95]/10 max-[560px]:max-w-none">
             <Search className="size-4 shrink-0" aria-hidden="true" />
@@ -720,17 +726,7 @@ function Vault() {
               className="min-h-0 border-0 bg-transparent px-0 shadow-none focus:border-0 focus:ring-0"
             />
           </div>
-          <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500 max-[560px]:[&>span]:hidden">
-            <span className="inline-block size-2 rounded-full bg-sky-400 ring-4 ring-sky-400/10" />
-            <span>Online</span>
-            <Button
-              id="reload"
-              variant="secondary"
-              className="size-10 min-h-10 px-0 max-[560px]:hidden"
-              title="Reload encrypted data"
-            >
-              <RefreshCw aria-hidden="true" />
-            </Button>
+          <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
             <Button id="new-item" className="shrink-0 max-[560px]:h-11 max-[560px]:!px-3 max-[560px]:text-xs">
               <Plus aria-hidden="true" />
               <span>New item</span>
@@ -775,8 +771,8 @@ function Settings() {
   return (
     <dialog id="settings" className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#04071d] p-0 text-slate-100 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm max-[560px]:inset-0 max-[560px]:m-0 max-[560px]:h-dvh max-[560px]:max-h-none max-[560px]:w-screen max-[560px]:max-w-none max-[560px]:rounded-none max-[560px]:border-0">
       <div className="grid min-h-[31rem] grid-cols-[12rem_1fr] max-[560px]:min-h-full max-[560px]:grid-cols-1 max-[560px]:grid-rows-[auto_1fr]">
-        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-3 max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
-          <div className="max-[560px]:col-span-3">
+        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-4 max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
+          <div className="max-[560px]:col-span-4">
             <p className={eyebrow}>SETTINGS</p>
             <h2 className="text-xl font-bold">Settings</h2>
           </div>
@@ -794,6 +790,7 @@ function Settings() {
           >
             Devices
           </Button>
+          <Button variant="ghost" className={settingsTab} data-settings-view="preferences">Preferences</Button>
           <Button
             id="close-settings"
             variant="secondary"
@@ -809,6 +806,10 @@ function Settings() {
             <span className="text-xs text-slate-500">Username</span>
             <strong id="profile-username" />
           </div>
+        </section>
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden>
+          <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p>
+          <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Lock after inactivity<select id="preference-lock-minutes" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label><label className="grid gap-2">Clear copied values after<select id="preference-clipboard-seconds" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select></label></div>
         </section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden>
           <div id="devices-list-page">

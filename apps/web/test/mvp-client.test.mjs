@@ -151,7 +151,7 @@ test("React owns the production component tree and shared Tailwind design system
   assert.match(app, /@127vaults\/ui/);
   assert.match(app, /mvp-client\.mjs/);
   assert.match(styles, /@import "tailwindcss"/);
-  assert.match(app, /safe-area-inset-bottom/);
+  assert.match(styles, /safe-area-inset-bottom/);
 });
 
 test("item and device rows are rendered by React rather than imperative DOM creation", async () => {
