@@ -19,7 +19,30 @@ Updated 2026-10-02. The server is an **experimental internal MVP backend**. A lo
 | SRV-013 | Partial | One container runtime entry dispatches serve/provision/schema/healthcheck; one operator executable imports install, backup, TLS and envelope modules. The envelope tests pass through that entry. Complete a rebuilt-bundle smoke before closing. |
 | SRV-014 | Partial | Schema 4 permits several private vault rows per account. Schema 5 stores a versioned opaque client-encrypted settings envelope with CAS; clients reconcile divergent versions by explicit choice. Add signed reconciliation and two-device verification; the server must not learn names or collection labels. Remove the five-vault format cap through a reviewed format migration. |
 | SRV-015 | Partial | Schema 6 and an authenticated removal endpoint require one explicit archive or move choice and a new encrypted settings revision in the same transaction. Archive retains encrypted items and can be restored. Move retirement requires exact source-item coverage by existing destination ciphertext and signed create history, current catalogue revisions and settled checkpoints; the source remains recoverable. The endpoint is idempotent and blocks later writes to retired vaults. Disposable PostgreSQL archive, restore, move, retry, incomplete mapping, and stale settings tests passed. Finish two-device interruption tests, client preparation and local-pending checks, and restore UX. The server cannot inspect plaintext or detect a client's unsynced local edits. |
+| SRV-016 | Open | Plan and build a localhost server administration page for owner/admin operators. See the proposed backlog below. |
 
 Server readiness has three distinct levels: **internal MVP backend** means the narrow fictitious-data flow works; **first release** requires a supported installation and restore path; **public beta for real secrets** additionally requires the security and legal gates. Only the first level is evidenced today.
 
 The user's deferred manual run covers SRV-005/009/010 and the combined restore part of SRV-003/013. An independent crypto/application review and real-secret approval cannot be closed by local implementation alone. No real-world test credentials have been accepted into this checkout.
+
+## Localhost server administration page — proposed backlog
+
+**Goal:** A browser control panel for the person operating a local server: inspect health, manage users, and handle routine settings. It does not display vault contents. This section is planning only; implementation comes later.
+
+**Access:** Bind to loopback by default. Private-LAN access needs a separate decision and the existing HTTPS, Host and Origin protections. Require an authenticated, enrolled owner or admin session, CSRF checks, and server-side authorization for every action. Sensitive changes need fresh authentication. Use the proposed [server role boundaries](../adr/0017-server-ownership-and-roles.md), with exact permissions decided before implementation. Server roles do not grant vault keys. Preserve at least one active owner; owner grants require recipient acceptance.
+
+| Priority | Area | Workflow and acceptance |
+| --- | --- | --- |
+| P0 | Sign-in and navigation | Show server identity, current role, session expiry and sign-out. Handle expired sessions and server outages clearly. |
+| P0 | Overview | Show API/database readiness, server and schema versions, backup freshness and actionable warnings. Show check time and distinguish unknown from healthy. Exclude secrets and vault data. |
+| P0 | Users and invitations | Search and paginate accounts with role, status and relevant timestamps. Invite users, resend/revoke pending invitations, suspend/restore accounts, and show device counts. Confirm disruptive actions and explain their session impact. |
+| P0 | Roles and ownership | Owner can grant/revoke admin and initiate owner transfer. Block removal of the last owner and require the receiving user to accept ownership after fresh authentication. |
+| P1 | Devices and sessions | Inspect device and last-seen metadata; revoke devices or invalidate sessions where policy permits. Explain propagation and recovery without exposing device secrets. |
+| P1 | Operations | Show backup status and last restore drill; offer a guarded backup when supported. Keep restore, migration, shutdown and server deletion in separate runbooks for the first version. |
+| P1 | Settings | Show redacted network, TLS, email, retention and limit settings. Validate edits, preview effects, log changes and never redisplay saved secrets. |
+| P1 | Audit and diagnostics | Filter control-plane events by actor, target, time and outcome; include correlation IDs. Export redacted diagnostics without credentials, codes, tokens, vault metadata or ciphertext bodies. |
+| P2 | Accessibility and deployment | Responsive keyboard-accessible page with loading, empty, error and permission-denied states. Document local URL and startup; verify in supported browsers and on a clean-host test bundle. |
+
+**Implementation order:** Define the permission matrix and admin API; build read-only overview and users; add invitations and account actions; add roles; then operations and settings. Reuse existing sessions and onboarding where appropriate. Add new control-plane routes to the API contract and audit every attempted state change, including denied attempts.
+
+**SRV-016 acceptance:** Owner and admin complete permitted workflows on a fresh localhost install. Normal users and unauthenticated browsers cannot read or change admin data. Automated checks cover authorization, CSRF, stale sessions, last-owner protection, redaction and audit events. A manual browser walkthrough verifies visible states.
