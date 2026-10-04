@@ -5289,6 +5289,7 @@ name = "vaults-desktop-poc"
 version = "0.0.0"
 dependencies = [
  "dirs",
+ "keyring",
  "serde_json",
  "tauri",
  "tauri-build",

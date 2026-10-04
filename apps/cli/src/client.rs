@@ -564,10 +564,26 @@ pub fn unlock_with_offline_fallback(
 
 impl Session {
     pub fn device_list(&self) -> Result<Value, String> {
-        if !self.online { return Err("device list is unavailable while offline".to_owned()); }
+        if !self.online {
+            return Err("device list is unavailable while offline".to_owned());
+        }
         let mut response = self.get("/api/v1/devices")?;
         response["currentDeviceId"] = json!(self.device_id);
         Ok(response)
+    }
+    pub fn device_revoke(&self, device_id: &str) -> Result<Value, String> {
+        if !self.online {
+            return Err("device management is unavailable while offline".to_owned());
+        }
+        let id = uuid::Uuid::parse_str(device_id).map_err(|_| "device ID is invalid")?;
+        if device_id == self.device_id {
+            return Err("the current device cannot be revoked here".to_owned());
+        }
+        self.post_auth(
+            "/api/v1/devices/revoke",
+            reqwest::Method::POST,
+            &json!({"deviceId":id}),
+        )
     }
     pub fn vault_settings(&self) -> Value {
         json!({"names":self.settings_data.names,"collections":self.settings_data.collections,
@@ -747,7 +763,9 @@ impl Session {
                 existing.name = name.to_owned();
                 existing.vault_ids = ids;
             } else {
-                if editing { return Err("collection is unavailable".to_owned()); }
+                if editing {
+                    return Err("collection is unavailable".to_owned());
+                }
                 settings.collections.push(vault_settings::Collection {
                     id,
                     name: name.to_owned(),

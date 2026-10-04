@@ -102,7 +102,9 @@ fn profile(path: &std::path::Path, key: &str) -> Option<String> {
         .find_map(|line| line.strip_prefix(&format!("{key}=")).map(str::to_owned))
 }
 
-fn secret_cache_path(config: &Path) -> PathBuf { config.join("account-secret-cache.json") }
+fn secret_cache_path(config: &Path) -> PathBuf {
+    config.join("account-secret-cache.json")
+}
 
 fn secret_cache_key(config: &Path, username: &str) -> Option<String> {
     let server = profile(&config.join("trust.conf"), "server_id")?;
@@ -110,39 +112,65 @@ fn secret_cache_key(config: &Path, username: &str) -> Option<String> {
     Some(format!("{server}:{device}:{username}"))
 }
 
-fn now_seconds() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
-fn cache_expiry() -> u64 { now_seconds() + 30 * 24 * 60 * 60 }
+fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+fn cache_expiry() -> u64 {
+    now_seconds() + 30 * 24 * 60 * 60
+}
 
 fn cached_username(config: &Path) -> Option<String> {
     let record: Value = serde_json::from_slice(&fs::read(secret_cache_path(config)).ok()?).ok()?;
     let username = record["username"].as_str()?;
     let expires_at = record["expiresAt"].as_u64()?;
-    if expires_at <= now_seconds() { return None; }
+    if expires_at <= now_seconds() {
+        return None;
+    }
     Some(username.to_owned())
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn cached_account_secret(config: &Path, username: &str) -> Option<String> {
-    if cached_username(config)?.as_str() != username { return None; }
-    let entry = keyring::Entry::new("127Vaults account secret", &secret_cache_key(config, username)?).ok()?;
+    if cached_username(config)?.as_str() != username {
+        return None;
+    }
+    let entry = keyring::Entry::new(
+        "127Vaults account secret",
+        &secret_cache_key(config, username)?,
+    )
+    .ok()?;
     let secret = String::from_utf8(entry.get_secret().ok()?).ok()?;
     (secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit())).then_some(secret)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn cached_account_secret(_config: &Path, _username: &str) -> Option<String> { None }
+fn cached_account_secret(_config: &Path, _username: &str) -> Option<String> {
+    None
+}
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn remember_account_secret(config: &Path, username: &str, secret: &str) -> Result<(), String> {
     let key = secret_cache_key(config, username).ok_or("device identity is unavailable")?;
-    let entry = keyring::Entry::new("127Vaults account secret", &key).map_err(|_| "OS credential storage is unavailable")?;
-    entry.set_secret(secret.as_bytes()).map_err(|_| "account secret could not be protected by the OS")?;
+    let entry = keyring::Entry::new("127Vaults account secret", &key)
+        .map_err(|_| "OS credential storage is unavailable")?;
+    entry
+        .set_secret(secret.as_bytes())
+        .map_err(|_| "account secret could not be protected by the OS")?;
     let record = json!({"username":username,"expiresAt":cache_expiry()});
-    fs::write(secret_cache_path(config), serde_json::to_vec(&record).map_err(|_| "account secret cache metadata is invalid")?).map_err(|_| "account secret cache metadata could not be saved".to_owned())
+    fs::write(
+        secret_cache_path(config),
+        serde_json::to_vec(&record).map_err(|_| "account secret cache metadata is invalid")?,
+    )
+    .map_err(|_| "account secret cache metadata could not be saved".to_owned())
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn remember_account_secret(_config: &Path, _username: &str, _secret: &str) -> Result<(), String> { Err("OS credential storage is unavailable".to_owned()) }
+fn remember_account_secret(_config: &Path, _username: &str, _secret: &str) -> Result<(), String> {
+    Err("OS credential storage is unavailable".to_owned())
+}
 
 #[tauri::command]
 fn desktop_info() -> Result<Value, String> {
@@ -182,8 +210,11 @@ async fn unlock(
     let config = config_directory()?;
     let supplied_secret = !account_secret.is_empty();
     let secret = if account_secret.is_empty() {
-        cached_account_secret(&config, &username).ok_or("account secret is required on this device or after 30 days")?
-    } else { account_secret };
+        cached_account_secret(&config, &username)
+            .ok_or("account secret is required on this device or after 30 days")?
+    } else {
+        account_secret
+    };
     let (session, result) = tauri::async_runtime::spawn_blocking(move || {
         let mut session = unlock_with_offline_fallback(
             &config,
@@ -242,6 +273,14 @@ fn item_list(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<
 #[tauri::command]
 fn device_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
     with_session(&state, |session| session.device_list())
+}
+
+#[tauri::command]
+fn device_revoke(
+    state: tauri::State<'_, DesktopState>,
+    device_id: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| session.device_revoke(&device_id))
 }
 
 #[tauri::command]
@@ -551,6 +590,7 @@ fn main() {
             item_list,
             vault_create,
             device_list,
+            device_revoke,
             vault_rename,
             vault_settings,
             vault_settings_review,

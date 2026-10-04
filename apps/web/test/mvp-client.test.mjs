@@ -40,8 +40,10 @@ test("device proof uses the server-defined request and response transcript", asy
 
 test("private-vault requests retain the browser fetch receiver", async () => {
   let called = false;
-  function browserFetch(_url, options) {
+  function browserFetch(url, options) {
     assert.equal(this, globalThis);
+    assert.equal(url, "/api/v1/vaults");
+    assert.equal(options.method, "POST");
     assert.equal(options.headers["X-127V-CSRF"], "csrf");
     called = true;
     return Promise.resolve({ ok: true, json: async () => ({}) });

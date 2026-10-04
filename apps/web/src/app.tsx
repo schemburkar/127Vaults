@@ -575,7 +575,7 @@ function Sidebar() {
 function ItemDetail() {
   return (
     <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:left-0 max-[560px]:max-h-[84dvh] max-[560px]:px-4 max-[560px]:py-5`}>
-      <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex">← All items</Button>
+      <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex">← Items</Button>
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">
           <KeyRound aria-hidden="true" />
@@ -814,12 +814,14 @@ function Settings() {
             <span className="text-xs text-slate-500">Username</span>
             <strong id="profile-username" />
           </div>
+          <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Device ID</span><code id="profile-device" className="break-all text-xs" /></div>
+          <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Account secret</span><span id="profile-secret-status" className="text-sm" /></div>
         </section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden={activeTab !== "preferences"}>
           <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p>
           <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Lock after inactivity<select id="preference-lock-minutes" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label><label className="grid gap-2">Clear copied values after<select id="preference-clipboard-seconds" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select></label></div>
         </section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <Button key={vault.vaultId} variant={vault.selected ? "secondary" : "ghost"} className="justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} />{vault.name}{vault.selected ? " · Current" : ""}</Button>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.createVault()}>Create vault</Button></section>
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <Button key={vault.vaultId} variant={vault.selected ? "secondary" : "ghost"} className="justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} />{vault.name}{vault.selected ? " · Current" : ""}</Button>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button></section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden={activeTab !== "devices"}>
           <div id="devices-list-page">
             <div className="flex items-start justify-between gap-4 max-[560px]:flex-wrap">
@@ -890,6 +892,7 @@ export function App() {
       <Vault />
       <Settings />
       <ToastRegion />
+      <dialog id="web-create-vault-dialog" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><form id="web-create-vault-form"><h2 className="text-xl font-bold">Create vault</h2><p className="mt-2 text-sm text-slate-400">A separate encrypted space for your items.</p><label className="mt-5 grid gap-2 text-sm">Vault name<Input id="web-vault-name" autoFocus maxLength={80} required /></label><div className="mt-6 flex justify-end gap-2"><Button id="web-create-vault-cancel" type="button" variant="secondary">Cancel</Button><Button id="web-create-vault-submit" type="submit">Create vault</Button></div></form></dialog>
       <dialog id="conflict-dialog" className="m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm max-[560px]:p-4">
         <h2 className="text-xl font-bold">Resolve sync conflict</h2>
         <p id="conflict-detail" className="mt-2 text-sm leading-6 text-slate-400">This item changed on another device while you were editing it. Choose which version to keep.</p>

@@ -251,6 +251,29 @@ impl ExperimentalEcf1Core {
             .map_err(ecf1_error)
     }
     /// # Errors
+    /// Rejects invalid root state or settings data that cannot be encrypted.
+    pub fn encrypt_account_settings(
+        &self,
+        root: &ExperimentalRoot,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, JsError> {
+        self.core
+            .encrypt_account_settings(root.handle, plaintext)
+            .map_err(ecf1_error)
+    }
+    /// # Errors
+    /// Rejects an invalid or unauthenticated account settings envelope.
+    pub fn decrypt_account_settings(
+        &self,
+        root: &ExperimentalRoot,
+        envelope: &[u8],
+    ) -> Result<Vec<u8>, JsError> {
+        self.core
+            .decrypt_account_settings(root.handle, envelope)
+            .map(|plaintext| plaintext.to_vec())
+            .map_err(ecf1_error)
+    }
+    /// # Errors
     /// Rejects an invalid authenticated empty directory or root handle.
     pub fn create_private_vault(
         &mut self,

@@ -45,6 +45,7 @@ const ensureBootstrap=()=>{
 };
 if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  await waitForServerReady();
+ run(process.execPath,['scripts/build-fixture.mjs']);
  console.log('The hot-reload UI and API are already running at https://127.0.0.1:12780.');
 }else if(action==='start'||action==='dev'){
  await ensureTlsReady();

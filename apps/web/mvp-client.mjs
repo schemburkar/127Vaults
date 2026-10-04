@@ -48,6 +48,8 @@ let core,
   catalogue,
   vaultId,
   availableVaults = [],
+  settingsRevision = null,
+  vaultSettings = { version: 1, names: {}, collections: [], default_view: null, removal_preference: null },
   csrf,
   busy = false,
   sessionTimer,
@@ -196,6 +198,22 @@ function rootTemplate(tenant, account) {
   x.set([0, 0, 0, 1], 65);
   x[76] = 1;
   return x;
+}
+async function loadVaultSettings() {
+  const response = await call("/api/v1/vault-settings");
+  settingsRevision = response.revision;
+  vaultSettings = response.envelope
+    ? JSON.parse(td.decode(core.decrypt_account_settings(root, un(response.envelope))))
+    : { version: 1, names: {}, collections: [], default_view: null, removal_preference: null };
+  if (vaultSettings.version !== 1 || typeof vaultSettings.names !== "object" || !vaultSettings.names) throw Error("INVALID_VAULT_SETTINGS");
+}
+async function saveVaultName(vaultId, name) {
+  const next = { ...vaultSettings, names: { ...vaultSettings.names, [vaultId]: name } };
+  const encrypted = core.encrypt_account_settings(root, te.encode(JSON.stringify(next)));
+  const revision = uuid(encrypted.slice(76, 92));
+  await call("/api/v1/vault-settings", { method: "PUT", body: { baseRevision: settingsRevision, revision, envelope: b64(encrypted) } });
+  settingsRevision = revision;
+  vaultSettings = next;
 }
 async function db(mode = "readonly") {
   let d = await new Promise((ok, no) => {
@@ -568,12 +586,14 @@ async function login() {
     });
     csrf = logged.csrf;
     await reload();
-    try {
-      const nextIdentity = { ...identity, secretEnvelope: await protectAccountSecret($("secret").value || identity.accountSecret, $("master").value), secretExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 };
-      delete nextIdentity.accountSecret;
-      await saveIdentity(nextIdentity);
-      identity = nextIdentity;
-    } catch { toast("Remember this device needs attention", "The account secret could not be saved securely. Enter it again next time.", "error"); }
+    if (!identity.secretExpiresAt || !reusableSecret(identity) || identity.accountSecret) {
+      try {
+        const nextIdentity = { ...identity, secretEnvelope: await protectAccountSecret($("secret").value || identity.accountSecret, $("master").value), secretExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 };
+        delete nextIdentity.accountSecret;
+        await saveIdentity(nextIdentity);
+        identity = nextIdentity;
+      } catch { toast("Remember this device needs attention", "The account secret could not be saved securely. Enter it again next time.", "error"); }
+    }
     wipeInputs();
     $("entry-shell").hidden = true;
     $("vault").hidden = false;
@@ -596,6 +616,7 @@ async function login() {
   }
 }
 async function reload() {
+  await loadVaultSettings();
   let data = await call("/api/v1/vaults");
   lastSynced = new Date();
   updateSessionDates();
@@ -620,7 +641,7 @@ async function reload() {
     activeRows = data.vaultEnvelopes.filter((row) => !row.retired),
     fallback = activeRows[0];
   if (!chosen || !fallback) throw Error("NO_ACTIVE_VAULT");
-  availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: index === 0 ? "Private" : `Vault ${index + 1}`, selected: row.vaultId === chosen.vaultId }));
+  availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: vaultSettings.names[row.vaultId] || (index === 0 ? "Private" : `Vault ${index + 1}`), selected: row.vaultId === chosen.vaultId }));
   $("vault-title").textContent = availableVaults.find((row) => row.selected)?.name || "Private";
   window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: availableVaults }));
   let
@@ -1019,24 +1040,36 @@ async function fetchItem(itemId, index) {
     body = JSON.parse(td.decode(core.decrypt_private_part(vault, catalogue, id(itemId), un(got.envelope), 3)));
   return { itemId, index, body };
 }
-async function createVault() {
+function openCreateVaultDialog() {
+  $("web-vault-name").value = availableVaults.length ? `Vault ${availableVaults.length + 1}` : "Private";
+  $("web-create-vault-dialog").showModal();
+  $("web-vault-name").focus();
+}
+async function createVault(event) {
+  event?.preventDefault();
+  const name = $("web-vault-name").value.trim();
+  if (!name || [...name].length > 80) { $("web-vault-name").focus(); return; }
   setBusy(true);
+  let accepted = false;
   try {
     let data = await call("/api/v1/vaults"),
       client = new (
         await import("/app/private-vault-client.mjs")
       ).PrivateVaultClient({ core, root, csrf }),
       newId = await client.create(un(data.directory));
+    accepted = true;
     vaultId = newId;
     vault = client.vault;
     catalogue = client.catalogue;
-    vaultId = newId;
+    await saveVaultName(newId, name);
     await reload();
+    $("web-create-vault-dialog").close();
     lastLocalChange = new Date();
     updateSessionDates();
-    toast("Private vault created", "Your encrypted vault is ready.", "success");
+    toast("Vault created", `${name} is ready.`, "success");
   } catch (error) {
-    toast("Vault was not created", `Try again after checking the server connection. (${safeError(error)})`, "error");
+    if (accepted) { await reload().catch(() => {}); $("web-create-vault-dialog").close(); toast("Vault created; name needs attention", `The vault was created, but its name could not sync. (${safeError(error)})`, "error"); }
+    else toast("Vault was not created", `Try again after checking the server connection. (${safeError(error)})`, "error");
   } finally {
     setBusy(false);
   }
@@ -1421,7 +1454,7 @@ function setBusy(v) {
   busy = v;
   document.body.setAttribute("aria-busy", String(v));
   for (let b of document.querySelectorAll(
-    "#save,#new-item,#create-vault,#login,#setup,#begin-enrollment,#complete-enrollment,#mobile-sync",
+    "#save,#new-item,#create-vault,#web-create-vault-submit,#login,#setup,#begin-enrollment,#complete-enrollment,#mobile-sync",
   ))
     b.disabled =
       v ||
@@ -1430,7 +1463,7 @@ function setBusy(v) {
       (b.id === "lock" && !root);
 }
 window.__vaultsActions = {
-  createVault,
+  openCreateVaultDialog,
   selectVault,
   openItem: ({ row, index }, button) => {
     $("items").dataset.requestedItem = row.itemId;
@@ -1441,7 +1474,7 @@ window.__vaultsActions = {
     renderItems(loadedItems);
     if (id === "new-item") beginEdit(null);
     else if (id === "edit-item" && currentItem) beginEdit();
-    else if (id === "create-vault") createVault();
+    else if (id === "create-vault") openCreateVaultDialog();
     else if (id === "reload") reload().catch(() => msg("Vault refresh failed.", "error"));
     else if (id === "settings") $("settings-toggle").click();
     else if (id === "lock") lock();
@@ -1473,7 +1506,9 @@ $("master").onkeydown = (e) => {
 $("login").onclick = login;
 $("lock").onclick = () => lock();
 $("lock-app").onclick = () => lock();
-$("create-vault").onclick = createVault;
+$("create-vault").onclick = openCreateVaultDialog;
+$("web-create-vault-form").onsubmit = createVault;
+$("web-create-vault-cancel").onclick = () => $("web-create-vault-dialog").close();
 $("new-item").onclick = () => beginEdit(null);
 $("edit-item").onclick = () => beginEdit();
 $("cancel-edit").onclick = () =>
@@ -1517,6 +1552,8 @@ $("begin-enrollment").onclick = beginEnrollment;
 $("complete-enrollment").onclick = completeEnrollment;
 $("settings-toggle").onclick = () => {
   $("profile-username").textContent = identity?.username || "";
+  $("profile-device").textContent = identity?.deviceId || "Unavailable";
+  $("profile-secret-status").textContent = reusableSecret(identity) ? `Remembered in this browser until ${new Date(identity.secretExpiresAt || Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}` : "Required at next unlock";
   showSettingsView("profile");
   $("settings").showModal();
 };
