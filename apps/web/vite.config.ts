@@ -69,6 +69,7 @@ export default defineConfig(({ command, mode }) => {
       https: hasTls ? { key: readFileSync(key), cert: readFileSync(cert) } : undefined,
       proxy: {
         '/api': proxy,
+        '/admin': proxy,
       },
     },
     build: {

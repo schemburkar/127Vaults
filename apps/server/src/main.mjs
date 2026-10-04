@@ -26,6 +26,8 @@ import { createDeviceLifecycleHandler } from './device-lifecycle-handler.mjs';
 import { createDeviceEnrollmentHandler } from './device-enrollment-handler.mjs';
 import { readSecretFile, readinessToken, runtimeDatabaseConfig } from './runtime-config.mjs';
 import { createOpsTelemetry } from './ops-log.mjs';
+import { createAdminHandler } from './admin/handler.mjs';
+import { loadOperators } from './admin/credentials.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
 const env = process.env;
@@ -91,6 +93,7 @@ const syncHandler=createSignedSyncHandler(syncStore,authenticate,transport.origi
 const deviceStore=new PgDeviceLifecycleStore(pool);
 const deviceLifecycleHandler=createDeviceLifecycleHandler(deviceStore,authenticate,transport.origin);
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
+const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion});
 const webFiles=new Map([
   ['/', ['../../web/dist/index.html','text/html; charset=utf-8']],
   ['/app/react-client.js',['../../web/dist/app/react-client.js','text/javascript; charset=utf-8']],
@@ -116,6 +119,7 @@ const server = createServer(tls, async (req, res) => {
     reply(403, { error: 'forbidden' }); return;
   }
   if (stopping) { reply(503, { status: 'unavailable' }); return; }
+  if(await adminHandler(req,res))return;
   const asset=webFiles.get(req.url);
   if(asset&&['GET','HEAD'].includes(req.method)){
     try{const bytes=await readFile(new URL(asset[0],import.meta.url));res.writeHead(200,{
