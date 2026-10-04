@@ -203,7 +203,7 @@ test("omnisearch includes actions and item loading stays locally scoped", async 
   assert.match(source, /runAction:/);
   const openItemBody = source.slice(
     source.indexOf("async function openItem"),
-    source.indexOf("async function createVault"),
+    source.indexOf("async function fetchItem"),
   );
   assert.doesNotMatch(openItemBody, /setBusy\(true\)/);
   assert.match(source, /\$\("items"\)\.setAttribute\("aria-busy", "true"\)/);

@@ -48,6 +48,7 @@ let core,
   catalogue,
   vaultId,
   availableVaults = [],
+  vaultDialogTarget = null,
   settingsRevision = null,
   vaultSettings = { version: 1, names: {}, collections: [], default_view: null, removal_preference: null },
   csrf,
@@ -1041,9 +1042,32 @@ async function fetchItem(itemId, index) {
   return { itemId, index, body };
 }
 function openCreateVaultDialog() {
+  vaultDialogTarget = null;
   $("web-vault-name").value = availableVaults.length ? `Vault ${availableVaults.length + 1}` : "Private";
+  $("web-vault-dialog-title").textContent = "Create vault";
+  $("web-create-vault-submit").textContent = "Create vault";
   $("web-create-vault-dialog").showModal();
   $("web-vault-name").focus();
+}
+function openRenameVaultDialog(vaultId) {
+  const selected = availableVaults.find((row) => row.vaultId === vaultId);
+  if (!selected) return;
+  vaultDialogTarget = vaultId;
+  $("web-vault-name").value = selected.name;
+  $("web-vault-dialog-title").textContent = "Rename vault";
+  $("web-create-vault-submit").textContent = "Save name";
+  $("web-create-vault-dialog").showModal();
+  $("web-vault-name").focus();
+}
+async function submitVaultDialog(event) {
+  event.preventDefault();
+  if (!vaultDialogTarget) return createVault();
+  const name = $("web-vault-name").value.trim();
+  if (!name || [...name].length > 80) { $("web-vault-name").focus(); return; }
+  setBusy(true);
+  try { await saveVaultName(vaultDialogTarget, name); await reload(); $("web-create-vault-dialog").close(); toast("Vault renamed", name, "success"); }
+  catch (error) { toast("Vault was not renamed", safeError(error), "error"); }
+  finally { setBusy(false); }
 }
 async function createVault(event) {
   event?.preventDefault();
@@ -1464,6 +1488,7 @@ function setBusy(v) {
 }
 window.__vaultsActions = {
   openCreateVaultDialog,
+  openRenameVaultDialog,
   selectVault,
   openItem: ({ row, index }, button) => {
     $("items").dataset.requestedItem = row.itemId;
@@ -1507,7 +1532,7 @@ $("login").onclick = login;
 $("lock").onclick = () => lock();
 $("lock-app").onclick = () => lock();
 $("create-vault").onclick = openCreateVaultDialog;
-$("web-create-vault-form").onsubmit = createVault;
+$("web-create-vault-form").onsubmit = submitVaultDialog;
 $("web-create-vault-cancel").onclick = () => $("web-create-vault-dialog").close();
 $("new-item").onclick = () => beginEdit(null);
 $("edit-item").onclick = () => beginEdit();
