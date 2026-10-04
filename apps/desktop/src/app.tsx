@@ -98,6 +98,7 @@ export function App() {
   const [collectionVaultDraft, setCollectionVaultDraft] = useState<string[]>([]);
   const [defaultVaultId, setDefaultVaultId] = useState<string | null>(null);
   const [vaultDialog, setVaultDialog] = useState<"create" | "rename" | null>(null);
+  const [vaultActionId, setVaultActionId] = useState<string | null>(null);
   const [vaultNameDraft, setVaultNameDraft] = useState("");
   const [items, setItems] = useState<Summary[]>([]),
     [selected, setSelected] = useState<Item | null>(null);
@@ -414,7 +415,7 @@ export function App() {
   };
   const renameVault = async () => {
     try {
-      const result = await invoke<{ vaults: VaultSummary[] }>("vault_rename", { vaultId, name: vaultNameDraft });
+      const result = await invoke<{ vaults: VaultSummary[] }>("vault_rename", { vaultId: vaultActionId ?? vaultId, name: vaultNameDraft });
       setVaults(result.vaults);
       setVaultDialog(null);
       setVaultNameDraft("");
@@ -971,7 +972,7 @@ export function App() {
         {vaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
-        </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { void selectVault(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button></div></details></div>)}
+        </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setVaultActionId(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button></div></details></div>)}
         <Button variant="ghost" className="justify-start" onClick={() => { setVaultNameDraft(""); setVaultDialog("create"); }} disabled={!online}>
           <Plus size={17} />
           <span>Add vault</span>
