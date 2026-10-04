@@ -621,7 +621,7 @@ async function reload() {
   let data = await call("/api/v1/vaults");
   lastSynced = new Date();
   updateSessionDates();
-  if (!data.directory || !data.vaultEnvelopes.length) {
+  if (!data.directory || !data.vaultEnvelopes.some((row) => !row.retired)) {
     availableVaults = [];
     window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: [] }));
     vault = catalogue = null;
@@ -639,9 +639,8 @@ async function reload() {
   }
   let directory = un(data.directory),
     chosen = data.vaultEnvelopes.find((row) => row.vaultId === vaultId && !row.retired) || data.vaultEnvelopes.find((row) => !row.retired),
-    activeRows = data.vaultEnvelopes.filter((row) => !row.retired),
-    fallback = activeRows[0];
-  if (!chosen || !fallback) throw Error("NO_ACTIVE_VAULT");
+    activeRows = data.vaultEnvelopes.filter((row) => !row.retired);
+  if (!chosen) throw Error("NO_ACTIVE_VAULT");
   availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: vaultSettings.names[row.vaultId] || (index === 0 ? "Private" : `Vault ${index + 1}`), selected: row.vaultId === chosen.vaultId }));
   $("vault-title").textContent = availableVaults.find((row) => row.selected)?.name || "Private";
   window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: availableVaults }));
