@@ -25,6 +25,7 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules /app/node_modules
 COPY --from=dependencies /app/apps/server/node_modules /app/apps/server/node_modules
 COPY apps/server/src apps/server/src
+COPY apps/server/admin apps/server/admin
 COPY packages/sync/src packages/sync/src
 COPY apps/server/wasm-auth apps/server/wasm-auth
 COPY --from=web-build /app/apps/web/dist apps/web/dist
