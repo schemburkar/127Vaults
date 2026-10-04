@@ -47,6 +47,7 @@ let core,
   vault,
   catalogue,
   vaultId,
+  availableVaults = [],
   csrf,
   busy = false,
   sessionTimer,
@@ -120,8 +121,11 @@ async function call(path, { method = "GET", body, token = csrf } = {}) {
   if (!r.ok) throw Error(v.error ?? `HTTP_${r.status}`);
   return v;
 }
+function reusableSecret(identityRecord) {
+  return Boolean(identityRecord && (identityRecord.secretExpiresAt === undefined || identityRecord.secretExpiresAt > Date.now()) && (identityRecord.secretEnvelope || identityRecord.accountSecret));
+}
 function credentials() {
-  let secret = identity?.accountSecret || $("secret").value,
+  let secret = $("secret").value || (reusableSecret(identity) ? identity?.accountSecret : ""),
     master = $("master").value;
   if (!/^[0-9a-fA-F]{64}$/.test(secret)) {
     status(
@@ -394,6 +398,7 @@ async function setup() {
       username: candidate.username,
       privateKey: generated.keys.privateKey,
       secretEnvelope,
+      secretExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
     });
     identity = await loadIdentity();
     $("device").value = deviceId;
@@ -495,7 +500,7 @@ async function login() {
       throw Error(
         "The username does not match this device’s registered identity.",
       );
-    if (identity.secretEnvelope)
+    if (identity.secretEnvelope && reusableSecret(identity))
       $("secret").value = await recoverAccountSecret(
         identity.secretEnvelope,
         $("master").value,
@@ -563,6 +568,12 @@ async function login() {
     });
     csrf = logged.csrf;
     await reload();
+    try {
+      const nextIdentity = { ...identity, secretEnvelope: await protectAccountSecret($("secret").value || identity.accountSecret, $("master").value), secretExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 };
+      delete nextIdentity.accountSecret;
+      await saveIdentity(nextIdentity);
+      identity = nextIdentity;
+    } catch { toast("Remember this device needs attention", "The account secret could not be saved securely. Enter it again next time.", "error"); }
     wipeInputs();
     $("entry-shell").hidden = true;
     $("vault").hidden = false;
@@ -589,12 +600,15 @@ async function reload() {
   lastSynced = new Date();
   updateSessionDates();
   if (!data.directory || !data.vaultEnvelopes.length) {
+    availableVaults = [];
+    window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: [] }));
     vault = catalogue = null;
     vaultId = null;
     loadedItems = [];
     showEmpty();
     renderItems([]);
     $("vault-state").textContent = "No vault yet";
+    $("vault-title").textContent = "No vault";
     $("nav-count").textContent = "0";
     $("create-vault").disabled = false;
     $("new-item").disabled = true;
@@ -602,7 +616,14 @@ async function reload() {
     return;
   }
   let directory = un(data.directory),
-    chosen = data.vaultEnvelopes[0],
+    chosen = data.vaultEnvelopes.find((row) => row.vaultId === vaultId && !row.retired) || data.vaultEnvelopes.find((row) => !row.retired),
+    activeRows = data.vaultEnvelopes.filter((row) => !row.retired),
+    fallback = activeRows[0];
+  if (!chosen || !fallback) throw Error("NO_ACTIVE_VAULT");
+  availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: index === 0 ? "Private" : `Vault ${index + 1}`, selected: row.vaultId === chosen.vaultId }));
+  $("vault-title").textContent = availableVaults.find((row) => row.selected)?.name || "Private";
+  window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: availableVaults }));
+  let
     nextVaultId = chosen.vaultId,
     nextVault = core.open_private_vault(
       root,
@@ -642,7 +663,7 @@ async function reload() {
   $("vault-state").textContent =
     `${items.length} item${items.length === 1 ? "" : "s"}`;
   $("nav-count").textContent = String(items.length);
-  $("create-vault").disabled = true;
+  $("create-vault").disabled = false;
   $("new-item").disabled = false;
   $("save").disabled = false;
 }
@@ -1006,6 +1027,7 @@ async function createVault() {
         await import("/app/private-vault-client.mjs")
       ).PrivateVaultClient({ core, root, csrf }),
       newId = await client.create(un(data.directory));
+    vaultId = newId;
     vault = client.vault;
     catalogue = client.catalogue;
     vaultId = newId;
@@ -1018,6 +1040,13 @@ async function createVault() {
   } finally {
     setBusy(false);
   }
+}
+async function selectVault(nextVaultId) {
+  if (!availableVaults.some((row) => row.vaultId === nextVaultId)) return;
+  vaultId = nextVaultId;
+  clearItem();
+  try { await reload(); }
+  catch (error) { toast("Vault could not be opened", safeError(error), "error"); }
 }
 async function save(event) {
   event.preventDefault();
@@ -1307,9 +1336,7 @@ function showLoginPassword() {
     return;
   }
   $("login-account-name").textContent = username;
-  $("legacy-secret-field").hidden = Boolean(
-    identity.secretEnvelope || identity.accountSecret,
-  );
+  $("legacy-secret-field").hidden = reusableSecret(identity);
   $("login-username-step").hidden = true;
   $("login-password-step").hidden = false;
   $("master").focus();
@@ -1359,6 +1386,7 @@ function advanceRegistration() {
   setRegistrationStep(registrationStep + 1);
 }
 function showSettingsView(name) {
+  window.dispatchEvent(new CustomEvent("vaults:settings-view", { detail: name }));
   for (let button of document.querySelectorAll(".settings-tab")) {
     const selected = button.dataset.settingsView === name;
     button.classList.toggle("active", selected);
@@ -1368,6 +1396,7 @@ function showSettingsView(name) {
   }
   $("settings-profile").hidden = name !== "profile";
   $("settings-devices").hidden = name !== "devices";
+  $("settings-vaults").hidden = name !== "vaults";
   $("settings-preferences").hidden = name !== "preferences";
   if (name === "devices") reloadDevices();
 }
@@ -1398,10 +1427,11 @@ function setBusy(v) {
       v ||
       (b.id === "save" && !vault) ||
       (b.id === "new-item" && !vault) ||
-      (b.id === "create-vault" && !!vault) ||
       (b.id === "lock" && !root);
 }
 window.__vaultsActions = {
+  createVault,
+  selectVault,
   openItem: ({ row, index }, button) => {
     $("items").dataset.requestedItem = row.itemId;
     return openItem(row.itemId, index, button);
@@ -1411,7 +1441,7 @@ window.__vaultsActions = {
     renderItems(loadedItems);
     if (id === "new-item") beginEdit(null);
     else if (id === "edit-item" && currentItem) beginEdit();
-    else if (id === "create-vault" && !vault) createVault();
+    else if (id === "create-vault") createVault();
     else if (id === "reload") reload().catch(() => msg("Vault refresh failed.", "error"));
     else if (id === "settings") $("settings-toggle").click();
     else if (id === "lock") lock();

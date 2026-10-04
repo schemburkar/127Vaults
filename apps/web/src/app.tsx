@@ -9,6 +9,7 @@ import {
   Search,
   Settings as SettingsIcon,
   Vault as VaultIcon,
+  X,
 } from "lucide-react";
 import { Button, Input } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
@@ -52,6 +53,7 @@ type DeviceSummary = {
   credentialState?: string;
   status?: string;
 };
+type WebVaultSummary = { vaultId: string; name: string; selected: boolean };
 type CustomField = {
   id?: string;
   label?: string;
@@ -539,6 +541,8 @@ function Authentication() {
 
 function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
+  useEffect(() => { const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:vaults", update); return () => window.removeEventListener("vaults:vaults", update); }, []);
   const nav = "nav !min-h-11 w-full justify-start !border-0 !bg-transparent !px-3 text-slate-400 shadow-none hover:!bg-[#E0BB95]/10 hover:!text-[#E0BB95] max-[560px]:h-14 max-[560px]:min-w-0 max-[560px]:flex-1 max-[560px]:gap-1.5 max-[560px]:!px-2 max-[560px]:text-[10px] [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:shrink [&>span]:truncate [&>span]:text-left [&>b]:ml-auto [&>b]:rounded-full [&>b]:bg-white/10 [&>b]:px-2 [&>b]:py-0.5 [&>b]:text-[10px] max-[560px]:[&>b]:hidden";
   return (
     <aside className={`sidebar row-span-2 flex flex-col p-3 text-white ${menuOpen ? "menu-open" : ""}`}>
@@ -550,9 +554,7 @@ function Sidebar() {
         <b id="nav-count">0</b>
       </Button>
       <p className="mb-2 mt-6 px-3 text-[9px] font-bold tracking-[0.18em] text-slate-500 max-[800px]:hidden">VAULTS</p>
-      <Button variant="ghost" className={`${nav} active !bg-[#E0BB95]/12 !text-[#E0BB95] max-[560px]:hidden`}>
-        <VaultIcon aria-hidden="true" /> <span>Private</span>
-      </Button>
+      {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={`${nav} ${vault.selected ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`} onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon aria-hidden="true" /><span>{vault.name}</span></Button>)}
       <div className="mt-auto space-y-1 max-[560px]:contents">
         <Button id="reload" variant="ghost" className={`${nav} max-[560px]:hidden`} title="Sync now"><RefreshCw aria-hidden="true" /><span>Sync</span></Button>
         <Button id="mobile-sync" variant="ghost" className={`${nav} hidden max-[560px]:flex`}>
@@ -737,8 +739,8 @@ function Vault() {
           <section className={`${panel} p-5 max-[560px]:p-4`}>
             <div className="flex items-start justify-between gap-3 max-[560px]:flex-wrap [&_h1]:mb-1 [&_h1]:text-2xl [&_h1]:font-bold [&_span]:text-xs [&_span]:text-slate-500">
               <div>
-                <p className={eyebrow}>PRIVATE VAULT</p>
-                <h1>All items</h1>
+                <p id="vault-label" className={eyebrow}>PRIVATE VAULT</p>
+                <h1 id="vault-title">Private</h1>
                 <span id="vault-state">No vault</span>
               </div>
               <Button id="create-vault" variant="secondary">
@@ -768,6 +770,9 @@ function Vault() {
 
 function Settings() {
   const settingsTab = "settings-tab w-full justify-start";
+  const [activeTab, setActiveTab] = useState<"profile" | "devices" | "vaults" | "preferences">("profile");
+  const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
+  useEffect(() => { const tab = (event: Event) => setActiveTab((event as CustomEvent<typeof activeTab>).detail); const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:settings-view", tab); window.addEventListener("vaults:vaults", update); return () => { window.removeEventListener("vaults:settings-view", tab); window.removeEventListener("vaults:vaults", update); }; }, []);
   return (
     <dialog id="settings" className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#04071d] p-0 text-slate-100 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm max-[560px]:inset-0 max-[560px]:m-0 max-[560px]:h-dvh max-[560px]:max-h-none max-[560px]:w-screen max-[560px]:max-w-none max-[560px]:rounded-none max-[560px]:border-0">
       <div className="grid min-h-[31rem] grid-cols-[12rem_1fr] max-[560px]:min-h-full max-[560px]:grid-cols-1 max-[560px]:grid-rows-[auto_1fr]">
@@ -778,28 +783,31 @@ function Settings() {
           </div>
           <Button
             variant="ghost"
-            className={`${settingsTab} active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm`}
+            className={`${settingsTab} ${activeTab === "profile" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`}
             data-settings-view="profile"
           >
             Profile
           </Button>
           <Button
             variant="ghost"
-            className={settingsTab}
+            className={`${settingsTab} ${activeTab === "devices" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`}
             data-settings-view="devices"
           >
             Devices
           </Button>
-          <Button variant="ghost" className={settingsTab} data-settings-view="preferences">Preferences</Button>
+          <Button variant="ghost" className={`${settingsTab} ${activeTab === "vaults" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`} data-settings-view="vaults">Vaults</Button>
+          <Button variant="ghost" className={`${settingsTab} ${activeTab === "preferences" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`} data-settings-view="preferences">Preferences</Button>
           <Button
             id="close-settings"
             variant="secondary"
-            className="mt-auto w-full justify-start max-[560px]:mt-0"
+            className="settings-close absolute right-3 top-3 !size-9 !min-h-9 !justify-center !p-0"
+            aria-label="Close settings"
+            title="Close settings"
           >
-            Close
+            <X size={18} />
           </Button>
         </aside>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-profile">
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-profile" hidden={activeTab !== "profile"}>
           <h2>Profile</h2>
           <p className={muted}>Your account and personal preferences.</p>
           <div className="grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4">
@@ -807,11 +815,12 @@ function Settings() {
             <strong id="profile-username" />
           </div>
         </section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden>
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden={activeTab !== "preferences"}>
           <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p>
           <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Lock after inactivity<select id="preference-lock-minutes" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label><label className="grid gap-2">Clear copied values after<select id="preference-clipboard-seconds" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select></label></div>
         </section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden>
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <Button key={vault.vaultId} variant={vault.selected ? "secondary" : "ghost"} className="justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} />{vault.name}{vault.selected ? " · Current" : ""}</Button>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.createVault()}>Create vault</Button></section>
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden={activeTab !== "devices"}>
           <div id="devices-list-page">
             <div className="flex items-start justify-between gap-4 max-[560px]:flex-wrap">
               <div>
