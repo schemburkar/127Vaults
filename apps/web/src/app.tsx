@@ -10,6 +10,8 @@ import {
   Vault as VaultIcon,
 } from "lucide-react";
 import { Button, Input } from "@127vaults/ui";
+import { QRCodeSVG } from "qrcode.react";
+import { ITEM_TYPES, TYPE_GROUPS, SECTION_TYPES, TYPE_FIELD_ID, SECTION_PREFIX, SECTION_FIELD_PREFIX, addSection, itemType, ordinaryFields, primaryFields, removeSection, sections, setItemType, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 
 const eyebrow = "mb-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500";
 const muted = "text-slate-400";
@@ -73,24 +75,22 @@ function ToastRegion() {
 }
 
 function CustomFieldsEditor() {
-  const [fields, setFields] = useState<CustomField[]>([]);
+  const [fields, setFields] = useState<ItemField[]>([]);
   useEffect(() => {
-    const set = (event: Event) =>
-      setFields(
-        (event as CustomEvent<CustomField[]>).detail.map((field) => ({
-          ...field,
-        })),
-      );
+    const set = (event: Event) => setFields((event as CustomEvent<ItemField[]>).detail.map((field) => ({ ...field })));
     const add = (event: Event) =>
       setFields((current) =>
-        current.length >= 32
+        ordinaryFields(current).length >= 32
           ? current
           : [
               ...current,
               {
-                ...(event as CustomEvent<CustomField>).detail,
+                ...(event as CustomEvent<ItemField>).detail,
+                label: (event as CustomEvent<ItemField>).detail.label || "",
+                type: (event as CustomEvent<ItemField>).detail.type || "text",
+                value: (event as CustomEvent<ItemField>).detail.value || "",
                 id:
-                  (event as CustomEvent<CustomField>).detail.id ||
+                  (event as CustomEvent<ItemField>).detail.id ||
                   crypto.randomUUID(),
               },
             ],
@@ -110,14 +110,25 @@ function CustomFieldsEditor() {
     );
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
-      {fields.map((field, index) => {
+      <label className={fieldLabel}>Item type
+        <select id="item-type" className="min-h-11 rounded-xl border border-white/10 bg-[#11162b] px-3 text-sm text-white" value={itemType(fields)} onChange={(event) => { const type = event.target.value as ItemType; setFields((current) => setItemType(current, type)); window.dispatchEvent(new CustomEvent("vaults:item-type", { detail: type })); }}>
+          {TYPE_GROUPS.map((group) => <optgroup key={group.label} label={group.label}>{group.types.map((type) => <option key={type} value={type}>{ITEM_TYPES[type].label}</option>)}</optgroup>)}
+        </select>
+      </label>
+      {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
+      {primaryFields(fields).length > 0 && <h4 className="mt-4 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label} fields</h4>}
+      {primaryFields(fields).map((field) => <label key={field.id} className={fieldLabel}>{field.label}<input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} /></label>)}
+      {sections(fields).map((section) => <div key={section.id} className="mt-4 grid gap-3 rounded-xl border border-white/10 p-4"><div className="flex items-center justify-between"><h4 className="text-sm font-bold text-[#E0BB95]">{section.label}</h4><Button size="sm" variant="ghost" onClick={() => setFields((current) => removeSection(current, section.id))}>Remove section</Button></div>{section.fields.map((field) => <label key={field.id} className={fieldLabel}>{field.label}<input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" ? "password" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} /></label>)}</div>)}
+      <label className={fieldLabel}>Add section<select className="min-h-11 rounded-xl border border-white/10 bg-[#11162b] px-3 text-sm text-white" value="" onChange={(event) => { setFields((current) => addSection(current, event.target.value as SectionType)); event.target.value = ""; }}><option value="">Choose a section…</option>{Object.entries(SECTION_TYPES).map(([type, template]) => <option key={type} value={type}>{template.label}</option>)}</select></label>
+      <h4 className="mt-4 text-xs font-bold uppercase text-[#E0BB95]">Custom fields</h4>
+      {ordinaryFields(fields).map((field, index) => {
         const id = field.id!;
         const inputClass =
           "custom-value min-h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:border-[#E0BB95] focus:ring-4 focus:ring-[#E0BB95]/10";
         return (
           <div
             key={id}
-            className="custom-field grid grid-cols-[minmax(8rem,1fr)_7rem_minmax(10rem,2fr)_auto] items-start gap-2 max-[560px]:grid-cols-[1fr_7rem] max-[560px]:[&_.custom-value]:col-span-2 max-[560px]:[&_.danger]:col-start-2 max-[560px]:[&_.danger]:justify-self-end"
+            className="custom-field grid grid-cols-[minmax(8rem,1fr)_7rem_minmax(10rem,2fr)_auto] items-start gap-2 max-[560px]:grid-cols-[1fr_7rem] max-[560px]:[&_.custom-value]:col-span-2 max-[560px]:[&_.ui-button]:col-start-2 max-[560px]:[&_.ui-button]:justify-self-end"
             data-field-id={id}
           >
             <Input
@@ -185,12 +196,17 @@ function CustomFieldsEditor() {
 }
 
 function CustomFieldsView() {
-  const [fields, setFields] = useState<CustomField[]>([]);
+  const [fields, setFields] = useState<ItemField[]>([]);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [showQr, setShowQr] = useState(false);
+  const [wifiPassword, setWifiPassword] = useState("");
   useEffect(() => {
     const update = (event: Event) => {
-      setFields((event as CustomEvent<CustomField[]>).detail);
+      const detail = (event as CustomEvent<{ fields: ItemField[]; password: string }>).detail;
+      setFields(detail.fields);
+      setWifiPassword(detail.password);
       setRevealed(new Set());
+      setShowQr(false);
     };
     window.addEventListener("vaults:view-fields", update);
     return () => window.removeEventListener("vaults:view-fields", update);
@@ -200,57 +216,24 @@ function CustomFieldsView() {
     await navigator.clipboard.writeText(value);
     setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), 30000);
   };
+  const renderField = (field: ItemField) => {
+    const secret = field.type === "password", shown = revealed.has(field.id);
+    return <div key={field.id} className="grid min-h-16 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-2 border-t border-white/7 px-3 max-[560px]:grid-cols-[5rem_minmax(0,1fr)]">
+      <span className="text-xs font-medium text-slate-500">{field.label}</span>
+      <strong className={`min-w-0 break-all text-sm ${secret ? "font-mono" : ""}`}>{secret && !shown ? "••••••••••••" : field.value || "—"}</strong>
+      <div className="flex gap-1 max-[560px]:col-start-2">{secret && <Button variant="ghost" size="sm" onClick={() => setRevealed((current) => { const next = new Set(current); shown ? next.delete(field.id) : next.add(field.id); return next; })}>{shown ? "Hide" : "Reveal"}</Button>}<Button variant="ghost" size="sm" onClick={() => copy(field.value)}>Copy</Button></div>
+    </div>;
+  };
+  const ssid = fields.find((field) => field.id === "ssid")?.value;
+  const security = fields.find((field) => field.id === "wifi_security")?.value || "WPA";
+  const escapeWifi = (value: string) => value.replace(/([\\;,:"])/g, "\\$1");
   return (
     <div id="view-custom-fields">
-      {fields.map((field) => {
-        const secret = field.type === "password",
-          shown = field.id ? revealed.has(field.id) : false;
-        return (
-          <div
-            key={field.id || field.label}
-            className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 border-t border-white/7 px-4"
-          >
-            <span className="text-xs font-medium text-slate-500">
-              {field.label}
-            </span>
-            <strong
-              className={
-                secret
-                  ? "min-w-0 truncate font-mono text-sm"
-                  : "min-w-0 truncate text-sm"
-              }
-            >
-              {secret && !shown ? "••••••••••••" : field.value || "—"}
-            </strong>
-            <div className="flex gap-1">
-              {secret && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setRevealed((current) => {
-                      const next = new Set(current);
-                      if (field.id) {
-                        shown ? next.delete(field.id) : next.add(field.id);
-                      }
-                      return next;
-                    })
-                  }
-                >
-                  {shown ? "Hide" : "Reveal"}
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copy(field.value)}
-              >
-                Copy
-              </Button>
-            </div>
-          </div>
-        );
-      })}
+      {primaryFields(fields).length > 0 && <h4 className="border-t border-white/10 px-3 py-2 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label}</h4>}
+      {primaryFields(fields).map(renderField)}
+      {sections(fields).map((section) => <section key={section.id}><h4 className="border-t border-white/10 px-3 py-2 text-xs font-bold uppercase text-[#E0BB95]">{section.label}</h4>{section.fields.map(renderField)}</section>)}
+      {ordinaryFields(fields).map(renderField)}
+      {itemType(fields) === "wifi" && ssid && <div className="border-t border-white/10 p-4"><Button variant="secondary" onClick={() => setShowQr((current) => !current)}>{showQr ? "Hide join QR" : "Show Wi-Fi join QR"}</Button>{showQr && <div className="mt-3 inline-grid gap-2 rounded-xl bg-white p-4 text-slate-900"><QRCodeSVG size={180} value={`WIFI:T:${escapeWifi(security)};S:${escapeWifi(ssid)};P:${escapeWifi(wifiPassword)};;`} /><span className="text-xs">Scan to join {ssid}</span></div>}</div>}
     </div>
   );
 }
@@ -580,7 +563,8 @@ function Sidebar() {
 
 function ItemDetail() {
   return (
-    <section className={`${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-[560px]:left-0 max-[560px]:top-0 max-[560px]:max-h-none max-[560px]:rounded-none max-[560px]:px-4 max-[560px]:py-5`}>
+    <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-[560px]:left-0 max-[560px]:top-0 max-[560px]:max-h-none max-[560px]:rounded-none max-[560px]:px-4 max-[560px]:py-5`}>
+      <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex">← All items</Button>
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">
           <KeyRound aria-hidden="true" />
@@ -591,7 +575,7 @@ function ItemDetail() {
       <article id="item-view" hidden>
         <div className="flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">
           <div>
-            <p className={eyebrow}>LOGIN</p>
+            <p id="view-type" className={eyebrow}>LOGIN</p>
             <h2 id="view-title" />
             <a id="view-url" className="text-sm text-[#E0BB95] hover:underline" target="_blank" rel="noreferrer" />
           </div>
@@ -599,10 +583,10 @@ function ItemDetail() {
             Edit
           </Button>
         </div>
-        <section className={detailSection}>
+        <section id="view-signin" className={detailSection}>
           <h3>Sign in</h3>
           <div className="overflow-hidden rounded-xl border border-white/8 bg-black/5">
-            <div className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
+            <div id="view-username-row" className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
               <span className="text-xs font-medium text-slate-500">Username</span>
               <strong id="view-username" className="min-w-0 truncate text-sm" />
               <Button
@@ -613,7 +597,7 @@ function ItemDetail() {
                 Copy
               </Button>
             </div>
-            <div className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 border-t border-white/7 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
+            <div id="view-password-row" className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 border-t border-white/7 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
               <span className="text-xs font-medium text-slate-500">Password</span>
               <strong id="view-password" className="min-w-0 truncate font-mono text-sm">
                 ••••••••••••
@@ -670,7 +654,7 @@ function ItemDetail() {
             <Input id="url" inputMode="url" placeholder="google.com" />
           </Field>
         </section>
-        <section className={detailSection}>
+        <section id="form-signin" className={detailSection}>
           <h3>Sign in</h3>
           <Field label="Username">
             <Input
@@ -896,9 +880,7 @@ export function App() {
       <dialog id="conflict-dialog" className="m-auto w-[min(42rem,calc(100vw-2rem))] rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm">
         <h2 className="text-xl font-bold">Resolve sync conflict</h2>
         <p className="mt-2 text-sm leading-6 text-slate-400">This item changed on another device while you were editing it. Choose which version to keep.</p>
-        <div id="merge-fields" className="mt-5 hidden overflow-hidden rounded-xl border border-white/10">
-          {["title", "website", "username", "password", "custom-fields"].map((field) => <div key={field} className="grid grid-cols-[7rem_1fr_1fr] gap-2 border-b border-white/7 p-3 last:border-0"><b className="self-center text-xs capitalize text-slate-400">{field.replace("-", " ")}</b><button id={`merge-${field}-local`} className="merge-choice rounded-lg border border-[#E0BB95]/30 bg-[#E0BB95]/10 p-2 text-left text-xs" data-source="local" data-field={field}><span className="block text-[10px] font-bold text-[#E0BB95]">MINE</span><span className="merge-value block truncate" /></button><button id={`merge-${field}-server`} className="merge-choice rounded-lg border border-white/10 p-2 text-left text-xs" data-source="server" data-field={field}><span className="block text-[10px] font-bold text-slate-500">SERVER</span><span className="merge-value block truncate" /></button></div>)}
-        </div>
+        <div id="merge-fields" className="mt-5 hidden max-h-[50dvh] overflow-auto rounded-xl border border-white/10" />
         <div className="mt-6 grid gap-2"><Button id="conflict-merge">Merge field by field…</Button><Button id="conflict-apply-merge" className="hidden">Use merged version</Button><Button id="conflict-keep" variant="secondary">Keep my changes and retry</Button><Button id="conflict-server" variant="secondary">Discard mine and use server</Button><Button id="conflict-cancel" variant="ghost">Cancel and keep editing</Button></div>
       </dialog>
       <dialog id="confirm-dialog" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><h2 id="confirm-title" className="text-xl font-bold"/><p id="confirm-detail" className="mt-2 text-sm leading-6 text-slate-400"/><div className="mt-6 flex justify-end gap-2"><Button id="confirm-cancel" variant="secondary">Cancel</Button><Button id="confirm-accept">Continue</Button></div></dialog>

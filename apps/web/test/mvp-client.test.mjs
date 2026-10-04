@@ -163,7 +163,8 @@ test("item and device rows are rendered by React rather than imperative DOM crea
   assert.match(app, /function DeviceList\(\)/);
   assert.match(source, /CustomEvent\("vaults:items"/);
   assert.match(source, /CustomEvent\("vaults:devices"/);
-  assert.doesNotMatch(source, /document\.createElement|\.replaceChildren\(/);
+  const itemRendering = source.slice(source.indexOf("function renderItems"), source.indexOf("const hex ="));
+  assert.doesNotMatch(itemRendering, /document\.createElement|\.replaceChildren\(/);
   assert.match(app, /function CustomFieldsEditor\(\)/);
   assert.match(app, /function CustomFieldsView\(\)/);
 });

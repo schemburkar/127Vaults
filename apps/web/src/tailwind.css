@@ -4,3 +4,6 @@
    justify buttons, but must never turn icon/label content into a column. */
 .ui-button{display:inline-flex!important;flex-direction:row!important;align-items:center!important;flex-wrap:nowrap!important;white-space:nowrap!important}
 .ui-button>svg{display:block!important;flex:0 0 auto!important}
+@media (max-width: 800px) {
+  .item-detail:has(#item-empty:not([hidden])) { display: none; }
+}

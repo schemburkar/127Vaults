@@ -888,7 +888,7 @@ function addCustomField(field = {}) {
 }
 function collectCustomFields() {
   let labels = new Set();
-  return [...document.querySelectorAll("#custom-fields .custom-field")].map(
+  let custom = [...document.querySelectorAll("#custom-fields .custom-field")].map(
     (row) => {
       let label = row.querySelector(".custom-label").value.trim(),
         key = label.toLocaleLowerCase();
@@ -901,11 +901,52 @@ function collectCustomFields() {
       return { id: row.dataset.fieldId, label, type, value };
     },
   );
+  let typed = [...document.querySelectorAll("#custom-fields .typed-value")].map((input) => ({
+    id: input.dataset.fieldId,
+    label: input.dataset.fieldLabel,
+    type: input.dataset.fieldType,
+    value: input.value,
+  }));
+  let metadata = [...document.querySelectorAll('#custom-fields input[type="hidden"][data-field-id]')].map((input) => ({
+    id: input.dataset.fieldId,
+    label: input.dataset.fieldLabel,
+    type: input.dataset.fieldType,
+    value: input.value,
+  }));
+  return [...metadata, ...typed, ...custom];
 }
-function renderCustomFields(fields = []) {
+function renderCustomFields(fields = [], password = "") {
   window.dispatchEvent(
-    new CustomEvent("vaults:view-fields", { detail: fields }),
+    new CustomEvent("vaults:view-fields", { detail: { fields, password } }),
   );
+}
+const itemKinds = {
+  login: { label: "Login", username: true, password: true, website: true },
+  bank: { label: "Bank account", username: true, password: true, website: true },
+  card: { label: "Payment card" },
+  wifi: { label: "Wi-Fi network", password: true },
+  router: { label: "Router", username: true, password: true, website: true },
+  ssh: { label: "SSH / device", username: true, password: true },
+  password: { label: "Password only", password: true },
+};
+function itemKind(fields = []) {
+  let marker = fields.find((field) => field.id === "__127vaults_item_type")?.value;
+  return marker in itemKinds ? marker : "login";
+}
+function showItemKind(kind, editing = false) {
+  let shape = itemKinds[kind] || itemKinds.login;
+  if (editing) {
+    $("form-mode").textContent = `${$("item-id").value ? "EDIT" : "NEW"} ${shape.label.toUpperCase()}`;
+    $("url").closest("label").hidden = !shape.website;
+    $("item-username").closest("label").hidden = !shape.username;
+    $("item-password").closest("label").hidden = !shape.password;
+    $("form-signin").hidden = !shape.username && !shape.password;
+  } else {
+    $("view-type").textContent = shape.label.toUpperCase();
+    $("view-username-row").hidden = !shape.username;
+    $("view-password-row").hidden = !shape.password;
+    $("view-signin").hidden = !shape.username && !shape.password;
+  }
 }
 function displayItem(item, button) {
   currentItem = item;
@@ -928,9 +969,10 @@ function displayItem(item, button) {
     $("view-url").removeAttribute("href");
   }
   $("view-username").textContent = item.body.username || "—";
+  showItemKind(itemKind(item.body.customFields));
   $("view-password").textContent = "••••••••••••";
   $("reveal-password").textContent = "Reveal";
-  renderCustomFields(item.body.customFields);
+  renderCustomFields(item.body.customFields, item.body.password || "");
   $("item-empty").hidden = true;
   $("item-form").hidden = true;
   $("item-view").hidden = false;
@@ -984,7 +1026,7 @@ async function save(event) {
   titleError.classList.toggle("hidden", !!titleInput.value.trim());
   if (!titleInput.value.trim()) { titleInput.focus(); return; }
   setBusy(true);
-  let draft;
+  let draft, accepted = false;
   try {
     let itemId = $("item-id").value || null,
       index = {
@@ -1025,14 +1067,24 @@ async function save(event) {
       `/api/v1/vaults/${vaultId}/items${itemId ? `/${itemId}` : ""}`,
       { method: itemId ? "PUT" : "POST", body: payload },
     );
+    accepted = true;
+    let acceptedRevision = uuid(made.catalogue().slice(44, 60));
     catalogue = made.catalogue();
     lastLocalChange = new Date();
     lastSynced = new Date();
     updateSessionDates();
     clearItem();
     await reload();
+    if (uuid(catalogue.slice(44, 60)) !== acceptedRevision) throw Error("SAVE_REVISION_MISMATCH");
+    let summary = loadedItems.find((row) => row.row.itemId === newId);
+    if (!summary) throw Error("SAVED_ITEM_MISSING");
+    displayItem(await fetchItem(newId, summary.index));
     toast(itemId ? "Item updated" : "Item created", "Your encrypted change was saved successfully.", "success");
   } catch (e) {
+    if (accepted) {
+      toast("Item saved; refresh needs attention", "The server accepted the encrypted change, but the fresh replica could not be verified. Sync before editing again.", "error");
+      return;
+    }
     let messages = {
       WEBSITE_INVALID: "Enter a valid website or domain.",
       CUSTOM_FIELD_NAME_REQUIRED: "Every custom field needs a name.",
@@ -1049,13 +1101,14 @@ async function save(event) {
       }
       let choice = await resolveConflict(draft, serverItem);
       if (choice === "mine") {
-        beginEdit(draft); await save(event);
+        beginEdit(draft); await new Promise(requestAnimationFrame); await save(event);
       } else if (choice === "server") {
         if (serverItem) displayItem(serverItem); else clearItem();
         toast("Server version restored", "Your unsaved local edit was discarded.", "success");
       } else if (choice?.kind === "merge") {
         beginEdit(choice.item);
-        toast("Merged draft ready", "Review the selected values, then save the merged item.", "info");
+        await new Promise(requestAnimationFrame);
+        await save(event);
       } else if (draft) {
         beginEdit(draft);
       }
@@ -1071,22 +1124,64 @@ function resolveConflict(local, server) {
   return new Promise((resolve) => {
     let dialog = $("conflict-dialog"), finish = (choice) => { dialog.close(); resolve(choice); };
     $("merge-fields").classList.add("hidden");
+    $("merge-fields").replaceChildren();
     $("conflict-apply-merge").classList.add("hidden");
     $("conflict-merge").classList.toggle("hidden", !local || !server);
-    let selected = { title: "local", website: "local", username: "local", password: "local", "custom-fields": "local" };
-    if (local && server) for (let field of Object.keys(selected)) {
-      let localValue = field === "custom-fields" ? local.body.customFields : field in local.index ? local.index[field] : local.body[field],
-        serverValue = field === "custom-fields" ? server.body.customFields : field in server.index ? server.index[field] : server.body[field];
-      let label = (value) => field === "password" ? "••••••••" : field === "custom-fields" ? `${value?.length ?? 0} field(s)` : value || "—";
-      $(`merge-${field}-local`).querySelector(".merge-value").textContent = label(localValue);
-      $(`merge-${field}-server`).querySelector(".merge-value").textContent = label(serverValue);
-    }
-    for (let button of document.querySelectorAll(".merge-choice")) button.onclick = () => {
-      selected[button.dataset.field] = button.dataset.source;
-      for (let candidate of document.querySelectorAll(`[data-field="${button.dataset.field}"]`)) candidate.className = `merge-choice rounded-lg border p-2 text-left text-xs ${candidate === button ? "border-[#E0BB95]/30 bg-[#E0BB95]/10" : "border-white/10"}`;
+    let selected = new Map();
+    const addChoice = (key, label, mine, theirs, secret = false) => {
+      selected.set(key, "local");
+      let row = document.createElement("div");
+      row.className = "grid grid-cols-[minmax(5rem,7rem)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-white/7 p-3 last:border-0 max-[560px]:grid-cols-2";
+      let name = document.createElement("b");
+      name.className = "self-center text-xs text-slate-400 max-[560px]:col-span-2";
+      name.textContent = label;
+      row.append(name);
+      for (let [source, value] of [["local", mine], ["server", theirs]]) {
+        let button = document.createElement("button");
+        button.type = "button";
+        button.className = `merge-choice min-w-0 rounded-lg border p-2 text-left text-xs ${source === "local" ? "border-[#E0BB95]/60 bg-[#E0BB95]/10" : "border-white/10"}`;
+        button.setAttribute("aria-pressed", String(source === "local"));
+        let heading = document.createElement("span"), preview = document.createElement("span");
+        heading.className = "block text-[10px] font-bold text-[#E0BB95]";
+        heading.textContent = source === "local" ? "MINE" : "SERVER";
+        preview.className = "block truncate";
+        preview.textContent = secret && value ? "••••••••" : value || "—";
+        button.append(heading, preview);
+        button.onclick = () => {
+          selected.set(key, source);
+          for (let candidate of row.querySelectorAll("button.merge-choice")) {
+            let active = candidate === button;
+            candidate.setAttribute("aria-pressed", String(active));
+            candidate.className = `min-w-0 rounded-lg border p-2 text-left text-xs ${active ? "border-[#E0BB95]/60 bg-[#E0BB95]/10" : "border-white/10"}`;
+          }
+        };
+        row.append(button);
+      }
+      $("merge-fields").append(row);
     };
+    if (local && server) {
+      for (let field of ["title", "website", "username", "password"]) {
+        let part = field === "title" || field === "website" ? "index" : "body";
+        addChoice(field, field[0].toUpperCase() + field.slice(1), local[part][field], server[part][field], field === "password");
+      }
+      let custom = new Map([...server.body.customFields || [], ...local.body.customFields || []].map((field) => [field.id, field]));
+      for (let [id, field] of custom) {
+        let mine = local.body.customFields?.find((entry) => entry.id === id);
+        let theirs = server.body.customFields?.find((entry) => entry.id === id);
+        addChoice(`custom:${id}`, field.label || "Field", mine?.value || (mine ? "" : "(deleted)"), theirs?.value || (theirs ? "" : "(deleted)"), field.type === "password");
+      }
+    }
     $("conflict-merge").onclick = () => { $("merge-fields").classList.remove("hidden"); $("conflict-apply-merge").classList.remove("hidden"); $("conflict-merge").classList.add("hidden"); };
-    $("conflict-apply-merge").onclick = () => finish({ kind: "merge", item: { itemId: local.itemId, index: { title: selected.title === "local" ? local.index.title : server.index.title, website: selected.website === "local" ? local.index.website : server.index.website }, body: { username: selected.username === "local" ? local.body.username : server.body.username, password: selected.password === "local" ? local.body.password : server.body.password, customFields: selected["custom-fields"] === "local" ? local.body.customFields : server.body.customFields } } });
+    $("conflict-apply-merge").onclick = () => {
+      let custom = new Map();
+      for (let field of [...server.body.customFields || [], ...local.body.customFields || []]) {
+        let source = selected.get(`custom:${field.id}`) === "server" ? server : local;
+        let picked = source.body.customFields?.find((entry) => entry.id === field.id);
+        if (picked) custom.set(field.id, picked);
+        else custom.delete(field.id);
+      }
+      finish({ kind: "merge", item: { itemId: local.itemId, index: { title: selected.get("title") === "server" ? server.index.title : local.index.title, website: selected.get("website") === "server" ? server.index.website : local.index.website }, body: { username: selected.get("username") === "server" ? server.body.username : local.body.username, password: selected.get("password") === "server" ? server.body.password : local.body.password, customFields: [...custom.values()] } } });
+    };
     $("conflict-keep").onclick = () => finish("mine");
     $("conflict-server").onclick = () => finish("server");
     $("conflict-cancel").onclick = () => finish("cancel");
@@ -1121,7 +1216,7 @@ function beginEdit(item = currentItem) {
       detail: item?.body.customFields ?? [],
     }),
   );
-  $("form-mode").textContent = item ? "EDIT LOGIN" : "NEW LOGIN";
+  showItemKind(itemKind(item?.body.customFields), true);
   $("form-title").textContent = item ? "Edit item" : "Create item";
   $("save").textContent = "Save";
   $("item-empty").hidden = true;
@@ -1346,6 +1441,7 @@ $("cancel-edit").onclick = () =>
         document.querySelector(`[data-item-id="${currentItem.itemId}"]`),
       )
     : showEmpty();
+$("close-item-detail").onclick = () => { clearItem(); renderItems(loadedItems); };
 $("reload").onclick = () => reload().catch(() => {});
 $("session-footer").oncontextmenu = (event) => {
   event.preventDefault();
@@ -1378,6 +1474,7 @@ for (let button of document.querySelectorAll(".settings-tab"))
 $("show-device-registration").onclick = () => showDeviceRegistration(true);
 $("cancel-device-registration").onclick = () => showDeviceRegistration(false);
 $("add-custom-field").onclick = () => addCustomField();
+window.addEventListener("vaults:item-type", (event) => showItemKind(event.detail, true));
 $("reveal-password").onclick = () => {
   let hidden = $("view-password").textContent.startsWith("•");
   $("view-password").textContent = hidden
