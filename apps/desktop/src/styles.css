@@ -6,10 +6,14 @@
 @media (max-width: 850px) {
   .desktop-shell { grid-template-columns: minmax(15rem, 38%) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) 2rem; }
   .desktop-sidebar { grid-column: 1 / -1; grid-row: 1; flex-direction: row; align-items: center; gap: .25rem; max-height: 5rem; border-right: 0; border-bottom: 1px solid #ffffff14; white-space: nowrap; }
+  .desktop-menu-toggle { display: inline-flex!important; }
+  .desktop-sidebar:not(.menu-open) > :not(.desktop-menu-toggle) { display: none; }
+  .desktop-sidebar.menu-open { flex-wrap: wrap; max-height: min(50dvh, 22rem); align-content: start; }
   .desktop-sidebar > * { flex: 0 0 auto; margin-top: 0; margin-bottom: 0; }
-  .desktop-sidebar > div:first-child { padding: .25rem; }
-  .desktop-sidebar > p, .desktop-sidebar > label { display: none; }
-  .desktop-sidebar > div:last-child { display: flex; margin-left: auto; }
+  .desktop-sidebar > div:nth-child(2) { padding: .25rem; }
+  .desktop-sidebar > p { display: none; }
+  .desktop-sidebar > label { width: 100%; }
+  .desktop-sidebar > div:last-child { display: flex; }
   .desktop-list { grid-column: 1; grid-row: 2; }
   .desktop-detail { grid-column: 2; grid-row: 2; min-width: 0; padding: 1.25rem; }
   .desktop-shell > footer { grid-column: 1 / -1; grid-row: 3; min-width: 0; }
@@ -18,7 +22,8 @@
 @media (max-width: 620px) {
   .desktop-shell { grid-template-columns: minmax(0, 1fr); }
   .desktop-sidebar { max-height: 4.5rem; }
-  .desktop-sidebar > div:first-child strong { display: none; }
+  .desktop-sidebar.menu-open { max-height: min(60dvh, 25rem); }
+  .desktop-sidebar > div:nth-child(2) strong { display: none; }
   .desktop-list, .desktop-detail { grid-column: 1; grid-row: 2; }
   .desktop-shell:not(:has(.detail-selected)) .desktop-detail { display: none; }
   .desktop-shell:has(.detail-selected) .desktop-list { display: none; }
@@ -31,4 +36,8 @@
   .desktop-field-row > div:last-child { grid-column: 2; flex-wrap: wrap; }
   .desktop-detail h2 { overflow-wrap: anywhere; }
   .desktop-shell > footer { overflow: hidden; white-space: nowrap; }
+  .desktop-edit-header { position: sticky; top: -1rem; z-index: 10; flex-wrap: wrap; margin-inline: -1rem; padding: 1rem; border-bottom: 1px solid #ffffff18; background: #04071d; }
+  .desktop-edit-header > div:last-child { width: 100%; justify-content: flex-end; }
+  .desktop-conflict-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .5rem; }
+  .desktop-conflict-row > :first-child { grid-column: 1 / -1; }
 }

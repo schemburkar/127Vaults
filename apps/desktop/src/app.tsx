@@ -17,6 +17,7 @@ import {
   LayoutList,
   LoaderCircle,
   LockKeyhole,
+  Menu,
   Plus,
   Search,
   Trash2,
@@ -110,6 +111,7 @@ export function App() {
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [resolvingOperationId, setResolvingOperationId] = useState<string | null>(null);
   const [footerMenu, setFooterMenu] = useState(false);
+  const [compactNavOpen, setCompactNavOpen] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [lastLocalChange, setLastLocalChange] = useState<Date | null>(null);
   const notify = (kind: Notice["kind"], title: string, detail?: string) => {
@@ -949,7 +951,8 @@ export function App() {
     );
   return (
     <div className="desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]">
-      <aside className="desktop-sidebar row-span-2 flex flex-col overflow-auto border-r border-white/7 bg-[#0a0e21] p-3">
+      <aside className={cn("desktop-sidebar row-span-2 flex flex-col overflow-auto border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")} onClick={(event) => { if ((event.target as HTMLElement).closest("button:not(.desktop-menu-toggle)")) setCompactNavOpen(false); }}>
+        <Button variant="ghost" className="desktop-menu-toggle hidden" aria-expanded={compactNavOpen} aria-label="Vaults and actions" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults and actions</span></Button>
         <div className="mb-7 flex items-center gap-3 px-2 py-3">
           <span className="grid size-9 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
             127
@@ -1098,7 +1101,7 @@ export function App() {
           <div className="mx-auto max-w-3xl">
             {editing ? (
               <>
-                <div className="mb-7 flex items-start justify-between gap-4">
+                <div className="desktop-edit-header mb-7 flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
                       {selected.itemId ? "EDIT ITEM" : "NEW ITEM"}
@@ -1578,7 +1581,7 @@ export function App() {
           aria-modal="true"
           aria-labelledby="conflict-title"
         >
-          <section className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-7 shadow-2xl">
+          <section className="max-h-[90dvh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-7 shadow-2xl max-[620px]:p-4">
             <AlertTriangle className="text-amber-300" />
             <h2 id="conflict-title" className="mt-4 text-xl font-bold">
               Resolve sync conflict
@@ -1588,10 +1591,10 @@ export function App() {
             </p>
             {conflict.server && conflict.choices && (
               <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
-                <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-white/10 bg-white/5 p-3 text-xs font-bold uppercase tracking-wider text-slate-400"><span>Field</span><span>Mine</span><span>Theirs</span></div>
+                <div className="desktop-conflict-row grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-white/10 bg-white/5 p-3 text-xs font-bold uppercase tracking-wider text-slate-400"><span>Field</span><span>Mine</span><span>Theirs</span></div>
                 {(["title", "website", "username", "password", "customFields"] as const).map((field) => {
                   const display = (value: Item[typeof field]) => field === "password" ? "••••••••" : field === "customFields" ? `${(value as CustomField[]).length} field(s)` : String(value || "—");
-                  return <div key={field} className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-white/7 p-3 last:border-0"><b className="self-center text-xs capitalize text-slate-400">{field === "customFields" ? "Custom fields" : field}</b>{(["local", "server"] as const).map((source) => <button key={source} role="radio" aria-checked={conflict.choices?.[field] === source} className={cn("flex min-h-14 items-center gap-3 rounded-lg border p-3 text-left text-sm", conflict.choices?.[field] === source ? "border-[#E0BB95]/60 bg-[#E0BB95]/10" : "border-white/10")} onClick={() => setConflict({ ...conflict, choices: { ...conflict.choices!, [field]: source } })}><span aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded border", conflict.choices?.[field] === source ? "border-[#E0BB95] bg-[#E0BB95] text-[#11162b]" : "border-slate-500")}>{conflict.choices?.[field] === source && <Check size={14} />}</span><span className="min-w-0 truncate">{display(source === "local" ? conflict.draft[field] : conflict.server![field])}</span></button>)}</div>;
+                  return <div key={field} className="desktop-conflict-row grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-white/7 p-3 last:border-0"><b className="self-center text-xs capitalize text-slate-400">{field === "customFields" ? "Custom fields" : field}</b>{(["local", "server"] as const).map((source) => <button key={source} role="radio" aria-checked={conflict.choices?.[field] === source} className={cn("flex min-h-14 items-center gap-3 rounded-lg border p-3 text-left text-sm", conflict.choices?.[field] === source ? "border-[#E0BB95]/60 bg-[#E0BB95]/10" : "border-white/10")} onClick={() => setConflict({ ...conflict, choices: { ...conflict.choices!, [field]: source } })}><span aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded border", conflict.choices?.[field] === source ? "border-[#E0BB95] bg-[#E0BB95] text-[#11162b]" : "border-slate-500")}>{conflict.choices?.[field] === source && <Check size={14} />}</span><span className="min-w-0 truncate">{display(source === "local" ? conflict.draft[field] : conflict.server![field])}</span></button>)}</div>;
                 })}
               </div>
             )}

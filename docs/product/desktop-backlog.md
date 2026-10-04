@@ -1,6 +1,6 @@
 # Desktop backlog
 
-Updated 2026-10-04. Windows-first Tauri client; see [desktop scope](../../apps/desktop/README.md). The shell now reflows below 850px and switches between list and detail below 620px; manual narrow-window verification remains to be done.
+Updated 2026-10-04. Windows-first Tauri client; see [desktop scope](../../apps/desktop/README.md). The shell now reflows below 850px with an expandable vault/action menu and switches between list and detail below 620px. Item actions and conflict choices wrap in compact windows; manual unlocked narrow-window verification remains to be done.
 
 | ID | State | Outcome and acceptance |
 | --- | --- | --- |

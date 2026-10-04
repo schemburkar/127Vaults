@@ -11,7 +11,7 @@ Updated 2026-10-04. State is based on the current source and recorded evidence; 
 | WEB-005 | Partial | The web conflict dialog has per-field choices and saves the selected version immediately. A remote deletion offers save as a new item or accept deletion. Accepted saves reload and verify the catalogue revision and saved item. Two-device divergence and delete/edit behavior still need live verification. |
 | WEB-006 | Open | Decide and implement a browser local replica/unlock policy if offline web is in scope. Verify restart, stale checkpoint, queued edit and lock behavior before claiming offline support. |
 | WEB-007 | Open | Finish browser-native device enrollment and private-LAN certificate/trust matrix; record a human browser ceremony after local CA trust. |
-| WEB-008 | Open | Complete browser security, accessibility and cross-browser verification for supported features before a first release. The narrow layout now has item-list return navigation. |
+| WEB-008 | Open | Complete browser security, accessibility and cross-browser verification for supported features before a first release. The narrow layout now has item-list return navigation, persistent edit actions, mobile sync, and compact settings navigation. |
 
 Browser offline policy: this iteration keeps the web session server-backed and does not persist a decrypted replica or an offline edit queue. Offline browser support remains in WEB-006 until an encrypted storage, unlock, stale-checkpoint, queue and lock policy is implemented and verified.
 
