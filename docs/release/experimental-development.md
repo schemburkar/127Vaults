@@ -1,8 +1,8 @@
 # Experimental development runbook
 
-Use disposable data only. The current server provides HTTPS infrastructure,
-PostgreSQL schema checks, and provisional account provisioning. It does not yet
-provide usable authentication, vault APIs, or stable cryptographic storage.
+Use disposable data only. The current experimental stack provides private HTTPS,
+account authentication, and encrypted vault APIs. It is not a supported release
+or a stable storage-format commitment.
 
 ## Supported v1 development path
 

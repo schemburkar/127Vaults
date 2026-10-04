@@ -48,6 +48,34 @@ stack. Native server commands are unsupported debug tools, not a deployment
 option. The separate Rust/WASM demonstration is documented in the
 [browser-fixture guide](docs/release/rust-browser-fixture.md).
 
+### Run the server and both clients during development (Windows)
+
+Install the workspace dependencies with `pnpm install` and complete the `.env`
+and local TLS setup in the [development runbook](docs/release/experimental-development.md)
+first. In a normal PowerShell window at the repository root, start the
+containerized API and hot-reload web client:
+
+```powershell
+cd C:\Projects\127Vaults
+pnpm mvp:dev
+```
+
+Keep that window open. In another PowerShell window, launch the desktop client:
+
+```powershell
+cd C:\Projects\127Vaults
+pnpm --filter @127vaults/desktop dev
+```
+
+Open the web client at `https://127.0.0.1:12780`. If this is a fresh disposable
+owner setup, run `pnpm mvp:browser` in a third window to print the local CA path
+and one-time bootstrap code. Trust the local CA in Windows/browser settings;
+do not bypass a certificate warning. `pnpm mvp:dev` uses port 12780 for the web
+client and port 12781 for its containerized API. Stop the hot-reload command
+with Ctrl+C, then run `pnpm mvp:stop` to stop the acceptance containers while
+retaining their database volume. For a served, non-hot-reload browser run, use
+`pnpm mvp:start` instead of `pnpm mvp:dev`.
+
 ## Repeat the internal-MVP acceptance
 
 After configuring `.env` and TLS as described in the runbook:
