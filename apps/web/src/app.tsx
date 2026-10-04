@@ -541,7 +541,7 @@ function Sidebar() {
   return (
     <aside className="sidebar row-span-2 flex flex-col p-3 text-white max-[560px]:fixed max-[560px]:inset-x-0 max-[560px]:bottom-0 max-[560px]:z-20 max-[560px]:h-[calc(4.5rem+env(safe-area-inset-bottom))] max-[560px]:flex-row max-[560px]:items-start max-[560px]:gap-2 max-[560px]:border-t max-[560px]:border-white/10 max-[560px]:px-3 max-[560px]:pb-[env(safe-area-inset-bottom)] max-[560px]:pt-1.5">
       <Brand />
-      <Button variant="ghost" className={`${nav} active !bg-[#E0BB95]/12 !text-[#E0BB95]`}>
+      <Button id="nav-all-items" variant="ghost" className={`${nav} active !bg-[#E0BB95]/12 !text-[#E0BB95]`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
       </Button>
@@ -550,6 +550,9 @@ function Sidebar() {
         <VaultIcon aria-hidden="true" /> <span>Private</span>
       </Button>
       <div className="mt-auto space-y-1 max-[560px]:contents">
+        <Button id="mobile-sync" variant="ghost" className={`${nav} hidden max-[560px]:flex`}>
+          <RefreshCw aria-hidden="true" /> <span>Sync</span>
+        </Button>
         <Button id="settings-toggle" variant="ghost" className={nav}>
           <SettingsIcon aria-hidden="true" /> <span>Settings</span>
         </Button>
@@ -632,7 +635,7 @@ function ItemDetail() {
         data-form-type="other"
       >
         <input id="item-id" type="hidden" />
-        <div className="flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">
+        <div className="flex items-start justify-between gap-4 max-[560px]:sticky max-[560px]:top-0 max-[560px]:z-10 max-[560px]:-mx-4 max-[560px]:-mt-5 max-[560px]:border-b max-[560px]:border-white/10 max-[560px]:bg-[#11162b] max-[560px]:px-4 max-[560px]:py-3 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold max-[560px]:[&_h2]:text-xl">
           <div>
             <p id="form-mode" className={eyebrow}>
               NEW LOGIN
@@ -736,7 +739,7 @@ function Vault() {
         </header>
         <div className="grid min-h-0 grid-cols-[minmax(19rem,36%)_1fr] gap-3 p-3 max-[800px]:grid-cols-1 max-[560px]:h-full max-[560px]:p-2">
           <section className={`${panel} p-5 max-[560px]:p-4`}>
-            <div className="flex items-start justify-between gap-3 [&_h1]:mb-1 [&_h1]:text-2xl [&_h1]:font-bold [&_span]:text-xs [&_span]:text-slate-500">
+            <div className="flex items-start justify-between gap-3 max-[560px]:flex-wrap [&_h1]:mb-1 [&_h1]:text-2xl [&_h1]:font-bold [&_span]:text-xs [&_span]:text-slate-500">
               <div>
                 <p className={eyebrow}>PRIVATE VAULT</p>
                 <h1>All items</h1>
@@ -772,8 +775,8 @@ function Settings() {
   return (
     <dialog id="settings" className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#04071d] p-0 text-slate-100 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm max-[560px]:inset-0 max-[560px]:m-0 max-[560px]:h-dvh max-[560px]:max-h-none max-[560px]:w-screen max-[560px]:max-w-none max-[560px]:rounded-none max-[560px]:border-0">
       <div className="grid min-h-[31rem] grid-cols-[12rem_1fr] max-[560px]:min-h-full max-[560px]:grid-cols-1 max-[560px]:grid-rows-[auto_1fr]">
-        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-[1fr_auto_auto] max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
-          <div>
+        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-3 max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
+          <div className="max-[560px]:col-span-3">
             <p className={eyebrow}>SETTINGS</p>
             <h2 className="text-xl font-bold">Settings</h2>
           </div>
@@ -809,7 +812,7 @@ function Settings() {
         </section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden>
           <div id="devices-list-page">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-4 max-[560px]:flex-wrap">
               <div>
                 <h2>Devices</h2>
                 <p className={muted}>Devices registered to this account.</p>
@@ -877,7 +880,7 @@ export function App() {
       <Vault />
       <Settings />
       <ToastRegion />
-      <dialog id="conflict-dialog" className="m-auto w-[min(42rem,calc(100vw-2rem))] rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm">
+      <dialog id="conflict-dialog" className="m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm max-[560px]:p-4">
         <h2 className="text-xl font-bold">Resolve sync conflict</h2>
         <p id="conflict-detail" className="mt-2 text-sm leading-6 text-slate-400">This item changed on another device while you were editing it. Choose which version to keep.</p>
         <div id="merge-fields" className="mt-5 hidden max-h-[50dvh] overflow-auto rounded-xl border border-white/10" />

@@ -1390,7 +1390,7 @@ function setBusy(v) {
   busy = v;
   document.body.setAttribute("aria-busy", String(v));
   for (let b of document.querySelectorAll(
-    "#save,#new-item,#create-vault,#login,#setup,#begin-enrollment,#complete-enrollment",
+    "#save,#new-item,#create-vault,#login,#setup,#begin-enrollment,#complete-enrollment,#mobile-sync",
   ))
     b.disabled =
       v ||
@@ -1452,7 +1452,12 @@ $("cancel-edit").onclick = () =>
       )
     : showEmpty();
 $("close-item-detail").onclick = () => { clearItem(); renderItems(loadedItems); };
+$("nav-all-items").onclick = () => { clearItem(); renderItems(loadedItems); };
 $("reload").onclick = () => reload().catch(() => {});
+$("mobile-sync").onclick = async () => {
+  try { await reload(); toast("Sync complete", "The latest server version is loaded.", "success"); }
+  catch (error) { toast("Sync failed", safeError(error), "error"); }
+};
 $("session-footer").oncontextmenu = (event) => {
   event.preventDefault();
   $("session-menu").classList.remove("hidden");

@@ -7,3 +7,13 @@
 @media (max-width: 800px) {
   .item-detail:has(#item-empty:not([hidden])) { display: none; }
 }
+@media (min-width: 561px) and (max-width: 800px) {
+  .sidebar .nav { justify-content: center; padding-inline: .5rem!important; }
+  .sidebar .nav span, .sidebar .nav b { display: none; }
+}
+@media (max-width: 560px) {
+  .sidebar { background: #080c1d; }
+  .sidebar .nav { justify-content: center; }
+  .sidebar .nav span { text-align: center; }
+  .item-detail { overscroll-behavior: contain; padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+}
