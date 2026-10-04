@@ -1091,17 +1091,21 @@ async function save(event) {
       CUSTOM_FIELD_NAME_DUPLICATE: "Custom field names must be unique.",
     };
     if (["HTTP_409", "BASE_CHANGED", "sync_conflict"].includes(e.message) || e.message.includes("409")) {
-      let serverItem = null;
+      let serverItem = null, serverLoadFailed = false;
       try {
         await reload();
         let summary = loadedItems.find((row) => row.row.itemId === draft?.itemId);
         if (summary) serverItem = await fetchItem(summary.row.itemId, summary.index);
       } catch (loadError) {
+        serverLoadFailed = true;
         toast("Server version could not be loaded", safeError(loadError), "error");
       }
+      if (serverLoadFailed) { beginEdit(draft); return; }
       let choice = await resolveConflict(draft, serverItem);
       if (choice === "mine") {
-        beginEdit(draft); await new Promise(requestAnimationFrame); await save(event);
+        beginEdit(serverItem ? draft : { ...draft, itemId: null });
+        await new Promise(requestAnimationFrame);
+        await save(event);
       } else if (choice === "server") {
         if (serverItem) displayItem(serverItem); else clearItem();
         toast("Server version restored", "Your unsaved local edit was discarded.", "success");
@@ -1123,6 +1127,11 @@ async function save(event) {
 function resolveConflict(local, server) {
   return new Promise((resolve) => {
     let dialog = $("conflict-dialog"), finish = (choice) => { dialog.close(); resolve(choice); };
+    $("conflict-detail").textContent = local && !server
+      ? "This item was deleted on another device while you were editing it. Save your version as a new item, accept the deletion, or keep editing."
+      : "This item changed on another device while you were editing it. Choose which values to save.";
+    $("conflict-keep").textContent = local && !server ? "Save mine as a new item" : "Use mine and save";
+    $("conflict-server").textContent = local && !server ? "Accept deletion" : "Use server version";
     $("merge-fields").classList.add("hidden");
     $("merge-fields").replaceChildren();
     $("conflict-apply-merge").classList.add("hidden");

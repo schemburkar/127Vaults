@@ -879,7 +879,7 @@ export function App() {
       <ToastRegion />
       <dialog id="conflict-dialog" className="m-auto w-[min(42rem,calc(100vw-2rem))] rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm">
         <h2 className="text-xl font-bold">Resolve sync conflict</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-400">This item changed on another device while you were editing it. Choose which version to keep.</p>
+        <p id="conflict-detail" className="mt-2 text-sm leading-6 text-slate-400">This item changed on another device while you were editing it. Choose which version to keep.</p>
         <div id="merge-fields" className="mt-5 hidden max-h-[50dvh] overflow-auto rounded-xl border border-white/10" />
         <div className="mt-6 grid gap-2"><Button id="conflict-merge">Merge field by field…</Button><Button id="conflict-apply-merge" className="hidden">Use merged version</Button><Button id="conflict-keep" variant="secondary">Keep my changes and retry</Button><Button id="conflict-server" variant="secondary">Discard mine and use server</Button><Button id="conflict-cancel" variant="ghost">Cancel and keep editing</Button></div>
       </dialog>
