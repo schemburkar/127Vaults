@@ -173,7 +173,6 @@ fn settings_after_move(
     source: &str,
     destination: &str,
 ) -> SettingsData {
-    settings.names.remove(source);
     for collection in &mut settings.collections {
         for id in &mut collection.vault_ids {
             if id == source {
@@ -2934,7 +2933,7 @@ mod tests {
         assert_eq!(archive.collections[0].vault_ids, vec![destination.clone()]);
         assert!(archive.default_view.is_none());
         let moved = settings_after_move(settings, &source, &destination);
-        assert!(!moved.names.contains_key(&source));
+        assert_eq!(moved.names.get(&source).map(String::as_str), Some("Source"));
         assert_eq!(moved.collections[0].vault_ids, vec![destination.clone()]);
         assert!(
             matches!(moved.default_view, Some(vault_settings::View::Vault(id)) if id == destination)
