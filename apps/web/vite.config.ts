@@ -10,6 +10,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(({ command, mode }) => {
+  const webRoot = fileURLToPath(new URL('.', import.meta.url));
   const env = loadEnv(mode, fileURLToPath(new URL('../..', import.meta.url)), '');
   const backend = env.VAULTS_DEV_BACKEND || 'https://127.0.0.1:12781';
   const publicOrigin = 'https://127.0.0.1:12780';
@@ -35,8 +36,32 @@ export default defineConfig(({ command, mode }) => {
       });
     },
   };
+  const localClientAssets = new Map([
+    ['/app/mvp-client.mjs', join(webRoot, 'mvp-client.mjs')],
+    ['/app/private-vault-client.mjs', join(webRoot, 'src', 'private-vault-client.mjs')],
+    ['/wasm/vaults_browser_fixture.js', join(webRoot, 'wasm', 'vaults_browser_fixture.js')],
+    ['/wasm/vaults_browser_fixture_bg.wasm', join(webRoot, 'wasm', 'vaults_browser_fixture_bg.wasm')],
+  ]);
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [{
+      name: 'local-secure-client-assets',
+      configureServer(server) {
+        server.middlewares.use((request, response, next) => {
+          const asset = localClientAssets.get(new URL((request as { url?: string }).url || '/', publicOrigin).pathname);
+          if (!asset) return next();
+          try {
+            const body = readFileSync(asset);
+            response.setHeader('Content-Type', asset.endsWith('.wasm') ? 'application/wasm' : 'text/javascript; charset=utf-8');
+            response.setHeader('Cache-Control', 'no-store');
+            response.end(body);
+          } catch { response.statusCode = 503; response.end('Local client asset is unavailable. Run pnpm fixture:build.'); }
+        });
+        server.watcher.add([...localClientAssets.values()]);
+        server.watcher.on('change', path => {
+          if ([...localClientAssets.values()].includes(path)) server.ws.send({ type: 'full-reload' });
+        });
+      },
+    }, react(), tailwindcss()],
     server: {
       host: '127.0.0.1',
       port: 12780,
@@ -44,18 +69,6 @@ export default defineConfig(({ command, mode }) => {
       https: hasTls ? { key: readFileSync(key), cert: readFileSync(cert) } : undefined,
       proxy: {
         '/api': proxy,
-        '/app/mvp-client.mjs': {
-          ...proxy,
-          rewrite: path => path.replace(/\?import$/, ''),
-        },
-        '/app/private-vault-client.mjs': {
-          ...proxy,
-          rewrite: path => path.replace(/\?import$/, ''),
-        },
-        '/wasm': {
-          ...proxy,
-          rewrite: path => path.replace(/\?import$/, ''),
-        },
       },
     },
     build: {

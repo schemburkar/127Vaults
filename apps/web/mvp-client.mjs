@@ -208,6 +208,10 @@ async function loadVaultSettings() {
     : { version: 1, names: {}, collections: [], default_view: null, removal_preference: null };
   if (vaultSettings.version !== 1 || typeof vaultSettings.names !== "object" || !vaultSettings.names) throw Error("INVALID_VAULT_SETTINGS");
 }
+function publishVaults(rows) {
+  window.__vaultsSnapshot = rows;
+  window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: rows }));
+}
 async function saveVaultName(vaultId, name) {
   const next = { ...vaultSettings, names: { ...vaultSettings.names, [vaultId]: name } };
   const encrypted = core.encrypt_account_settings(root, te.encode(JSON.stringify(next)));
@@ -623,7 +627,7 @@ async function reload() {
   updateSessionDates();
   if (!data.directory || !data.vaultEnvelopes.some((row) => !row.retired)) {
     availableVaults = [];
-    window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: [] }));
+    publishVaults([]);
     vault = catalogue = null;
     vaultId = null;
     loadedItems = [];
@@ -643,7 +647,7 @@ async function reload() {
   if (!chosen) throw Error("NO_ACTIVE_VAULT");
   availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: vaultSettings.names[row.vaultId] || (index === 0 ? "Private" : `Vault ${index + 1}`), selected: row.vaultId === chosen.vaultId }));
   $("vault-title").textContent = availableVaults.find((row) => row.selected)?.name || "Private";
-  window.dispatchEvent(new CustomEvent("vaults:vaults", { detail: availableVaults }));
+  publishVaults(availableVaults);
   let
     nextVaultId = chosen.vaultId,
     nextVault = core.open_private_vault(

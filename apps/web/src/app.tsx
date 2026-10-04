@@ -542,7 +542,7 @@ function Authentication() {
 function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
-  useEffect(() => { const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:vaults", update); return () => window.removeEventListener("vaults:vaults", update); }, []);
+  useEffect(() => { const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:vaults", update); if ((window as any).__vaultsSnapshot) setVaults((window as any).__vaultsSnapshot); return () => window.removeEventListener("vaults:vaults", update); }, []);
   const nav = "nav !min-h-11 w-full justify-start !border-0 !bg-transparent !px-3 text-slate-400 shadow-none hover:!bg-[#E0BB95]/10 hover:!text-[#E0BB95] max-[560px]:h-14 max-[560px]:min-w-0 max-[560px]:flex-1 max-[560px]:gap-1.5 max-[560px]:!px-2 max-[560px]:text-[10px] [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:shrink [&>span]:truncate [&>span]:text-left [&>b]:ml-auto [&>b]:rounded-full [&>b]:bg-white/10 [&>b]:px-2 [&>b]:py-0.5 [&>b]:text-[10px] max-[560px]:[&>b]:hidden";
   return (
     <aside className={`sidebar row-span-2 flex flex-col p-3 text-white ${menuOpen ? "menu-open" : ""}`}>
@@ -772,7 +772,7 @@ function Settings() {
   const settingsTab = "settings-tab w-full justify-start";
   const [activeTab, setActiveTab] = useState<"profile" | "devices" | "vaults" | "preferences">("profile");
   const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
-  useEffect(() => { const tab = (event: Event) => setActiveTab((event as CustomEvent<typeof activeTab>).detail); const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:settings-view", tab); window.addEventListener("vaults:vaults", update); return () => { window.removeEventListener("vaults:settings-view", tab); window.removeEventListener("vaults:vaults", update); }; }, []);
+  useEffect(() => { const tab = (event: Event) => setActiveTab((event as CustomEvent<typeof activeTab>).detail); const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:settings-view", tab); window.addEventListener("vaults:vaults", update); if ((window as any).__vaultsSnapshot) setVaults((window as any).__vaultsSnapshot); return () => { window.removeEventListener("vaults:settings-view", tab); window.removeEventListener("vaults:vaults", update); }; }, []);
   return (
     <dialog id="settings" className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#04071d] p-0 text-slate-100 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm max-[560px]:inset-0 max-[560px]:m-0 max-[560px]:h-dvh max-[560px]:max-h-none max-[560px]:w-screen max-[560px]:max-w-none max-[560px]:rounded-none max-[560px]:border-0">
       <div className="grid min-h-[31rem] grid-cols-[12rem_1fr] max-[560px]:min-h-full max-[560px]:grid-cols-1 max-[560px]:grid-rows-[auto_1fr]">
@@ -875,8 +875,9 @@ function Settings() {
 export function App() {
   useEffect(() => {
     const client = "/app/mvp-client.mjs";
-    import(/* @vite-ignore */ client).catch(() => {
-      if (import.meta.env.DEV) return;
+    import(/* @vite-ignore */ client).catch((error) => {
+      console.error("127Vaults secure client could not start", error);
+      window.dispatchEvent(new CustomEvent("vaults:toast", { detail: { title: "Vault controls are unavailable", detail: "Reload the page. If this continues, rebuild the browser fixture and restart the local server.", kind: "error" } }));
       const message = document.getElementById("message");
       if (message) {
         message.className =
