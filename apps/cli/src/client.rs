@@ -37,6 +37,7 @@ pub struct Session {
     settings_remote: Option<(Option<String>, Option<String>)>,
     sync_transport: Option<HttpSyncTransport>,
     online: bool,
+    offline_reason: Option<String>,
     vault_handles: std::collections::HashMap<String, KeyHandle>,
 }
 
@@ -151,6 +152,7 @@ pub fn unlock_offline(
         settings_remote: None,
         sync_transport: None,
         online: false,
+        offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
     })
 }
@@ -349,6 +351,18 @@ fn http_client(config_dir: &Path) -> Result<(Client, String, String, String), St
     Ok((client, origin, server_id, device_id))
 }
 
+fn server_connection_error(error: reqwest::Error) -> String {
+    let mut source: Option<&dyn std::error::Error> = Some(&error);
+    while let Some(current) = source {
+        let detail = current.to_string().to_ascii_lowercase();
+        if detail.contains("certificate") || detail.contains("unknownissuer") {
+            return "server TLS certificate is not trusted by this device".to_owned();
+        }
+        source = current.source();
+    }
+    "server unavailable".to_owned()
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn unlock(
     config_dir: &Path,
@@ -368,7 +382,7 @@ pub fn unlock(
     let ceremony = client
         .get(format!("{origin}/api/v1/ceremony"))
         .send()
-        .map_err(|_| "server unavailable".to_owned())?;
+        .map_err(server_connection_error)?;
     if ceremony.status() != StatusCode::OK {
         return Err("authentication ceremony unavailable".to_owned());
     }
@@ -528,6 +542,7 @@ pub fn unlock(
         settings_remote: None,
         sync_transport: Some(sync_transport),
         online: true,
+        offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
     };
     session.hydrate_replicas()?;
@@ -558,6 +573,10 @@ pub fn unlock_with_offline_fallback(
     match unlock(config_dir, username, secret_hex, password) {
         Ok(session) => Ok(session),
         Err(online_error) => unlock_offline(config_dir, username, secret_hex, password)
+            .map(|mut session| {
+                session.offline_reason = Some(online_error.clone());
+                session
+            })
             .map_err(|offline_error| format!("{online_error}; {offline_error}")),
     }
 }
@@ -1653,6 +1672,9 @@ impl Session {
     }
     pub fn is_online(&self) -> bool {
         self.online
+    }
+    pub fn offline_reason(&self) -> Option<&str> {
+        self.offline_reason.as_deref()
     }
     fn resolve_vault_id(&self, selector: &str) -> Result<String, String> {
         let listed = self.vault_list()?;

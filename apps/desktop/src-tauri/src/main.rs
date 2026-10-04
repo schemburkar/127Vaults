@@ -223,6 +223,7 @@ async fn unlock(
             master_password.as_bytes(),
         )?;
         let online = session.is_online();
+        let offline_reason = session.offline_reason().map(str::to_owned);
         let vaults = session.vault_list()?;
         let default_vault = session.default_vault()?;
         let vault = default_vault.clone().or_else(|| vaults
@@ -253,7 +254,7 @@ async fn unlock(
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
         Ok::<_, String>((
             session,
-            json!({"online":online,"vaultId":initial_vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered}),
+            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered}),
         ))
     })
     .await
