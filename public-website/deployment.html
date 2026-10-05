@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#04071d">
+  <meta name="description" content="Compare self-hosted 127Vaults and 127Vaults Cloud, including server operations and private networking.">
+  <title>Deployment — 127Vaults</title>
+  <link rel="stylesheet" href="site.css?v=1">
+  <script src="theme.mjs?v=2" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header"><div class="container header-inner">
+    <a class="wordmark" href="index.html" aria-label="127Vaults home"><span class="brand-mark">127</span><span>127Vaults</span></a>
+    <nav aria-label="Main navigation"><a href="product.html">Product</a><a href="security.html">Security</a><a href="deployment.html" aria-current="page">Deployment</a><a href="pricing.html">Pricing</a><a href="faq.html">FAQ</a></nav>
+    <a class="header-link" href="pricing.html">Explore plans</a>
+  </div></header>
+  <main id="main">
+    <section class="page-hero"><div class="container"><span class="kicker">DEPLOYMENT</span><h1>Choose where the server runs.</h1><p>Self-hosting is the primary deployment model. 127Vaults Cloud is the managed option for customers who do not want to operate their own server.</p></div></section>
+    <section class="page-section"><div class="container deployment-grid"><article class="deployment-card"><span class="kicker">SELF-HOSTED</span><h2>Your infrastructure.</h2><p>You deploy and operate the 127Vaults server on infrastructure you control. Your server stores synchronized encrypted vault data; 127Vaults does not provide hosting or storage under a self-hosted license.</p><ul><li>You manage the server and its availability</li><li>Clients are designed for offline access to synchronized vaults</li><li>Personal and Commercial licenses are available</li></ul><a class="inline-cta" href="pricing.html#self-hosted">View self-hosted pricing</a></article><article class="deployment-card"><span class="kicker">127VAULTS CLOUD</span><h2>Infrastructure we run.</h2><p>127Vaults operates the server infrastructure. Customers pay per user for the convenience of managed hosting. Cloud does not change the intended client-side vault encryption model.</p><ul><li>No customer-operated 127Vaults server</li><li>Offline-first clients are still part of the design</li><li>127Vaults manages server operations and updates</li></ul><a class="inline-cta" href="pricing.html#cloud">View Cloud pricing</a></article></div></section>
+    <section class="page-section alternate"><div class="container two-column"><div><span class="kicker">PRIVATE NETWORKING</span><h2>Keep the server private.</h2></div><div class="prose"><p>For self-hosted remote access, prefer a private networking layer such as Tailscale or Cloudflare Tunnel instead of exposing the password server directly to the public Internet. Secure networking configuration remains the operator's responsibility.</p><p>The server primarily coordinates encrypted synchronization. A temporary outage should not block access to vault contents already synchronized to an authorized device.</p></div></div></section>
+    <section class="page-cta"><div class="container"><div><span class="kicker">COMPARE PLANS</span><h2>One product. Two ways to run it.</h2><p>Compare self-hosted licensing with managed Cloud.</p></div><a class="button light" href="pricing.html">View pricing</a></div></section>
+  </main>
+  <footer><div class="container footer-inner"><a class="wordmark" href="index.html"><span class="brand-mark">127</span><span>127Vaults</span></a><p>Your vaults. Your devices. Your server or ours.</p><span>© 127Vaults</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" title="Switch theme"><svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z"/></svg></button></div><div class="container footer-links"><a href="product.html">Product</a><a href="security.html">Security</a><a href="deployment.html">Deployment</a><a href="pricing.html">Pricing</a><a href="faq.html">FAQ</a></div></footer>
+</body>
+</html>

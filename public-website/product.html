@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#04071d">
+  <meta name="description" content="Explore the offline-first, self-hosted design of 127Vaults and how private and shared vaults are intended to work.">
+  <title>Product — 127Vaults</title>
+  <link rel="stylesheet" href="site.css?v=1">
+  <script src="theme.mjs?v=2" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header"><div class="container header-inner">
+    <a class="wordmark" href="index.html" aria-label="127Vaults home"><span class="brand-mark">127</span><span>127Vaults</span></a>
+    <nav aria-label="Main navigation"><a href="product.html" aria-current="page">Product</a><a href="security.html">Security</a><a href="deployment.html">Deployment</a><a href="pricing.html">Pricing</a><a href="faq.html">FAQ</a></nav>
+    <a class="header-link" href="pricing.html">Explore plans</a>
+  </div></header>
+  <main id="main">
+    <section class="page-hero"><div class="container"><span class="kicker">THE PRODUCT</span><h1>Passwords that stay close to you.</h1><p>127Vaults is being built for people who want practical control over their password infrastructure, without giving up multi-device access or shared vaults.</p></div></section>
+    <section class="page-section"><div class="container two-column"><div><span class="kicker">HOW IT WORKS</span><h2>Local first.<br>Encrypted in transit.</h2></div><div class="prose"><p>Each authorized device is designed to keep an encrypted local copy of vaults it can access. The server coordinates encrypted changes between devices. When the server is temporarily unavailable, already synchronized vault contents should remain available on the device.</p><p>Vault data is designed to be encrypted on the client before it reaches the server. The server is not intended to hold plaintext passwords or the secrets required to decrypt a vault.</p></div></div></section>
+    <section class="page-section alternate"><div class="container"><span class="kicker">CORE IDEAS</span><h2>A focused password manager.</h2><div class="tile-grid"><article class="info-tile"><span>01</span><h3>Private vaults</h3><p>Keep personal information separate. An administrator is not meant to gain automatic cryptographic access to every private vault.</p></article><article class="info-tile"><span>02</span><h3>Shared vaults</h3><p>Share with other users on the same 127Vaults server environment. External guests, public links, and anonymous sharing are not supported.</p></article><article class="info-tile"><span>03</span><h3>Registered devices</h3><p>Every client device is registered and has its own cryptographic identity. The server knows authorized device identities, not their private keys.</p></article></div></div></section>
+    <section class="page-section"><div class="container two-column"><div><span class="kicker">ADMINISTRATION</span><h2>Simple to operate.</h2></div><div class="prose"><p>127Vaults aims to support user management and private, shared vault use without the complexity of a traditional enterprise password manager. Recovery is intended to be explicit and user designated, rather than blanket administrator access to private vaults.</p><p>The same core product is intended for Personal Self-Hosted, Commercial Self-Hosted, and 127Vaults Cloud.</p><a class="inline-cta" href="security.html">Read the security approach</a></div></div></section>
+    <section class="page-cta"><div class="container"><div><span class="kicker">MAKE IT YOURS</span><h2>Your server or ours.</h2><p>Compare self-hosting and managed Cloud before choosing a plan.</p></div><a class="button light" href="deployment.html">Compare deployment options</a></div></section>
+  </main>
+  <footer><div class="container footer-inner"><a class="wordmark" href="index.html"><span class="brand-mark">127</span><span>127Vaults</span></a><p>Your vaults. Your devices. Your server or ours.</p><span>© 127Vaults</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" title="Switch theme"><svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z"/></svg></button></div><div class="container footer-links"><a href="product.html">Product</a><a href="security.html">Security</a><a href="deployment.html">Deployment</a><a href="pricing.html">Pricing</a><a href="faq.html">FAQ</a></div></footer>
+</body>
+</html>
