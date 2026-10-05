@@ -1044,6 +1044,37 @@ async function fetchItem(itemId, index) {
     body = JSON.parse(td.decode(core.decrypt_private_part(vault, catalogue, id(itemId), un(got.envelope), 3)));
   return { itemId, index, body };
 }
+// Called only by the installed extension's user-initiated browser action. The
+// extension reads this object in the page's main world after obtaining explicit
+// permission for this vault origin. No credential is pushed to other pages.
+window.__vaultsExtensionActions = {
+  async lock() {
+    await lock();
+    return true;
+  },
+  list() {
+    if (!root || !vault || !catalogue) return { locked: true, items: [] };
+    arm();
+    return {
+      locked: false,
+      vaultId,
+      items: loadedItems
+        .filter(({ index }) => index?.website && (!index?.type || index.type === "login"))
+        .map(({ row, index }) => ({ itemId: row.itemId, title: index.title || "Untitled login", website: index.website })),
+    };
+  },
+  async credential(itemId, requestedVaultId) {
+    if (!root || !vault || !catalogue || requestedVaultId !== vaultId) throw Error("VAULT_LOCKED_OR_CHANGED");
+    const found = loadedItems.find(({ row }) => row.itemId === itemId);
+    if (!found || !found.index.website) throw Error("ITEM_NOT_FOUND");
+    const activeVault = vault;
+    const item = await fetchItem(itemId, found.index);
+    if (!root || vault !== activeVault || requestedVaultId !== vaultId) throw Error("VAULT_LOCKED_OR_CHANGED");
+    if (itemKind(item.body.customFields) !== "login") throw Error("NOT_A_LOGIN_ITEM");
+    arm();
+    return { itemId, website: found.index.website, username: item.body.username || "", password: item.body.password || "" };
+  },
+};
 function openCreateVaultDialog() {
   vaultDialogTarget = null;
   $("web-vault-name").value = availableVaults.length ? `Vault ${availableVaults.length + 1}` : "Private";

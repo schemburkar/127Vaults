@@ -32,6 +32,8 @@ Screenshot and screen-recording protection is postponed to v2.
 The browser extension should eventually share lock state with an installed
 127Vaults application. V1 may use an independent extension lock if native
 messaging and shared-unlock work would delay the secure vertical slice.
+Its independent unlock covers a local encrypted read-only replica; an unlocked
+web tab is not required for offline autofill.
 
 Unresolved conflicts display an in-app count and a highlighted sidebar section;
 they do not generate ordinary external notifications.

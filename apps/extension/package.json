@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/main.mjs",
+    "check": "node --check src/popup.mjs && node --check src/background.mjs && node --check src/fill.mjs && node --check src/match.mjs && node --check src/source-status.mjs && node -e \"JSON.parse(require('fs').readFileSync('manifest.json','utf8'))\"",
     "test": "node --test"
   }
 }

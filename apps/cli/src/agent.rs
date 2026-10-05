@@ -124,13 +124,35 @@ fn vault_selector(session: &Session, requested: Option<&str>) -> Result<String, 
 }
 
 #[allow(clippy::too_many_lines)]
-fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, String> {
+fn dispatch(
+    session: &mut Session,
+    request: &mut Request,
+    read_only: bool,
+) -> Result<Value, String> {
+    if read_only
+        && !matches!(
+            request.action.as_str(),
+            "status"
+                | "logout"
+                | "vault.list"
+                | "replica.status"
+                | "item.list"
+                | "item.list.all"
+                | "item.get"
+        )
+    {
+        if let Some(password) = request.password.as_mut() {
+            password.zeroize();
+        }
+        return Err("read-only agent command denied".to_owned());
+    }
     let result = match request.action.as_str() {
         "status" => Ok(
             json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),
+        "replica.status" => session.replica_status(),
         "sync" => session.sync_now(),
         "conflict.list" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
@@ -281,7 +303,7 @@ fn dispatch(session: &mut Session, request: &mut Request) -> Result<Value, Strin
     result
 }
 
-pub fn serve(config_dir: &Path, username: &str) -> Result<String, String> {
+pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<String, String> {
     let mut line = Zeroizing::new(String::new());
     std::io::stdin()
         .read_line(&mut line)
@@ -293,8 +315,11 @@ pub fn serve(config_dir: &Path, username: &str) -> Result<String, String> {
     let secret = Zeroizing::new(startup.account_secret.clone());
     startup.master_password.zeroize();
     startup.account_secret.zeroize();
-    let mut session =
-        client::unlock_with_offline_fallback(config_dir, username, &secret, &password)?;
+    let mut session = if read_only {
+        client::unlock_offline(config_dir, username, &secret, &password)?
+    } else {
+        client::unlock_with_offline_fallback(config_dir, username, &secret, &password)?
+    };
     let listener =
         TcpListener::bind("127.0.0.1:0").map_err(|_| "could not start local unlock agent")?;
     listener
@@ -339,7 +364,7 @@ pub fn serve(config_dir: &Path, username: &str) -> Result<String, String> {
                     if request.action != "status" {
                         last = Instant::now();
                     }
-                    dispatch(&mut session, &mut request)
+                    dispatch(&mut session, &mut request, read_only)
                 } else {
                     Err("local agent authorization failed".to_owned())
                 };
@@ -378,6 +403,25 @@ pub fn start(
     account_secret: &str,
     master_password: &[u8],
 ) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|_| "could not locate CLI executable")?;
+    start_with_executable(
+        &exe,
+        config_dir,
+        username,
+        account_secret,
+        master_password,
+        false,
+    )
+}
+
+pub fn start_with_executable(
+    exe: &Path,
+    config_dir: &Path,
+    username: &str,
+    account_secret: &str,
+    master_password: &[u8],
+    read_only: bool,
+) -> Result<(), String> {
     if call(config_dir, "logout", json!({})).is_ok() {
         let deadline = Instant::now() + Duration::from_secs(2);
         while state_path(config_dir).exists() && Instant::now() < deadline {
@@ -387,7 +431,6 @@ pub fn start(
             return Err("previous local unlock agent did not stop".to_owned());
         }
     }
-    let exe = std::env::current_exe().map_err(|_| "could not locate CLI executable")?;
     let mut command = Command::new(exe);
     command
         .arg("agent-serve")
@@ -398,6 +441,9 @@ pub fn start(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    if read_only {
+        command.arg("--read-only");
+    }
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;

@@ -1,0 +1,224 @@
+import { matchingLogin, originOf, permissionPattern } from './match.mjs';
+import { probeFrame, fillFrame } from './fill.mjs';
+import { sourceStatus } from './source-status.mjs';
+
+const $ = id => document.getElementById(id);
+let vaultOrigin = null;
+let targetTab = null;
+let vaultTab = null;
+let vaultId = null;
+let items = [];
+let pending = false;
+let selectedSource = null;
+let localSources = [];
+
+function status(message, error = false) {
+  $('status').textContent = message;
+  $('status').classList.toggle('error', error);
+}
+function errorMessage(error) {
+  const code = String(error?.message || error);
+  if (/Cannot access|permission|host/i.test(code)) return 'Browser access was denied. Reconnect the vault or reopen this page and try again.';
+  return code.replace(/_/g, ' ').slice(0, 150);
+}
+async function script(tabId, func, args = [], extra = {}, world = 'ISOLATED') {
+  return chrome.scripting.executeScript({ target: { tabId, ...extra }, world, func, args });
+}
+async function configuredOrigin() {
+  const stored = await chrome.storage.local.get('vaultOrigin');
+  return originOf(stored.vaultOrigin);
+}
+async function native(request) {
+  const response = await chrome.runtime.sendMessage({ kind: 'connector.request', request });
+  if (!response?.ok) throw Error(response?.error || 'local connector is unavailable');
+  return response.value;
+}
+function renderItems() {
+  const query = $('search').value.trim().toLowerCase();
+  const matching = items.filter(item => matchingLogin(item.website, targetTab.url) && `${item.title} ${item.website}`.toLowerCase().includes(query));
+  $('items').replaceChildren();
+  for (const item of matching) {
+    const button = document.createElement('button');
+    button.className = 'item';
+    button.type = 'button';
+    button.setAttribute('role', 'listitem');
+    button.textContent = item.title;
+    const site = document.createElement('small');
+    site.textContent = item.website;
+    button.append(site);
+    button.onclick = () => choose(item);
+    $('items').append(button);
+  }
+  const source = selectedSource === 'web' ? 'web tab' : `${selectedSource} ${localSources.find(row => row.id === selectedSource)?.online ? 'online' : 'offline/local'}`;
+  if (!matching.length) status(`No login from ${source} matches this exact site. Try another source or add it in a writable client.`);
+  else status(`${matching.length} matching login${matching.length === 1 ? '' : 's'} from ${source}. Choose one to fill.`);
+}
+async function findVaultTab() {
+  const tabs = await chrome.tabs.query({});
+  return tabs.find(tab => tab.id && tab.id !== targetTab.id && originOf(tab.url) === vaultOrigin) || null;
+}
+async function loadSelectedSource() {
+  $('results').hidden = true;
+  $('native-unlock').hidden = true;
+  $('lock-vault').hidden = true;
+  selectedSource = $('source-select').value;
+  $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.' : sourceStatus(localSources.find(source => source.id === selectedSource));
+  items = [];
+  if (selectedSource !== 'web') {
+    try {
+      const listed = await native({ action: 'list', source: selectedSource, siteOrigin: originOf(targetTab.url) });
+      items = Array.isArray(listed) ? listed : [];
+      $('results').hidden = false;
+      $('lock-vault').hidden = false;
+      renderItems();
+    } catch {
+      $('native-unlock').hidden = false;
+      $('native-username').value = localSources.find(source => source.id === selectedSource)?.usernameHint || '';
+      status(`Unlock the ${selectedSource} encrypted replica to fill offline.`);
+    }
+    return;
+  }
+  if (!vaultOrigin || !(await chrome.permissions.contains({ origins: [permissionPattern(vaultOrigin)] }))) {
+    $('setup').hidden = false;
+    status('Connect your vault web address.');
+    return;
+  }
+  vaultTab = await findVaultTab();
+  if (!vaultTab) { status('Open and unlock the vault web tab, or choose a local source.'); return; }
+  const result = (await script(vaultTab.id, () => window.__vaultsExtensionActions?.list(), [], {}, 'MAIN'))[0]?.result;
+  if (!result || result.locked) { status('Unlock the vault web tab, or choose a local source.'); return; }
+  vaultId = result.vaultId;
+  items = Array.isArray(result.items) ? result.items : [];
+  $('results').hidden = false;
+  $('lock-vault').hidden = false;
+  renderItems();
+}
+async function refresh() {
+  $('setup').hidden = true;
+  $('results').hidden = true;
+  $('frames').hidden = true;
+  $('lock-vault').hidden = true;
+  $('source-panel').hidden = true;
+  targetTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  if (!targetTab?.id || !originOf(targetTab.url)) {
+    status('Open a secure website login page, then click 127Vaults.', true);
+    return;
+  }
+  $('site').textContent = new URL(targetTab.url).host;
+  vaultOrigin = await configuredOrigin();
+  try { localSources = (await native({ action: 'sources' })).sources || []; }
+  catch { localSources = []; }
+  const options = localSources.filter(source => source.configured).map(source => ({
+    id: source.id, label: `${source.id === 'desktop' ? 'Desktop' : 'CLI'}${source.active || source.localUnlocked ? ' (unlocked)' : ' (local replica)'}`,
+    preferred: source.active || source.localUnlocked,
+  }));
+  if (vaultOrigin) options.push({ id: 'web', label: 'Web tab', preferred: false });
+  $('source-select').replaceChildren();
+  for (const option of options) {
+    const element = document.createElement('option');
+    element.value = option.id;
+    element.textContent = option.label;
+    $('source-select').append(element);
+  }
+  if (!options.length) {
+    $('setup').hidden = false;
+    status('Connect a vault web tab or install the local connector.');
+    return;
+  }
+  $('source-panel').hidden = false;
+  $('source-select').value = options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
+  await loadSelectedSource();
+}
+async function choose(item) {
+  if (pending) return;
+  pending = true;
+  $('frames').hidden = true;
+  try {
+    status('Checking the page and login fields…');
+    const fresh = await chrome.tabs.get(targetTab.id);
+    if (!matchingLogin(item.website, fresh.url) || fresh.id !== targetTab.id) throw Error('The page changed. Reopen 127Vaults on the intended login page.');
+    const origin = originOf(fresh.url);
+    const probes = await script(targetTab.id, probeFrame, [origin], { allFrames: true });
+    const candidates = probes.filter(row => row.result?.eligible && row.result.frameOrigin === origin);
+    if (!candidates.length) throw Error('No usable login fields were found on this page.');
+    const fill = async frameId => {
+      const latest = await chrome.tabs.get(targetTab.id);
+      if (!matchingLogin(item.website, latest.url)) throw Error('The page changed before fill.');
+      status('Decrypting the selected login…');
+      const credential = selectedSource === 'web'
+        ? (await script(vaultTab.id, async (id, selectedVault) => window.__vaultsExtensionActions?.credential(id, selectedVault), [item.itemId, vaultId], {}, 'MAIN'))[0]?.result
+        : await native({ action: 'get', source: selectedSource, vaultId: item.vaultId, itemId: item.itemId, siteOrigin: origin });
+      if (!credential || !matchingLogin(credential.website, latest.url) || credential.itemId !== item.itemId) throw Error('The vault or selected login changed.');
+      const filled = (await script(targetTab.id, fillFrame, [origin, { username: credential.username, password: credential.password }], { frameIds: [frameId] }))[0]?.result;
+      if (!filled?.ok) throw Error(filled?.reason || 'The page did not accept the fill.');
+      status(`Filled ${filled.username && filled.password ? 'username and password' : filled.username ? 'username' : 'password'}. Review the form and submit it yourself.`);
+      $('frames').hidden = true;
+    };
+    if (candidates.length === 1) await fill(candidates[0].frameId);
+    else {
+      $('frames').replaceChildren();
+      const note = document.createElement('p');
+      note.textContent = 'Choose the same-site frame containing the login form:';
+      $('frames').append(note);
+      for (const candidate of candidates) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = candidate.frameId === 0 ? 'Main page' : `Frame ${candidate.frameId}${candidate.result.focused ? ' (focused)' : ''}`;
+        button.onclick = () => fill(candidate.frameId).catch(error => status(errorMessage(error), true));
+        $('frames').append(button);
+      }
+      $('frames').hidden = false;
+      status('Several login forms were found. Choose the correct frame.');
+    }
+  } catch (error) { status(errorMessage(error), true); }
+  finally { pending = false; }
+}
+
+$('connect').onclick = async () => {
+  const origin = originOf($('vault-url').value);
+  if (!origin) { status('Enter the HTTPS address of your 127Vaults web app.', true); return; }
+  try {
+    const granted = await chrome.permissions.request({ origins: [permissionPattern(origin)] });
+    if (!granted) { status('Vault access was not granted.', true); return; }
+    const previous = await configuredOrigin();
+    await chrome.storage.local.set({ vaultOrigin: origin });
+    if (previous && previous !== origin && permissionPattern(previous) !== permissionPattern(origin)) {
+      await chrome.permissions.remove({ origins: [permissionPattern(previous)] });
+    }
+    await refresh();
+  } catch (error) { status(errorMessage(error), true); }
+};
+$('source-select').onchange = () => loadSelectedSource().catch(error => status(errorMessage(error), true));
+$('unlock-native').onclick = async () => {
+  try {
+    await native({ action: 'unlock', source: selectedSource, username: $('native-username').value.trim(), accountSecret: $('native-secret').value, masterPassword: $('native-master').value });
+    localSources = (await native({ action: 'sources' })).sources || [];
+    $('native-secret').value = '';
+    $('native-master').value = '';
+    await loadSelectedSource();
+  } catch (error) { $('native-secret').value = ''; $('native-master').value = ''; status(errorMessage(error), true); }
+};
+$('settings').onclick = () => {
+  $('setup').hidden = false;
+  $('vault-url').value = vaultOrigin || '';
+  status('Enter the HTTPS address of your vault.');
+};
+$('open-vault').onclick = async () => {
+  const origin = vaultOrigin || originOf($('vault-url').value);
+  if (!origin) { $('setup').hidden = false; status('Enter your vault address first.', true); return; }
+  await chrome.tabs.create({ url: origin });
+};
+$('lock-vault').onclick = async () => {
+  try {
+    if (selectedSource === 'web') {
+      if (!vaultTab?.id) return;
+      await script(vaultTab.id, () => window.__vaultsExtensionActions?.lock(), [], {}, 'MAIN');
+    } else await native({ action: 'lock', source: selectedSource });
+    items = [];
+    $('results').hidden = true;
+    $('lock-vault').hidden = true;
+    status('Connector locked. Unlock the source before filling again.');
+  } catch (error) { status(errorMessage(error), true); }
+};
+$('search').oninput = renderItems;
+refresh().catch(error => status(errorMessage(error), true));

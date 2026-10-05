@@ -8,7 +8,8 @@
 The server-hosted web client is online-only. Installed desktop, browser extension,
 mobile, and CLI clients are offline-first after enrollment. Offline clients keep
 an encrypted local database plus the minimum authenticated sync state needed to
-detect replay and reconcile queued changes.
+detect replay. Desktop, mobile and CLI reconcile queued changes; the extension
+is read-only and only pulls verified changes for offline autofill.
 
 The sync design must explicitly handle stale membership, device revocation while
 offline, vault-key rotation, maximum offline duration if any, and conflicts. A
@@ -29,4 +30,3 @@ against truthful, discoverable answers and offer generated values.
 
 Attachments are not part of the core item service. They require the optional
 attachment capability described in ADR-0008.
-

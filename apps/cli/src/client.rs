@@ -2159,6 +2159,12 @@ impl Session {
             replica.vault_envelope = URL_SAFE_NO_PAD.encode(envelope);
             replica.catalogue = URL_SAFE_NO_PAD.encode(catalogue);
             replica.cursor = cursor;
+            replica.last_verified_sync_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|_| "system clock is invalid")?
+                    .as_secs(),
+            );
             replica.checkpoint = checkpoint;
             replica.checkpoint_public_key = Some(checkpoint_key);
             replica.operations.clone_from(operations);
@@ -2227,6 +2233,19 @@ impl Session {
                 })
                 .collect(),
         ))
+    }
+    pub fn replica_status(&self) -> Result<Value, String> {
+        let replicas = self.replica_store.list()?;
+        let last_verified_sync_at = replicas
+            .iter()
+            .map(|replica| replica.last_verified_sync_at)
+            .collect::<Option<Vec<_>>>()
+            .and_then(|times| times.into_iter().min());
+        Ok(json!({
+            "vaultCount": replicas.len(),
+            "lastVerifiedSyncAt": last_verified_sync_at,
+            "online": self.online,
+        }))
     }
     pub fn is_online(&self) -> bool {
         self.online

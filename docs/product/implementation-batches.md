@@ -284,9 +284,9 @@ human browser ceremony pending local-CA trust. `gpt-5.6-sol` low.
 
 **Backlog IDs:** DEV-015, ITEM-011, REL-007.
 
-**Task:** Implement the extension through existing client/sync interfaces with independent v1 lock when shared native unlock is unavailable. Minimize permissions and content-script exposure; require explicit user-selected fill.
+**Task:** Implement a read-only extension connector for web, desktop and CLI. Use a native bridge to active desktop/CLI sessions or their verified encrypted local replicas for offline fill; use the unlocked web tab only as an online source. Never expose create/edit/delete/conflict-resolution or queued-write paths. Use independent v1 lock when shared native unlock is unavailable. Minimize permissions and content-script exposure; require explicit user-selected fill.
 
-**Acceptance/exclusions:** Keep secrets out of page DOM, logs, URLs, persistent extension storage, and unnecessary messages. Document phishing, frames, origins, clipboard, lifecycle, and malicious-page boundaries. Defer passkeys.
+**Acceptance/exclusions:** Stop the server and close the web tab, then unlock and fill from an installed desktop/CLI encrypted replica. Verify active-client handoff, signed state, stale/rollback handling, restart and lock; observe no extension write requests. Keep secrets out of logs, URLs, persistent plaintext storage, and unnecessary messages. A filled destination input is visible to its page. Document phishing, frames, origins, clipboard, lifecycle, and malicious-page boundaries. Defer passkeys.
 
 ## Batch 14 — Windows drag-to-fill spike
 

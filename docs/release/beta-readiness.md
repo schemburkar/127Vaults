@@ -1,6 +1,6 @@
 # Release readiness
 
-Updated 2026-10-02. The [product work index](../product/README.md) links the only live backlogs and active waves for web, CLI, desktop, and server. This page defines the release decision; it is not another task list.
+Updated 2026-10-05. The [product work index](../product/README.md) links the only live backlogs and active waves for web, browser extension, CLI, desktop, and server. This page defines the release decision; it is not another task list.
 
 ## Current decision
 

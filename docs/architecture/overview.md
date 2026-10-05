@@ -67,11 +67,14 @@ web app, browser extension, Windows/Tauri app, then CLI. The Windows app has a
 required native-capability spike for cross-process drag-to-fill before Tauri is
 considered final.
 
-The server-hosted web client is online-only. Installed desktop, extension, mobile,
-and CLI clients are offline-first: they retain an encrypted local database, allow
-access without the server after unlock, queue authenticated operations, and sync
-when connectivity returns. Offline authorization and revocation staleness require
-explicit protocol semantics.
+The server-hosted web client is online-only. Installed desktop, mobile, and CLI
+clients are offline-first: they retain an encrypted local database and allow
+access without the server after unlock. The browser extension is a read-only
+connector to an unlocked web tab or an installed desktop/CLI client. It can fill
+offline from that installed client's verified encrypted replica through a local
+native bridge. Desktop, mobile and CLI may queue authenticated writes; the
+extension never writes or queues operations. Offline authorization and revocation
+staleness require explicit protocol semantics.
 
 The web client decrypts a lightweight item index for listing and decrypts item
 bodies individually on demand. A separately authenticated logical revision binds

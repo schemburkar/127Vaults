@@ -14,7 +14,11 @@ turning the protocol into an unreviewed active-active distributed database.
 ## Decision
 
 Offline-capable authorized clients hold complete encrypted replicas of accessible
-vaults. The server coordinates an encrypted operation log, authorization, cursor
+vaults. The browser extension is a read-only offline connector: it may use the
+verified encrypted replica of an installed desktop or CLI client through a
+local native bridge, or use an unlocked web tab while online. It may list,
+decrypt and fill a user-selected login, but never creates, edits, deletes,
+resolves conflicts or queues writes. The server coordinates an encrypted operation log, authorization, cursor
 progress, and a canonical accepted order. The web client remains online-only.
 
 Conflict detection uses causal base revisions, not wall-clock time. Different
@@ -48,8 +52,9 @@ candidate.
 
 ## Consequences
 
-- A server outage does not prevent an enrolled installed client from reading or
-  editing its local vault.
+- A server outage does not prevent an enrolled installed client from reading its
+  local vault. Writable installed clients can also edit while offline; the
+  extension cannot.
 - Same-field divergence is never resolved by last-writer-wins.
 - Revocation can intentionally discard offline edits that were never accepted.
 - A locally remembered checkpoint detects rollback, but fully isolated split

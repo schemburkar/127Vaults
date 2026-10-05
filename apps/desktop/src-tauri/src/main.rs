@@ -9,13 +9,24 @@ use std::{
 };
 use vaults_cli::{
     client::{Session, unlock_with_offline_fallback},
-    enroll_device_with_status,
+    connector_agent_active, enroll_device_with_status, start_connector_agent, stop_connector_agent,
 };
 
 #[derive(Default)]
 struct DesktopState {
     session: Mutex<Option<Session>>,
     enrollment: std::sync::Arc<Mutex<Value>>,
+    connector_owned: Mutex<Option<PathBuf>>,
+}
+
+impl Drop for DesktopState {
+    fn drop(&mut self) {
+        if let Ok(owned) = self.connector_owned.get_mut() {
+            if let Some(path) = owned.take() {
+                stop_connector_agent(&path);
+            }
+        }
+    }
 }
 
 const PROFILE_FILES: [&str; 5] = [
@@ -204,6 +215,14 @@ async fn unlock(
     account_secret: String,
     master_password: String,
 ) -> Result<Value, String> {
+    if let Some(path) = state
+        .connector_owned
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable".to_owned())?
+        .take()
+    {
+        stop_connector_agent(&path);
+    }
     // Password derivation, replica verification and the initial network request
     // can all be expensive. Keep them off the webview command thread so the
     // unlock progress UI remains responsive.
@@ -215,7 +234,7 @@ async fn unlock(
     } else {
         account_secret
     };
-    let (session, result) = tauri::async_runtime::spawn_blocking(move || {
+    let (session, result, connector_owned) = tauri::async_runtime::spawn_blocking(move || {
         let mut session = unlock_with_offline_fallback(
             &config,
             &username,
@@ -252,9 +271,18 @@ async fn unlock(
             default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected && row["retired"] != true))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
+        let connector_owned = if connector_agent_active(&config) { false } else {
+            let executable = std::env::current_exe().ok().and_then(|path| {
+                let name = if cfg!(windows) { "127vaults.exe" } else { "127vaults" };
+                let sibling = path.parent()?.join(name);
+                sibling.is_file().then_some(sibling)
+            });
+            executable.as_deref().is_some_and(|exe| start_connector_agent(exe, &config, &username, &secret, master_password.as_bytes()).is_ok())
+        };
         Ok::<_, String>((
             session,
-            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered}),
+            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered,"extensionConnectorActive":connector_owned || connector_agent_active(&config)}),
+            connector_owned.then_some(config),
         ))
     })
     .await
@@ -263,6 +291,10 @@ async fn unlock(
         .session
         .lock()
         .map_err(|_| "desktop vault state is unavailable")? = Some(session);
+    *state
+        .connector_owned
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable".to_owned())? = connector_owned;
     Ok(result)
 }
 
@@ -571,6 +603,14 @@ fn lock(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
         .lock()
         .map_err(|_| "desktop vault state is unavailable".to_owned())?
         .take();
+    if let Some(path) = state
+        .connector_owned
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable".to_owned())?
+        .take()
+    {
+        stop_connector_agent(&path);
+    }
     Ok(())
 }
 

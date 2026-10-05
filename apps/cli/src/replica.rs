@@ -46,6 +46,8 @@ pub struct Replica {
     pub vault_envelope: String,
     pub catalogue: String,
     pub cursor: u64,
+    #[serde(default)]
+    pub last_verified_sync_at: Option<u64>,
     pub checkpoint: Option<Value>,
     #[serde(default)]
     pub checkpoint_public_key: Option<String>,
@@ -69,6 +71,7 @@ impl Replica {
             vault_envelope: String::new(),
             catalogue: String::new(),
             cursor: 0,
+            last_verified_sync_at: None,
             checkpoint: None,
             checkpoint_public_key: None,
             operations: Vec::new(),
@@ -259,6 +262,29 @@ mod tests {
         let replica = Replica::new(uuid::Uuid::new_v4().to_string(), vault.clone(), 1);
         store.commit(&replica).unwrap();
         assert_eq!(store.load(&vault).unwrap(), Some(replica));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_replica_without_sync_time_remains_readable() {
+        let (root, store) = temporary_store();
+        let vault = uuid::Uuid::new_v4().to_string();
+        let replica = Replica::new(uuid::Uuid::new_v4().to_string(), vault.clone(), 1);
+        let mut value = serde_json::to_value(&replica).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("last_verified_sync_at");
+        fs::create_dir_all(root.join("replicas")).unwrap();
+        fs::write(
+            root.join("replicas").join(format!("{vault}.json")),
+            serde_json::to_vec(&value).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            store.load(&vault).unwrap().unwrap().last_verified_sync_at,
+            None
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

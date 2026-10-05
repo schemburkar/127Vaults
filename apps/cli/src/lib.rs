@@ -2,9 +2,42 @@
 
 mod agent;
 pub mod client;
+pub mod extension_host;
 pub mod replica;
 mod sync_transport;
 pub mod vault_settings;
+
+/// Starts a local unlock agent that the read-only extension connector can use.
+///
+/// # Errors
+/// Returns a safe diagnostic if the agent cannot start.
+pub fn start_connector_agent(
+    executable: &std::path::Path,
+    config_dir: &std::path::Path,
+    username: &str,
+    account_secret: &str,
+    master_password: &[u8],
+) -> Result<(), String> {
+    agent::start_with_executable(
+        executable,
+        config_dir,
+        username,
+        account_secret,
+        master_password,
+        true,
+    )
+}
+
+/// Reports whether this profile already has an unlocked local agent.
+#[must_use]
+pub fn connector_agent_active(config_dir: &std::path::Path) -> bool {
+    agent::call(config_dir, "status", serde_json::json!({})).is_ok()
+}
+
+/// Locks a local agent started by this application.
+pub fn stop_connector_agent(config_dir: &std::path::Path) {
+    let _ = agent::call(config_dir, "logout", serde_json::json!({}));
+}
 
 use std::{
     fmt::Write as _,
@@ -61,6 +94,8 @@ pub enum Command {
         username: String,
         #[arg(long)]
         config_dir: PathBuf,
+        #[arg(long)]
+        read_only: bool,
     },
     /// Verify an interactive unlock, then discard the session and keys.
     Unlock {
@@ -573,8 +608,14 @@ fn remember_active_profile(config_dir: &std::path::Path) -> Result<(), String> {
             .map_err(|_| "could not resolve active profile".to_owned())?
             .join(config_dir)
     };
-    fs::write(active_profile_path(), format!("{}\n", absolute.display()))
-        .map_err(|_| "could not remember active profile".to_owned())
+    let value = format!("{}\n", absolute.display());
+    fs::write(active_profile_path(), &value)
+        .map_err(|_| "could not remember active profile".to_owned())?;
+    if let Some(home) = dirs::home_dir() {
+        fs::write(home.join(".127vaults-active"), value)
+            .map_err(|_| "could not remember connector profile".to_owned())?;
+    }
+    Ok(())
 }
 
 fn effective_config_dir(requested: &std::path::Path) -> PathBuf {
@@ -1373,7 +1414,8 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::AgentServe {
             username,
             config_dir,
-        } => agent::serve(&config_dir, &username),
+            read_only,
+        } => agent::serve(&config_dir, &username, read_only),
         Command::Unlock {
             username,
             config_dir,
