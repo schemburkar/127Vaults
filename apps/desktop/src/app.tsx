@@ -34,9 +34,11 @@ type Item = Summary & {
   password: string;
   customFields: CustomField[];
 };
-type VaultSummary = { vaultId: string; name: string; code: string };
+type VaultSummary = { vaultId: string; name: string; code: string; retired?: boolean; retirementChoice?: "archive" | "move" | null };
 type CollectionSummary = { id: string; name: string; vault_ids: string[] };
 type VaultSettings = { collections: CollectionSummary[]; defaultView: { kind: string; id?: string } | null; removalPreference: string | null; pending: boolean; conflict: boolean };
+type RemovalPlan = { pending: boolean; choice?: "archive" | "move" | "restore"; sourceVaultId?: string; destinationVaultId?: string | null; stage?: "copying" | "finalizing"; itemMappings?: { source_item_id: string; destination_item_id: string }[] };
+type RemovalResult = { receipt: { choice?: string; itemCount?: number; restored?: boolean }; vaults: VaultSummary[]; settings: VaultSettings };
 type UnlockResult = { online: boolean; offlineReason: string | null; vaultId: string; defaultVaultId: string | null; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null; secretRemembered: boolean };
 type DesktopInfo = {
   configured: boolean;
@@ -104,6 +106,10 @@ export function App() {
   const [vaultDialog, setVaultDialog] = useState<"create" | "rename" | null>(null);
   const [vaultActionId, setVaultActionId] = useState<string | null>(null);
   const [vaultNameDraft, setVaultNameDraft] = useState("");
+  const [removalDialog, setRemovalDialog] = useState<{ sourceId: string; choice: "archive" | "move"; destinationId: string } | null>(null);
+  const [removalPlan, setRemovalPlan] = useState<RemovalPlan | null>(null);
+  const [removalBusy, setRemovalBusy] = useState(false);
+  const [removalItemCount, setRemovalItemCount] = useState<number | null>(null);
   const [items, setItems] = useState<Summary[]>([]),
     [selected, setSelected] = useState<Item | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
@@ -129,6 +135,8 @@ export function App() {
   const [deviceError, setDeviceError] = useState("");
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [lastLocalChange, setLastLocalChange] = useState<Date | null>(null);
+  const activeVaults = vaults.filter((vault) => !vault.retired);
+  const archivedVaults = vaults.filter((vault) => vault.retired && vault.retirementChoice === "archive");
   const notify = (kind: Notice["kind"], title: string, detail?: string) => {
     const id = Date.now() + Math.random();
     setNotices((current) => [...current, { id, kind, title, detail }]);
@@ -178,6 +186,8 @@ export function App() {
     setViewMode("single");
     setCollections([]);
     setSelectedCollectionId(null);
+    setRemovalDialog(null);
+    setRemovalPlan(null);
     setSettingsConflict(false);
     setDefaultView(null);
     setItems([]);
@@ -303,6 +313,7 @@ export function App() {
       setDefaultView(result.settings.defaultView);
       setRemovalPreference(result.settings.removalPreference);
       setVaults(result.vaults);
+      setRemovalPlan(await invoke<RemovalPlan>("vault_removal_status").catch(() => null));
       setItems(result.items);
       setOnline(result.online);
       setOfflineReason(result.offlineReason);
@@ -361,17 +372,17 @@ export function App() {
       notify("error", "Could not open vault", friendlyError(error));
     }
   };
-  const listAllItems = async () => {
-    const lists = await Promise.all(vaults.map(async (vault) =>
+  const listAllItems = async (sourceVaults = activeVaults) => {
+    const lists = await Promise.all(sourceVaults.map(async (vault) =>
       (await invoke<Summary[]>("item_list", { vaultId: vault.vaultId })).map((item) => ({ ...item, vaultId: vault.vaultId }))));
     return lists.flat();
   };
-  const listVisibleItems = async () => {
+  const listVisibleItems = async (sourceVaults = activeVaults) => {
     if (viewMode === "collection" && selectedCollectionId) {
       const result = await invoke<{ items: Summary[] }>("collection_items", { collectionId: selectedCollectionId });
       return result.items;
     }
-    return listAllItems();
+    return listAllItems(sourceVaults);
   };
   const selectAllVaults = async () => {
     try {
@@ -451,6 +462,88 @@ export function App() {
     } catch (error) {
       notify("error", "Could not rename vault", friendlyError(error));
     }
+  };
+  const openRemoval = async (sourceId: string) => {
+    if (!online) { notify("error", "Reconnect to remove a vault", "Vault removal requires an online session."); return; }
+    if (removalPlan?.pending) { notify("info", "Finish the pending vault operation first"); return; }
+    try {
+      const rows = await invoke<Summary[]>("item_list", { vaultId: sourceId });
+      setRemovalItemCount(rows.length);
+    } catch (error) { notify("error", "Could not inspect vault", friendlyError(error)); return; }
+    const destinationId = activeVaults.find((row) => row.vaultId !== sourceId)?.vaultId ?? "";
+    setRemovalDialog({ sourceId, choice: removalPreference === "move" && destinationId ? "move" : "archive", destinationId });
+  };
+  const applyRemovalResult = async (result: RemovalResult, preferredId?: string) => {
+    setVaults(result.vaults);
+    setCollections(result.settings.collections);
+    setDefaultView(result.settings.defaultView);
+    setRemovalPreference(result.settings.removalPreference);
+    setSettingsConflict(result.settings.conflict);
+    const active = result.vaults.filter((row) => !row.retired);
+    const nextId = active.find((row) => row.vaultId === preferredId)?.vaultId ?? active[0]?.vaultId ?? "";
+    setDefaultVaultId((current) => active.some((row) => row.vaultId === current) ? current : null);
+    setVaultId(nextId);
+    setItemVaultId(nextId);
+    setViewMode(nextId ? "single" : "all");
+    setSelectedCollectionId(null);
+    setSelected(null);
+    setEditOriginal(null);
+    setEditing(false);
+    setRevealed(new Set());
+    try {
+      setItems(nextId ? await invoke<Summary[]>("item_list", { vaultId: nextId }) : []);
+    } catch (error) {
+      setItems([]);
+      notify("info", "Vault list needs a refresh", friendlyError(error));
+    }
+    setRemovalDialog(null);
+    setRemovalPlan(null);
+  };
+  const removeVault = async (sourceId: string, choice: "archive" | "move", destinationId = "") => {
+    if (removalBusy) return;
+    if (choice === "move" && (!destinationId || destinationId === sourceId)) {
+      notify("error", "Choose a different destination vault"); return;
+    }
+    setRemovalBusy(true);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    try {
+      const result = choice === "move"
+        ? await invoke<RemovalResult>("vault_move", { vaultId: sourceId, destinationVaultId: destinationId })
+        : await invoke<RemovalResult>("vault_archive", { vaultId: sourceId });
+      await applyRemovalResult(result, choice === "move" ? destinationId : undefined);
+      notify("success", choice === "move" ? "Vault items moved" : "Vault archived", `${result.receipt.itemCount ?? 0} item(s) · source remains recoverable`);
+    } catch (error) {
+      setRemovalPlan(await invoke<RemovalPlan>("vault_removal_status").catch(() => null));
+      notify("error", "Vault removal stopped", friendlyError(error));
+    } finally { setRemovalBusy(false); }
+  };
+  const restoreVault = async (sourceId: string) => {
+    if (removalBusy) return;
+    setRemovalBusy(true);
+    try {
+      const result = await invoke<RemovalResult>("vault_restore", { vaultId: sourceId });
+      await applyRemovalResult(result, sourceId);
+      notify("success", "Archived vault restored");
+    } catch (error) {
+      setRemovalPlan(await invoke<RemovalPlan>("vault_removal_status").catch(() => null));
+      notify("error", "Could not restore vault", friendlyError(error));
+    } finally { setRemovalBusy(false); }
+  };
+  const resumeRemoval = () => {
+    if (!removalPlan?.pending || !removalPlan.sourceVaultId) return;
+    if (removalPlan.choice === "restore") { void restoreVault(removalPlan.sourceVaultId); return; }
+    if (removalPlan.choice === "move" && removalPlan.destinationVaultId) {
+      void removeVault(removalPlan.sourceVaultId, "move", removalPlan.destinationVaultId); return;
+    }
+    if (removalPlan.choice === "archive") void removeVault(removalPlan.sourceVaultId, "archive");
+  };
+  const abortMove = async () => {
+    if (!window.confirm("Keep any destination copies and clear this unfinished move plan? Review the listed copies before trying another move.")) return;
+    try {
+      await invoke("vault_abort_move");
+      setRemovalPlan(null);
+      notify("info", "Move plan cleared", "Destination copies may remain for review.");
+    } catch (error) { notify("error", "Could not clear move plan", friendlyError(error)); }
   };
   const toggleDefaultVault = async (nextVaultId: string | null) => {
     try {
@@ -537,7 +630,7 @@ export function App() {
   };
   const synchronize = async () => {
     try {
-      const result = await invoke<{ accepted: number; items: Summary[]; vaults: VaultSummary[]; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
+      const result = await invoke<{ accepted: number; items: Summary[]; vaults: VaultSummary[]; selectedVaultId: string | null; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
         "sync",
         { vaultId },
       );
@@ -549,7 +642,18 @@ export function App() {
         setRemovalPreference(result.vaultSettings.removalPreference);
         setSettingsConflict(result.vaultSettings.conflict);
       }
-      setItems(viewMode === "single" ? result.items : await listVisibleItems());
+      const currentRetired = !result.vaults.some((row) => row.vaultId === vaultId && !row.retired);
+      if (currentRetired) {
+        const fallback = result.selectedVaultId ?? "";
+        setVaultId(fallback);
+        setItemVaultId(fallback);
+        setViewMode(fallback ? "single" : "all");
+        setSelected(null);
+        setEditing(false);
+        setItems(result.items);
+      } else {
+        setItems(viewMode === "single" ? result.items : await listVisibleItems(result.vaults.filter((row) => !row.retired)));
+      }
       setLastSynced(new Date());
       setStatus(
         result.conflicts.length
@@ -999,10 +1103,10 @@ export function App() {
         <p className="mb-2 mt-7 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">
           VAULTS
         </p>
-        {vaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
+        {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
-        </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setVaultActionId(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button></div></details></div>)}
+        </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setVaultActionId(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button><button onClick={() => openRemoval(vault.vaultId)}>Remove vault…</button></div></details></div>)}
         <Button variant="ghost" className="justify-start" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}>
           <Plus size={17} />
           <span>Add vault</span>
@@ -1013,6 +1117,7 @@ export function App() {
         </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${collection.name}`} title={`Actions for ${collection.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setSelectedCollectionId(collection.id); setCollectionNameDraft(collection.name); setCollectionVaultDraft(collection.vault_ids); setCollectionDialog("edit"); }}>Edit collection</button><button onClick={() => void removeCollection(collection.id)}>Remove collection</button></div></details></div>)}
         <Button variant="ghost" className="justify-start text-xs" onClick={() => { setCollectionNameDraft(""); setCollectionVaultDraft([]); setCollectionDialog("create"); }}>Add collection</Button>
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
+        {removalPlan?.pending && <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/8 p-3 text-xs text-amber-100" role="status"><strong>Vault operation needs attention</strong><p className="mt-1">{removalPlan.choice === "move" ? "Move" : removalPlan.choice === "restore" ? "Restore" : "Archive"} · {removalPlan.stage === "copying" ? "copying items" : "finalizing request"} · {removalPlan.itemMappings?.length ?? 0} mapped item(s)</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
         <div className="mt-auto grid gap-1">
           <Button variant="ghost" className="justify-start" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></Button>
           <Button
@@ -1070,7 +1175,8 @@ export function App() {
           <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : viewMode === "collection" ? collections.find((row) => row.id === selectedCollectionId)?.name ?? "Collection" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
           <Button
             size="icon"
-            title="New item"
+            title={activeVaults.length ? "New item" : "Create or restore a vault before adding items"}
+            disabled={!activeVaults.length}
             onClick={() => {
               setSelected({
                 itemId: "",
@@ -1088,6 +1194,7 @@ export function App() {
             <Plus size={18} />
           </Button>
         </div>
+        {!activeVaults.length && <p className="px-5 pb-4 text-sm text-slate-400">No active vaults. Create one or restore an archived vault in Settings.</p>}
         <div className="overflow-auto px-3">
           {filtered.map((item) => (
             <button
@@ -1134,7 +1241,7 @@ export function App() {
                 {!selected.itemId && viewMode !== "single" && <label className="mb-6 block text-sm text-slate-300">Destination vault
                   <select className="mt-2 w-full rounded-xl border border-white/15 bg-[#11162b] p-3" value={itemVaultId} onChange={(event) => setItemVaultId(event.target.value)}>
                     <option value="">Choose a vault</option>
-                    {vaults.filter((vault) => viewMode !== "collection" || collections.find((row) => row.id === selectedCollectionId)?.vault_ids.includes(vault.vaultId)).map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
+                    {activeVaults.filter((vault) => viewMode !== "collection" || collections.find((row) => row.id === selectedCollectionId)?.vault_ids.includes(vault.vaultId)).map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
                   </select>
                 </label>}
                 <section>
@@ -1558,8 +1665,17 @@ export function App() {
           <div className="desktop-settings-body overflow-auto p-8 pr-12 text-sm">
             {settingsTab === "profile" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Profile</h3><p className="mt-1 text-slate-400">Your account on this device.</p></div><p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p>{!online && offlineReason && <p className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-200">Online unlock failed: {offlineReason}. Check the configured server and trusted certificate.</p>}<p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p>{online ? <Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button> : <div className="grid gap-2 rounded-xl border border-white/10 p-4"><strong>Reconnect to create vaults and manage devices</strong><p className="text-xs text-slate-400">Enter your master password to verify a live session.</p>{(!rememberedSecret || showSecretEntry) && <Input aria-label="Account secret for reconnect" type="password" autoComplete="off" placeholder="Account secret" value={accountSecret} onChange={(event) => setAccountSecret(event.target.value)} />}{errors.accountSecret && <p className="text-xs text-red-300">{errors.accountSecret}</p>}<Input aria-label="Master password for reconnect" type="password" autoComplete="current-password" placeholder="Master password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />{errors.masterPassword && <p className="text-xs text-red-300">{errors.masterPassword}</p>}<Button className="w-fit" disabled={busy} onClick={() => void unlock().then((connected) => { if (connected) setSettingsOpen(false); })}>Reconnect</Button></div>}</div>}
             {settingsTab === "devices" && <div><h3 className="text-2xl font-bold">Devices</h3><p className="mt-1 text-slate-400">Devices registered to this account.</p>{deviceError && <p className="mt-5 text-amber-300">{deviceError}</p>}<div className="mt-5 grid gap-2">{devices.map((device) => <div key={device.deviceId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/3 p-3"><div><strong>{device.deviceId === currentDeviceId ? "This desktop" : `Device ${device.deviceId.slice(0, 8)}`}</strong><p className="mt-1 text-xs text-slate-400">{device.protectionClass ?? "Unknown"} protection · credential {device.credentialState ?? "unknown"} · {device.status ?? "unknown"}</p></div>{device.deviceId !== currentDeviceId && device.status === "active" && <Button variant="ghost" className="text-red-300" onClick={() => void revokeDevice(device.deviceId)}>Revoke</Button>}</div>)}</div><Button variant="secondary" className="mt-5" onClick={() => void loadDevices()}>Refresh devices</Button></div>}
-            {settingsTab === "vaults" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Vaults</h3><p className="mt-1 text-slate-400">Manage your encrypted vaults.</p></div><div className="grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center justify-between rounded-xl border border-white/10 p-3"><span>{vault.name}</span><span className="text-xs text-slate-500">{vault.code}</span></div>)}</div><label className="grid gap-2">Default vault<select className="desktop-settings-select" value={vaults.length === 1 ? vaults[0].vaultId : defaultVaultId ?? ""} disabled={vaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{vaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>{vaults.length === 1 && <p className="text-xs text-slate-400">Your only vault is selected automatically.</p>}<Button variant="secondary" className="w-fit" onClick={() => { if (!online) { setSettingsTab("profile"); return; } setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }}>{online ? "Create vault" : "Reconnect to create vault"}</Button>{!online && <p className="text-xs text-amber-300">Creating a vault requires an online session.</p>}</div>}
-            {settingsTab === "preferences" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Preferences</h3><p className="mt-1 text-slate-400">Choose what opens first and how vault removal is handled.</p></div><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{vaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
+            {settingsTab === "vaults" && <div className="grid gap-5">
+              <div><h3 className="text-2xl font-bold">Vaults</h3><p className="mt-1 text-slate-400">Manage your encrypted vaults.</p></div>
+              {removalPlan?.pending && <div className="rounded-xl border border-amber-300/30 bg-amber-300/8 p-4 text-sm"><strong>Pending {removalPlan.choice} operation</strong><p className="mt-1 text-slate-300">{removalPlan.stage === "copying" ? "Destination copies are being prepared." : "The final server request is ready to retry."} {removalPlan.itemMappings?.length ?? 0} mapped item(s).</p><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
+              <div className="grid gap-2">{activeVaults.map((vault) => <div key={vault.vaultId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-3"><span>{vault.name}</span><span className="text-xs text-slate-500">{vault.code}</span><Button size="sm" variant="ghost" disabled={!online || removalBusy} onClick={() => openRemoval(vault.vaultId)}>Remove…</Button></div>)}</div>
+              <label className="grid gap-2">Default vault<select className="desktop-settings-select" value={activeVaults.length === 1 ? activeVaults[0].vaultId : defaultVaultId ?? ""} disabled={activeVaults.length <= 1} onChange={(event) => void toggleDefaultVault(event.target.value || null)}><option value="">No default vault</option>{activeVaults.map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}</select></label>
+              {activeVaults.length === 1 && <p className="text-xs text-slate-400">Your only active vault is selected automatically.</p>}
+              {archivedVaults.length > 0 && <div className="grid gap-2"><h4 className="text-sm font-semibold">Archived vaults</h4>{archivedVaults.map((vault) => <div key={vault.vaultId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-3"><span>{vault.name}</span><span className="text-xs text-slate-500">{vault.code}</span><Button size="sm" variant="secondary" disabled={!online || removalBusy || !!removalPlan?.pending} onClick={() => void restoreVault(vault.vaultId)}>Restore</Button></div>)}</div>}
+              <Button variant="secondary" className="w-fit" onClick={() => { if (!online) { setSettingsTab("profile"); return; } setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }}>{online ? "Create vault" : "Reconnect to create vault"}</Button>
+              {!online && <p className="text-xs text-amber-300">Vault creation and removal require an online session.</p>}
+            </div>}
+            {settingsTab === "preferences" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Preferences</h3><p className="mt-1 text-slate-400">Choose what opens first and how vault removal is handled.</p></div><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{activeVaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
           </div>
         </section>
       </div>}
@@ -1578,7 +1694,7 @@ export function App() {
             <Input autoFocus className="mt-2" maxLength={80} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} />
           </label>
           <p className="mt-5 text-sm text-slate-300">Included vaults</p>
-          <div className="mt-2 grid gap-2">{vaults.map((vault) => <label key={vault.vaultId} className="flex items-center gap-3 rounded-lg border border-white/10 p-2 text-sm">
+          <div className="mt-2 grid gap-2">{activeVaults.map((vault) => <label key={vault.vaultId} className="flex items-center gap-3 rounded-lg border border-white/10 p-2 text-sm">
             <input type="checkbox" checked={collectionVaultDraft.includes(vault.vaultId)} onChange={(event) => setCollectionVaultDraft((current) => event.target.checked ? [...current, vault.vaultId] : current.filter((id) => id !== vault.vaultId))} />
             {vault.name} <small className="ml-auto text-slate-500">{vault.code}</small>
           </label>)}</div>
@@ -1596,6 +1712,19 @@ export function App() {
             <Button variant="ghost" onClick={() => setVaultDialog(null)}>Cancel</Button>
             <Button disabled={!vaultNameDraft.trim()} onClick={() => void (vaultDialog === "create" ? addVault() : renameVault())}>{vaultDialog === "create" ? "Create" : "Save name"}</Button>
           </div>
+        </section>
+      </div>}
+      {removalDialog && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="removal-dialog-title">
+        <section className="w-full max-w-lg rounded-2xl border border-amber-300/20 bg-[#11162b] p-7 shadow-2xl">
+          <h2 id="removal-dialog-title" className="text-xl font-bold">Remove {vaults.find((row) => row.vaultId === removalDialog.sourceId)?.name ?? "vault"}</h2>
+          <p className="mt-2 text-sm text-slate-300">{removalItemCount === null ? "Items" : `${removalItemCount} item(s)`} will remain encrypted and recoverable in the source vault. Choose what should happen to the active view.</p>
+          <fieldset className="mt-5 grid gap-3"><legend className="mb-2 text-sm font-semibold">Removal choice</legend>
+            <label className="flex gap-3 rounded-xl border border-white/10 p-3 text-sm"><input type="radio" name="removal-choice" checked={removalDialog.choice === "archive"} onChange={() => setRemovalDialog({ ...removalDialog, choice: "archive" })} /><span><strong>Archive</strong><span className="mt-1 block text-slate-400">Keep items in this vault, hidden from normal views. You can restore it later.</span></span></label>
+            <label className="flex gap-3 rounded-xl border border-white/10 p-3 text-sm"><input type="radio" name="removal-choice" checked={removalDialog.choice === "move"} disabled={activeVaults.length < 2} onChange={() => setRemovalDialog({ ...removalDialog, choice: "move" })} /><span><strong>Move items</strong><span className="mt-1 block text-slate-400">Re-encrypt every item under another vault key, verify the copies, then retire this vault.</span></span></label>
+          </fieldset>
+          {removalDialog.choice === "move" && <label className="mt-4 grid gap-2 text-sm">Destination vault<select className="desktop-settings-select" value={removalDialog.destinationId} onChange={(event) => setRemovalDialog({ ...removalDialog, destinationId: event.target.value })}>{activeVaults.filter((row) => row.vaultId !== removalDialog.sourceId).map((row) => <option key={row.vaultId} value={row.vaultId}>{row.name} · {row.code}</option>)}</select></label>}
+          <p className="mt-4 text-xs text-slate-400">The operation requires a connection and no unresolved local edits. If interrupted, it can be resumed from Settings.</p>
+          <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" disabled={removalBusy} onClick={() => setRemovalDialog(null)}>Cancel</Button><Button disabled={removalBusy || (removalDialog.choice === "move" && !removalDialog.destinationId)} onClick={() => void removeVault(removalDialog.sourceId, removalDialog.choice, removalDialog.destinationId)}>{removalBusy ? "Working…" : removalDialog.choice === "move" ? "Move and retire" : "Archive vault"}</Button></div>
         </section>
       </div>}
       {conflict && (

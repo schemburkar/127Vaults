@@ -228,12 +228,13 @@ async fn unlock(
         let default_vault = session.default_vault()?;
         let vault = default_vault.clone().or_else(|| vaults
             .as_array()
-            .and_then(|rows| rows.first())
+            .and_then(|rows| rows.iter().find(|row| row["retired"] != true).or_else(|| rows.first()))
             .and_then(|row| row["vaultId"].as_str())
             .map(str::to_owned)).ok_or("no local vault is available")?;
         let settings = session.vault_settings();
         let default_view = settings["defaultView"].clone();
-        let view_kind = default_view["kind"].as_str().unwrap_or("vault");
+        let has_active_vault = vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["retired"] != true));
+        let view_kind = if has_active_vault { default_view["kind"].as_str().unwrap_or("vault") } else { "all" };
         let (items, collection_id) = match view_kind {
             "all" => (session.item_list_all()?, None),
             "collection" => {
@@ -242,14 +243,14 @@ async fn unlock(
             }
             "vault" => {
                 let selected = default_view["id"].as_str().unwrap_or(&vault);
-                if vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == selected)) {
+                if vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == selected && row["retired"] != true)) {
                     (session.item_list(selected)?, None)
                 } else { (session.item_list(&vault)?, None) }
             }
             _ => (session.item_list(&vault)?, None),
         };
         let initial_vault = if view_kind == "vault" {
-            default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected))).unwrap_or(&vault).to_owned()
+            default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected && row["retired"] != true))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
         Ok::<_, String>((
@@ -374,6 +375,50 @@ fn vault_removal_preference(
 }
 
 #[tauri::command]
+fn vault_removal_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.removal_status())
+}
+
+#[tauri::command]
+fn vault_archive(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
+    with_session(&state, |session| {
+        let receipt = session.archive_vault(&vault_id)?;
+        Ok(
+            json!({"receipt":receipt,"vaults":session.vault_list()?,"settings":session.vault_settings()}),
+        )
+    })
+}
+
+#[tauri::command]
+fn vault_move(
+    state: tauri::State<'_, DesktopState>,
+    vault_id: String,
+    destination_vault_id: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        let receipt = session.move_vault(&vault_id, &destination_vault_id)?;
+        Ok(
+            json!({"receipt":receipt,"vaults":session.vault_list()?,"settings":session.vault_settings()}),
+        )
+    })
+}
+
+#[tauri::command]
+fn vault_restore(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
+    with_session(&state, |session| {
+        let receipt = session.restore_archived_vault(&vault_id)?;
+        Ok(
+            json!({"receipt":receipt,"vaults":session.vault_list()?,"settings":session.vault_settings()}),
+        )
+    })
+}
+
+#[tauri::command]
+fn vault_abort_move(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.abort_move_plan())
+}
+
+#[tauri::command]
 fn vault_default(
     state: tauri::State<'_, DesktopState>,
     vault_id: Option<String>,
@@ -464,9 +509,25 @@ fn item_save(
 fn sync(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
     with_session(&state, |session| {
         let result = session.sync_now()?;
-        let items = session.item_list(&vault_id)?;
+        let vaults = session.vault_list()?;
+        let active = vaults
+            .as_array()
+            .ok_or("invalid vault list")?
+            .iter()
+            .filter(|row| row["retired"] != true)
+            .collect::<Vec<_>>();
+        let selected = active
+            .iter()
+            .find(|row| row["vaultId"] == vault_id)
+            .or_else(|| active.first())
+            .and_then(|row| row["vaultId"].as_str())
+            .map(str::to_owned);
+        let items = match selected.as_deref() {
+            Some(id) => session.item_list(id)?,
+            None => json!([]),
+        };
         Ok(
-            json!({"accepted": result["accepted"], "pending":result["pending"], "conflicts":result["conflicts"], "vaultSettings":result["vaultSettings"], "vaults":session.vault_list()?, "items": items}),
+            json!({"accepted": result["accepted"], "pending":result["pending"], "conflicts":result["conflicts"], "vaultSettings":result["vaultSettings"], "vaults":vaults, "selectedVaultId":selected,"items": items}),
         )
     })
 }
@@ -478,11 +539,14 @@ fn discard_local_changes(state: tauri::State<'_, DesktopState>) -> Result<Value,
         let vault = session
             .vault_list()?
             .as_array()
-            .and_then(|rows| rows.first())
+            .and_then(|rows| rows.iter().find(|row| row["retired"] != true))
             .and_then(|row| row["vaultId"].as_str())
-            .ok_or("no local vault is available")?
-            .to_owned();
-        Ok(json!({"discarded":result["discarded"],"items":session.item_list(&vault)?}))
+            .map(str::to_owned);
+        let items = match vault.as_deref() {
+            Some(id) => session.item_list(id)?,
+            None => json!([]),
+        };
+        Ok(json!({"discarded":result["discarded"],"items":items}))
     })
 }
 
@@ -601,6 +665,11 @@ fn main() {
             collection_items,
             vault_default_view,
             vault_removal_preference,
+            vault_removal_status,
+            vault_archive,
+            vault_move,
+            vault_restore,
+            vault_abort_move,
             vault_default,
             item_get,
             item_secret,

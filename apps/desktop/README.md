@@ -6,6 +6,15 @@ hydrate a replica, later unlocks can authenticate and decrypt it offline, edits
 are encrypted and durably queued before delivery, and explicit sync retries the
 queue. The React renderer receives only the currently requested plaintext item.
 
+Vault removal is available from a vault's menu or Settings > Vaults. Archive
+retains the encrypted source vault for later restore; move requires a chosen
+active destination and re-encrypts its items there before retiring the source.
+The Rust session records a durable plan so an interrupted operation can be
+resumed after unlock. Settings shows a pending plan; a move can only be cleared
+while copying, and destination copies may remain for review. Both operations
+need an online session with settled local edits and no unresolved conflict.
+The server currently limits a move to 50 source items.
+
 Tauri's `dragDropEnabled` option is deliberately `false`. Despite its name, the
 default `true` selects Tauri's file-focused native drop handler and prevents DOM
 HTML5 drag events on Windows. `false` restores the WebView's HTML5 drag path used

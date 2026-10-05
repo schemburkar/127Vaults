@@ -1432,7 +1432,10 @@ impl Session {
         let listed = self.vault_list()?;
         Ok(listed
             .as_array()
-            .and_then(|rows| rows.iter().find(|row| row["vaultId"] == id))
+            .and_then(|rows| {
+                rows.iter()
+                    .find(|row| row["vaultId"] == id && row["retired"] != true)
+            })
             .map(|_| id.to_owned()))
     }
 
