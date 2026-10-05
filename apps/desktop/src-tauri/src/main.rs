@@ -225,16 +225,15 @@ async fn unlock(
         let online = session.is_online();
         let offline_reason = session.offline_reason().map(str::to_owned);
         let vaults = session.vault_list()?;
-        let default_vault = session.default_vault()?;
-        let vault = default_vault.clone().or_else(|| vaults
+        let vault = vaults
             .as_array()
             .and_then(|rows| rows.iter().find(|row| row["retired"] != true).or_else(|| rows.first()))
             .and_then(|row| row["vaultId"].as_str())
-            .map(str::to_owned)).ok_or("no local vault is available")?;
+            .map(str::to_owned).ok_or("no local vault is available")?;
         let settings = session.vault_settings();
         let default_view = settings["defaultView"].clone();
         let has_active_vault = vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["retired"] != true));
-        let view_kind = if has_active_vault { default_view["kind"].as_str().unwrap_or("vault") } else { "all" };
+        let view_kind = if has_active_vault { default_view["kind"].as_str().unwrap_or("all") } else { "all" };
         let (items, collection_id) = match view_kind {
             "all" => (session.item_list_all()?, None),
             "collection" => {
@@ -255,7 +254,7 @@ async fn unlock(
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
         Ok::<_, String>((
             session,
-            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"defaultVaultId":default_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered}),
+            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered}),
         ))
     })
     .await
@@ -416,16 +415,6 @@ fn vault_restore(state: tauri::State<'_, DesktopState>, vault_id: String) -> Res
 #[tauri::command]
 fn vault_abort_move(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
     with_session(&state, |session| session.abort_move_plan())
-}
-
-#[tauri::command]
-fn vault_default(
-    state: tauri::State<'_, DesktopState>,
-    vault_id: Option<String>,
-) -> Result<Value, String> {
-    with_session(&state, |session| {
-        Ok(json!({"defaultVaultId":session.set_default_vault(vault_id.as_deref())?}))
-    })
 }
 
 #[tauri::command]
@@ -670,7 +659,6 @@ fn main() {
             vault_move,
             vault_restore,
             vault_abort_move,
-            vault_default,
             item_get,
             item_secret,
             item_save,

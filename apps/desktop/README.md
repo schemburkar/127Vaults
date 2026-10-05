@@ -15,6 +15,9 @@ while copying, and destination copies may remain for review. Both operations
 need an online session with settled local edits and no unresolved conflict.
 The server currently limits a move to 50 source items.
 
+Preferences > Default view is the desktop's opening-view setting and syncs
+across devices. A local CLI default-vault preference has no effect on desktop.
+
 Tauri's `dragDropEnabled` option is deliberately `false`. Despite its name, the
 default `true` selects Tauri's file-focused native drop handler and prevents DOM
 HTML5 drag events on Windows. `false` restores the WebView's HTML5 drag path used
