@@ -463,12 +463,14 @@ export function App() {
   const openRemoval = async (sourceId: string) => {
     if (!online) { notify("error", "Reconnect to remove a vault", "Vault removal requires an online session."); return; }
     if (removalPlan?.pending) { notify("info", "Finish the pending vault operation first"); return; }
+    let itemCount: number;
     try {
       const rows = await invoke<Summary[]>("item_list", { vaultId: sourceId });
-      setRemovalItemCount(rows.length);
+      itemCount = rows.length;
+      setRemovalItemCount(itemCount);
     } catch (error) { notify("error", "Could not inspect vault", friendlyError(error)); return; }
     const destinationId = activeVaults.find((row) => row.vaultId !== sourceId)?.vaultId ?? "";
-    setRemovalDialog({ sourceId, choice: removalPreference === "move" && destinationId ? "move" : "archive", destinationId });
+    setRemovalDialog({ sourceId, choice: removalPreference === "move" && destinationId && itemCount <= 50 ? "move" : "archive", destinationId });
   };
   const applyRemovalResult = async (result: RemovalResult, preferredId?: string) => {
     setVaults(result.vaults);
@@ -497,6 +499,9 @@ export function App() {
   };
   const removeVault = async (sourceId: string, choice: "archive" | "move", destinationId = "") => {
     if (removalBusy) return;
+    if (choice === "move" && removalItemCount !== null && removalItemCount > 50 && !removalPlan?.pending) {
+      notify("error", "Move limit exceeded", "Move supports at most 50 source items. Archive this vault or move items in smaller batches first."); return;
+    }
     if (choice === "move" && (!destinationId || destinationId === sourceId)) {
       notify("error", "Choose a different destination vault"); return;
     }
@@ -1705,11 +1710,12 @@ export function App() {
           <p className="mt-2 text-sm text-slate-300">{removalItemCount === null ? "Items" : `${removalItemCount} item(s)`} will remain encrypted and recoverable in the source vault. Choose what should happen to the active view.</p>
           <fieldset className="mt-5 grid gap-3"><legend className="mb-2 text-sm font-semibold">Removal choice</legend>
             <label className="flex gap-3 rounded-xl border border-white/10 p-3 text-sm"><input type="radio" name="removal-choice" checked={removalDialog.choice === "archive"} onChange={() => setRemovalDialog({ ...removalDialog, choice: "archive" })} /><span><strong>Archive</strong><span className="mt-1 block text-slate-400">Keep items in this vault, hidden from normal views. You can restore it later.</span></span></label>
-            <label className="flex gap-3 rounded-xl border border-white/10 p-3 text-sm"><input type="radio" name="removal-choice" checked={removalDialog.choice === "move"} disabled={activeVaults.length < 2} onChange={() => setRemovalDialog({ ...removalDialog, choice: "move" })} /><span><strong>Move items</strong><span className="mt-1 block text-slate-400">Re-encrypt every item under another vault key, verify the copies, then retire this vault.</span></span></label>
+            <label className="flex gap-3 rounded-xl border border-white/10 p-3 text-sm"><input type="radio" name="removal-choice" checked={removalDialog.choice === "move"} disabled={activeVaults.length < 2 || (removalItemCount !== null && removalItemCount > 50)} onChange={() => setRemovalDialog({ ...removalDialog, choice: "move" })} /><span><strong>Move items</strong><span className="mt-1 block text-slate-400">Re-encrypt every item under another vault key, verify the copies, then retire this vault.</span></span></label>
           </fieldset>
+          {removalItemCount !== null && removalItemCount > 50 && <p className="mt-3 text-xs text-amber-300">Move supports at most 50 items. Archive this vault or move items in smaller batches first.</p>}
           {removalDialog.choice === "move" && <label className="mt-4 grid gap-2 text-sm">Destination vault<select className="desktop-settings-select" value={removalDialog.destinationId} onChange={(event) => setRemovalDialog({ ...removalDialog, destinationId: event.target.value })}>{activeVaults.filter((row) => row.vaultId !== removalDialog.sourceId).map((row) => <option key={row.vaultId} value={row.vaultId}>{row.name} · {row.code}</option>)}</select></label>}
           <p className="mt-4 text-xs text-slate-400">The operation requires a connection and no unresolved local edits. If interrupted, it can be resumed from Settings.</p>
-          <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" disabled={removalBusy} onClick={() => setRemovalDialog(null)}>Cancel</Button><Button disabled={removalBusy || (removalDialog.choice === "move" && !removalDialog.destinationId)} onClick={() => void removeVault(removalDialog.sourceId, removalDialog.choice, removalDialog.destinationId)}>{removalBusy ? "Working…" : removalDialog.choice === "move" ? "Move and retire" : "Archive vault"}</Button></div>
+          <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" disabled={removalBusy} onClick={() => setRemovalDialog(null)}>Cancel</Button><Button disabled={removalBusy || (removalDialog.choice === "move" && (!removalDialog.destinationId || (removalItemCount !== null && removalItemCount > 50)))} onClick={() => void removeVault(removalDialog.sourceId, removalDialog.choice, removalDialog.destinationId)}>{removalBusy ? "Working…" : removalDialog.choice === "move" ? "Move and retire" : "Archive vault"}</Button></div>
         </section>
       </div>}
       {conflict && (
