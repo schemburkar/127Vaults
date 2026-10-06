@@ -4,6 +4,8 @@ This folder is an independent, static marketing site. It is separate from `apps/
 
 The site has six pages: Home, Product, Security, Deployment, Pricing, and FAQ. Edit `index.html` for the home page. The other pages are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root.
 
+The home page contains desktop and extension walkthroughs; the Product page contains the CLI walkthrough. They use static HTML and CSS with a small `tour.mjs` enhancement for interactions. The displayed data is fictional and no walkthrough contacts a vault or fills a real page. Keep these views aligned with the clients as they evolve.
+
 Open `index.html` directly or serve this folder with `serve`. From the repository root:
 
 ```powershell

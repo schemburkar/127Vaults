@@ -21,8 +21,8 @@ function page({ file, title, description, label, heading, intro, content }) {
   <meta name="theme-color" content="#04071d">
   <meta name="description" content="${description}">
   <title>${title} — 127Vaults</title>
-  <link rel="stylesheet" href="site.css?v=1">
-  <script src="theme.mjs?v=2" type="module"></script>
+  <link rel="stylesheet" href="site.css?v=2">
+  <script src="theme.mjs?v=2" type="module"></script>${file === "product.html" ? '\n  <script src="tour.mjs?v=2" type="module"></script>' : ""}
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -48,6 +48,15 @@ const pages = [
     content: `<section class="page-section"><div class="container two-column"><div><span class="kicker">HOW IT WORKS</span><h2>Local first.<br>Encrypted in transit.</h2></div><div class="prose"><p>Each authorized device is designed to keep an encrypted local copy of vaults it can access. The server coordinates encrypted changes between devices. When the server is temporarily unavailable, already synchronized vault contents should remain available on the device.</p><p>Vault data is designed to be encrypted on the client before it reaches the server. The server is not intended to hold plaintext passwords or the secrets required to decrypt a vault.</p></div></div></section>
     <section class="page-section alternate"><div class="container"><span class="kicker">CORE IDEAS</span><h2>A focused password manager.</h2><div class="tile-grid"><article class="info-tile"><span>01</span><h3>Private vaults</h3><p>Keep personal information separate. An administrator is not meant to gain automatic cryptographic access to every private vault.</p></article><article class="info-tile"><span>02</span><h3>Shared vaults</h3><p>Share with other users on the same 127Vaults server environment. External guests, public links, and anonymous sharing are not supported.</p></article><article class="info-tile"><span>03</span><h3>Registered devices</h3><p>Every client device is registered and has its own cryptographic identity. The server knows authorized device identities, not their private keys.</p></article></div></div></section>
     <section class="page-section"><div class="container two-column"><div><span class="kicker">ADMINISTRATION</span><h2>Simple to operate.</h2></div><div class="prose"><p>127Vaults aims to support user management and private, shared vault use without the complexity of a traditional enterprise password manager. Recovery is intended to be explicit and user designated, rather than blanket administrator access to private vaults.</p><p>The same core product is intended for Personal Self-Hosted, Commercial Self-Hosted, and 127Vaults Cloud.</p><a class="inline-cta" href="security.html">Read the security approach</a></div></div></section>
+    <section class="product-tour" id="cli"><div class="container"><div class="tour-intro"><div><span class="kicker">COMMAND LINE</span><h2>The same vault from your terminal.</h2><p>List vaults and items, and check the client status from the CLI.</p></div></div>
+        <div class="tour-panel">
+          <div class="cli-layout"><div><span class="kicker">FOR THE TERMINAL</span><h3>A vault workflow that stays in your flow.</h3><p>Switch commands to see the CLI response format.</p><div class="cli-commands"><button type="button" data-cli="vaults" aria-pressed="true">List vaults</button><button type="button" data-cli="items" aria-pressed="false">List items</button><button type="button" data-cli="status" aria-pressed="false">Client status</button></div></div><div class="terminal"><div class="terminal-bar"><span class="window-dots" aria-hidden="true">● ● ●</span><span>127Vaults / Terminal</span></div><pre aria-live="polite"><code data-cli-output>$ 127vaults vault list
+[
+  { "name": "Personal", "code": "V-91E900D1C9" },
+  { "name": "Work", "code": "V-95840506C7" }
+]</code></pre></div></div>
+        </div>
+    </div></section>
     <section class="page-cta"><div class="container"><div><span class="kicker">MAKE IT YOURS</span><h2>Your server or ours.</h2><p>Compare self-hosting and managed Cloud before choosing a plan.</p></div><a class="button light" href="deployment.html">Compare deployment options</a></div></section>`
   },
   {
