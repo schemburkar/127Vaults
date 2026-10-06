@@ -5,25 +5,32 @@ import { Button, Input, cn } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { choicesForConflict } from "./conflict-choice.mjs";
-import { ITEM_TYPES, TYPE_GROUPS, addSection, itemType, ordinaryFields, primaryFields, removeSection, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
+import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Copy,
+  CreditCard,
   Eye,
   EyeOff,
+  Globe2,
   GripVertical,
   KeyRound,
+  Landmark,
   LayoutList,
   LoaderCircle,
   LockKeyhole,
   Menu,
   MoreHorizontal,
   Plus,
+  Router,
   Search,
   Settings,
+  Terminal,
   Trash2,
   Vault,
+  Wifi,
   X,
 } from "lucide-react";
 
@@ -63,20 +70,49 @@ type Notice = {
 type Conflict = { draft: Item; message: string; operationId?: string; kind?: string; server?: Item; choices?: Record<string, "local" | "server"> };
 type EngineConflict = { operationId: string; itemId: string; vaultId: string; kind: string; localFields?: string[]; remoteFields?: string[] };
 const dragSession = createDragSession();
+const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound };
+const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
+  login: "Website or app sign-in",
+  bank: "Account and online banking",
+  card: "Debit or credit card",
+  wifi: "Wireless network access",
+  router: "Network device and admin access",
+  ssh: "Server or device access",
+  password: "A standalone secret or code",
+};
 
-function TypePicker({ value, onSelect, section = false }: { value?: ItemType; onSelect: (type: ItemType | SectionType) => void; section?: boolean }) {
-  return <details className="group relative w-full max-w-sm">
-    <summary className="cursor-pointer list-none rounded-xl border border-white/10 bg-[#11162b] px-4 py-3 text-sm text-slate-100 hover:border-[#E0BB95]/50">
-      {value ? ITEM_TYPES[value].label : "Add typed section"} <span className="float-right text-slate-400">⌄</span>
+function TypePicker({ value, onSelect }: { value: ItemType; onSelect: (type: ItemType) => void }) {
+  const Icon = TYPE_ICONS[value];
+  return <details className="group relative w-full">
+    <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-xl border border-white/15 bg-[#11162b] px-2 py-1.5 text-sm text-slate-100 hover:border-[#E0BB95]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E0BB95] [&::-webkit-details-marker]:hidden">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><Icon size={17} /></span>
+      <span className="min-w-0 flex-1 truncate font-semibold">{ITEM_TYPES[value].label}</span>
+      <ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
     </summary>
-    <div className="absolute left-0 top-full z-30 mt-2 w-full min-w-72 rounded-xl border border-white/10 bg-[#11162b] p-2 shadow-2xl">
+    <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-3rem))] rounded-xl border border-white/15 bg-[#11162b] p-2 shadow-2xl">
+      <p className="px-3 py-2 text-xs text-slate-400">Choose the main item type</p>
       {TYPE_GROUPS.map((group) => <div key={group.label} className="mb-2 last:mb-0">
         <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{group.label}</p>
-        {group.types.map((type) => <button key={type} type="button" className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10" onClick={(event) => { onSelect(type); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{ITEM_TYPES[type].label}</button>)}
+        {group.types.map((type) => { const OptionIcon = TYPE_ICONS[type]; return <button key={type} type="button" className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10", type === value && "bg-[#E0BB95]/10")} onClick={(event) => { onSelect(type); event.currentTarget.closest("details")?.removeAttribute("open"); }}><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/7 text-[#E0BB95]"><OptionIcon size={17} /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-slate-100">{ITEM_TYPES[type].label}</strong><small className="block text-xs text-slate-400">{TYPE_DESCRIPTIONS[type]}</small></span>{type === value && <Check size={16} className="shrink-0 text-[#E0BB95]" />}</button>; })}
       </div>)}
-      {section && <div><p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Recovery</p><button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10" onClick={(event) => { onSelect("security"); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Security info</button></div>}
     </div>
   </details>;
+}
+
+function RelatedPicker({ type, onSelect }: { type: ItemType; onSelect: (type: SectionType, label: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const options = [...RELATED_TYPES[type], { type: "custom" as const, label: "Custom details", description: "A named group of your own fields" }]
+    .filter((option) => `${option.label} ${option.description}`.toLowerCase().includes(query.toLowerCase()));
+  return <div className="mt-4">
+    <button type="button" className="w-full rounded-xl border border-dashed border-[#E0BB95]/50 bg-[#E0BB95]/8 px-4 py-3 text-left text-sm font-semibold text-[#E0BB95] hover:bg-[#E0BB95]/12" aria-expanded={open} onClick={() => setOpen((current) => !current)}>＋ Add related detail</button>
+    {open && <div className="mt-2 rounded-xl border border-white/12 bg-[#11162b] p-3">
+      <label className="grid gap-2 text-xs text-slate-400">Find a related detail<Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search options…" /></label>
+      <p className="my-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested for {ITEM_TYPES[type].label}</p>
+      <div className="grid gap-2 sm:grid-cols-2">{options.map((option) => <button key={option.type} type="button" className="rounded-lg border border-white/10 bg-white/3 p-3 text-left hover:border-[#E0BB95]/40 hover:bg-white/7" onClick={() => { onSelect(option.type, option.label); setOpen(false); setQuery(""); }}><strong className="block text-sm text-slate-100">{option.label}</strong><span className="mt-1 block text-xs text-slate-400">{option.description}</span></button>)}</div>
+      {!options.length && <p className="py-3 text-xs text-slate-400">No matching related detail.</p>}
+    </div>}
+  </div>;
 }
 
 export function App() {
@@ -113,6 +149,7 @@ export function App() {
     [selected, setSelected] = useState<Item | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
   const [editOriginal, setEditOriginal] = useState<Item | null>(null);
+  const [expandedRelatedId, setExpandedRelatedId] = useState<string | null>(null);
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null),
     [username, setUsername] = useState("");
   const [accountSecret, setAccountSecret] = useState(""),
@@ -726,6 +763,24 @@ export function App() {
         field.id === id ? { ...field, ...patch } : field,
       ),
     });
+  const addRelated = (type: SectionType, label: string) => {
+    if (!selected) return;
+    const existing = sections(selected.customFields).filter((section) => section.type === type).length;
+    const name = existing ? `${label} ${existing + 1}` : label;
+    let fields = addRelatedSection(selected.customFields, type, name);
+    const added = sections(fields).at(-1);
+    if (added && type === "custom") fields = addSectionField(fields, added.id);
+    if (fields.length > 50) { notify("error", "Item is full", "This item supports up to 50 stored fields. Remove an unused detail before adding another."); return; }
+    setSelected({ ...selected, customFields: fields });
+    setExpandedRelatedId(added?.id ?? null);
+  };
+  const changePrimaryType = (type: ItemType) => {
+    if (!selected || type === itemType(selected.customFields)) return;
+    const hasValues = !!(selected.website || selected.username || selected.password || primaryFields(selected.customFields).some((field) => field.value) || sections(selected.customFields).length);
+    if (hasValues && !window.confirm("Change the main type? Its current type fields and related details will be removed. Save a copy first if you need them.")) return;
+    setSelected({ ...selected, website: "", username: "", password: "", customFields: replaceItemType(selected.customFields, type) });
+    setExpandedRelatedId(null);
+  };
   const knownFieldEditor = (field: CustomField) => <label key={field.id} className="grid gap-2 text-sm text-slate-400">
     {field.label}
     <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -736,6 +791,8 @@ export function App() {
   const beginEditing = () => {
     if (!selected) return;
     setEditOriginal(structuredClone(selected));
+    setSelected({ ...selected, customFields: completeRelatedFields(selected.customFields) });
+    setExpandedRelatedId(null);
     setEditing(true);
   };
   const cancelEditing = () => {
@@ -1237,33 +1294,23 @@ export function App() {
                   </select>
                 </label>}
                 <section>
-                  <div className="mb-6 grid gap-2 text-sm text-slate-400">Item type
-                    <TypePicker value={itemType(selected.customFields)} onSelect={(type) => setSelected({ ...selected, customFields: setItemType(selected.customFields, type as ItemType) })} />
-                  </div>
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
                     BASICS
                   </h3>
                   <div className="grid gap-4">
-                    <label className="grid gap-2 text-sm text-slate-400">
-                      Title
-                      <Input
-                        value={selected.title}
-                        aria-invalid={!!errors.title}
-                        className={
-                          errors.title
-                            ? "border-red-400 ring-4 ring-red-400/10"
-                            : ""
-                        }
-                        onChange={(e) =>
-                          setSelected({ ...selected, title: e.target.value })
-                        }
-                      />
-                      {errors.title && (
-                        <span className="text-xs text-red-300">
-                          {errors.title}
-                        </span>
-                      )}
-                    </label>
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
+                      <label className="grid gap-2 text-sm text-slate-400">
+                        Title
+                        <Input
+                          value={selected.title}
+                          aria-invalid={!!errors.title}
+                          className={errors.title ? "border-red-400 ring-4 ring-red-400/10" : ""}
+                          onChange={(e) => setSelected({ ...selected, title: e.target.value })}
+                        />
+                        {errors.title && <span className="text-xs text-red-300">{errors.title}</span>}
+                      </label>
+                      <div className="grid gap-2 text-sm text-slate-400"><span>Type</span><TypePicker value={itemType(selected.customFields)} onSelect={changePrimaryType} /></div>
+                    </div>
                     {ITEM_TYPES[itemType(selected.customFields)].website && <label className="grid gap-2 text-sm text-slate-400">
                       Website
                       <Input
@@ -1320,12 +1367,27 @@ export function App() {
                     {primaryFields(selected.customFields).map(knownFieldEditor)}
                   </div>
                 </section>
-                <section className="mt-8 grid gap-5">
-                  {sections(selected.customFields).map((section) => <div key={section.id} className="rounded-2xl border border-white/10 bg-white/3 p-5">
-                    <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-[#E0BB95]">{section.label}</h3><Button size="sm" variant="ghost" onClick={() => setSelected({ ...selected, customFields: removeSection(selected.customFields, section.id) })}><Trash2 size={15} /><span>Remove section</span></Button></div>
-                    <div className="grid gap-4">{section.fields.map(knownFieldEditor)}</div>
-                  </div>)}
-                  <TypePicker section onSelect={(type) => setSelected({ ...selected, customFields: addSection(selected.customFields, type) })} />
+                <section className="mt-8 border-t border-white/10 pt-7">
+                  <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
+                  <div className="grid gap-3">{sections(selected.customFields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/12 bg-white/3">
+                    <div className="flex flex-wrap items-center gap-3 p-4">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><KeyRound size={17} /></span>
+                      <button type="button" className="min-w-0 flex-1 text-left" aria-expanded={expandedRelatedId === section.id} onClick={() => setExpandedRelatedId(expandedRelatedId === section.id ? null : section.id)}><strong className="block truncate text-sm text-slate-100">{section.label}</strong><span className="mt-1 block text-xs text-slate-500">{section.type === "custom" ? CUSTOM_SECTION.label : SECTION_TYPES[section.type].label} · {section.fields.filter((field) => field.value).length} field(s) added</span></button>
+                      <Button size="sm" variant="ghost" onClick={() => setExpandedRelatedId(expandedRelatedId === section.id ? null : section.id)}>{expandedRelatedId === section.id ? "Done" : "Edit"}</Button>
+                      <Button size="sm" variant="ghost" title={`Remove ${section.label}`} onClick={() => { setSelected({ ...selected, customFields: removeSection(selected.customFields, section.id) }); if (expandedRelatedId === section.id) setExpandedRelatedId(null); }}><Trash2 size={15} /><span>Remove</span></Button>
+                    </div>
+                    {expandedRelatedId === section.id && <div className="grid gap-4 border-t border-white/10 p-4">
+                      <label className="grid gap-2 text-sm text-slate-400">Name<Input value={section.label} onChange={(event) => setSelected({ ...selected, customFields: renameSection(selected.customFields, section.id, event.target.value) })} placeholder="e.g. Daily spending card" /></label>
+                      {section.type === "custom" ? section.fields.map((field) => <div key={field.id} className="grid gap-2 rounded-lg border border-white/10 p-3 sm:grid-cols-[1fr_8rem]">
+                        <label className="grid gap-2 text-xs text-slate-400">Field name<Input value={field.label} aria-invalid={!!errors[`custom-${field.id}`]} onChange={(event) => updateCustom(field.id, { label: event.target.value })} /></label>
+                        <label className="grid gap-2 text-xs text-slate-400">Kind<select className="rounded-xl border border-white/10 bg-[#11162b] px-3 text-sm" value={field.type} onChange={(event) => updateCustom(field.id, { type: event.target.value })}><option value="text">Text</option><option value="password">Secret</option><option value="url">URL</option><option value="number">Number</option></select></label>
+                        <div className="sm:col-span-2">{knownFieldEditor(field)}</div>
+                        <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setSelected({ ...selected, customFields: selected.customFields.filter((row) => row.id !== field.id) })}><Trash2 size={14} />Remove field</Button>
+                      </div>) : section.fields.map(knownFieldEditor)}
+                      {section.type === "custom" && <Button variant="secondary" className="justify-self-start" onClick={() => { if (selected.customFields.length >= 50) { notify("error", "Item is full", "Remove an unused field before adding another."); return; } setSelected({ ...selected, customFields: addSectionField(selected.customFields, section.id) }); }}><Plus size={15} />Add field</Button>}
+                    </div>}
+                  </div>)}</div>
+                  <RelatedPicker type={itemType(selected.customFields)} onSelect={addRelated} />
                 </section>
                 <section className="mt-8">
                   <div className="mb-3 flex items-center justify-between">
