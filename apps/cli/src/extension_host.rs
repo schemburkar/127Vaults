@@ -32,6 +32,8 @@ struct Request {
     #[serde(default)]
     item_id: String,
     #[serde(default)]
+    entry_id: String,
+    #[serde(default)]
     site_origin: String,
 }
 
@@ -139,21 +141,116 @@ fn site_origin(value: &str) -> Result<String, String> {
     Ok(parsed.origin().ascii_serialization())
 }
 
-fn matching_items(rows: Value, site: &str) -> Result<Value, String> {
-    let rows = rows.as_array().ok_or("local item list is invalid")?;
-    Ok(Value::Array(
-        rows.iter()
-            .filter(|row| website_matches(row, site))
-            .cloned()
-            .collect(),
-    ))
-}
-
 fn website_matches(row: &Value, site: &str) -> bool {
     row["website"]
         .as_str()
         .and_then(|website| url::Url::parse(website).ok())
         .is_some_and(|url| url.origin().ascii_serialization() == site)
+}
+
+fn field_value<'a>(fields: &'a [Value], id: &str) -> Option<&'a str> {
+    fields
+        .iter()
+        .find(|field| field["id"] == id)?
+        .get("value")?
+        .as_str()
+}
+
+fn entry_fields(summary: &Value, entry_id: &str, site: &str) -> Result<(String, String), String> {
+    if entry_id.is_empty() {
+        if summary["itemType"] != "login" || !website_matches(summary, site) {
+            return Err("selected login does not match site".to_owned());
+        }
+        return Ok((
+            summary["username"].as_str().unwrap_or("").to_owned(),
+            "password".to_owned(),
+        ));
+    }
+    if !valid_id(entry_id) {
+        return Err("invalid related login identity".to_owned());
+    }
+    let fields = summary["customFields"]
+        .as_array()
+        .ok_or("related login is unavailable")?;
+    let marker = format!("__127vaults_section:{entry_id}");
+    if !fields.iter().any(|field| {
+        field["id"] == marker
+            && field["type"] == "metadata"
+            && field["value"]
+                .as_str()
+                .is_some_and(|value| value.split('|').next() == Some("login"))
+    }) {
+        return Err("related login is unavailable".to_owned());
+    }
+    let prefix = format!("__127vaults_field:{entry_id}:");
+    let website =
+        field_value(fields, &format!("{prefix}website")).ok_or("related website is unavailable")?;
+    if !website_matches(&json!({"website":website}), site) {
+        return Err("related login does not match site".to_owned());
+    }
+    let username = field_value(fields, &format!("{prefix}username"))
+        .unwrap_or("")
+        .to_owned();
+    let password_id = format!("{prefix}password");
+    if !fields
+        .iter()
+        .any(|field| field["id"] == password_id && field["type"] == "password")
+    {
+        return Err("related password is unavailable".to_owned());
+    }
+    Ok((username, password_id))
+}
+
+fn login_entries(summary: &Value, vault_id: &str, site: &str) -> Vec<Value> {
+    let mut entries = Vec::new();
+    if summary["itemType"] == "login" && website_matches(summary, site) {
+        entries.push(json!({"vaultId":vault_id,"itemId":summary["itemId"],"entryId":"", "title":summary["title"],"website":summary["website"],"username":summary["username"]}));
+    }
+    if let Some(fields) = summary["customFields"].as_array() {
+        for marker in fields.iter().filter(|field| field["type"] == "metadata") {
+            let Some(id) = marker["id"]
+                .as_str()
+                .and_then(|id| id.strip_prefix("__127vaults_section:"))
+            else {
+                continue;
+            };
+            if !valid_id(id)
+                || !marker["value"]
+                    .as_str()
+                    .is_some_and(|value| value.split('|').next() == Some("login"))
+            {
+                continue;
+            }
+            let Ok((username, _)) = entry_fields(summary, id, site) else {
+                continue;
+            };
+            let website =
+                field_value(fields, &format!("__127vaults_field:{id}:website")).unwrap_or("");
+            let label = marker["value"]
+                .as_str()
+                .and_then(|value| value.split_once('|'))
+                .map(|(_, label)| label)
+                .filter(|label| !label.is_empty())
+                .unwrap_or("Related login");
+            entries.push(json!({"vaultId":vault_id,"itemId":summary["itemId"],"entryId":id,"title":label,"website":website,"username":username}));
+        }
+    }
+    entries
+}
+
+fn list_entries(
+    rows: Value,
+    site: &str,
+    mut get: impl FnMut(&str, &str) -> Result<Value, String>,
+) -> Result<Value, String> {
+    let mut entries = Vec::new();
+    for row in rows.as_array().ok_or("local item list is invalid")? {
+        let vault = row["vaultId"].as_str().ok_or("invalid vault identity")?;
+        let item = row["itemId"].as_str().ok_or("invalid item identity")?;
+        let summary = get(vault, item)?;
+        entries.extend(login_entries(&summary, vault, site));
+    }
+    Ok(Value::Array(entries))
 }
 
 fn list(session: &mut client::Session) -> Result<Value, String> {
@@ -165,17 +262,14 @@ fn credential(
     vault: &str,
     item: &str,
     site: &str,
+    entry_id: &str,
 ) -> Result<Value, String> {
-    let mut summary = session.item_get(vault, item, None)?;
-    if summary["itemType"] != "login" {
-        return Err("selected item is not a login".to_owned());
-    }
-    if !website_matches(&summary, site) {
-        return Err("selected login does not match site".to_owned());
-    }
-    let password = session.item_get(vault, item, Some("password"))?;
-    summary["password"] = password;
-    Ok(summary)
+    let summary = session.item_get(vault, item, None)?;
+    let (username, password_field) = entry_fields(&summary, entry_id, site)?;
+    let password = session.item_get(vault, item, Some(&password_field))?;
+    Ok(
+        json!({"itemId":item,"entryId":entry_id,"website":site,"username":username,"password":password}),
+    )
 }
 
 impl Host {
@@ -260,38 +354,40 @@ impl Host {
         {
             self.last_activity = Instant::now();
             return if request.action == "list" {
-                matching_items(list(&mut local.session)?, &site)
+                list_entries(list(&mut local.session)?, &site, |vault, item| {
+                    local.session.item_get(vault, item, None)
+                })
             } else {
                 credential(
                     &mut local.session,
                     &request.vault_id,
                     &request.item_id,
                     &site,
+                    &request.entry_id,
                 )
             };
         }
         if request.action == "list" {
-            matching_items(agent::call(&path, "item.list.all", json!({}))?, &site)
+            list_entries(
+                agent::call(&path, "item.list.all", json!({}))?,
+                &site,
+                |vault, item| agent::call(&path, "item.get", json!({"vault":vault,"item":item})),
+            )
         } else {
             let summary = agent::call(
                 &path,
                 "item.get",
                 json!({"vault":request.vault_id,"item":request.item_id}),
             )?;
-            if summary["itemType"] != "login" {
-                return Err("selected item is not a login".to_owned());
-            }
-            if !website_matches(&summary, &site) {
-                return Err("selected login does not match site".to_owned());
-            }
+            let (username, password_field) = entry_fields(&summary, &request.entry_id, &site)?;
             let password = agent::call(
                 &path,
                 "item.get",
-                json!({"vault":request.vault_id,"item":request.item_id,"password_field":"password"}),
+                json!({"vault":request.vault_id,"item":request.item_id,"password_field":password_field}),
             )?;
-            let mut value = summary;
-            value["password"] = password;
-            Ok(value)
+            Ok(
+                json!({"itemId":request.item_id,"entryId":request.entry_id,"website":site,"username":username,"password":password}),
+            )
         }
     }
 }
@@ -394,15 +490,25 @@ mod tests {
 
     #[test]
     fn only_exact_https_origin_items_are_listed() {
-        let rows = json!([
-            {"website":"https://accounts.example.test/login","itemId":"one"},
-            {"website":"https://accounts.example.test:444/login","itemId":"two"},
-            {"website":"https://evil.accounts.example.test/","itemId":"three"}
-        ]);
+        let section = "87311a33-a992-4528-90aa-5ddc87646031";
+        let rows = json!([{"vaultId":"876e252c-a31b-4a0a-9f30-d7d0cb85b658","itemId":"a0ca6518-8943-46f3-acbe-ac0b721f0932"}]);
+        let summary = json!({"itemId":rows[0]["itemId"],"itemType":"login","title":"Primary","website":"https://accounts.example.test/login","username":"primary",
+        "customFields":[
+            {"id":format!("__127vaults_section:{section}"),"type":"metadata","value":"login|Second account"},
+            {"id":format!("__127vaults_field:{section}:website"),"type":"url","value":"https://accounts.example.test/other"},
+            {"id":format!("__127vaults_field:{section}:username"),"type":"text","value":"secondary"},
+            {"id":format!("__127vaults_field:{section}:password"),"type":"password","value":"[redacted]"}
+        ]});
         let origin = site_origin("https://accounts.example.test").unwrap();
-        let filtered = matching_items(rows, &origin).unwrap();
-        assert_eq!(filtered.as_array().unwrap().len(), 1);
-        assert_eq!(filtered[0]["itemId"], "one");
+        let filtered = list_entries(rows, &origin, |_, _| Ok(summary.clone())).unwrap();
+        assert_eq!(filtered.as_array().unwrap().len(), 2);
+        assert_eq!(filtered[1]["entryId"], section);
+        assert_eq!(filtered[1]["username"], "secondary");
+        assert_eq!(
+            entry_fields(&summary, section, &origin).unwrap().1,
+            format!("__127vaults_field:{section}:password")
+        );
+        assert!(entry_fields(&summary, section, "https://evil.accounts.example.test").is_err());
         assert!(site_origin("http://accounts.example.test").is_err());
     }
 }

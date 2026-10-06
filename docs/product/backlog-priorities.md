@@ -20,7 +20,7 @@ The MVP surface is the online web app and one self-hosted server with PostgreSQL
 2. **Complete the browser ceremony** (WEB-007): trust the local CA on the intended host, enroll and unlock in a real browser, verify owner and invited-user isolation, lock and restart. Browser-native enrollment and the wider LAN matrix remain P1.
 3. **Run the narrow hostile-path check** (SRV-004): wrong credentials, unauthorized account/vault access, malformed or substituted ciphertext, stale-base update and divergent request-ID reuse. Inspect requests, logs and database for plaintext or user secrets. Record evidence against the [internal MVP acceptance](mvp-plan.md#internal-mvp-acceptance).
 4. **Close the operator handoff**: document the known limits, test credentials and reset procedure in the test-install runbook. Capture human acceptance of the browser walkthrough. Do not mark a broader backlog row Done from this subset alone.
-5. **Complete and verify the extension slice** (EXT-001–004, EXT-007/008): hydrate a desktop/CLI replica, register the native connector, stop the server and close the web tab, unlock that local replica through the extension, fill conventional and split login forms, then check active-client handoff, lock, restart, rollback, origin change, ambiguous forms, same-origin frames and absence of writes. Keep EXT-005 packaging/signing in P1.
+5. **Complete and verify the extension slice** (EXT-001–004, EXT-007/008): hydrate a desktop/CLI replica, register the native connector, stop the server and close the web tab, unlock that local replica through the extension, fill conventional and split login forms, then check active-client handoff, lock, restart, rollback, origin change, ambiguous forms, same-origin frames and absence of writes. Keep EXT-005 packaging and distribution in P1.
 
 P0 is complete when these checks pass and their evidence is linked from the relevant backlog rows. A failure becomes a scoped fix in that same row before moving to P1.
 
@@ -33,7 +33,7 @@ P0 is complete when these checks pass and their evidence is linked from the rele
 | Server | SRV-004 narrow hostile-path subset, SRV-013 rebuilt-bundle smoke | SRV-002, SRV-003, SRV-004 remaining, SRV-005–011, SRV-013 remaining, SRV-017/018 licensing | SRV-012, SRV-014–016 |
 | Desktop | None; test device only | DESK-004–008, DESK-010 license messaging, with DESK-008 only if multiple vaults/collections ship | DESK-003, DESK-009 |
 | CLI | None; test device only | CLI-003, CLI-004, CLI-006, CLI-008, CLI-009 if multiple vaults/collections ship, CLI-012 license status | CLI-007, CLI-010, CLI-011 optional table output |
-| Browser extension | EXT-001–004 and EXT-007/008 offline, read-only development and browser walkthrough | EXT-005 packaging/signing and supported browser matrix, EXT-009 popup polish, EXT-010 license state | None currently; EXT-006 excludes edits |
+| Browser extension | EXT-001–004 and EXT-007/008 offline, read-only development and browser walkthrough | EXT-005 packaging and supported browser matrix, EXT-009 popup polish, EXT-010 license state | None currently; EXT-006 excludes edits |
 
 The desktop and CLI P1 rows are **conditional client gates**: include them only if that client ships in the first supported release. WEB-003 and the multi-vault settings rows are similarly conditional on enabling those item types and views. P2 archive/move functionality already exists experimentally; verify it before enabling it in a supported build. The localhost admin page is P2; operator commands remain the first release control plane.
 

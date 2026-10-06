@@ -8,12 +8,10 @@
   </head>
   <body>
     <main>
-      <header><strong>127Vaults</strong><span class="badge">Experimental</span></header>
+      <header><strong>127Vaults</strong><div class="header-actions"><select id="source-select" aria-label="Credential source" title="Credential source" hidden></select><button id="refresh-sources" class="icon-button" type="button" title="Refresh sources" aria-label="Refresh sources" hidden>↻</button></div></header>
       <p id="site" class="site"></p>
       <p id="status" role="status" aria-live="polite"></p>
       <section id="source-panel" hidden>
-        <div class="section-heading"><label for="source-select">Credential source</label><button id="refresh-sources" class="text-button" type="button">Refresh</button></div>
-        <select id="source-select"></select>
         <p id="source-state" class="hint" role="status"></p>
         <div id="native-unlock" hidden>
           <label for="native-username">Username</label><input id="native-username" autocomplete="username">
@@ -36,7 +34,7 @@
         <div id="items"></div>
         <div id="frames" hidden></div>
       </section>
-      <footer><button id="open-vault" type="button">Open web vault</button><button id="lock-vault" type="button" hidden>Lock</button><button id="settings" type="button">Web connection</button></footer>
+      <footer><button id="lock-vault" type="button" hidden>Lock source</button><button id="settings" type="button">Web connection</button><button id="open-vault" type="button" hidden>Open web vault</button></footer>
     </main>
     <script type="module" src="src/popup.mjs"></script>
   </body>

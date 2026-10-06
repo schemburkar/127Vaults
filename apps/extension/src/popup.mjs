@@ -38,7 +38,7 @@ async function native(request) {
 }
 function renderItems() {
   const query = $('search').value.trim().toLowerCase();
-  const matching = items.filter(item => matchingLogin(item.website, targetTab.url) && `${item.title} ${item.website}`.toLowerCase().includes(query));
+  const matching = items.filter(item => matchingLogin(item.website, targetTab.url) && `${item.title} ${item.username || ''} ${item.website}`.toLowerCase().includes(query));
   $('items').replaceChildren();
   for (const item of matching) {
     const button = document.createElement('button');
@@ -54,14 +54,12 @@ function renderItems() {
     heading.className = 'item-heading';
     heading.append(title, action);
     const site = document.createElement('small');
-    site.textContent = item.website;
+    site.textContent = item.username || item.website;
     button.append(heading, site);
     button.onclick = () => choose(item);
     $('items').append(button);
   }
-  const source = selectedSource === 'web' ? 'web tab' : `${selectedSource} ${localSources.find(row => row.id === selectedSource)?.online ? 'online' : 'offline/local'}`;
-  if (!matching.length) status(`No login from ${source} matches this exact site. Try another source or add it in a writable client.`);
-  else status(`${matching.length} matching login${matching.length === 1 ? '' : 's'} from ${source}. Choose one to fill.`);
+  status(matching.length ? '' : 'No login matches this site in the selected source.');
 }
 async function findVaultTab() {
   const tabs = await chrome.tabs.query({});
@@ -76,6 +74,7 @@ async function loadSelectedSource() {
   const license = source?.license;
   $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.'
     : `${sourceStatus(source)}${license && ['read-only', 'locked'].includes(license.mode) ? ` License: ${license.mode}.` : ''}`;
+  $('open-vault').hidden = selectedSource !== 'web' || !vaultOrigin;
   items = [];
   if (selectedSource !== 'web') {
     try {
@@ -109,7 +108,7 @@ async function loadSelectedSource() {
     }, [], {}, 'MAIN'))[0]?.result;
     if (license && ['read-only', 'locked'].includes(license.mode)) $('source-state').textContent += ` License: ${license.mode}.`;
   } catch { /* Older server or unavailable status. */ }
-  const result = (await script(vaultTab.id, () => window.__vaultsExtensionActions?.list(), [], {}, 'MAIN'))[0]?.result;
+  const result = (await script(vaultTab.id, site => window.__vaultsExtensionActions?.list(site), [originOf(targetTab.url)], {}, 'MAIN'))[0]?.result;
   if (!result || result.locked) { status('Unlock the vault web tab, or choose a local source.'); return; }
   vaultId = result.vaultId;
   items = Array.isArray(result.items) ? result.items : [];
@@ -127,6 +126,9 @@ async function refresh() {
   $('frames').hidden = true;
   $('lock-vault').hidden = true;
   $('source-panel').hidden = true;
+  $('source-select').hidden = true;
+  $('refresh-sources').hidden = true;
+  $('open-vault').hidden = true;
   targetTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
   if (!targetTab?.id || !originOf(targetTab.url)) {
     status('Open a secure website login page, then click 127Vaults.', true);
@@ -139,10 +141,10 @@ async function refresh() {
   catch (error) { localSources = []; connectorError = error; }
   sourceSignature = JSON.stringify(localSources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
   const options = localSources.filter(source => source.configured).map(source => ({
-    id: source.id, label: `${source.id === 'desktop' ? 'Desktop' : 'CLI'}${source.active || source.localUnlocked ? ' (unlocked)' : ' (local replica)'}`,
+    id: source.id, label: `${source.id === 'desktop' ? '▣ Desktop' : '⌘ CLI'}${source.active || source.localUnlocked ? '' : ' · locked'}`,
     preferred: source.active || source.localUnlocked,
   }));
-  if (vaultOrigin) options.push({ id: 'web', label: 'Web tab', preferred: false });
+  if (vaultOrigin) options.push({ id: 'web', label: '◉ Web tab', preferred: false });
   $('source-select').replaceChildren();
   for (const option of options) {
     const element = document.createElement('option');
@@ -158,6 +160,8 @@ async function refresh() {
     return;
   }
   $('source-panel').hidden = false;
+  $('source-select').hidden = false;
+  $('refresh-sources').hidden = false;
   $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
     : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
@@ -180,13 +184,14 @@ async function choose(item) {
       if (!matchingLogin(item.website, latest.url)) throw Error('The page changed before fill.');
       status('Decrypting the selected login…');
       const credential = selectedSource === 'web'
-        ? (await script(vaultTab.id, async (id, selectedVault) => window.__vaultsExtensionActions?.credential(id, selectedVault), [item.itemId, vaultId], {}, 'MAIN'))[0]?.result
-        : await native({ action: 'get', source: selectedSource, vaultId: item.vaultId, itemId: item.itemId, siteOrigin: origin });
-      if (!credential || !matchingLogin(credential.website, latest.url) || credential.itemId !== item.itemId) throw Error('The vault or selected login changed.');
+        ? (await script(vaultTab.id, async (id, selectedVault, entryId, site) => window.__vaultsExtensionActions?.credential(id, selectedVault, entryId, site), [item.itemId, vaultId, item.entryId || '', origin], {}, 'MAIN'))[0]?.result
+        : await native({ action: 'get', source: selectedSource, vaultId: item.vaultId, itemId: item.itemId, entryId: item.entryId || '', siteOrigin: origin });
+      if (!credential || !matchingLogin(credential.website, latest.url) || credential.itemId !== item.itemId || (credential.entryId || '') !== (item.entryId || '')) throw Error('The vault or selected login changed.');
       const filled = (await script(targetTab.id, fillFrame, [origin, { username: credential.username, password: credential.password }], { frameIds: [frameId] }))[0]?.result;
       if (!filled?.ok) throw Error(filled?.reason || 'The page did not accept the fill.');
-      status(`Filled ${filled.username && filled.password ? 'username and password' : filled.username ? 'username' : 'password'}. Review the form and submit it yourself.`);
+      status('');
       $('frames').hidden = true;
+      window.close();
     };
     if (candidates.length === 1) await fill(candidates[0].frameId);
     else {

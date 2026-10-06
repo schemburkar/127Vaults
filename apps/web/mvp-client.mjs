@@ -1049,32 +1049,65 @@ async function fetchItem(itemId, index) {
 // Called only by the installed extension's user-initiated browser action. The
 // extension reads this object in the page's main world after obtaining explicit
 // permission for this vault origin. No credential is pushed to other pages.
+function extensionOrigin(website) {
+  try { const url = new URL(website); return url.protocol === 'https:' ? url.origin : null; }
+  catch { return null; }
+}
+function extensionRelatedLogins(item, siteOrigin) {
+  const fields = Array.isArray(item.body.customFields) ? item.body.customFields : [];
+  const output = [];
+  for (const marker of fields) {
+    const entryId = typeof marker.id === 'string' && marker.id.startsWith('__127vaults_section:') ? marker.id.slice('__127vaults_section:'.length) : null;
+    if (!entryId || marker.type !== 'metadata' || String(marker.value).split('|', 1)[0] !== 'login') continue;
+    const field = name => fields.find(row => row.id === `__127vaults_field:${entryId}:${name}`);
+    const website = field('website')?.value;
+    if (extensionOrigin(website) !== siteOrigin || field('password')?.type !== 'password') continue;
+    output.push({ itemId: item.itemId, entryId, title: String(marker.value).split('|').slice(1).join('|') || 'Related login', website, username: field('username')?.value || '' });
+  }
+  return output;
+}
 window.__vaultsExtensionActions = {
   async lock() {
     await lock();
     return true;
   },
-  list() {
+  async list(siteOrigin) {
     if (!root || !vault || !catalogue) return { locked: true, items: [] };
     arm();
+    const activeVault = vault;
+    const items = [];
+    for (const { row, index } of loadedItems) {
+      if (!root || vault !== activeVault) return { locked: true, items: [] };
+      const item = await fetchItem(row.itemId, index);
+      if (itemKind(item.body.customFields) === 'login' && extensionOrigin(index.website) === siteOrigin) {
+        items.push({ itemId: row.itemId, entryId: '', title: index.title || 'Untitled login', website: index.website, username: item.body.username || '' });
+      }
+      items.push(...extensionRelatedLogins(item, siteOrigin));
+    }
     return {
       locked: false,
       vaultId,
-      items: loadedItems
-        .filter(({ index }) => index?.website && (!index?.type || index.type === "login"))
-        .map(({ row, index }) => ({ itemId: row.itemId, title: index.title || "Untitled login", website: index.website })),
+      items,
     };
   },
-  async credential(itemId, requestedVaultId) {
+  async credential(itemId, requestedVaultId, entryId, siteOrigin) {
     if (!root || !vault || !catalogue || requestedVaultId !== vaultId) throw Error("VAULT_LOCKED_OR_CHANGED");
     const found = loadedItems.find(({ row }) => row.itemId === itemId);
-    if (!found || !found.index.website) throw Error("ITEM_NOT_FOUND");
+    if (!found) throw Error("ITEM_NOT_FOUND");
     const activeVault = vault;
     const item = await fetchItem(itemId, found.index);
     if (!root || vault !== activeVault || requestedVaultId !== vaultId) throw Error("VAULT_LOCKED_OR_CHANGED");
-    if (itemKind(item.body.customFields) !== "login") throw Error("NOT_A_LOGIN_ITEM");
     arm();
-    return { itemId, website: found.index.website, username: item.body.username || "", password: item.body.password || "" };
+    if (entryId) {
+      const entry = extensionRelatedLogins(item, siteOrigin).find(row => row.entryId === entryId);
+      if (!entry) throw Error('RELATED_LOGIN_NOT_FOUND');
+      const fields = item.body.customFields;
+      const password = fields.find(row => row.id === `__127vaults_field:${entryId}:password`)?.value;
+      if (typeof password !== 'string') throw Error('RELATED_PASSWORD_NOT_FOUND');
+      return { itemId, entryId, website: entry.website, username: entry.username, password };
+    }
+    if (itemKind(item.body.customFields) !== 'login' || extensionOrigin(found.index.website) !== siteOrigin) throw Error('NOT_A_MATCHING_LOGIN');
+    return { itemId, entryId: '', website: found.index.website, username: item.body.username || '', password: item.body.password || '' };
   },
 };
 function openCreateVaultDialog() {
