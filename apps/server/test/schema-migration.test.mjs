@@ -7,13 +7,14 @@ import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4
 
 const counts = { accounts: '2', devices: '2', sessions: '1', vaults: '1', items: '3' };
 class MigrationClient {
-  constructor({ version = 1, checksum = schemaV1Checksum, invalid = '0' } = {}) {
-    this.version = version; this.checksum = checksum; this.invalid = invalid; this.calls = [];
+  constructor({ version = 1, checksum = schemaV1Checksum, invalid = '0', cloud = false } = {}) {
+    this.version = version; this.checksum = checksum; this.invalid = invalid; this.cloud = cloud; this.calls = [];
   }
   async query(sql, parameters) {
     this.calls.push({ sql, parameters });
     if (sql.includes("to_regclass('vaults.schema_version')")) return { rows: [{ relation: 'vaults.schema_version' }], rowCount: 1 };
     if (sql.startsWith('SELECT version, checksum')) return { rows: [{ version: this.version, checksum: this.checksum }], rowCount: 1 };
+    if (sql.includes("nspname='cloud'")) return { rows: [{ present: this.cloud }], rowCount: 1 };
     if (sql.startsWith('SELECT\n  (SELECT count(*)')) return { rows: [counts], rowCount: 1 };
     if (sql.startsWith('SELECT\n    (SELECT count(*)')) return { rows: [{ count: this.invalid }], rowCount: 1 };
     return { rows: [], rowCount: 0 };
@@ -62,6 +63,7 @@ test('schema status and runtime requirement distinguish known manifests', async 
   const current = new MigrationClient({ version: 6, checksum: schemaChecksum });
   assert.deepEqual(await schemaStatus(current), { state: 'current', version: 6 });
   await requireSchema(current);
+  await assert.rejects(requireSchema(new MigrationClient({ version: 6, checksum: schemaChecksum, cloud: true })), /Cloud database cannot be served/);
   await assert.rejects(requireSchema(new MigrationClient()), /automatic upgrades are disabled/);
 });
 

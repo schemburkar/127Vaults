@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { createOnboardingHandler } from '../src/onboarding-handler.mjs';
 
-const origin='https://127.0.0.1:12780',csrf='c'.repeat(43),attempt='a'.repeat(43);
+const origin='https://127.0.0.1:12780',csrf='c'.repeat(43),attempt='11111111-1111-4111-8111-111111111111';
 function request(url,body,headers={}){const req=Readable.from([Buffer.from(JSON.stringify(body))]);req.url=url;req.method='POST';req.headers={'content-type':'application/json',origin,cookie:`__Host-127v-ceremony=${csrf}`,'x-127v-csrf':csrf,...headers};req.socket={remoteAddress:'127.0.0.1'};return req}
 function response(){return{status:0,value:null,writeHead(status){this.status=status},end(body){this.value=JSON.parse(body)}}}
 async function invoke(handler,url,body,headers){const res=response();assert.equal(await handler(request(url,body,headers),res),true);return res}

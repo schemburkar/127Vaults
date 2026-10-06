@@ -1,6 +1,11 @@
 // The sole executable inside the server image. The other modules provide commands.
 const [command, action, ...extra] = process.argv.slice(2);
 if (extra.length) throw new Error('Unexpected server arguments.');
+// Cloud mode must never silently boot the single-installation server. The
+// regional request, database, and restore boundaries are separate release gates.
+if (process.env.VAULTS_ACCESS_MODE === 'regional-cloud') {
+  throw new Error('Regional Cloud tenancy is not enabled by this server build.');
+}
 switch (command) {
   case 'serve':
     if (action) throw new Error('serve takes no action.');

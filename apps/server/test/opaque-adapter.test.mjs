@@ -13,4 +13,6 @@ test('registration artifact binds IDs, expiry, OPAQUE validation and first devic
   const record=Buffer.from(candidate.opaqueUpload,'base64url');candidate.activationSignature=sign(null,registrationActivationBytes({...candidate,opaqueRecord:candidate.opaqueUpload},record),privateKey).toString('base64url');
   const completed=await createRegistrationCompletion(opaque,registration)(candidate);assert.equal(completed.opaqueRecord,candidate.opaqueUpload);assert.equal(completed.accountId,ids.accountId);
   await assert.rejects(createRegistrationCompletion(opaque,registration)({...candidate,deviceId:'423e4567-e89b-42d3-a456-426614174000'}));
+  const anotherTenant=new RegistrationAdapter({opaque,setup:Buffer.alloc(96),installation:'423e4567-e89b-42d3-a456-426614174000',serverPublicKey:Buffer.alloc(32),tokenKey:Buffer.alloc(32,7),origin:'https://another.example.com',now:()=>100});
+  await assert.rejects(createRegistrationCompletion(opaque,anotherTenant)(candidate));
 });

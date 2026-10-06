@@ -2,7 +2,7 @@ import { OnboardingError } from './onboarding.mjs';
 import { AUTH_COOKIE, requireUnsafeRequest, strictJson } from './auth-policy.mjs';
 import { HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJson } from './http-boundary.mjs';
 
-const ATTEMPT_ID = /^[A-Za-z0-9_-]{43}$/;
+const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const cookie = (req, name) => String(req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1);
 
 export function createOnboardingHandler(service, completeRegistration, configuredOrigin, authenticate = async () => { throw new OnboardingError('forbidden', 403); }, registration) {

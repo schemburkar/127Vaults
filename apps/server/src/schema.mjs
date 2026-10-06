@@ -27,4 +27,6 @@ export async function requireSchema(client) {
   if (result.rowCount !== 1 || Number(result.rows[0].version) !== schemaVersion || result.rows[0].checksum !== schemaChecksum) {
     throw new Error('Unknown or changed schema; automatic upgrades are disabled.');
   }
+  const cloud = await client.query("SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='cloud') AS present");
+  if (cloud.rows[0]?.present) throw new Error('Cloud database cannot be served by the self-hosted server.');
 }

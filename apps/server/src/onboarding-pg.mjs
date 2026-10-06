@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { OnboardingError } from './onboarding.mjs';
 
 export class PgOnboardingStore {
-  constructor(pool) { this.pool = pool; }
+  constructor(pool, { tenantId = null } = {}) { this.pool = pool; this.tenantId = tenantId; }
   async #tx(fn) { const c = await this.pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e instanceof OnboardingError ? e : new OnboardingError(); } finally { c.release(); } }
   async bootstrapOwner(input) { return this.#tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(127,6)');
@@ -27,7 +27,9 @@ export class PgOnboardingStore {
   }); }
   async beginInvitation(input) {
     // Reserve before secret lookup so invalid tokens cannot bypass source/install limits by rolling back.
-    const rate = await this.pool.query(`SELECT vaults.reserve_onboarding_attempt($1,$2,$3) AS ok`, [input.source, input.now, input.attemptId]);
+    const rate = this.tenantId
+      ? await this.pool.query('SELECT vaults.reserve_onboarding_attempt($1,$2,$3,$4) AS ok', [this.tenantId, input.source, input.now, input.attemptId])
+      : await this.pool.query('SELECT vaults.reserve_onboarding_attempt($1,$2,$3) AS ok', [input.source, input.now, input.attemptId]);
     if (!rate.rows[0].ok) throw new OnboardingError('rate_limited', 429);
     return this.#tx(async c => {
     const row = (await c.query(`SELECT i.tenant_id,i.id FROM vaults.invitation_records i JOIN vaults.invitation_emails e USING (tenant_id,id)
