@@ -20,6 +20,7 @@ export function createTenantScopedPool(basePool, tenantId) {
       const cmd = command(sql);
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(cmd)) throw new Error('Transaction control requires a scoped connection.');
       const client = await basePool.connect();
+      let destroy = false;
       try {
         await client.query('BEGIN');
         await client.query(tenantSetting, [tenantId]);
@@ -27,39 +28,50 @@ export function createTenantScopedPool(basePool, tenantId) {
         await client.query('COMMIT');
         return result;
       } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
+        try { await client.query('ROLLBACK'); }
+        catch { destroy = true; }
         throw error;
       } finally {
-        client.release();
+        client.release(destroy);
       }
     },
     async connect() {
       const client = await basePool.connect();
       let state = 'idle';
+      let busy = false;
       return Object.freeze({
         async query(sql, values) {
           const cmd = command(sql);
           if (state === 'closed') throw new Error('Cloud connection is released.');
-          if (cmd === 'BEGIN') {
-            if (state !== 'idle') throw new Error('Cloud transaction already started.');
-            await client.query('BEGIN');
-            state = 'active';
-            try { await client.query(tenantSetting, [tenantId]); }
-            catch (error) { await client.query('ROLLBACK').catch(() => {}); state = 'idle'; throw error; }
-            return { rows: [], rowCount: null };
-          }
-          if (cmd === 'COMMIT' || cmd === 'ROLLBACK') {
-            if (state !== 'active') throw new Error('Cloud transaction is not active.');
-            const result = await client.query(cmd);
-            state = 'idle';
-            return result;
-          }
-          if (state !== 'active') throw new Error('Cloud query requires an active tenant transaction.');
-          return client.query(sql, values);
+          if (busy) throw new Error('Concurrent Cloud queries on one connection are unavailable.');
+          busy = true;
+          try {
+            if (cmd === 'BEGIN') {
+              if (state !== 'idle') throw new Error('Cloud transaction already started.');
+              try { await client.query('BEGIN'); }
+              catch (error) { state = 'poisoned'; throw error; }
+              state = 'active';
+              try { await client.query(tenantSetting, [tenantId]); }
+              catch (error) {
+                try { await client.query('ROLLBACK'); state = 'idle'; }
+                catch { state = 'poisoned'; }
+                throw error;
+              }
+              return { rows: [], rowCount: null };
+            }
+            if (cmd === 'COMMIT' || cmd === 'ROLLBACK') {
+              if (state !== 'active') throw new Error('Cloud transaction is not active.');
+              const result = await client.query(cmd);
+              state = 'idle';
+              return result;
+            }
+            if (state !== 'active') throw new Error('Cloud query requires an active tenant transaction.');
+            return await client.query(sql, values);
+          } finally { busy = false; }
         },
         release() {
           if (state === 'closed') return;
-          const unfinished = state === 'active';
+          const unfinished = state !== 'idle' || busy;
           state = 'closed';
           // A pool client with an unfinished transaction must be destroyed,
           // never returned for another tenant's request.

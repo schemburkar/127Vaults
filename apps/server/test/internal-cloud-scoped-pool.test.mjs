@@ -41,6 +41,54 @@ test('unfinished transactions destroy the connection and invalid tenant IDs are 
   assert.deepEqual(base.events.at(-1), { release: true, destroy: true });
 });
 
+test('failed rollback destroys a single-query connection before pool reuse', async () => {
+  const events = [];
+  const base = { connect: async () => ({
+    query: async sql => {
+      events.push(sql);
+      if (sql === 'SELECT fail') throw new Error('query failed');
+      if (sql === 'ROLLBACK') throw new Error('connection lost');
+      return { rows: [] };
+    },
+    release: destroy => events.push({ destroy })
+  }) };
+  await assert.rejects(createTenantScopedPool(base, alice).query('SELECT fail'), /query failed/);
+  assert.deepEqual(events.at(-1), { destroy: true });
+});
+
+test('failed tenant context setup cannot return a connection with an open transaction', async () => {
+  const events = [];
+  const base = { connect: async () => ({
+    query: async sql => {
+      events.push(sql);
+      if (sql.startsWith('SELECT set_config') || sql === 'ROLLBACK') throw new Error('connection lost');
+      return { rows: [] };
+    },
+    release: destroy => events.push({ destroy })
+  }) };
+  const client = await createTenantScopedPool(base, alice).connect();
+  await assert.rejects(client.query('BEGIN'), /connection lost/);
+  await assert.rejects(client.query('BEGIN'), /already started/);
+  client.release();
+  assert.deepEqual(events.at(-1), { destroy: true });
+});
+
+test('one scoped connection serializes queries so tenant context cannot race', async () => {
+  let finish;
+  const base = { connect: async () => ({
+    query: sql => sql === 'SELECT slow' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({ rows: [] }),
+    release: () => {}
+  }) };
+  const client = await createTenantScopedPool(base, alice).connect();
+  await client.query('BEGIN');
+  const slow = client.query('SELECT slow');
+  await assert.rejects(client.query('COMMIT'), /Concurrent Cloud queries/);
+  finish({ rows: [] });
+  await slow;
+  await client.query('COMMIT');
+  client.release();
+});
+
 test('runtime login role must be unprivileged and inherit only Cloud runtime access', async () => {
   const safe = { rolcanlogin: true, rolsuper: false, rolbypassrls: false, rolcreatedb: false,
     rolcreaterole: false, rolreplication: false, is_login_identity: true, has_runtime_role: true,

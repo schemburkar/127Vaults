@@ -54,6 +54,7 @@ export function requireTenantPrincipal(tenant, principal) {
 export async function withTenantTransaction(pool, tenantId, action) {
   if (!UUID.test(tenantId ?? '') || typeof action !== 'function') throw new Error('Invalid tenant transaction.');
   const client = await pool.connect();
+  let destroy = false;
   try {
     await client.query('BEGIN');
     // set_config(..., true) is transaction-local, so pooled connections cannot
@@ -63,9 +64,10 @@ export async function withTenantTransaction(pool, tenantId, action) {
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    try { await client.query('ROLLBACK'); }
+    catch { destroy = true; }
     throw error;
   } finally {
-    client.release();
+    client.release(destroy);
   }
 }

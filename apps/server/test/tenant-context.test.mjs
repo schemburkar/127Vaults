@@ -43,6 +43,19 @@ test('tenant context is transaction local and connections are released on succes
   await assert.rejects(withTenantTransaction(pool, 'untrusted', async () => {}));
 });
 
+test('failed tenant transaction rollback destroys its pooled connection', async () => {
+  let destroyed;
+  const pool = { connect: async () => ({
+    query: async sql => {
+      if (sql === 'SELECT fail') throw new Error('query failed');
+      if (sql === 'ROLLBACK') throw new Error('rollback failed');
+    },
+    release: value => { destroyed = value; }
+  }) };
+  await assert.rejects(withTenantTransaction(pool, a, client => client.query('SELECT fail')), /query failed/);
+  assert.equal(destroyed, true);
+});
+
 test('regional Cloud mode refuses the singleton executable before provisioning', () => {
   const run = spawnSync(process.execPath, [fileURLToPath(new URL('../src/entry.mjs', import.meta.url)), 'serve'], {
     env: { ...process.env, VAULTS_ACCESS_MODE: 'regional-cloud' }, encoding: 'utf8'
