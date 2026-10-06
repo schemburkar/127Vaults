@@ -136,6 +136,7 @@ fn dispatch(
                 | "logout"
                 | "vault.list"
                 | "replica.status"
+                | "license.status"
                 | "item.list"
                 | "item.list.all"
                 | "item.get"
@@ -153,6 +154,7 @@ fn dispatch(
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),
         "replica.status" => session.replica_status(),
+        "license.status" => session.license_status(),
         "sync" => session.sync_now(),
         "conflict.list" => {
             let vault = vault_selector(session, request.vault.as_deref())?;

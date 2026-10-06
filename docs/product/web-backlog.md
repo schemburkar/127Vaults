@@ -12,6 +12,7 @@ Updated 2026-10-05. State is based on the current source and recorded evidence; 
 | WEB-006 | Open | P2 | Decide and implement a browser local replica/unlock policy if offline web is in scope. Verify restart, stale checkpoint, queued edit and lock behavior before claiming offline support. |
 | WEB-007 | Open | P0/P1 | Finish browser-native device enrollment and private-LAN certificate/trust matrix; record a human browser ceremony after local CA trust. |
 | WEB-008 | Open | P1 | Complete browser security, accessibility and cross-browser verification for supported features before a first release. The narrow layout now has item-list return navigation, persistent edit actions, mobile sync, and compact settings navigation. |
+| WEB-009 | Partial | P1 | After online unlock, the web client reads the authenticated server license status and labels experimental enforcement. Add a persistent, accessible plan/expiry/grace/lock notice and corresponding write-state UI after SRV-018 enforcement is reviewed. Preserve separate public-site customer identity and invite-only vault registration. Verify renewal and stale-session behavior. |
 
 Browser offline policy: this iteration keeps the web session server-backed and does not persist a decrypted replica or an offline edit queue. Offline browser support remains in WEB-006 until an encrypted storage, unlock, stale-checkpoint, queue and lock policy is implemented and verified.
 

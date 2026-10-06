@@ -2202,6 +2202,12 @@ impl Session {
         }
         r.json().map_err(|_| "invalid server response".to_owned())
     }
+    pub fn license_status(&self) -> Result<Value, String> {
+        if !self.online {
+            return Err("license status requires a server connection".to_owned());
+        }
+        self.get("/api/v1/license")
+    }
     fn post_auth(
         &self,
         path: &str,

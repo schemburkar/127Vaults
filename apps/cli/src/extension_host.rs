@@ -195,8 +195,11 @@ impl Host {
                 } else if active {
                     path.as_deref().and_then(|path| agent::call(path, "replica.status", json!({})).ok())
                 } else { None };
+                let license = if active && online == Some(true) {
+                    path.as_deref().and_then(|path| agent::call(path, "license.status", json!({})).ok())
+                } else { None };
                 let username_hint = if *source == "desktop" { path.as_deref().and_then(cached_username) } else { None };
-                json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":self.local.as_ref().is_some_and(|local|local.source == *source),"usernameHint":username_hint,"sync":sync})
+                json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":self.local.as_ref().is_some_and(|local|local.source == *source),"usernameHint":username_hint,"sync":sync,"license":license})
             }).collect::<Vec<_>>();
             return Ok(json!({"version":1,"sources":sources}));
         }

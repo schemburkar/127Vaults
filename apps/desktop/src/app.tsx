@@ -157,6 +157,7 @@ export function App() {
   const [rememberedSecret, setRememberedSecret] = useState(false);
   const [showSecretEntry, setShowSecretEntry] = useState(false);
   const [offlineReason, setOfflineReason] = useState<string | null>(null);
+  const [licenseStatus, setLicenseStatus] = useState<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string } | null>(null);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [notices, setNotices] = useState<Notice[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -215,6 +216,7 @@ export function App() {
   const lock = async (reason = "Locked") => {
     await invoke("lock").catch(() => undefined);
     setUnlocked(false);
+    setLicenseStatus(null);
     setVaults([]);
     setVaultId("");
     setItemVaultId("");
@@ -350,6 +352,7 @@ export function App() {
       setRemovalPlan(await invoke<RemovalPlan>("vault_removal_status").catch(() => null));
       setItems(result.items);
       setOnline(result.online);
+      setLicenseStatus(result.online ? await invoke<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string }>("license_status").catch(() => null) : null);
       setOfflineReason(result.offlineReason);
       setUnlocked(true);
       dragSession.unlock();
@@ -1168,6 +1171,7 @@ export function App() {
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         {removalPlan?.pending && <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/8 p-3 text-xs text-amber-100" role="status"><strong>Vault operation needs attention</strong><p className="mt-1">{removalPlan.choice === "move" ? "Move" : removalPlan.choice === "restore" ? "Restore" : "Archive"} · {removalPlan.stage === "copying" ? "copying items" : "finalizing request"} · {removalPlan.itemMappings?.length ?? 0} mapped item(s)</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
         <div className="mt-auto grid gap-1">
+          {licenseStatus && <p className="px-3 py-2 text-xs text-slate-400" role="status">License: {licenseStatus.mode}{licenseStatus.plan ? ` · ${licenseStatus.plan}` : ""}{licenseStatus.enforcement === "disabled" ? " · experimental" : ""}</p>}
           <Button variant="ghost" className="justify-start" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></Button>
           <Button
             variant="ghost"

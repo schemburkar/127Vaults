@@ -145,6 +145,19 @@ pub enum Command {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    /// Show the server's redacted license status (online only).
+    License {
+        #[command(subcommand)]
+        command: LicenseCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LicenseCommand {
+    Status {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1364,6 +1377,14 @@ fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(),
 #[allow(clippy::too_many_lines)]
 pub fn run(cli: Cli) -> Result<String, String> {
     match cli.command {
+        Command::License {
+            command: LicenseCommand::Status { config_dir },
+        } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "license.status",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode license status".to_owned()),
         Command::Server {
             command: ServerCommand::Trust(args),
         } => establish_trust(&args),

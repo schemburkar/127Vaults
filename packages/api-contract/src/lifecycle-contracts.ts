@@ -40,7 +40,7 @@ export interface NotificationService {
   send(event: { id: Id<'notification'>; recipient: UserId; kind: 'recovery-started' | 'device-revoked' | 'vault-deletion' | 'history-repair' | 'role-changed'; ceremony: CeremonyId | null }): Promise<Result<'delivered' | 'unconfirmed'>>;
 }
 export interface LicenseService {
-  status(context: RequestContext): Promise<Result<{ mode: 'experimental' | 'active' | 'read-only' | 'locked'; readOnlyUntil: string | null }>>;
+  status(context: RequestContext): Promise<Result<{ mode: 'experimental' | 'active' | 'read-only' | 'locked'; plan: 'personal' | 'commercial' | null; maxActiveUsers: number | null; expiresAt: string | null; readOnlyUntil: string | null; enforcement: 'disabled' | 'enabled' }>>;
   install(context: RequestContext, signedLicense: Id<'signed-license'>): Promise<Result<void>>;
   beginEmergencyExport(context: RequestContext): Promise<Result<Id<'export-job'>>>;
 }

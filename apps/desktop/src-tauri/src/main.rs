@@ -309,6 +309,11 @@ fn device_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+fn license_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.license_status())
+}
+
+#[tauri::command]
 fn device_revoke(
     state: tauri::State<'_, DesktopState>,
     device_id: String,
@@ -684,6 +689,7 @@ fn main() {
             item_list,
             vault_create,
             device_list,
+            license_status,
             device_revoke,
             vault_rename,
             vault_settings,

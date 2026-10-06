@@ -604,6 +604,9 @@ async function login() {
     $("vault").hidden = false;
     $("lock").disabled = false;
     $("state").textContent = "Unlocked";
+    void call('/api/v1/license').then((license) => {
+      if (!$("vault").hidden) $("state").textContent = `Unlocked · license ${license.mode}${license.enforcement === 'disabled' ? ' (experimental)' : ''}`;
+    }).catch(() => { /* Older servers may not expose license status. */ });
     arm();
     await reloadDevices();
     queueMicrotask(openPendingDesktopEnrollment);

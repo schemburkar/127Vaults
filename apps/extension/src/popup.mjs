@@ -62,7 +62,10 @@ async function loadSelectedSource() {
   $('native-unlock').hidden = true;
   $('lock-vault').hidden = true;
   selectedSource = $('source-select').value;
-  $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.' : sourceStatus(localSources.find(source => source.id === selectedSource));
+  const source = localSources.find(row => row.id === selectedSource);
+  const license = source?.license;
+  $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.'
+    : `${sourceStatus(source)}${license && ['read-only', 'locked'].includes(license.mode) ? ` License: ${license.mode}.` : ''}`;
   items = [];
   if (selectedSource !== 'web') {
     try {
@@ -85,6 +88,13 @@ async function loadSelectedSource() {
   }
   vaultTab = await findVaultTab();
   if (!vaultTab) { status('Open and unlock the vault web tab, or choose a local source.'); return; }
+  try {
+    const license = (await script(vaultTab.id, async () => {
+      const response = await fetch('/api/v1/license', { credentials: 'same-origin' });
+      return response.ok ? response.json() : null;
+    }, [], {}, 'MAIN'))[0]?.result;
+    if (license && ['read-only', 'locked'].includes(license.mode)) $('source-state').textContent += ` License: ${license.mode}.`;
+  } catch { /* Older server or unavailable status. */ }
   const result = (await script(vaultTab.id, () => window.__vaultsExtensionActions?.list(), [], {}, 'MAIN'))[0]?.result;
   if (!result || result.locked) { status('Unlock the vault web tab, or choose a local source.'); return; }
   vaultId = result.vaultId;

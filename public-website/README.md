@@ -2,7 +2,7 @@
 
 This folder is an independent, static marketing site. It is separate from `apps/web`, the password-manager web client, and has no third-party build dependencies.
 
-The site has six pages: Home, Product, Security, Deployment, Pricing, and FAQ. Edit `index.html` for the home page. The other pages are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root.
+The site has eight pages: Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five pages are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root.
 
 The home page contains desktop and extension walkthroughs; the Product page contains the CLI walkthrough. They use static HTML and CSS with a small `tour.mjs` enhancement for interactions. The displayed data is fictional and no walkthrough contacts a vault or fills a real page. Keep these views aligned with the clients as they evolve.
 
@@ -14,7 +14,7 @@ npx serve C:\Projects\127Vaults\public-website
 
 `serve` listens on all network interfaces on port 3000 by default. Tailscale Serve is not required for local-network access.
 
-The site contains no purchase, signup, or waitlist form. Review launch status and legal/product terms internally before publishing.
+The Get Access page contains a plan-aware waitlist form. It activates only when a same-origin `/api/waitlist` intake service reports that requests are open; plain `npx serve` keeps it disabled. See [the experimental intake service](../apps/public-intake/README.md). `releases.json` is intentionally empty; validate it with `node public-website/validate-releases.mjs` before publishing any approved artifact. No checkout or public download is live.
 
 The palette follows the desktop app's midnight navy (`#04071d`), burgundy (`#9D1F32`), and warm gold (`#E0BB95`).
 
