@@ -1,4 +1,5 @@
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
+use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::{fs, path::Path};
 
@@ -50,8 +51,69 @@ struct OfflineUnlockRecord {
     tenant_id: String,
     device_id: String,
     epoch: u64,
+    #[serde(default)]
+    origin: Option<String>,
+    #[serde(default)]
+    server_id: Option<String>,
     descriptor: String,
     envelope: String,
+}
+
+impl OfflineUnlockRecord {
+    fn matches_trust(&self, origin: &str, server_id: &str) -> bool {
+        match self.version {
+            // Existing self-hosted records predate endpoint binding. Cloud
+            // profiles must be version 2 or newer before offline unlock.
+            1 => self.origin.is_none() && self.server_id.is_none(),
+            2 => {
+                self.origin.as_deref() == Some(origin)
+                    && self.server_id.as_deref() == Some(server_id)
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Eq, Debug)]
+#[serde(deny_unknown_fields)]
+struct TenantBinding {
+    version: u32,
+    origin: String,
+    server_id: String,
+    tenant_id: String,
+}
+
+fn tenant_binding_path(config_dir: &Path) -> std::path::PathBuf {
+    config_dir.join("tenant-binding.json")
+}
+
+fn check_tenant_binding(config_dir: &Path, expected: &TenantBinding) -> Result<(), String> {
+    let bytes = match fs::read(tenant_binding_path(config_dir)) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err("tenant binding is unavailable".to_owned()),
+    };
+    let existing: TenantBinding =
+        serde_json::from_slice(&bytes).map_err(|_| "tenant binding is invalid".to_owned())?;
+    if existing != *expected {
+        return Err("trusted profile is bound to a different tenant".to_owned());
+    }
+    Ok(())
+}
+
+fn persist_tenant_binding(config_dir: &Path, expected: &TenantBinding) -> Result<(), String> {
+    let path = tenant_binding_path(config_dir);
+    let bytes = serde_json::to_vec(expected).map_err(|_| "tenant binding is invalid".to_owned())?;
+    match OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut file) => file
+            .write_all(&bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(|_| "could not persist tenant binding".to_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            check_tenant_binding(config_dir, expected)
+        }
+        Err(_) => Err("could not persist tenant binding".to_owned()),
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -243,14 +305,26 @@ pub fn unlock_offline(
             .map_err(|_| "offline unlock is not provisioned".to_owned())?,
     )
     .map_err(|_| "offline unlock record is invalid".to_owned())?;
-    if record.version != 1
-        || record.username != username
+    if record.username != username
         || record.epoch == 0
         || uuid::Uuid::parse_str(&record.tenant_id).is_err()
         || uuid::Uuid::parse_str(&record.device_id).is_err()
     {
         return Err("offline unlock record is invalid".to_owned());
     }
+    let (_, origin, server_id, _) = http_client(config_dir)?;
+    if !record.matches_trust(&origin, &server_id) {
+        return Err("offline unlock record does not match the trusted endpoint".to_owned());
+    }
+    check_tenant_binding(
+        config_dir,
+        &TenantBinding {
+            version: 1,
+            origin: origin.clone(),
+            server_id: server_id.clone(),
+            tenant_id: record.tenant_id.clone(),
+        },
+    )?;
     if ReplicaStore::new(config_dir).list()?.is_empty() {
         return Err("offline replica is unavailable".to_owned());
     }
@@ -264,7 +338,6 @@ pub fn unlock_offline(
     let root = core
         .unwrap_root(&envelope, &descriptor, password, &secret)
         .map_err(|_| "offline authentication failed".to_owned())?;
-    let (_, origin, server_id, _) = http_client(config_dir)?;
     let signing = stored_signing_key(config_dir, &server_id, &record.device_id)?;
     let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
     Ok(Session {
@@ -565,6 +638,13 @@ pub fn unlock(
     if binding_origin != origin || device != uuid_bytes(&device_id)? {
         return Err("authentication binding mismatch".to_owned());
     }
+    let trusted_tenant = TenantBinding {
+        version: 1,
+        origin: origin.clone(),
+        server_id: server_id.clone(),
+        tenant_id: uuid::Uuid::from_bytes(installation).to_string(),
+    };
+    check_tenant_binding(config_dir, &trusted_tenant)?;
     let binding = Binding {
         origin: binding_origin.as_bytes(),
         installation,
@@ -656,6 +736,7 @@ pub fn unlock(
         session_cookie.clone(),
         csrf.clone(),
     );
+    persist_tenant_binding(config_dir, &trusted_tenant)?;
     let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
     let mut session = Session {
         client,
@@ -685,11 +766,13 @@ pub fn unlock(
     save_offline_record(
         config_dir,
         &OfflineUnlockRecord {
-            version: 1,
+            version: 2,
             username: username.to_owned(),
             tenant_id: session.tenant_id.clone(),
             device_id: session.device_id.clone(),
             epoch,
+            origin: Some(session.origin.clone()),
+            server_id: Some(server_id),
             descriptor: URL_SAFE_NO_PAD.encode(descriptor),
             envelope: URL_SAFE_NO_PAD.encode(envelope),
         },
@@ -3027,5 +3110,46 @@ mod tests {
             merge_item_fields(&base, &local, &conflicting).unwrap_err(),
             vec!["title"]
         );
+    }
+
+    #[test]
+    fn offline_unlock_record_binds_new_profiles_to_origin_and_server() {
+        let origin = "https://alice.asia.example.com";
+        let mut record: OfflineUnlockRecord = serde_json::from_value(json!({
+            "version": 2, "username": "alice1", "tenant_id": "11111111-1111-4111-8111-111111111111",
+            "device_id": "22222222-2222-4222-8222-222222222222", "epoch": 1,
+            "origin": origin, "server_id": "regional-identity", "descriptor": "", "envelope": ""
+        }))
+        .unwrap();
+        assert!(record.matches_trust(origin, "regional-identity"));
+        assert!(!record.matches_trust("https://bob.asia.example.com", "regional-identity"));
+        assert!(!record.matches_trust(origin, "different-identity"));
+        record.version = 1;
+        assert!(!record.matches_trust(origin, "regional-identity"));
+        record.origin = None;
+        record.server_id = None;
+        assert!(record.matches_trust(origin, "regional-identity"));
+    }
+
+    #[test]
+    fn tenant_binding_is_create_only_and_rejects_profile_retargeting() {
+        let dir =
+            std::env::temp_dir().join(format!("127vaults-tenant-binding-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&dir).unwrap();
+        let binding = TenantBinding {
+            version: 1,
+            origin: "https://alice.example.com".to_owned(),
+            server_id: "server-key".to_owned(),
+            tenant_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+        };
+        persist_tenant_binding(&dir, &binding).unwrap();
+        persist_tenant_binding(&dir, &binding).unwrap();
+        let switched = TenantBinding {
+            tenant_id: "22222222-2222-4222-8222-222222222222".to_owned(),
+            ..binding
+        };
+        assert!(check_tenant_binding(&dir, &switched).is_err());
+        assert!(persist_tenant_binding(&dir, &switched).is_err());
+        fs::remove_dir_all(dir).unwrap();
     }
 }
