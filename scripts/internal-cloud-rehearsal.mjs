@@ -155,6 +155,20 @@ try {
       server_registration_start: () => Buffer.alloc(64), server_registration_finish: upload => upload },
       tokenKey, checkpointPrivateKey: {}, checkpointPublicKey: 'test-key',
       mailer: { sendCode: async ({ code }) => { deliveredCode = code; } } }) });
+  const discover = async tenant => {
+    let status, body;
+    await api({ method: 'GET', url: '/api/v1/cloud/discovery', rawHeaders: ['Host', tenant.host],
+      headers: { host: tenant.host }, socket: { encrypted: true, servername: tenant.host } },
+    { writeHead(code) { status = code; }, end(value) { body = JSON.parse(value); } });
+    return { status, body };
+  };
+  for (const tenant of [alice, bob]) {
+    const result = await discover(tenant);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.tenantId, tenant.id);
+    assert.equal(result.body.canonicalOrigin, `https://${tenant.host}`);
+    assert.equal(result.body.region, 'asia');
+  }
   const callDevices = async (tenantHost) => {
     let status, body;
     const req = { method: 'GET', url: '/api/v1/devices', rawHeaders: ['Host', tenantHost],

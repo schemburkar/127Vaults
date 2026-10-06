@@ -17,7 +17,7 @@ import { createSignedSyncHandler } from '../src/sync-handler.mjs';
 import { PgDeviceLifecycleStore } from '../src/device-lifecycle-pg.mjs';
 import { createDeviceLifecycleHandler } from '../src/device-lifecycle-handler.mjs';
 import { createDeviceEnrollmentHandler } from '../src/device-enrollment-handler.mjs';
-import { writeError } from '../src/http-boundary.mjs';
+import { writeError, writeJson } from '../src/http-boundary.mjs';
 
 export function createInternalCloudTenantHandlers({ bridge, tokenKey, checkpointPrivateKey, checkpointPublicKey, mailer }) {
   if (!bridge || !Buffer.isBuffer(tokenKey) || tokenKey.length !== 32 || !checkpointPrivateKey ||
@@ -28,6 +28,13 @@ export function createInternalCloudTenantHandlers({ bridge, tokenKey, checkpoint
     const setup = (await pool.query('SELECT setup_bytes FROM vaults.opaque_server_setup WHERE tenant_id=$1', [tenant.id])).rows[0]?.setup_bytes;
     if (!setup) throw new Error('Cloud tenant authentication setup is unavailable.');
     const publicKey = Buffer.from(bridge.server_public_key(setup));
+    if (new URL(req.url, origin).pathname === '/api/v1/cloud/discovery') {
+      if (req.method !== 'GET') writeError(res, 405, 'method_not_allowed');
+      else writeJson(res, 200, { version: 1, tenantId: tenant.id, canonicalOrigin: origin,
+        region: tenant.region, protocolVersions: { api: 1, sync: 1 },
+        serverPublicKey: publicKey.toString('base64url'), checkpointPublicKey });
+      return true;
+    }
     const authService = new AuthService({ store: new PgAuthStore(pool, tokenKey, publicKey, { tenantId: tenant.id }), opaque });
     const authenticate = async token => context.requirePrincipal(await authService.authenticate(token));
     const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin });

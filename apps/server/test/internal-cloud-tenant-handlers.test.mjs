@@ -8,7 +8,7 @@ const handle = createInternalCloudTenantHandlers({
   bridge: { server_public_key: () => Buffer.alloc(32) }, tokenKey: Buffer.alloc(32),
   checkpointPrivateKey: {}, checkpointPublicKey: 'public-key'
 });
-const context = { tenant: { id: tenantId }, origin,
+const context = { tenant: { id: tenantId, region: 'asia' }, origin,
   pool: { query: async () => ({ rows: [{ setup_bytes: Buffer.alloc(96) }] }) },
   requirePrincipal: value => value };
 
@@ -27,4 +27,16 @@ test('Cloud tenant handlers mount tenant-scoped login but refuse unreviewed cont
   for (const path of ['/api/v1/onboarding/register', '/api/v1/invitations', '/api/v1/license', '/admin']) {
     assert.deepEqual(await exchange(path), { status: 404, body: { error: 'not_found' } });
   }
+});
+
+test('Cloud discovery exposes the routed tenant and protocol identity without account data', async () => {
+  assert.deepEqual(await exchange('/api/v1/cloud/discovery'), { status: 200, body: {
+    version: 1, tenantId, canonicalOrigin: origin, region: 'asia',
+    protocolVersions: { api: 1, sync: 1 }, serverPublicKey: Buffer.alloc(32).toString('base64url'),
+    checkpointPublicKey: 'public-key'
+  } });
+  let status;
+  await handle({ method: 'POST', url: '/api/v1/cloud/discovery', headers: { origin } },
+    { writeHead(code) { status = code; }, end() {} }, context);
+  assert.equal(status, 405);
 });
