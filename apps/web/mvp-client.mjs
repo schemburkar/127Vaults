@@ -947,13 +947,12 @@ function collectCustomFields() {
       return { id: row.dataset.fieldId, label, type, value };
     },
   );
-  let typed = [...document.querySelectorAll("#custom-fields .typed-value")].map((input) => ({
-    id: input.dataset.fieldId,
-    label: input.dataset.fieldLabel,
-    type: input.dataset.fieldType,
-    value: input.value,
-  }));
-  let metadata = [...document.querySelectorAll('#custom-fields input[type="hidden"][data-field-id]')].map((input) => ({
+  let typed = [...document.querySelectorAll("#custom-fields .typed-value")].map((input) => {
+    let label = input.dataset.fieldLabel?.trim();
+    if (!label) throw Error("CUSTOM_FIELD_NAME_REQUIRED");
+    return { id: input.dataset.fieldId, label, type: input.dataset.fieldType, value: input.value };
+  });
+  let metadata = [...document.querySelectorAll('#custom-fields input.item-metadata[data-field-id]')].map((input) => ({
     id: input.dataset.fieldId,
     label: input.dataset.fieldLabel,
     type: input.dataset.fieldType,
