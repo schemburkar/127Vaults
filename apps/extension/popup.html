@@ -12,7 +12,7 @@
       <p id="site" class="site"></p>
       <p id="status" role="status" aria-live="polite"></p>
       <section id="source-panel" hidden>
-        <label for="source-select">Credential source</label>
+        <div class="section-heading"><label for="source-select">Credential source</label><button id="refresh-sources" class="text-button" type="button">Refresh</button></div>
         <select id="source-select"></select>
         <p id="source-state" class="hint" role="status"></p>
         <div id="native-unlock" hidden>
@@ -23,17 +23,20 @@
         </div>
       </section>
       <section id="setup" hidden>
-        <label for="vault-url">Vault web address</label>
+        <h2>Use a vault web tab</h2>
+        <p class="hint">Desktop and CLI are detected automatically when their local connector is installed and the client is enrolled.</p>
+        <button id="refresh-setup" class="text-button" type="button">Check local clients again</button>
+        <label for="vault-url">Vault web address (optional)</label>
         <input id="vault-url" type="url" placeholder="https://127.0.0.1:12781" autocomplete="off" spellcheck="false">
-        <button id="connect" type="button">Connect vault</button>
-        <p class="hint">Grant access only to your vault address. Unlock it in a browser tab before filling.</p>
+        <button id="connect" type="button">Connect web tab</button>
+        <p class="hint">Grant access only to your vault address. Keep that tab open and unlocked to use it as a source.</p>
       </section>
       <section id="results" hidden>
         <input id="search" type="search" placeholder="Search matching logins" aria-label="Search matching logins">
-        <div id="items" role="list"></div>
+        <div id="items"></div>
         <div id="frames" hidden></div>
       </section>
-      <footer><button id="open-vault" type="button">Open vault</button><button id="lock-vault" type="button" hidden>Lock</button><button id="settings" type="button">Vault address</button></footer>
+      <footer><button id="open-vault" type="button">Open web vault</button><button id="lock-vault" type="button" hidden>Lock</button><button id="settings" type="button">Web connection</button></footer>
     </main>
     <script type="module" src="src/popup.mjs"></script>
   </body>

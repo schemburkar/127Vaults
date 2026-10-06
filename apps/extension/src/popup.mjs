@@ -11,6 +11,9 @@ let items = [];
 let pending = false;
 let selectedSource = null;
 let localSources = [];
+let sourceSignature = '';
+let refreshInProgress = false;
+let userSelectedSource = false;
 
 function status(message, error = false) {
   $('status').textContent = message;
@@ -41,11 +44,18 @@ function renderItems() {
     const button = document.createElement('button');
     button.className = 'item';
     button.type = 'button';
-    button.setAttribute('role', 'listitem');
-    button.textContent = item.title;
+    button.setAttribute('aria-label', `Fill ${item.title} on this site`);
+    const title = document.createElement('span');
+    title.textContent = item.title;
+    const action = document.createElement('span');
+    action.className = 'item-action';
+    action.textContent = 'Fill';
+    const heading = document.createElement('span');
+    heading.className = 'item-heading';
+    heading.append(title, action);
     const site = document.createElement('small');
     site.textContent = item.website;
-    button.append(site);
+    button.append(heading, site);
     button.onclick = () => choose(item);
     $('items').append(button);
   }
@@ -74,10 +84,14 @@ async function loadSelectedSource() {
       $('results').hidden = false;
       $('lock-vault').hidden = false;
       renderItems();
-    } catch {
-      $('native-unlock').hidden = false;
-      $('native-username').value = localSources.find(source => source.id === selectedSource)?.usernameHint || '';
-      status(`Unlock the ${selectedSource} encrypted replica to fill offline.`);
+    } catch (error) {
+      if (source?.active || source?.localUnlocked) {
+        status(`Could not read ${selectedSource} logins: ${errorMessage(error)} Refresh or lock and unlock the client.`, true);
+      } else {
+        $('native-unlock').hidden = false;
+        $('native-username').value = source?.usernameHint || '';
+        status(`Unlock the ${selectedSource} encrypted replica to fill offline.`);
+      }
     }
     return;
   }
@@ -104,6 +118,10 @@ async function loadSelectedSource() {
   renderItems();
 }
 async function refresh() {
+  if (refreshInProgress || pending) return;
+  refreshInProgress = true;
+  const previousSource = $('source-select').value;
+  try {
   $('setup').hidden = true;
   $('results').hidden = true;
   $('frames').hidden = true;
@@ -116,8 +134,10 @@ async function refresh() {
   }
   $('site').textContent = new URL(targetTab.url).host;
   vaultOrigin = await configuredOrigin();
+  let connectorError = null;
   try { localSources = (await native({ action: 'sources' })).sources || []; }
-  catch { localSources = []; }
+  catch (error) { localSources = []; connectorError = error; }
+  sourceSignature = JSON.stringify(localSources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
   const options = localSources.filter(source => source.configured).map(source => ({
     id: source.id, label: `${source.id === 'desktop' ? 'Desktop' : 'CLI'}${source.active || source.localUnlocked ? ' (unlocked)' : ' (local replica)'}`,
     preferred: source.active || source.localUnlocked,
@@ -132,12 +152,16 @@ async function refresh() {
   }
   if (!options.length) {
     $('setup').hidden = false;
-    status('Connect a vault web tab or install the local connector.');
+    status(connectorError
+      ? 'Local connector unavailable. Check native-host registration, or connect an unlocked web tab.'
+      : 'No enrolled local client found. Unlock desktop or CLI, then refresh; or connect an unlocked web tab.');
     return;
   }
   $('source-panel').hidden = false;
-  $('source-select').value = options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
+  $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
+    : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
+  } finally { refreshInProgress = false; }
 }
 async function choose(item) {
   if (pending) return;
@@ -198,7 +222,9 @@ $('connect').onclick = async () => {
     await refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
-$('source-select').onchange = () => loadSelectedSource().catch(error => status(errorMessage(error), true));
+$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().catch(error => status(errorMessage(error), true)); };
+$('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
+$('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('unlock-native').onclick = async () => {
   try {
     await native({ action: 'unlock', source: selectedSource, username: $('native-username').value.trim(), accountSecret: $('native-secret').value, masterPassword: $('native-master').value });
@@ -211,7 +237,7 @@ $('unlock-native').onclick = async () => {
 $('settings').onclick = () => {
   $('setup').hidden = false;
   $('vault-url').value = vaultOrigin || '';
-  status('Enter the HTTPS address of your vault.');
+  status('Web-tab connection is optional when desktop or CLI is available.');
 };
 $('open-vault').onclick = async () => {
   const origin = vaultOrigin || originOf($('vault-url').value);
@@ -232,3 +258,11 @@ $('lock-vault').onclick = async () => {
 };
 $('search').oninput = renderItems;
 refresh().catch(error => status(errorMessage(error), true));
+setInterval(async () => {
+  if (document.hidden || pending || refreshInProgress || !$('frames').hidden) return;
+  try {
+    const sources = (await native({ action: 'sources' })).sources || [];
+    const next = JSON.stringify(sources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
+    if (next !== sourceSignature) await refresh();
+  } catch { /* Manual refresh reports connector errors without interrupting the current form. */ }
+}, 3000);
