@@ -14,7 +14,7 @@ npx serve C:\Projects\127Vaults\public-website
 
 `serve` listens on all network interfaces on port 3000 by default. Tailscale Serve is not required for local-network access.
 
-The Get Access page contains a plan-aware waitlist form. It activates only when a same-origin `/api/waitlist` intake service reports that requests are open; plain `npx serve` keeps it disabled. See [the experimental intake service](../apps/public-intake/README.md). `releases.json` is intentionally empty; validate it with `node public-website/validate-releases.mjs` before publishing any approved artifact. No checkout or public download is live.
+The Get Access page contains a plan-aware waitlist form. Cloud interest asks for planned vault-user seats and displays the $30 per seat annual payment and two-year total. The estimate is not a checkout. The form activates only when a same-origin `/api/waitlist` intake service reports that requests are open; plain `npx serve` keeps it disabled. See [the experimental intake service](../apps/public-intake/README.md). The Deployment page summarizes the current self-host test package and its operator requirements. `releases.json` is intentionally empty; validate it with `node public-website/validate-releases.mjs` before publishing any approved artifact. No checkout or public download is live.
 
 The palette follows the desktop app's midnight navy (`#04071d`), burgundy (`#9D1F32`), and warm gold (`#E0BB95`).
 

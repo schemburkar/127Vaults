@@ -15,14 +15,18 @@ const reply = (res, status, body) => {
 
 export function validateRequest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
-    || Object.keys(value).sort().join(',') !== ['consent', 'email', 'organization', 'plan', 'website'].sort().join(',')) return null;
+    || Object.keys(value).some(key => !['consent', 'email', 'organization', 'plan', 'website', 'requestedSeats'].includes(key))
+    || ['consent', 'email', 'organization', 'plan', 'website'].some(key => !Object.hasOwn(value, key))) return null;
   const email = String(value.email ?? '').trim().toLowerCase();
   const organization = String(value.organization ?? '').trim();
   if (typeof value.email !== 'string' || !emailPattern.test(email) || email.length > 254
     || typeof value.organization !== 'string' || organization.length > 120
     || typeof value.website !== 'string' || value.website.length > 200
-    || !plans.has(value.plan) || value.consent !== true) return null;
-  return { email, organization, plan: value.plan, trapped: value.website !== '' };
+    || !plans.has(value.plan) || value.consent !== true
+    || (value.plan === 'cloud' && (!Number.isSafeInteger(value.requestedSeats) || value.requestedSeats < 1 || value.requestedSeats > 1000))
+    || (value.plan !== 'cloud' && value.requestedSeats !== undefined && value.requestedSeats !== null)) return null;
+  return { email, organization, plan: value.plan, requestedSeats: value.plan === 'cloud' ? value.requestedSeats : null,
+    trapped: value.website !== '' };
 }
 
 export function encryptRequest(request, key, now = new Date()) {
@@ -30,7 +34,7 @@ export function encryptRequest(request, key, now = new Date()) {
   const nonce = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   const plaintext = Buffer.from(JSON.stringify({ email: request.email, organization: request.organization,
-    plan: request.plan, receivedAt: now.toISOString() }));
+    plan: request.plan, requestedSeats: request.requestedSeats, receivedAt: now.toISOString() }));
   const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return JSON.stringify({ version: 1, nonce: nonce.toString('base64url'),
     ciphertext: encrypted.toString('base64url'), tag: cipher.getAuthTag().toString('base64url') }) + '\n';

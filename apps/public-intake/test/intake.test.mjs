@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createIntakeHandler } from '../src/server.mjs';
+import { createIntakeHandler, validateRequest } from '../src/server.mjs';
 
 test('waitlist accepts a consented request without storing plaintext and rejects cross-origin POST', async () => {
   const dir = await mkdtemp(join(tmpdir(), '127v-intake-'));
   const file = join(dir, 'requests.jsonl');
-  const server = createServer(createIntakeHandler({ origin: 'https://127vaults.example', key: randomBytes(32), dataFile: file }));
+  const key = randomBytes(32);
+  const server = createServer(createIntakeHandler({ origin: 'https://127vaults.example', key, dataFile: file }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/api/waitlist`;
   try {
@@ -19,12 +20,31 @@ test('waitlist accepts a consented request without storing plaintext and rejects
     assert.equal(denied.status, 403);
     const accepted = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://127vaults.example' }, body });
     assert.equal(accepted.status, 202);
+    const cloud = JSON.stringify({ email: 'buyer@example.com', organization: '', plan: 'cloud', requestedSeats: 10,
+      consent: true, website: '' });
+    assert.equal((await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://127vaults.example' }, body: cloud })).status, 202);
     const saved = await readFile(file, 'utf8');
     assert.ok(!saved.includes('Alex@Example.com'));
     assert.ok(!saved.includes('alex@example.com'));
-    assert.equal(JSON.parse(saved).version, 1);
+    const lines = saved.trim().split('\n').map(JSON.parse);
+    assert.equal(lines[0].version, 1);
+    const entry = lines[1];
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(entry.nonce, 'base64url'));
+    decipher.setAuthTag(Buffer.from(entry.tag, 'base64url'));
+    const detail = JSON.parse(Buffer.concat([decipher.update(Buffer.from(entry.ciphertext, 'base64url')), decipher.final()]).toString());
+    assert.equal(detail.requestedSeats, 10);
+    assert.equal(detail.plan, 'cloud');
   } finally {
     await new Promise(resolve => server.close(resolve));
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('Cloud seat interest requires a bounded integer and other plans cannot smuggle seats', () => {
+  const request = { email: 'buyer@example.com', organization: '', plan: 'cloud', consent: true, website: '' };
+  assert.equal(validateRequest({ ...request, requestedSeats: 1 }).requestedSeats, 1);
+  for (const requestedSeats of [0, 1001, 1.5, '10', null]) {
+    assert.equal(validateRequest({ ...request, requestedSeats }), null);
+  }
+  assert.equal(validateRequest({ ...request, plan: 'personal', requestedSeats: 10 }), null);
 });
