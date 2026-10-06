@@ -4,6 +4,12 @@ This folder is an independent, static marketing site. It is separate from `apps/
 
 The site has eight pages: Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five pages are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root.
 
+Every page carries a visible coming-soon notice for Cloud, proposed pricing,
+and release availability. Product copy describes private vaults only; the Work
+vault in the walkthrough is another private vault, not sharing. Keep these
+claims aligned with the live scope and run `node --test public-website/*.test.mjs`
+after editing generated or hand-written pages.
+
 The home page contains desktop and extension walkthroughs; the Product page contains the CLI walkthrough. They use static HTML and CSS with a small `tour.mjs` enhancement for interactions. The displayed data is fictional and no walkthrough contacts a vault or fills a real page. Keep these views aligned with the clients as they evolve.
 
 Open `index.html` directly or serve this folder with `serve`. From the repository root:

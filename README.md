@@ -22,6 +22,7 @@ Current work and release documents:
 - [Experimental development runbook](docs/release/experimental-development.md)
 - [Offline server test bundle and installation](docs/release/server-test-install.md)
 - [Selected real-data pilot gate](docs/release/selected-real-data-pilot.md)
+- [Cross-surface MVP and platform audit](docs/release/cross-surface-audit-2026-10-06.md)
 
 ## Repository map
 

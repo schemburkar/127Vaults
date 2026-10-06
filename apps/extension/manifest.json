@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "127Vaults (experimental)",
   "version": "0.1.0",
-  "description": "Fill a selected login from an unlocked 127Vaults web session.",
+  "description": "Fill a selected login from an unlocked web, desktop, or CLI vault source.",
   "action": { "default_title": "127Vaults", "default_popup": "popup.html" },
   "permissions": ["activeTab", "idle", "nativeMessaging", "scripting", "storage"],
   "background": { "service_worker": "src/background.mjs", "type": "module" },

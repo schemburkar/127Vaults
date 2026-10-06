@@ -16,7 +16,12 @@ Previously completed capability rows are recorded as **Baseline**; priority usua
 
 The MVP surface is the online web app and one self-hosted server with PostgreSQL. Acceptance uses one private vault per test account and covers owner and invited-user onboarding, OPAQUE unlock, login item create/read/update, explicit lock, and authenticated encrypted persistence. Keep the web session online only. Use fictitious data and an operator-led install. Desktop and CLI can serve as test devices and extension credential sources. The extension's requested development slice is an offline-capable read-only connector with explicit selected-login fill; offline access comes from an installed desktop/CLI encrypted replica.
 
-1. **Rebuild and run the test bundle** (SRV-013): use the single operator entry point, local HTTPS and a fresh PostgreSQL volume. Record exact commands and versions.
+Current product direction excludes shared vaults and native iOS, Android, and
+iPad clients from this MVP. The public site's Work vault is a second private
+vault. Do not reintroduce sharing claims or mobile delivery gates without a new
+scope decision.
+
+1. **Rebuild and run the test bundle** (SRV-013): the existing Windows/Podman host passed the fresh-volume operator and verified HTTPS smoke on 2026-10-06; see [evidence](../release/server-bundle-smoke-2026-10-06.md). Clean-host and restore checks remain P1.
 2. **Complete the browser ceremony** (WEB-007): trust the local CA on the intended host, enroll and unlock in a real browser, verify owner and invited-user isolation, lock and restart. Browser-native enrollment and the wider LAN matrix remain P1.
 3. **Run the narrow hostile-path check** (SRV-004): wrong credentials, unauthorized account/vault access, malformed or substituted ciphertext, stale-base update and divergent request-ID reuse. Inspect requests, logs and database for plaintext or user secrets. Record evidence against the [internal MVP acceptance](mvp-plan.md#internal-mvp-acceptance).
 4. **Close the operator handoff**: document the known limits, test credentials and reset procedure in the test-install runbook. Capture human acceptance of the browser walkthrough. Do not mark a broader backlog row Done from this subset alone.

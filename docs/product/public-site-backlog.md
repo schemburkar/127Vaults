@@ -2,6 +2,11 @@
 
 Updated 2026-10-06. The static site presents plans, a waitlist, and release availability. [Architecture](../architecture/public-access-and-licensing.md) separates commercial contact from vault accounts. No public purchase or artifact is live.
 
+Copy checkpoint, 2026-10-06: shared-vault sales claims were removed. The Work
+walkthrough vault is private. Every page marks Cloud and public vault releases
+as coming soon, and the site tests enforce that notice. Mobile apps are outside
+the first release scope.
+
 | ID | State | Priority | Outcome and acceptance |
 | --- | --- | --- | --- |
 | SITE-001 | Experimental implementation; production gate open | P1 | Plan-aware access and waitlist page plus separate encrypted-record intake API exist. Before opening requests publicly, add a reviewed privacy notice, data retention/deletion and key rotation/recovery process, durable abuse controls, email verification or confirmed-contact policy, deployment behind HTTPS at the same origin, backup and operator export tools, and an end-to-end request/withdrawal test. The public form must never create a vault account or request vault credentials. |

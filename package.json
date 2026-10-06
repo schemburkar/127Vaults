@@ -26,7 +26,7 @@
     "check": "node --check scripts/dev.mjs && node --check scripts/build-fixture.mjs && pnpm -r check && pnpm check:contracts",
     "check:rust:core": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo run -p vaults-crypto --example feasibility && cargo build -p vaults-crypto --target wasm32-unknown-unknown",
     "check:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test && node --test public-website/*.test.mjs && node public-website/validate-releases.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3"

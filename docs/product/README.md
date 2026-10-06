@@ -2,7 +2,7 @@
 
 Updated 2026-10-06. The six component backlogs below are the only live task lists. Each row has a stable ID, a state, a priority, and an acceptance condition. Change a row to **Done** only after its acceptance is recorded in the same backlog. A component's `in-progress.md` contains only the current wave, its owner, next action, and verification. Delete that file when the wave is complete; start a new one only when work starts. Evidence reports, ADRs, protocols, and runbooks remain reference material, not competing task lists. The [priority review](backlog-priorities.md) sets the current MVP cut and execution order.
 
-Audit verification on 2026-10-02: server tests 56 passed/1 skipped; web 14 passed; desktop 8 passed; CLI 22 passed. These are local tests; separate restore and deployment evidence is linked from the server backlog. Human browser acceptance and security review remain open.
+Audit verification on 2026-10-06: `pnpm check`, `pnpm test`, and `cargo test --workspace` passed on Windows. The root test command now includes the public website tests and release-catalogue validation. These are local checks; live browser, second-device, restore, deployment, and security acceptance remain open. See the [cross-surface audit](../release/cross-surface-audit-2026-10-06.md).
 
 | Component | Backlog | Active wave |
 | --- | --- | --- |
