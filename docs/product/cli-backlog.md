@@ -1,6 +1,6 @@
 # CLI backlog
 
-Updated 2026-10-05. The [CLI MVP guide](cli-mvp.md) remains usage documentation; this file owns pending work.
+Updated 2026-10-06. The [CLI MVP guide](cli-mvp.md) remains usage documentation; this file owns pending work. The [public Product page](../../public-website/product.html#cli) shows the current JSON response style.
 
 | ID | State | Priority | Outcome and acceptance |
 | --- | --- | --- | --- |
@@ -14,3 +14,4 @@ Updated 2026-10-05. The [CLI MVP guide](cli-mvp.md) remains usage documentation;
 | CLI-008 | Open | P1 | Run Windows and Linux packaging, secret-store, terminal/pipe disclosure and clean-machine verification before a first release. |
 | CLI-009 | Partial | P1 | Multiple private vaults, all-vault item listing, encrypted synchronized names and collections, collection item listing, and a synchronized default view are implemented. Vault settings queue encrypted changes offline and require explicit review on a divergent server version. `vault default` still manages the older local preference. Verify two-device settings replay, restart, and default-view behavior before closing. |
 | CLI-010 | Implemented, verification pending | P2 | Guarded archive/restore and move commands, online checkpoint preparation, exact retry journals, explicit destination mapping, ciphertext re-encryption, decrypted copy comparison, pending/conflict refusal and interrupted-plan status/abort are implemented. The local acceptance profiles currently point at port 12780 while the container is published on 12781; complete a live two-device move/archive/restore run before closing. |
+| CLI-011 | Open | P2 | Add an opt-in `--format table` view to `vault list` and `item list` for people reading results in a terminal. Keep the existing JSON output as the default for scripts. Show stable Name/Code and Title/Site/Code columns, handle empty results and narrow terminals without losing a selectable code, and never include password-class fields. Verify table and JSON output for both commands in terminal and redirected output; update the CLI guide and the public Product preview only when the shipped output matches. |

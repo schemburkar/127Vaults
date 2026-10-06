@@ -1,6 +1,6 @@
 # Backlog priority review
 
-Updated 2026-10-05. This is the current scheduling decision for the live [component backlogs](README.md). It does not change their acceptance states or the [release gate](../release/beta-readiness.md). The [2026-09-08 MVP plan](mvp-plan.md) remains a historical decision: its online web and server flow has been implemented for fictitious data. The user subsequently requested an offline-capable, read-only Chrome/Edge autofill connector for web, desktop and CLI; its development priority is P0, while supported release acceptance stays separate.
+Updated 2026-10-06. This is the current scheduling decision for the live [component backlogs](README.md). It does not change their acceptance states or the [release gate](../release/beta-readiness.md). The [2026-09-08 MVP plan](mvp-plan.md) remains a historical decision: its online web and server flow has been implemented for fictitious data. The user subsequently requested an offline-capable, read-only Chrome/Edge autofill connector for web, desktop and CLI; its development priority is P0, while supported release acceptance stays separate.
 
 ## Priority meanings
 
@@ -31,8 +31,8 @@ P0 is complete when these checks pass and their evidence is linked from the rele
 | Web | WEB-007 browser ceremony subset | WEB-003, WEB-005, WEB-007 remaining, WEB-008 | WEB-004 scanner verification, WEB-006 offline browser |
 | Server | SRV-004 narrow hostile-path subset, SRV-013 rebuilt-bundle smoke | SRV-002, SRV-003, SRV-004 remaining, SRV-005–011, SRV-013 remaining | SRV-012, SRV-014–016 |
 | Desktop | None; test device only | DESK-004–008, with DESK-008 only if multiple vaults/collections ship | DESK-003, DESK-009 |
-| CLI | None; test device only | CLI-003, CLI-004, CLI-006, CLI-008, CLI-009 if multiple vaults/collections ship | CLI-007, CLI-010 |
-| Browser extension | EXT-001–004 and EXT-007/008 offline, read-only development and browser walkthrough | EXT-005 packaging/signing and supported browser matrix | None currently; EXT-006 excludes edits |
+| CLI | None; test device only | CLI-003, CLI-004, CLI-006, CLI-008, CLI-009 if multiple vaults/collections ship | CLI-007, CLI-010, CLI-011 optional table output |
+| Browser extension | EXT-001–004 and EXT-007/008 offline, read-only development and browser walkthrough | EXT-005 packaging/signing and supported browser matrix, EXT-009 popup polish | None currently; EXT-006 excludes edits |
 
 The desktop and CLI P1 rows are **conditional client gates**: include them only if that client ships in the first supported release. WEB-003 and the multi-vault settings rows are similarly conditional on enabling those item types and views. P2 archive/move functionality already exists experimentally; verify it before enabling it in a supported build. The localhost admin page is P2; operator commands remain the first release control plane.
 
