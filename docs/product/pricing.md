@@ -1,8 +1,8 @@
 # Pricing model (planning draft)
 
-Prices and entitlements in this document are product decisions under development,
-not an offer, quote, or contract. Taxes, currency localization, support, user limits,
-and final legal terms remain to be defined.
+Prices and entitlements in this document are product decisions, not an offer,
+quote, or contract until checkout and legal terms are approved. Taxes, currency
+localization, support terms, and the meaning of a service pause remain to be defined.
 
 ## Core products
 
@@ -11,6 +11,15 @@ and final legal terms remain to be defined.
 | Personal self-hosted | $20/year | Annual production license | Customer |
 | Commercial self-hosted | $200/year | Annual billing; 5- or 10-year commitment | Customer |
 | 127Vaults Cloud | $30/user/year | Annual upfront; 2-year commitment | 127Vaults |
+
+Cloud has one tenant and one per-user price model for individuals, families, and
+companies. A tenant may start with one licensed vault user and add seats later;
+there is no Personal-to-Team conversion. The tenant's control owner is a
+separate public/customer identity and is not a licensed vault user merely by
+administering billing or seats. If that person also registers a vault account,
+that vault account consumes a seat. The first vault user consumes one seat.
+The two-year commitment remains; a service pause is not early contract
+cancellation. Its billing and access effects need explicit contract terms.
 
 Commercial self-hosted customers receive software updates and major-version
 upgrades released during the active contract period. Final Personal major-version
@@ -41,4 +50,3 @@ alerts the operator rather than generating surprise usage charges.
 The relay remains optional. Choosing BYO SMTP does not reduce core security or
 recovery capabilities, and relay purchase never grants the service access to vault
 contents. Metadata disclosure and technical boundaries are defined in ADR-0016.
-

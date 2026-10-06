@@ -4,7 +4,7 @@ Status: implementation design, 2026-10-06. Production enrollment, checkout, arti
 
 ## Separate identities
 
-The public 127Vaults account owns orders, invoices, plan changes, download access, and support requests. It never contains a master password, account secret, vault key, device key, or decrypted item. A self-hosted installation has its own owner bootstrap and invite-only account registration under [ADR-0015](../adr/0015-account-onboarding-and-sessions.md). A public-site account does not register a user on any vault server. Cloud onboarding creates an isolated hosted installation before its owner performs the normal bootstrap ceremony.
+The public 127Vaults account owns orders, invoices, plan changes, download access, support requests, and Cloud tenant control ownership. It never contains a master password, account secret, vault key, device key, or decrypted item. A self-hosted installation has its own owner bootstrap and invite-only account registration under [ADR-0015](../adr/0015-account-onboarding-and-sessions.md). A public-site account is separate from every vault account. In Cloud, its verified identity may administer a tenant without consuming a vault seat or gaining vault access. If the same person also enrolls as a vault user, that separate vault account consumes a seat.
 
 ## Customer journey
 
