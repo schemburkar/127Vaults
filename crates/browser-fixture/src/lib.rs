@@ -3,6 +3,16 @@ use vaults_crypto::ecf1::{Core as Ecf1Core, Error as Ecf1Error, KeyHandle};
 use vaults_crypto::secrets::{SecretBuffer, SecretHandle, SecretStore};
 use wasm_bindgen::prelude::*;
 
+/// Generates locally using shared Rust logic and browser secure entropy.
+/// # Errors
+/// Rejects malformed options or unavailable entropy.
+#[wasm_bindgen]
+pub fn generate_secret(options: &str) -> Result<String, JsError> {
+    let options =
+        serde_json::from_str(options).map_err(|_| JsError::new("Invalid generator options"))?;
+    vaults_crypto::generator::generate(&options).map_err(|error| JsError::new(&error))
+}
+
 /// An opaque token, never the stored bytes. The JS facade binds it to its owner.
 #[wasm_bindgen]
 pub struct FixtureToken {

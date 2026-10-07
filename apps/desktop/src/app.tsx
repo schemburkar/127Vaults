@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Input, cn } from "@127vaults/ui";
+import { Button, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
@@ -73,6 +73,7 @@ type Notice = {
 type Conflict = { draft: Item; message: string; operationId?: string; kind?: string; server?: Item; choices?: Record<string, "local" | "server"> };
 type EngineConflict = { operationId: string; itemId: string; vaultId: string; kind: string; localFields?: string[]; remoteFields?: string[] };
 const dragSession = createDragSession();
+const generateSecret = (options: GeneratorOptions) => invoke<string>("generate_secret", { options });
 const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound };
 const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
   login: "Website or app sign-in",
@@ -241,6 +242,7 @@ export function App() {
   };
 
   const lock = async (reason = "Locked") => {
+    window.dispatchEvent(new Event("vaults:clear-generator"));
     await invoke("lock").catch(() => undefined);
     setUnlocked(false);
     setLicenseStatus(null);
@@ -822,6 +824,7 @@ export function App() {
       <Input type={field.type === "password" && !revealed.has(field.id) ? "password" : "text"} value={field.value} onChange={(e) => updateCustom(field.id, { value: e.target.value })} />
       {field.type === "password" && <Button variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} /> : <Eye size={16} />}<span>{revealed.has(field.id) ? "Hide" : "Reveal"}</span></Button>}
     </div>
+    {field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} />}
   </label>;
   const beginEditing = () => {
     if (!selected) return;
@@ -1453,6 +1456,7 @@ export function App() {
                           </span>
                         </Button>
                       </div>
+                      <SecretGenerator generate={generateSecret} onUse={(password) => setSelected((current) => current ? { ...current, password } : current)} />
                     </label>}
                     {primaryFields(selected.customFields).map(knownFieldEditor)}
                   </div>
@@ -1543,17 +1547,20 @@ export function App() {
                             <option key={type}>{type}</option>
                           ))}
                         </select>
-                        <Input
-                          type={
-                            field.type === "password" && !revealed.has(field.id)
-                              ? "password"
-                              : "text"
-                          }
-                          value={field.value}
-                          onChange={(e) =>
-                            updateCustom(field.id, { value: e.target.value })
-                          }
-                        />
+                        <div className="grid gap-2">
+                          <Input
+                            type={
+                              field.type === "password" && !revealed.has(field.id)
+                                ? "password"
+                                : "text"
+                            }
+                            value={field.value}
+                            onChange={(e) =>
+                              updateCustom(field.id, { value: e.target.value })
+                            }
+                          />
+                          {field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => updateCustom(field.id, { value })} />}
+                        </div>
                         <Button
                           size="icon"
                           variant="ghost"

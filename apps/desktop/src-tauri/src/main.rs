@@ -21,6 +21,11 @@ struct DesktopState {
     connector_owned: Mutex<Option<PathBuf>>,
 }
 
+#[tauri::command]
+fn generate_secret(options: Value) -> Result<String, String> {
+    vaults_cli::generate_secret(options)
+}
+
 impl Drop for DesktopState {
     fn drop(&mut self) {
         if let Ok(owned) = self.connector_owned.get_mut() {
@@ -720,6 +725,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
+            generate_secret,
             desktop_info,
             unlock,
             item_list,

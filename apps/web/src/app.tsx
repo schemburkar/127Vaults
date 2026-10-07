@@ -23,10 +23,19 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { Button, Input } from "@127vaults/ui";
+import { Button, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
+
+const generateSecret = (options: GeneratorOptions) => new Promise<string>((resolve, reject) => {
+  const timer = window.setTimeout(() => reject(new Error("Generator unavailable. Reload the app and unlock the vault.")), 5000);
+  window.dispatchEvent(new CustomEvent("vaults:generate-secret", { detail: {
+    options,
+    resolve: (value: string) => { clearTimeout(timer); resolve(value); },
+    reject: (error: unknown) => { clearTimeout(timer); reject(error); },
+  } }));
+});
 
 const eyebrow = "mb-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500";
 const muted = "text-slate-400";
@@ -169,7 +178,7 @@ function CustomFieldsEditor() {
     setExpandedRelatedId(added?.id ?? null);
   };
   const toggleReveal = (id: string) => setRevealed((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[1fr_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <Button type="button" variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={15} /> : <Eye size={15} />}{revealed.has(field.id) ? "Hide" : "Reveal"}</Button>}</div></label>;
+  const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[1fr_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <Button type="button" variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={15} /> : <Eye size={15} />}{revealed.has(field.id) ? "Hide" : "Reveal"}</Button>}</div>{field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => update(field.id, { value })} />}</label>;
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
       {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
@@ -221,24 +230,27 @@ function CustomFieldsEditor() {
                 </option>
               ))}
             </select>
-            {field.type === "note" ? (
-              <textarea
-                className={`${inputClass} min-h-20 resize-y`}
-                value={field.value ?? ""}
-                aria-label={`Custom field ${index + 1} value`}
-                onChange={(event) => update(id, { value: event.target.value })}
-              />
-            ) : (
-              <input
-                className={inputClass}
-                type={
-                  field.type === "password" ? "password" : field.type || "text"
-                }
-                value={field.value ?? ""}
-                aria-label={`Custom field ${index + 1} value`}
-                onChange={(event) => update(id, { value: event.target.value })}
-              />
-            )}
+            <div className="grid gap-2 max-[560px]:col-span-2">
+              {field.type === "note" ? (
+                <textarea
+                  className={`${inputClass} min-h-20 resize-y`}
+                  value={field.value ?? ""}
+                  aria-label={`Custom field ${index + 1} value`}
+                  onChange={(event) => update(id, { value: event.target.value })}
+                />
+              ) : (
+                <input
+                  className={inputClass}
+                  type={
+                    field.type === "password" ? "password" : field.type || "text"
+                  }
+                  value={field.value ?? ""}
+                  aria-label={`Custom field ${index + 1} value`}
+                  onChange={(event) => update(id, { value: event.target.value })}
+                />
+              )}
+              {field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => update(id, { value })} />}
+            </div>
             <Button
               variant="ghost"
               className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
@@ -770,6 +782,10 @@ function ItemDetail() {
                 Reveal
               </Button>
             </div>
+            <SecretGenerator generate={generateSecret} onUse={(value) => {
+              const input = document.getElementById("item-password") as HTMLInputElement;
+              input.value = value; input.dispatchEvent(new Event("input", { bubbles: true }));
+            }} />
           </label>
         </section>
         <section className={detailSection}>

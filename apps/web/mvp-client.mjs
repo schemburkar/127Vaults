@@ -1,6 +1,7 @@
 import init, {
   ExperimentalEcf1Core,
   ExperimentalOpaqueBridge,
+  generate_secret,
 } from "/wasm/vaults_browser_fixture.js";
 const $ = (id) => document.getElementById(id),
   te = new TextEncoder(),
@@ -1392,6 +1393,7 @@ function showEmpty() {
   $("item-form").hidden = true;
 }
 function beginEdit(item = currentItem) {
+  window.dispatchEvent(new Event("vaults:clear-generator"));
   $("item-id").value = item?.itemId ?? "";
   $("title").value = item?.index.title ?? "";
   $("url").value = item?.index.website ?? "";
@@ -1412,6 +1414,7 @@ function beginEdit(item = currentItem) {
   $("title").focus();
 }
 function clearItem() {
+  window.dispatchEvent(new Event("vaults:clear-generator"));
   for (let x of ["item-id", "title", "url", "item-username", "item-password"])
     $(x).value = "";
   $("item-password").type = "text";
@@ -1439,6 +1442,7 @@ function arm() {
   );
 }
 async function lock(logout = true) {
+  window.dispatchEvent(new Event("vaults:clear-generator"));
   clearTimeout(sessionTimer);
   try {
     if (logout && csrf) await call("/api/v1/session", { method: "DELETE" });
@@ -1724,11 +1728,18 @@ for (let n of ["pointerdown", "keydown"])
     if (e.isTrusted && root) arm();
   });
 window.addEventListener("pagehide", () => {
+  window.dispatchEvent(new Event("vaults:clear-generator"));
   core?.lock();
   wipeInputs();
 });
 try {
   await init();
+  window.addEventListener("vaults:generate-secret", (event) => {
+    try {
+      if (!root || busy) throw new Error("Unlock the vault and wait for the current operation to finish");
+      event.detail.resolve(generate_secret(JSON.stringify(event.detail.options)));
+    } catch (error) { event.detail.reject(error); }
+  });
   core = new ExperimentalEcf1Core();
   identity = await loadIdentity();
   if (identity) {

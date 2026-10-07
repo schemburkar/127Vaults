@@ -1,6 +1,7 @@
 #![doc = "Cryptographic boundary for 127Vaults."]
 
 pub mod ecf1;
+pub mod generator;
 pub mod opaque;
 pub mod private_vault;
 pub mod secrets;

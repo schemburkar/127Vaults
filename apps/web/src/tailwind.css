@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../packages/ui/src";
 
 /* One invariant for every shared button. Responsive containers may size and
    justify buttons, but must never turn icon/label content into a column. */

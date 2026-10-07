@@ -5236,6 +5236,7 @@ name = "vaults-browser-fixture"
 version = "0.0.0"
 dependencies = [
  "getrandom 0.4.3",
+ "serde_json",
  "vaults-crypto",
  "wasm-bindgen",
 ]
@@ -5280,6 +5281,7 @@ dependencies = [
  "opaque-ke",
  "poly1305",
  "rand_chacha",
+ "serde",
  "sha2 0.10.9",
  "sha2 0.11.0",
  "zeroize",

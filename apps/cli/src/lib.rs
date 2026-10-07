@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod agent;
+mod generator;
+use generator::generate_command;
+pub use generator::{GenerateCommand, generate_secret};
 pub mod client;
 pub mod extension_host;
 pub mod replica;
@@ -70,6 +73,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Generate a local cryptographically random secret (printed to stdout).
+    Generate {
+        #[command(subcommand)]
+        command: GenerateCommand,
+    },
     /// Validate an installation endpoint and trust material.
     Server {
         #[command(subcommand)]
@@ -1377,6 +1385,7 @@ fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(),
 #[allow(clippy::too_many_lines)]
 pub fn run(cli: Cli) -> Result<String, String> {
     match cli.command {
+        Command::Generate { command } => generate_command(command),
         Command::License {
             command: LicenseCommand::Status { config_dir },
         } => {
