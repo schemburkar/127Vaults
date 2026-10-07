@@ -29,6 +29,7 @@ import { createOpsTelemetry } from './ops-log.mjs';
 import { createAdminHandler } from './admin/handler.mjs';
 import { loadOperators } from './admin/credentials.mjs';
 import { createLicenseHandler } from './license-handler.mjs';
+import { loadLicenseStatus } from './license-status.mjs';
 import { createSetupHandler } from './setup-handler.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
@@ -84,7 +85,9 @@ if (env.SMTP_HOST) {
   mailer = new SmtpMailer({ host: env.SMTP_HOST, port: Number(env.SMTP_PORT ?? 465), username: env.SMTP_USERNAME,
     password, from: env.SMTP_FROM, installationLabel: env.VAULTS_INSTALLATION_LABEL });
 } else mailer = { sendCode: async () => { throw new Error('SMTP unavailable.'); } };
-const onboardingService=new OnboardingService({store:new PgOnboardingStore(pool),mailer,tokenKey});
+const loadEntitlement = async (tenantId, now) => loadLicenseStatus({licenseFile:env.VAULTS_LICENSE_FILE,
+  publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,installationId:tenantId,now});
+const onboardingService=new OnboardingService({store:new PgOnboardingStore(pool,{loadEntitlement}),mailer,tokenKey});
 const onboardingHandler=createOnboardingHandler(onboardingService,createRegistrationCompletion(opaque,registration),transport.origin,token=>authService.authenticate(token),registration);
 const authenticate=token=>authService.authenticate(token);
 const syncStore=new PgSignedSyncStore(pool,checkpointPrivateKey);

@@ -52,7 +52,9 @@ export function createOnboardingHandler(service, completeRegistration, configure
       }
     } catch (error) {
       const status = error instanceof OnboardingError || error instanceof HttpBoundaryError ? error.status : 400;
-      writeError(res, status, status === 429 ? 'rate_limited' : status === 503 ? 'email_unavailable' : 'onboarding_failed'); return true;
+      const code = error instanceof OnboardingError && ['seat_limit_reached', 'license_inactive', 'license_unavailable'].includes(error.code)
+        ? error.code : status === 429 ? 'rate_limited' : status === 503 ? 'email_unavailable' : 'onboarding_failed';
+      writeError(res, status, code); return true;
     }
   };
 }

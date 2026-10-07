@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { OnboardingError } from './onboarding.mjs';
+import { requireLicenseSeats } from './license-seats.mjs';
 
 export class PgOnboardingStore {
-  constructor(pool, { tenantId = null } = {}) { this.pool = pool; this.tenantId = tenantId; }
+  constructor(pool, { tenantId = null, loadEntitlement = null } = {}) { this.pool = pool; this.tenantId = tenantId; this.loadEntitlement = loadEntitlement; }
   async #tx(fn) { const c = await this.pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e instanceof OnboardingError ? e : new OnboardingError(); } finally { c.release(); } }
   async bootstrapOwner(input) { return this.#tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(127,6)');
@@ -17,10 +18,12 @@ export class PgOnboardingStore {
     return {accountId,deviceId:x.deviceId,emailVerified:false};
   }); }
   async createInvitation(input) { return this.#tx(async c => {
+    await c.query('SELECT pg_advisory_xact_lock(127,7)');
     const owner=(await c.query(`SELECT tenant_id FROM vaults.accounts WHERE id=$1 AND server_role='owner' AND enrollment_state='active' FOR KEY SHARE`,[input.ownerAccountId])).rows[0];
     if (!owner) throw new OnboardingError('forbidden',403);
     const duplicate=await c.query('SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND email=ANY($2::text[]) LIMIT 1',[owner.tenant_id,input.emails]);
     if (duplicate.rowCount) throw new OnboardingError();
+    await requireLicenseSeats(c, owner.tenant_id, input.emails.length, input.now, this.loadEntitlement);
     await c.query(`INSERT INTO vaults.invitation_records(tenant_id,id,token_digest,created_by,expires_at) VALUES($1,$2,$3,$4,$5::timestamptz+($6*interval '1 hour'))`,[owner.tenant_id,input.invitationId,input.tokenDigest,input.ownerAccountId,input.now,input.expiresInHours]);
     for (const email of input.emails) await c.query('INSERT INTO vaults.invitation_emails(tenant_id,id,email) VALUES($1,$2,$3)',[owner.tenant_id,input.invitationId,email]);
     return {invitationId:input.invitationId,expiresAt:new Date(input.now.getTime()+input.expiresInHours*3_600_000).toISOString(),seatCount:input.emails.length};
@@ -56,6 +59,7 @@ export class PgOnboardingStore {
   }); }
   async finalizeInvitation(input) {
     const result=await this.#tx(async c => {
+    await c.query('SELECT pg_advisory_xact_lock(127,7)');
     const a=(await c.query(`SELECT * FROM vaults.onboarding_attempts WHERE id=$1 AND capability_digest=$2 FOR UPDATE`,[input.attemptId,input.capabilityDigest])).rows[0];
     if (!a) throw new OnboardingError();
     if (a.committed_at) return { accountId:a.account_id,deviceId:a.device_id };
@@ -63,6 +67,8 @@ export class PgOnboardingStore {
     if (!a.email_code_digest.equals(input.codeDigestForGeneration(a.email_generation))) { await c.query('UPDATE vaults.onboarding_attempts SET email_failures=email_failures+1 WHERE tenant_id=$1 AND id=$2',[a.tenant_id,a.id]); return {failed:true}; }
     const seat=(await c.query(`SELECT e.redeemed_at,i.expires_at,i.revoked_at FROM vaults.invitation_emails e JOIN vaults.invitation_records i USING(tenant_id,id) WHERE e.tenant_id=$1 AND e.id=$2 AND e.email=$3 FOR UPDATE OF e,i`,[a.tenant_id,a.invitation_id,a.email])).rows[0];
     if (!seat || seat.redeemed_at || seat.revoked_at || seat.expires_at<=input.now) throw new OnboardingError();
+    // Redeeming this reservation moves one seat from pending to active.
+    await requireLicenseSeats(c, a.tenant_id, 0, input.now, this.loadEntitlement);
     const candidate=a.candidate, accountId=candidate.accountId, key=s=>Buffer.from(s,'base64url');
     await c.query(`INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state,email_verified) VALUES($1,$2,$3,$4,$5,'user','active',true)`,[a.tenant_id,accountId,candidate.username,candidate.displayName,a.email]);
     await c.query(`INSERT INTO vaults.authentication_credentials(tenant_id,account_id,opaque_record,wrapped_root_descriptor,wrapped_root_envelope) VALUES($1,$2,$3,$4,$5)`,[a.tenant_id,accountId,key(candidate.opaqueRecord),key(candidate.wrappedRootDescriptor),key(candidate.wrappedRootEnvelope)]);
