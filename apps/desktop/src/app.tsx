@@ -27,6 +27,7 @@ import {
   MoreHorizontal,
   Plus,
   Router,
+  RefreshCw,
   Search,
   Settings,
   Terminal,
@@ -36,9 +37,9 @@ import {
   X,
 } from "lucide-react";
 
-type Summary = { itemId: string; title: string; website: string; vaultId?: string; itemType?: string; createdAt?: number; updatedAt?: number };
+type Summary = { code: string; itemId: string; title: string; website: string; vaultId?: string; itemType?: string; createdAt?: number; updatedAt?: number };
 type CustomField = { id: string; label: string; type: string; value: string };
-type Item = Summary & {
+type Item = Omit<Summary, "code"> & {
   username: string;
   password: string;
   customFields: CustomField[];
@@ -787,11 +788,7 @@ export function App() {
     const payload = dragSession.begin(kind, value);
     event.dataTransfer.effectAllowed = "copy";
     event.dataTransfer.setData("text/plain", payload);
-    event.dataTransfer.setData(
-      "application/x-127vaults-field",
-      JSON.stringify({ kind }),
-    );
-    setStatus(`Dragging ${kind}`);
+    // A plain text payload is accepted by native input fields.
   };
   const updateCustom = (id: string, patch: Partial<CustomField>) =>
     selected &&
@@ -1208,6 +1205,14 @@ export function App() {
             127
           </span>
           <strong>127Vaults</strong>
+          {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
+            ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
+            : licenseStatus.mode === "revoked"
+              ? "License revoked: server writes are blocked. Ask the server operator for a replacement license."
+              : licenseStatus.mode === "locked"
+                ? "License locked: server writes are blocked. Check expiry and the server clock."
+                : "Experimental license state; confirm server operator status before relying on it."}><AlertTriangle size={17} aria-hidden="true" /></button>}
+
         </div>
         <Button variant="ghost" className="desktop-menu-toggle" aria-expanded={compactNavOpen} aria-label="Toggle navigation" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
         <nav className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
@@ -1235,22 +1240,13 @@ export function App() {
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         {removalPlan?.pending && <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/8 p-3 text-xs text-amber-100" role="status"><strong>Vault operation needs attention</strong><p className="mt-1">{removalPlan.choice === "move" ? "Move" : removalPlan.choice === "restore" ? "Restore" : "Archive"} · {removalPlan.stage === "copying" ? "copying items" : "finalizing request"} · {removalPlan.itemMappings?.length ?? 0} mapped item(s)</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
         <div className="mt-auto grid gap-1">
-          {licenseStatus && <p className="px-3 py-2 text-xs text-slate-400" role="status">{licenseStatus.mode === "read-only"
-            ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
-            : licenseStatus.mode === "revoked"
-              ? "License revoked: server writes are blocked. Ask the server operator for a replacement license."
-              : licenseStatus.mode === "locked"
-                ? "License locked: server writes are blocked. Check expiry and the server clock."
-                : licenseStatus.mode === "active"
-                  ? `License active${licenseStatus.expiresAt ? ` until ${licenseStatus.expiresAt.slice(0, 10)}` : ""}.`
-                  : "Experimental license state; confirm server operator status before relying on it."}</p>}
           <Button variant="ghost" className="justify-start" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></Button>
           <Button
             variant="ghost"
             className="justify-start"
             onClick={synchronize}
           >
-            {online ? "Sync now" : "Reconnect"}
+            <RefreshCw size={17} /><span>{online ? "Sync now" : "Reconnect"}</span>
           </Button>
           <Button
             variant="ghost"
@@ -1347,12 +1343,12 @@ export function App() {
               </span>
               <span className="min-w-0">
                 <strong className="block truncate text-sm">{item.title}</strong>
-                <small className="text-slate-500">{item.website}{viewMode !== "single" && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.code ?? item.vaultId}` : ""}</small>
+                <small className="text-slate-500">{item.website}{viewMode === "all" && activeVaults.length > 1 && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.name ?? ""}` : ""}</small>
               </span>
               <span className="desktop-grid-website min-w-0 truncate text-sm text-slate-400">{item.website || "—"}</span>
               <span className="desktop-grid-type min-w-0 truncate text-xs text-slate-400">{ITEM_TYPES[item.itemType as ItemType]?.label || "Type unavailable"}</span>
               <span className="desktop-grid-modified min-w-0 truncate text-xs text-slate-400">{browseColumnValue("updated", item)}</span>
-              <span className="desktop-grid-id min-w-0 truncate font-mono text-xs text-slate-500" title={item.itemId}>{item.itemId}</span>
+              <span className="desktop-grid-id min-w-0 truncate font-mono text-xs text-slate-500" title={item.code}>{item.code}</span>
               {viewMode !== "single" && <span className="desktop-grid-vault min-w-0 truncate text-xs text-slate-400">{vaults.find((vault) => vault.vaultId === item.vaultId)?.name || "—"}</span>}
             </button>
           ))}

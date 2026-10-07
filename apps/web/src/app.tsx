@@ -56,7 +56,7 @@ const Field = ({ label, children }: { label: string; children: ReactNode }) => (
 );
 
 type ItemSummary = {
-  row: { itemId: string };
+  row: { itemId: string; code: string };
   index: { title?: string; website?: string; itemType?: string; createdAt?: number; updatedAt?: number };
 };
 type SearchAction = { id: string; label: string; description: string };
@@ -375,7 +375,7 @@ function ItemList({ layout }: { layout: "list" | "grid" }) {
           <span className="vault-grid-website min-w-0 truncate text-sm text-slate-400">{item.index.website || "—"}</span>
           <span className="vault-grid-type min-w-0 truncate text-xs text-slate-400">{ITEM_TYPES[item.index.itemType as ItemType]?.label || "Type unavailable"}</span>
           <span className="vault-grid-modified min-w-0 truncate text-xs text-slate-400">{browseColumnValue("updated", item.index)}</span>
-          <span className="vault-grid-id min-w-0 truncate font-mono text-xs text-slate-500" title={item.row.itemId}>{item.row.itemId}</span>
+          <span className="vault-grid-id min-w-0 truncate font-mono text-xs text-slate-500" title={item.row.code}>{item.row.code}</span>
           <span className="vault-list-arrow text-slate-600">›</span>
         </button>
       ))}

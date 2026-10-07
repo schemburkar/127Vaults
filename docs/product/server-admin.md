@@ -30,3 +30,5 @@ The file format allows multiple operators with `owner` or `admin` roles. Additio
 - **Settings and audit:** Placeholders.
 
 Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. All admin endpoints are read-only except sign-in and sign-out. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
+
+In hot-reload development, port `12781` is the internal backend transport, not a separate admin site. Direct browser requests to that port fail the configured Host check with `forbidden`. Use `https://127.0.0.1:12780/admin/` through the same proxy as the vault app.

@@ -59,6 +59,7 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  if(action==='start')console.log('Acceptance stack ready at https://127.0.0.1:12780 (disposable fictitious data only).');
  else {
   console.log('Containerized API ready behind the local hot-reload UI at https://127.0.0.1:12780.');
+  console.log('Server admin: https://127.0.0.1:12780/admin/ (12781 is the internal backend, not an admin port).');
   if(await portOpen(12780))console.log('Using the existing hot-reload UI on port 12780.');
   else run(process.execPath,[join(root,'apps','web','node_modules','vite','bin','vite.js'),'apps/web','--host','127.0.0.1']);
  }

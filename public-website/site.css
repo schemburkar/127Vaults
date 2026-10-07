@@ -297,3 +297,6 @@ tbody td { color: var(--muted); }
 
 .availability-note { padding: 11px 0; background: #9d1f32; color: #fff; font-size: 14px; line-height: 1.5; }
 .availability-note strong { color: #fff; }
+
+button.plan-cta { width: 100%; border: 0; font-family: inherit; text-align: left; }
+button.plan-cta:disabled { cursor: default; filter: none; }

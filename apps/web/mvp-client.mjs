@@ -685,7 +685,9 @@ async function reload() {
         ),
       ),
     );
-    items.push({ row, index: {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(row.itemId)));
+    const code = 'I-' + Array.from(digest.slice(0, 5), byte => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+    items.push({ row: { ...row, code }, index: {
       ...index,
       createdAt: row.createdAt ?? index.createdAt ?? null,
       updatedAt: row.updatedAt ?? index.updatedAt ?? null,

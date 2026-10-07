@@ -27,3 +27,16 @@ test("inactivity locks before a drag can begin", () => {
   assert.throws(() => session.begin("password", "fake"), { message: LOCKED_MESSAGE });
   assert.equal(session.isUnlocked(), false);
 });
+
+ test("user activity keeps dragging available beyond the original unlock timeout", () => {
+  let clock = 0;
+  const session = createDragSession({ now: () => clock, timeoutMs: 100 });
+  session.unlock();
+  clock = 80;
+  session.touch();
+  clock = 150;
+  assert.equal(session.begin("username", "fake"), "fake");
+  session.end();
+  clock = 251;
+  assert.throws(() => session.begin("username", "fake"), { message: LOCKED_MESSAGE });
+});
