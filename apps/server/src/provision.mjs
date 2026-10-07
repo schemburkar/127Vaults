@@ -44,6 +44,8 @@ try {
       ON CONFLICT(tenant_id) DO UPDATE SET token_digest=excluded.token_digest,expires_at=excluded.expires_at,consumed_at=NULL,created_at=now()`,[tenant,tokenDigest(key,'bootstrap',raw)]);
     input.bootstrapOutputPath=outputPath;
   }
+  const installationId = (await client.query('SELECT id FROM vaults.installation WHERE singleton=true')).rows[0]?.id;
+  if (!installationId) reject('Installation record missing.');
   const counts = (await client.query("SELECT count(*)::int AS pending_accounts, count(*) FILTER (WHERE server_role='owner')::int AS provisional_owners FROM vaults.accounts")).rows[0];
   const invitations = (await client.query('SELECT count(*) FILTER (WHERE expires_at > now())::int AS unexpired_invitation_records, count(*) FILTER (WHERE expires_at <= now())::int AS expired_invitation_records FROM vaults.invitation_records')).rows[0];
   await client.query('COMMIT');
@@ -52,7 +54,7 @@ try {
     const active=(await client.query('SELECT 1 FROM vaults.bootstrap_tokens WHERE consumed_at IS NULL AND expires_at>now()')).rowCount;
     if (!active) await unlink(process.env.VAULTS_BOOTSTRAP_OUTPUT).catch(error=>{if(error.code!=='ENOENT')throw error;});
   }
-  console.log(JSON.stringify({ experimental: true, schemaVersion, action, ...counts,
+  console.log(JSON.stringify({ experimental: true, schemaVersion, installationId, action, ...counts,
     ...invitations, bootstrapRequired: counts.provisional_owners === 0,
     authenticationAvailable: true, bootstrapTokenWritten: Boolean(bootstrapPlaintext), nextStep: counts.provisional_owners === 0
       ? 'Retrieve the restricted bootstrap file locally and complete HTTPS onboarding within 60 minutes.'

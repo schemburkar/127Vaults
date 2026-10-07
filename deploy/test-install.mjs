@@ -13,7 +13,7 @@ const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?
 const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
 const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
-if (!['init', 'start', 'status', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, stop, bootstrap, or restore.');
+if (!['init', 'start', 'status', 'identify', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, stop, bootstrap, or restore.');
 if (!/^(127\.0\.0\.1|localhost|(?:10|192\.168)\.(?:\d{1,3}\.){2}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.){2})$/.test(endpoint)) throw Error('Use loopback or a private IPv4 endpoint.');
 
 async function run(program, argv, { quiet = false } = {}) {
@@ -180,6 +180,12 @@ else {
     console.log(`Open https://${configuredEndpoint}:12780 after verifying and trusting the local CA.`);
   } else if (action === 'stop') await runCompose(['down']);
   else if (action === 'status') await runCompose(['ps']);
+  else if (action === 'identify') {
+    const info = await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true });
+    const { installationId } = JSON.parse(info);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(installationId)) throw Error('Installation ID is unavailable.');
+    console.log(`Installation ID: ${installationId}`);
+  }
   else {
     const info = await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true });
     const status = JSON.parse(info);

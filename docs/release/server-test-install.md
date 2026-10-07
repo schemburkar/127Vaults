@@ -29,6 +29,7 @@ In an extracted bundle directory, first compare each file to `manifest.json`. On
 node server.mjs install init --endpoint 127.0.0.1
 node server.mjs install start
 node server.mjs install status
+node server.mjs install identify
 node server.mjs install bootstrap
 ```
 
