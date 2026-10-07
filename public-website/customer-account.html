@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Test customer account — 127Vaults</title>
+  <link rel="stylesheet" href="site.css?v=3">
+  <script src="theme.mjs?v=2" type="module"></script>
+  <script src="customer-account.mjs" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header"><div class="container header-inner"><a class="wordmark" href="index.html" aria-label="127Vaults home"><span class="brand-mark">127</span><span>127Vaults</span></a><nav aria-label="Main navigation"><a href="deployment.html">Deployment</a><a href="pricing.html">Pricing</a><a href="downloads.html">Downloads</a></nav><a class="header-link" href="get-started.html">Get access</a></div></header>
+  <main id="main">
+    <aside class="availability-note"><div class="container"><strong>Supervised test account.</strong> No payment, invoice, production entitlement, or vault credentials are stored here.</div></aside>
+    <section class="page-hero"><div class="container"><span class="kicker">CUSTOMER ACCOUNT</span><h1>Your self-hosted orders.</h1><p>Sign in by email to view test orders, resume setup, and manage simulated licenses. Your private server has a separate vault login.</p></div></section>
+    <section class="page-section"><div class="container access-grid">
+      <div class="access-card" id="customer-login"><h2>Sign in</h2><label class="access-field" for="customer-email">Email address<input id="customer-email" type="email" autocomplete="email"></label><label class="access-consent"><input id="customer-consent" type="checkbox"><span>I agree to store this email and test order history for account access. Pending test orders are retained for 30 days; licensed test orders for 90 days after license expiry. I can erase them here.</span></label><button class="button primary" id="customer-start" type="button">Email a sign-in code</button><label class="access-field" for="customer-code">Six-digit code<input id="customer-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label><button class="button primary" id="customer-complete" type="button">Sign in</button></div>
+      <div class="access-card" id="customer-dashboard" hidden><h2>Account</h2><p id="customer-identity"></p><div id="customer-orders"></div><button class="button primary" id="customer-logout" type="button">Sign out</button><details><summary>Erase account and test orders</summary><p>This removes public contact and order records and ends download access. It cannot remove or revoke a license already installed on a private server.</p><button class="button primary" id="customer-erase" type="button">Erase account and orders</button></details></div>
+      <p id="customer-status" role="status" aria-live="polite">Checking account…</p>
+    </div></section>
+  </main>
+</body>
+</html>

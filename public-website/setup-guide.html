@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Supervised client setup — 127Vaults</title>
+  <link rel="stylesheet" href="site.css?v=3">
+  <script src="theme.mjs?v=2" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header"><div class="container header-inner"><a class="wordmark" href="index.html" aria-label="127Vaults home"><span class="brand-mark">127</span><span>127Vaults</span></a><nav aria-label="Main navigation"><a href="deployment.html">Deployment</a><a href="pricing.html">Pricing</a><a href="downloads.html">Downloads</a></nav><a class="header-link" href="get-started.html">Get access</a></div></header>
+  <main id="main">
+    <aside class="availability-note"><div class="container"><strong>Supervised test only.</strong> This guide uses a private server, an unpublished test bundle, and fictitious vault data.</div></aside>
+    <section class="page-hero"><div class="container"><span class="kicker">SELF-HOSTED SETUP</span><h1>Connect each trusted device.</h1><p>Your public order access code is only for the order page. Vault accounts and devices are created on your private server.</p></div></section>
+    <section class="page-section"><div class="container prose">
+      <h2>1. Establish server trust</h2>
+      <p>On the server, run <code>node server.mjs install status</code> and <code>node server.mjs install identify</code>. Record the private HTTPS address, installation ID, and CA fingerprint through your operator channel. Copy only the public CA certificate, normally <code>~/.127vaults-test/ca/ca.crt</code>, to each client. Compare its fingerprint before trusting it. Never copy the CA private key.</p>
+      <p>Trust the CA in the browser or operating system used for the server web app. Open the exact private HTTPS address printed by the installer. Certificate warnings are a stop condition; correct the endpoint or trust material instead of bypassing them.</p>
+      <h2>2. Create the owner in the server web app</h2>
+      <p>Run <code>node server.mjs install bootstrap</code> locally. Enter that one-time code in the server-hosted setup screen and keep it off the public order page. Save the account secret and recovery material. The public contact email does not automatically become a vault user.</p>
+      <h2>3. Add another computer</h2>
+      <p>For the CLI, run <code>127vaults server trust --url https://PRIVATE-IP:12780 --ca ca.crt --server-id INSTALLATION-ID</code>, using the exact address and ID from your installation. Then run <code>127vaults login USERNAME --enroll</code>. In an already trusted web session, open Trusted devices and approve the code shown by the CLI. The CLI verifies the approval before saving its device key.</p>
+      <p>The current Windows desktop uses a trusted CLI profile or an operator-provided profile. After the trust profile exists, open the desktop, choose “I already have an account,” and approve its one-time code in the server web app. Complete one online unlock to provision its encrypted offline copy. An integrated desktop trust-import screen is still pending.</p>
+      <h2>4. Invite another vault user</h2>
+      <p>The owner sends an invitation from the server web app. The recipient verifies the invited email address and enrolls on that same private server. A signed license reserves seats for outstanding invitations. SMTP must be configured and tested before this step works outside the disposable fixture.</p>
+      <h2>5. Read license state</h2>
+      <p><strong>Active:</strong> normal licensed writes. <strong>Read-only:</strong> the 30-day period after expiry; vault and invitation writes are blocked while sign-in and reads remain available. <strong>Locked or revoked:</strong> licensed writes remain blocked until a valid replacement license is installed. A detected clock rollback also locks writes until the host clock catches up. Encrypted data is retained.</p>
+      <p>Check the authoritative state with <code>node server.mjs install status</code> on the server. Online clients can read the server's redacted status; an offline client may have stale information. After renewal, download the new license from the simulated order, run <code>node server.mjs install license --file license.json</code>, restart, and verify status again. Do not discard offline encrypted edits while resolving a license state.</p>
+      <p>For the extension, connect an already enrolled web, desktop, or CLI source. The extension does not create a vault account or install a license; its experimental flow only fills a selected login after a user action.</p>
+    </div></section>
+  </main>
+</body>
+</html>

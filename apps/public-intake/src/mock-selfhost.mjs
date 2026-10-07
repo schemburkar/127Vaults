@@ -1,9 +1,11 @@
 // Explicitly disposable checkout simulator. No payment or verified customer identity is created.
 import { createCipheriv, createDecipheriv, createHash, createHmac, createPrivateKey, createPublicKey, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
+import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
+import { createDurableLimit } from './durable-limit.mjs';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const basePath = id => `/api/selfhost/mock/orders/${id}`;
@@ -27,19 +29,37 @@ async function body(req) {
   return parsed;
 }
 
-function seal(record, key) {
+export function seal(record, key) {
   const nonce = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(record)), cipher.final()]);
   return JSON.stringify({ version: 1, nonce: nonce.toString('base64url'),
     ciphertext: ciphertext.toString('base64url'), tag: cipher.getAuthTag().toString('base64url') });
 }
-function unseal(source, key) {
+export function unseal(source, key) {
   const value = JSON.parse(source);
   if (value.version !== 1) throw Error('invalid_record');
   const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(value.nonce, 'base64url'));
   decipher.setAuthTag(Buffer.from(value.tag, 'base64url'));
   return JSON.parse(Buffer.concat([decipher.update(Buffer.from(value.ciphertext, 'base64url')), decipher.final()]).toString('utf8'));
+}
+
+export async function pruneMockOrders({ dataDir, key, now = new Date() }) {
+  let removed = 0;
+  for (const name of await readdir(dataDir).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  })) {
+    if (!/^[0-9a-f-]{36}\.json$/i.test(name)) continue;
+    const path = join(dataDir, name);
+    const record = unseal(await readFile(path, 'utf8'), key);
+    const licenseExpiry = record.license
+      ? JSON.parse(Buffer.from(JSON.parse(record.license).payload, 'base64url').toString('utf8')).expiresAt : null;
+    const until = licenseExpiry ? Date.parse(licenseExpiry) + 90 * 86400000
+      : Date.parse(record.createdAt) + 30 * 86400000;
+    if (Number.isFinite(until) && now.getTime() >= until) { await unlink(path); removed++; }
+  }
+  return removed;
 }
 
 export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, issuerPrivateKey,
@@ -50,7 +70,7 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
   }
   const issuerPublicKey = createPublicKey(createPrivateKey(issuerPrivateKey)).export({ type: 'spki', format: 'pem' });
   const pending = new Map();
-  const recentEmails = new Map();
+  const allow = createDurableLimit({ directory: join(dataDir, 'request-limits'), now: () => now().getTime() });
   const pathFor = id => join(dataDir, `${id}.json`);
   async function read(id) { return unseal(await readFile(pathFor(id), 'utf8'), key); }
   async function save(id, record, create = false) {
@@ -83,10 +103,10 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
         || typeof input.email !== 'string' || !email.test(input.email.trim())
         || typeof input.organization !== 'string' || input.organization.length > 120
         || input.website !== '') return bad(res);
-      const emailKey = sha(input.email.trim().toLowerCase());
-      const hits = (recentEmails.get(emailKey) ?? []).filter(at => now().getTime() - at < 3600000);
-      if (hits.length >= 3) return json(res, 429, { error: 'rate_limited' });
-      recentEmails.set(emailKey, [...hits, now().getTime()]);
+      if (!await allow('mock-order-email', input.email.trim().toLowerCase(), 3, 3600000)
+        || !await allow('mock-order-address', req.socket.remoteAddress ?? 'unknown', 30, 3600000)) {
+        return json(res, 429, { error: 'rate_limited' });
+      }
       const id = randomUUID();
       const accessToken = randomBytes(32).toString('base64url');
       const verificationCode = String(randomInt(1000000)).padStart(6, '0');
@@ -104,7 +124,7 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
       }
       return json(res, 201, { orderId: id, accessToken, state: record.state });
     }
-    const match = /^\/api\/selfhost\/mock\/orders\/([^/]+)(?:\/(verify|pay|bundle|bundle-ticket|license|public-keys|recover|recover-complete))?$/.exec(path);
+    const match = /^\/api\/selfhost\/mock\/orders\/([^/]+)(?:\/(verify|pay|bundle|bundle-ticket|license|public-keys|recover|recover-complete|renew|replace|revocation|erase))?$/.exec(path);
     if (!match || !uuid.test(match[1])) return bad(res, 404);
     const [, id, action] = match;
     if ((action === 'recover' || action === 'recover-complete') && req.method === 'POST') return serialized(id, async () => {
@@ -117,7 +137,9 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
         if (input.email.trim().toLowerCase() !== latest.email) return json(res, 202, { sent: true });
         const at = now().getTime();
         if (at - (latest.recoveryWindowAt ?? 0) >= 3600000) { latest.recoveryWindowAt = at; latest.recoveryCount = 0; }
-        if (latest.recoveryCount >= 3) return json(res, 429, { error: 'rate_limited' });
+        if (latest.recoveryCount >= 3 || !await allow('mock-recovery-address', req.socket.remoteAddress ?? 'unknown', 12, 3600000)) {
+          return json(res, 429, { error: 'rate_limited' });
+        }
         latest.recoveryCount++;
         const recoveryCode = String(randomInt(1000000)).padStart(6, '0');
         latest.recoveryHash = sha(`${id}:${recoveryCode}:${key.toString('base64url')}`);
@@ -153,9 +175,16 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
     const ticketValid = action === 'bundle' && req.method === 'GET' && Number(expiry) > now().getTime()
       && /^[A-Za-z0-9_-]{43}$/.test(tag ?? '') && timingSafeEqual(Buffer.from(tag), Buffer.from(expectedTag));
     if (!ticketValid && (!token || sha(token) !== record.tokenHash)) return bad(res, 401);
+    if (action === 'erase' && req.method === 'POST') return serialized(id, async () => {
+      const latest = await read(id);
+      if (latest.state === 'pending_email_verification') return bad(res, 403);
+      await unlink(pathFor(id));
+      return json(res, 200, { erased: true, installedLicenseUnaffected: Boolean(latest.license) });
+    });
     if (!action && req.method === 'GET') return json(res, 200, { orderId: id, plan: record.plan,
       email: record.email, state: record.state, installationId: record.installationId,
-      commitmentYears: record.commitmentYears, requestedUsers: record.requestedUsers });
+      commitmentYears: record.commitmentYears, requestedUsers: record.requestedUsers,
+      hasRevocation: Boolean(record.revocation) });
     if (action === 'verify' && req.method === 'POST') return serialized(id, async () => {
       let input;
       try { input = await body(req); } catch { return bad(res); }
@@ -234,6 +263,60 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
     if (action === 'license' && req.method === 'GET') {
       if (!record.license) return bad(res, 404);
       return json(res, 200, { license: JSON.parse(record.license), installationId: record.installationId });
+    }
+    if (action === 'renew' && req.method === 'POST') return serialized(id, async () => {
+      let input;
+      try { input = await body(req); } catch { return bad(res); }
+      if (Object.keys(input).sort().join(',') !== 'requestId,simulatedCheckoutAcknowledged'
+        || !uuid.test(input.requestId) || input.simulatedCheckoutAcknowledged !== true) return bad(res);
+      const latest = await read(id);
+      if (!latest.license || !latest.installationId) return bad(res, 409);
+      if (latest.lastRenewalRequestId === input.requestId) {
+        return json(res, 200, { license: JSON.parse(latest.license), installationId: latest.installationId, simulated: true });
+      }
+      const previous = JSON.parse(Buffer.from(JSON.parse(latest.license).payload, 'base64url').toString('utf8'));
+      const at = now();
+      const expires = new Date(Math.max(at.getTime(), Date.parse(previous.expiresAt)));
+      expires.setUTCFullYear(expires.getUTCFullYear() + 1);
+      latest.license = issueSelfHostedLicense({ privateKeyPem: issuerPrivateKey, keyId: issuerKeyId,
+        installationId: latest.installationId, plan: latest.plan, majorVersion: latest.plan === 'personal' ? 1 : null,
+        maxActiveUsers: latest.requestedUsers, sequence: previous.sequence + 1,
+        expiresAt: expires.toISOString(), now: at }).license;
+      latest.lastRenewalRequestId = input.requestId;
+      latest.renewedAt = at.toISOString();
+      await save(id, latest);
+      return json(res, 200, { license: JSON.parse(latest.license), installationId: latest.installationId, simulated: true });
+    });
+    if (action === 'replace' && req.method === 'POST') return serialized(id, async () => {
+      let input;
+      try { input = await body(req); } catch { return bad(res); }
+      if (Object.keys(input).sort().join(',') !== 'installationId,requestId,simulatedReplacementAcknowledged'
+        || !uuid.test(input.installationId) || !uuid.test(input.requestId)
+        || input.simulatedReplacementAcknowledged !== true) return bad(res);
+      const latest = await read(id);
+      if (!latest.license || !latest.installationId) return bad(res, 409);
+      if (latest.lastReplacementRequestId === input.requestId) {
+        return json(res, 200, { license: JSON.parse(latest.license), installationId: latest.installationId,
+          previousInstallationId: latest.previousInstallationId, simulated: true });
+      }
+      if (latest.installationId === input.installationId) return bad(res, 409);
+      const previous = JSON.parse(Buffer.from(JSON.parse(latest.license).payload, 'base64url').toString('utf8'));
+      const at = now();
+      latest.revocation = issueLicenseRevocation({ privateKeyPem: issuerPrivateKey, keyId: issuerKeyId,
+        installationId: latest.installationId, licenseId: previous.licenseId, revokedAt: 'now', now: at });
+      latest.previousInstallationId = latest.installationId;
+      latest.installationId = input.installationId;
+      latest.license = issueSelfHostedLicense({ privateKeyPem: issuerPrivateKey, keyId: issuerKeyId,
+        installationId: input.installationId, plan: latest.plan, majorVersion: latest.plan === 'personal' ? 1 : null,
+        maxActiveUsers: latest.requestedUsers, sequence: 1, expiresAt: previous.expiresAt, now: at }).license;
+      latest.lastReplacementRequestId = input.requestId;
+      await save(id, latest);
+      return json(res, 200, { license: JSON.parse(latest.license), installationId: latest.installationId,
+        previousInstallationId: latest.previousInstallationId, simulated: true });
+    });
+    if (action === 'revocation' && req.method === 'GET') {
+      if (!record.revocation) return bad(res, 404);
+      return json(res, 200, { revocation: JSON.parse(record.revocation), installationId: record.previousInstallationId });
     }
     if (action === 'public-keys' && req.method === 'GET') return json(res, 200, { [issuerKeyId]: issuerPublicKey });
     bad(res, 404);

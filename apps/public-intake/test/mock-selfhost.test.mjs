@@ -5,8 +5,9 @@ import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createMockSelfHostHandler } from '../src/mock-selfhost.mjs';
+import { createMockSelfHostHandler, pruneMockOrders } from '../src/mock-selfhost.mjs';
 import { verifyLicenseFile } from '../../server/src/license-status.mjs';
+import { verifyLicenseRevocationFile } from '../../server/src/license-status.mjs';
 
 test('mock checkout requires an access capability and binds one signed license to one installation', async () => {
   const dir = await mkdtemp(join(tmpdir(), '127v-mock-'));
@@ -62,8 +63,49 @@ test('mock checkout requires an access capability and binds one signed license t
     assert.equal((await post(`${team}/pay`, { commitmentYears: 5, requestedUsers: 12, termsAcknowledged: true }, commercial.accessToken)).status, 200);
     const teamLicense = await (await post(`${team}/license`, { installationId: randomUUID() }, commercial.accessToken)).json();
     assert.equal(verifyLicenseFile(JSON.stringify(teamLicense.license), keys, teamLicense.installationId).maxActiveUsers, 12);
+    const renewalId = randomUUID();
+    const renewal = await (await post(`${team}/renew`, { requestId: renewalId, simulatedCheckoutAcknowledged: true }, commercial.accessToken)).json();
+    const repeatedRenewal = await (await post(`${team}/renew`, { requestId: renewalId, simulatedCheckoutAcknowledged: true }, commercial.accessToken)).json();
+    assert.deepEqual(repeatedRenewal, renewal);
+    const originalPayload = verifyLicenseFile(JSON.stringify(teamLicense.license), keys, teamLicense.installationId);
+    const renewedPayload = verifyLicenseFile(JSON.stringify(renewal.license), keys, teamLicense.installationId);
+    assert.equal(renewedPayload.sequence, originalPayload.sequence + 1);
+    assert.ok(Date.parse(renewedPayload.expiresAt) > Date.parse(originalPayload.expiresAt));
+    const replacementId = randomUUID();
+    const replacement = await (await post(`${team}/replace`, { installationId: replacementId,
+      requestId: randomUUID(), simulatedReplacementAcknowledged: true }, commercial.accessToken)).json();
+    assert.equal(verifyLicenseFile(JSON.stringify(replacement.license), keys, replacementId).sequence, 1);
+    const revoked = await (await fetch(`${team}/revocation`, { headers: { Authorization: `Bearer ${commercial.accessToken}` } })).json();
+    assert.equal(verifyLicenseRevocationFile(JSON.stringify(revoked.revocation), keys,
+      teamLicense.installationId, renewedPayload.licenseId).installationId, teamLicense.installationId);
+    assert.equal((await post(`${team}/erase`, {}, commercial.accessToken)).status, 200);
+    assert.equal((await fetch(team, { headers: { Authorization: `Bearer ${commercial.accessToken}` } })).status, 404);
   } finally {
     await new Promise(resolve => server.close(resolve));
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('mock order request limits survive a handler restart and old pending records are pruned', async () => {
+  const dir = await mkdtemp(join(tmpdir(), '127v-retention-'));
+  const bundle = join(dir, 'bundle.tar');
+  await writeFile(bundle, 'bundle');
+  const key = randomBytes(32);
+  const issuerPrivateKey = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const options = { origin: 'https://127vaults.example', key, dataDir: join(dir, 'orders'), bundleFile: bundle,
+    issuerPrivateKey, mailer: { sendCode: async () => {} }, now: () => new Date('2026-10-07T00:00:00.000Z') };
+  const order = { email: 'limit@example.com', organization: '', plan: 'personal', website: '', consent: true };
+  const submit = async handler => {
+    const server = createServer(handler);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try { return await fetch(`http://127.0.0.1:${server.address().port}/api/selfhost/mock/orders`, { method: 'POST',
+      headers: { Origin: options.origin, 'Content-Type': 'application/json' }, body: JSON.stringify(order) }); }
+    finally { await new Promise(resolve => server.close(resolve)); }
+  };
+  try {
+    for (let i = 0; i < 3; i++) assert.equal((await submit(createMockSelfHostHandler(options))).status, 201);
+    assert.equal((await submit(createMockSelfHostHandler(options))).status, 429);
+    assert.equal(await pruneMockOrders({ dataDir: options.dataDir, key,
+      now: new Date('2026-11-07T00:00:00.000Z') }), 3);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

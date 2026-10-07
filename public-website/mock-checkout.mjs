@@ -15,12 +15,20 @@ let currentPlan = null;
 const verify = document.querySelector('#mock-verify');
 const emailField = document.querySelector('#mock-email-field');
 const emailCode = document.querySelector('#mock-email-code');
+const recoverButton = document.createElement('button');
+recoverButton.id = 'mock-recover';
+recoverButton.type = 'button';
+recoverButton.className = 'button primary';
+recoverButton.textContent = 'Email recovery code';
+document.querySelector('#mock-recover-complete').before(recoverButton);
 const bundle = document.querySelector('#mock-bundle');
 const installField = document.querySelector('#mock-install-field');
 const installId = document.querySelector('#mock-install-id');
 const issue = document.querySelector('#mock-issue');
 const license = document.querySelector('#mock-license');
 const keys = document.querySelector('#mock-keys');
+const afterLicense = document.querySelector('#mock-after-license');
+const revocation = document.querySelector('#mock-revocation');
 const base = `/api/selfhost/mock/orders/${encodeURIComponent(id)}`;
 code.value = sessionStorage.getItem(`127v-mock-${id}`) ?? '';
 
@@ -65,13 +73,15 @@ async function refresh() {
     issue.hidden = !ready || order.state === 'license_issued';
     license.hidden = order.state !== 'license_issued';
     keys.hidden = order.state !== 'license_issued';
+    afterLicense.hidden = order.state !== 'license_issued';
+    revocation.hidden = !order.hasRevocation;
     if (order.installationId) installId.value = order.installationId;
     status.textContent = ready ? 'Simulated checkout complete. Continue with the private server setup.'
       : needsEmail ? 'Enter the code sent to your email address.' : 'Review the simulation, then continue.';
   } catch (error) { actions.hidden = true; status.textContent = error.message; }
 }
 document.querySelector('#mock-open').addEventListener('click', refresh);
-document.querySelector('#mock-recover').addEventListener('click', async () => {
+recoverButton.addEventListener('click', async () => {
   try {
     const email = document.querySelector('#mock-recovery-email').value.trim();
     if (!email) throw Error('Enter the email used for this order.');
@@ -132,5 +142,37 @@ license.addEventListener('click', async () => {
 keys.addEventListener('click', async () => {
   try { download(await (await request('/public-keys')).json(), 'issuer-keys.json'); }
   catch (error) { status.textContent = error.message; }
+});
+document.querySelector('#mock-renew').addEventListener('click', async () => {
+  try {
+    await request('/renew', { method: 'POST', body: JSON.stringify({ requestId: crypto.randomUUID(), simulatedCheckoutAcknowledged: true }) });
+    await refresh();
+    status.textContent = 'Simulated renewal issued. Download the new license, install it locally, and restart the server.';
+  } catch (error) { status.textContent = error.message; }
+});
+document.querySelector('#mock-replace').addEventListener('click', async () => {
+  try {
+    const installationId = document.querySelector('#mock-replace-id').value.trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(installationId)) {
+      throw Error('Enter the new installation ID from install identify.');
+    }
+    await request('/replace', { method: 'POST', body: JSON.stringify({ installationId, requestId: crypto.randomUUID(), simulatedReplacementAcknowledged: true }) });
+    await refresh();
+    status.textContent = 'Replacement test license issued. Download and install it on the new server. Revoke the prior license on the old server if it is accessible.';
+  } catch (error) { status.textContent = error.message; }
+});
+revocation.addEventListener('click', async () => {
+  try { download((await (await request('/revocation')).json()).revocation, 'revocation.json'); }
+  catch (error) { status.textContent = error.message; }
+});
+document.querySelector('#mock-erase').addEventListener('click', async () => {
+  if (!confirm('Erase this simulated order and its contact information? Existing installed licenses remain in place.')) return;
+  try {
+    await request('/erase', { method: 'POST', body: '{}' });
+    sessionStorage.removeItem(`127v-mock-${id}`);
+    code.value = '';
+    actions.hidden = true;
+    status.textContent = 'Simulated order erased.';
+  } catch (error) { status.textContent = error.message; }
 });
 if (code.value) await refresh();
