@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 
 const operator = resolve(process.cwd(), 'server.mjs');
+export const supportedBackupSchema = value => /^[1-6]$/.test(String(value));
 export async function runServerData(argv) {
 const args = [...argv];
 const action = args.shift();
@@ -60,14 +61,14 @@ try {
     const source = options['--container'];
     const installation = await run(engine, ['exec', source, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', 'SELECT id FROM vaults.installation WHERE singleton=true']);
     const schema = await run(engine, ['exec', source, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', 'SELECT version FROM vaults.schema_version WHERE singleton=true']);
-    if (!/^[0-9a-f-]{36}$/.test(installation) || !['1', '2', '3'].includes(schema)) throw Error('Source installation or schema is not a supported database.');
+    if (!/^[0-9a-f-]{36}$/.test(installation) || !supportedBackupSchema(schema)) throw Error('Source installation or schema is not a supported database.');
     await run(engine, ['exec', source, 'pg_dump', '-U', 'vaults', '-d', 'vaults_experimental', '--format=custom', '--no-owner', '--no-acl'], { output: createWriteStream(dump, { flags: 'wx', mode: 0o600 }), timeout: 600000 });
     await run(process.execPath, [operator, 'envelope', 'seal', '--input', dump, '--output', options['--output'], '--key-file', options['--key-file'], '--database', 'vaults_experimental', '--server-id', installation, '--required-version', `schema-${schema}`]);
     await run(process.execPath, [operator, 'envelope', 'verify', '--input', options['--output'], '--key-file', options['--key-file']]);
     console.log('Encrypted backup created and authenticated. Rehearse restoration before relying on it.');
   } else {
     const metadata = JSON.parse(await run(process.execPath, [operator, 'envelope', 'open', '--input', options['--input'], '--output', dump, '--key-file', options['--key-file']]));
-    if (metadata.database !== 'vaults_experimental' || !/^schema-[123]$/.test(metadata.requiredVersion) || !/^[0-9a-f-]{36}$/.test(metadata.serverId)) throw Error('Backup identity or schema is not supported for rehearsal.');
+    if (metadata.database !== 'vaults_experimental' || !/^schema-[1-6]$/.test(metadata.requiredVersion) || !/^[0-9a-f-]{36}$/.test(metadata.serverId)) throw Error('Backup identity or schema is not supported for rehearsal.');
     const name = `127vaults-rehearse-${randomBytes(6).toString('hex')}`;
     const password = randomBytes(32).toString('hex');
     rehearsalContainer = name;
@@ -83,7 +84,7 @@ try {
     await run(engine, ['cp', dump, `${name}:/tmp/database.dump`]);
     await run(engine, ['exec', name, 'pg_restore', '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', '-U', 'postgres', '-d', 'vaults_experimental', '/tmp/database.dump'], { timeout: 600000 });
     const state = await run(engine, ['exec', name, 'psql', '-U', 'postgres', '-d', 'vaults_experimental', '-At', '-c', "SELECT i.id::text || ' ' || s.version::text || ' ' || (SELECT count(*) FROM vaults.accounts)::text || ' ' || (SELECT count(*) FROM vaults.private_items)::text FROM vaults.installation i CROSS JOIN vaults.schema_version s"]);
-    if (!/^[0-9a-f-]{36} [123] [0-9]+ [0-9]+$/.test(state) || !state.startsWith(`${metadata.serverId} ${metadata.requiredVersion.slice(-1)} `)) throw Error('Restored database invariants failed.');
+    if (!/^[0-9a-f-]{36} [1-6] [0-9]+ [0-9]+$/.test(state) || !state.startsWith(`${metadata.serverId} ${metadata.requiredVersion.slice(-1)} `)) throw Error('Restored database invariants failed.');
     console.log(`Isolated restore passed: installation, schema, accounts and encrypted item counts = ${state}`);
   }
 } finally {
