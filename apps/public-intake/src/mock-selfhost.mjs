@@ -5,7 +5,7 @@ import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:
 import { join } from 'node:path';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
 import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
-import { createDurableLimit } from './durable-limit.mjs';
+import { createDurableLimit, withFileLock } from './durable-limit.mjs';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const basePath = id => `/api/selfhost/mock/orders/${id}`;
@@ -82,7 +82,7 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
   }
   async function serialized(id, work) {
     const previous = pending.get(id) ?? Promise.resolve();
-    const next = previous.catch(() => {}).then(work);
+    const next = previous.catch(() => {}).then(() => withFileLock(join(dataDir, `${id}.lock`), work));
     pending.set(id, next);
     try { return await next; } finally { if (pending.get(id) === next) pending.delete(id); }
   }

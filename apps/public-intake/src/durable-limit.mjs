@@ -39,6 +39,22 @@ export function createDurableLimit({ directory, now = () => Date.now() }) {
   };
 }
 
+export async function withFileLock(lock, work) {
+  let acquired = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try { await mkdir(lock); acquired = true; break; }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      const age = await stat(lock).then(info => Date.now() - info.mtimeMs).catch(() => 0);
+      if (age > 60000) await rm(lock, { recursive: true, force: true });
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  }
+  if (!acquired) throw Error('record is busy');
+  try { return await work(); }
+  finally { await rm(lock, { recursive: true, force: true }); }
+}
+
 export async function pruneDurableLimits(directory, now = Date.now()) {
   let removed = 0;
   for (const name of await readdir(directory).catch(error => {

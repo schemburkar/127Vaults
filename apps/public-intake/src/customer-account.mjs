@@ -2,7 +2,7 @@
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createDurableLimit } from './durable-limit.mjs';
+import { createDurableLimit, withFileLock } from './durable-limit.mjs';
 import { seal, unseal } from './mock-selfhost.mjs';
 
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
@@ -55,7 +55,7 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
       const path = join(orderDir, name);
       const order = unseal(await readFile(path, 'utf8'), orderKey);
       if (order.email !== email) continue;
-      if (erase) await unlink(path);
+      if (erase) await withFileLock(join(orderDir, `${order.id}.lock`), () => unlink(path));
       orders.push({ orderId: order.id, plan: order.plan, state: order.state,
         installationId: order.installationId, createdAt: order.createdAt });
     }
@@ -139,15 +139,17 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
         if (Object.keys(body).join(',') !== 'orderId' || !/^[0-9a-f-]{36}$/i.test(body.orderId)) {
           return reply(res, 400, { error: 'invalid_request' });
         }
-        const orderPath = join(orderDir, `${body.orderId}.json`);
-        const order = unseal(await readFile(orderPath, 'utf8'), orderKey);
-        if (order.email !== email || order.id !== body.orderId) return reply(res, 404, { error: 'not_found' });
-        const accessToken = randomBytes(32).toString('base64url');
-        order.tokenHash = hash(accessToken);
-        const temporary = join(orderDir, `${body.orderId}.${randomUUID()}.tmp`);
-        await writeFile(temporary, seal(order, orderKey), { flag: 'wx', mode: 0o600 });
-        await rename(temporary, orderPath);
-        return reply(res, 200, { orderId: body.orderId, accessToken });
+        return withFileLock(join(orderDir, `${body.orderId}.lock`), async () => {
+          const orderPath = join(orderDir, `${body.orderId}.json`);
+          const order = unseal(await readFile(orderPath, 'utf8'), orderKey);
+          if (order.email !== email || order.id !== body.orderId) return reply(res, 404, { error: 'not_found' });
+          const accessToken = randomBytes(32).toString('base64url');
+          order.tokenHash = hash(accessToken);
+          const temporary = join(orderDir, `${body.orderId}.${randomUUID()}.tmp`);
+          await writeFile(temporary, seal(order, orderKey), { flag: 'wx', mode: 0o600 });
+          await rename(temporary, orderPath);
+          return reply(res, 200, { orderId: body.orderId, accessToken });
+        });
       }
       if (path === '/api/customer/logout' && req.method === 'POST') return serialized(email, async () => {
         const latest = await read(email);
