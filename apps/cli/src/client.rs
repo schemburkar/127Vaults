@@ -496,7 +496,7 @@ fn post(
         .header("Cookie", cookie)
         .json(body)
         .send()
-        .map_err(|_| "server request failed".to_owned())?;
+        .map_err(server_connection_error)?;
     if !response.status().is_success() {
         return Err(format!(
             "server rejected request ({})",
@@ -568,7 +568,13 @@ fn server_connection_error(error: reqwest::Error) -> String {
         }
         source = current.source();
     }
-    "server unavailable".to_owned()
+    if error.is_timeout() {
+        "server request timed out".to_owned()
+    } else if error.is_connect() {
+        "server connection failed".to_owned()
+    } else {
+        "server request failed".to_owned()
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2111,6 +2117,8 @@ impl Session {
                     item_id,
                     index: URL_SAFE_NO_PAD.encode(index),
                     body: URL_SAFE_NO_PAD.encode(body),
+                    created_at: row["createdAt"].as_u64(),
+                    updated_at: row["updatedAt"].as_u64(),
                 });
             }
             let transport = self
@@ -2279,7 +2287,7 @@ impl Session {
             .get(format!("{}{}", self.origin, path))
             .header("Cookie", &self.cookie)
             .send()
-            .map_err(|_| "server request failed".to_owned())?;
+            .map_err(server_connection_error)?;
         if !r.status().is_success() {
             return Err(format!("server rejected request ({})", r.status().as_u16()));
         }
@@ -2305,7 +2313,7 @@ impl Session {
             .header("Cookie", &self.cookie)
             .json(body)
             .send()
-            .map_err(|_| "server request failed".to_owned())?;
+            .map_err(server_connection_error)?;
         if !r.status().is_success() {
             return Err(format!("server rejected request ({})", r.status().as_u16()));
         }
@@ -2478,7 +2486,7 @@ impl Session {
                 .map_err(|_| "item index verification failed".to_owned())?;
             let index: Value =
                 serde_json::from_slice(&plain).map_err(|_| "item index is invalid".to_owned())?;
-            out.push(json!({"code":Self::reference("I",item_id),"itemId":item_id,"title":index["title"],"website":index["website"]}));
+            out.push(json!({"code":Self::reference("I",item_id),"itemId":item_id,"title":index["title"],"website":index["website"],"itemType":index["itemType"],"createdAt":row.created_at.or(index["createdAt"].as_u64()),"updatedAt":row.updated_at.or(index["updatedAt"].as_u64())}));
         }
         Ok(Value::Array(out))
     }
@@ -2664,6 +2672,7 @@ impl Session {
         {
             return Err("retired vault is read-only".to_owned());
         }
+        let mut existing_created_at = Value::Null;
         let resolved_item = if let Some(selector) = item_selector {
             let vault_id = self.resolve_vault_id(vault_selector)?;
             if self.replica_store.load(&vault_id)?.is_some_and(|replica| {
@@ -2700,6 +2709,7 @@ impl Session {
                 }
                 .to_owned());
             }
+            existing_created_at = matches[0]["createdAt"].clone();
             Some(
                 matches[0]["itemId"]
                     .as_str()
@@ -2719,7 +2729,24 @@ impl Session {
         )
         .to_string();
         let item = resolved_item.as_deref().map(uuid_bytes).transpose()?;
-        let index = serde_json::to_vec(&json!({"title":title,"website":website}))
+        let now = u64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| "system time is invalid")?
+                .as_millis(),
+        )
+        .map_err(|_| "system time is invalid")?;
+        let item_type = custom_fields
+            .iter()
+            .find(|field| field["id"] == "__127vaults_item_type")
+            .and_then(|field| field["value"].as_str())
+            .unwrap_or("login");
+        let created_at = if resolved_item.is_some() {
+            existing_created_at
+        } else {
+            json!(now)
+        };
+        let index = serde_json::to_vec(&json!({"title":title,"website":website,"itemType":item_type,"createdAt":created_at,"updatedAt":now}))
             .map_err(|_| "invalid item")?;
         let body = serde_json::to_vec(
             &json!({"username":username,"password":password,"customFields":custom_fields}),
@@ -2800,6 +2827,8 @@ impl Session {
                 item_id: new_id.clone(),
                 index: URL_SAFE_NO_PAD.encode(&made.index),
                 body: URL_SAFE_NO_PAD.encode(&made.body),
+                created_at: created_at.as_u64(),
+                updated_at: Some(now),
             };
             if let Some(existing) = replica.items.iter_mut().find(|row| row.item_id == new_id) {
                 *existing = next;

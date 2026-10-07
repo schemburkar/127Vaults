@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { connect } from 'node:net';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root=dirname(dirname(fileURLToPath(import.meta.url))),action=process.argv[2];
@@ -35,7 +36,7 @@ async function waitForServerReady(){
  }
  throw Error('The acceptance server did not become healthy. Inspect its logs; if the schema is behind, run pnpm mvp:migrate, then pnpm mvp:dev. Do not reset the database.');
 }
-async function ensureRuntimeSecrets(){const runtime=join(values.VAULTS_TLS_DIR,'runtime');await mkdir(runtime,{recursive:true});for(const name of ['token.key','checkpoint.key']){const path=join(runtime,name);if(!await exists(path))await writeFile(path,randomBytes(32),{flag:'wx',mode:0o600});if((await readFile(path)).length!==32)throw Error(`${name} must contain exactly 32 bytes.`);if(process.platform!=='win32')await chmod(path,0o600)}for(const [name,key] of [['postgres-password','POSTGRES_PASSWORD'],['readiness-token','VAULTS_READINESS_TOKEN']]){if(!/^[a-f0-9]{64}$/.test(values[key]??''))throw Error(`Missing ${key} in .env`);await writeFile(join(runtime,name),values[key],{mode:0o600});if(process.platform!=='win32')await chmod(join(runtime,name),0o600)}const smtp=join(runtime,'smtp-password');if(!await exists(smtp))await writeFile(smtp,'fixture-password',{flag:'wx',mode:0o600});if(process.platform!=='win32')await chmod(smtp,0o600)}
+async function ensureRuntimeSecrets(){const directory=resolve(values.VAULTS_TLS_DIR),fromTemp=relative(resolve(tmpdir()),directory);if(!fromTemp||(fromTemp!=='..'&&!fromTemp.startsWith(`..${process.platform==='win32'?'\\':'/'}`)&&!isAbsolute(fromTemp)))throw Error('VAULTS_TLS_DIR must be outside the OS temporary directory. Move the complete existing server identity to a persistent private directory and update .env.');const runtime=join(directory,'runtime');await mkdir(runtime,{recursive:true});for(const name of ['token.key','checkpoint.key']){const path=join(runtime,name);if(!await exists(path)){if(name==='checkpoint.key'&&await exists(join(runtime,'token.key')))throw Error('Existing server identity is missing runtime/checkpoint.key. Restore the matching identity backup instead of rotating it.');await writeFile(path,randomBytes(32),{flag:'wx',mode:0o600})}if((await readFile(path)).length!==32)throw Error(`${name} must contain exactly 32 bytes.`);if(process.platform!=='win32')await chmod(path,0o600)}for(const [name,key] of [['postgres-password','POSTGRES_PASSWORD'],['readiness-token','VAULTS_READINESS_TOKEN']]){if(!/^[a-f0-9]{64}$/.test(values[key]??''))throw Error(`Missing ${key} in .env`);await writeFile(join(runtime,name),values[key],{mode:0o600});if(process.platform!=='win32')await chmod(join(runtime,name),0o600)}const smtp=join(runtime,'smtp-password');if(!await exists(smtp))await writeFile(smtp,'fixture-password',{flag:'wx',mode:0o600});if(process.platform!=='win32')await chmod(smtp,0o600)}
 const readBootstrap=()=>composeRun(['exec','-T','server','sh','-c','if test -s /run/runtime/bootstrap.txt; then cat /run/runtime/bootstrap.txt; fi'],{capture:true});
 const ensureBootstrap=()=>{
  let token=readBootstrap();

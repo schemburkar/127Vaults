@@ -51,6 +51,14 @@ option. The separate Rust/WASM demonstration is documented in the
 
 ### Run the server and both clients during development (Windows)
 
+Run `./dev.ps1` from PowerShell to start the server and desktop in separate
+PowerShell windows and print the extension loading instructions. Pass service
+names to select only those parts, for example `./dev.ps1 server desktop` or
+`./dev.ps1 desktop`. The windows run the same commands shown below and display
+their output directly. The extension has no development process: load
+`apps/extension` unpacked in Chrome or Edge, then click Reload on its extension
+card after changing its files. `./dev.ps1 extension` prints these instructions.
+
 Install the workspace dependencies with `pnpm install` and complete the `.env`
 and local TLS setup in the [development runbook](docs/release/experimental-development.md)
 first. In a normal PowerShell window at the repository root, start the

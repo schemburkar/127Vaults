@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { get as httpsGet } from 'node:https';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -80,6 +81,10 @@ async function loadCredentials(create) {
   }
   if (!/^[a-f0-9]{64}$/.test(found.POSTGRES_PASSWORD) || !/^[a-f0-9]{64}$/.test(found.VAULTS_READINESS_TOKEN)) throw new Error('Incomplete .env. Set both 64-character lowercase hex credentials.');
   found.VAULTS_TLS_DIR ||= join(root, '..', '127Vaults-local-mvp');
+  const tlsDir = resolve(found.VAULTS_TLS_DIR);
+  const fromTemp = relative(resolve(tmpdir()), tlsDir);
+  if (!fromTemp || (fromTemp !== '..' && !fromTemp.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(fromTemp)))
+    throw new Error('VAULTS_TLS_DIR must be outside the OS temporary directory. Move the complete existing server identity to a persistent private directory and update .env before starting the server.');
   if (process.platform === 'win32') found.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS = '1';
   credentials = found;
 }
@@ -93,7 +98,10 @@ async function ensureRuntimeSecrets() {
   await mkdir(runtime, { recursive: true, mode: 0o700 });
   await mkdir(output, { recursive: true, mode: 0o700 });
   if (!await exists(key)) await writeFile(key, randomBytes(32), { flag: 'wx', mode: 0o600 });
-  if (!await exists(checkpointKey)) await writeFile(checkpointKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
+  if (!await exists(checkpointKey)) {
+    if (await exists(key)) throw new Error('Existing server identity is missing runtime/checkpoint.key. Restore that key from the matching identity backup; a new key would break replica verification.');
+    await writeFile(checkpointKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
+  }
   await writeFile(databasePassword, credentials.POSTGRES_PASSWORD, { mode: 0o600 });
   await writeFile(readinessToken, credentials.VAULTS_READINESS_TOKEN, { mode: 0o600 });
   if ((await readFile(key)).length !== 32) throw new Error('Runtime authentication token key must contain exactly 32 bytes.');

@@ -9,6 +9,7 @@ import {
   KeyRound,
   Landmark,
   LayoutList,
+  LayoutGrid,
   LockKeyhole,
   Menu,
   Plus,
@@ -25,6 +26,7 @@ import {
 import { Button, Input } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
+import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
 
 const eyebrow = "mb-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500";
 const muted = "text-slate-400";
@@ -55,7 +57,7 @@ const Field = ({ label, children }: { label: string; children: ReactNode }) => (
 
 type ItemSummary = {
   row: { itemId: string };
-  index: { title?: string; website?: string };
+  index: { title?: string; website?: string; itemType?: string; createdAt?: number; updatedAt?: number };
 };
 type SearchAction = { id: string; label: string; description: string };
 type DeviceSummary = {
@@ -297,13 +299,22 @@ function CustomFieldsView() {
   );
 }
 
-function ItemList() {
+function ItemList({ layout }: { layout: "list" | "grid" }) {
+  const [browseMode, setBrowseMode] = useState<BrowseMode>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | ItemType>("all");
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1440px)").matches);
   const [view, setView] = useState<{
     items: ItemSummary[];
     actions: SearchAction[];
     selectedId: string | null;
     empty: string;
   }>({ items: [], actions: [], selectedId: null, empty: "This vault has no items yet." });
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1440px)");
+    const updateWidth = () => setWide(media.matches);
+    media.addEventListener("change", updateWidth);
+    return () => media.removeEventListener("change", updateWidth);
+  }, []);
   useEffect(() => {
     const update = (event: Event) => {
       const detail = (event as CustomEvent<Partial<typeof view>>).detail ?? {};
@@ -323,6 +334,9 @@ function ItemList() {
         {view.empty}
       </p>
     );
+  const visibleItems = layout === "grid" && wide && typeFilter !== "all"
+    ? view.items.filter((item) => item.index.itemType === typeFilter)
+    : view.items;
   return (
     <>
       {(view.actions ?? []).map((action) => (
@@ -331,11 +345,18 @@ function ItemList() {
           <span className="min-w-0"><b className="block text-sm">{action.label}</b><small className="block truncate text-[11px] text-slate-500">{action.description}</small></span>
         </button>
       ))}
-      {view.items.map((item) => (
+      {layout === "grid" && <div className="vault-browse-controls" role="group" aria-label="Filter and group items">{([ ["all", "All"], ["updated", "Updated"], ["created", "Created"], ["type", "Item type"] ] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={browseMode === mode} className={browseMode === mode ? "active" : ""} onClick={() => setBrowseMode(mode)}>{label}</button>)}<label className="vault-type-filter">Type <select aria-label="Filter by item type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "all" | ItemType)}><option value="all">All types</option>{(Object.keys(ITEM_TYPES) as ItemType[]).map((type) => <option key={type} value={type}>{ITEM_TYPES[type].label}</option>)}</select></label></div>}
+      <div className={layout === "grid" ? "vault-row-grid" : "grid gap-1.5"}>
+      {layout === "grid" && <div className="vault-grid-head" aria-hidden="true"><span>Item</span><span>Website</span><span>Type</span><span>Last modified</span><span>Item ID</span></div>}
+      {!visibleItems.length && <p className="px-4 py-8 text-sm text-slate-500">No matching items. Older items may not have a type until they are edited.</p>}
+      {browseGroups(visibleItems, layout === "grid" && wide ? browseMode : "all", (item) => item.index).map((group) => <div className="vault-item-group" key={group.key}>
+      {layout === "grid" && browseMode !== "all" && <div className="vault-group-heading"><span>{group.label}</span><span>{group.items.length}</span></div>}
+      {group.items.map((item) => (
         <button
           key={item.row.itemId}
           data-item-id={item.row.itemId}
-          className={`grid min-h-16 w-full cursor-pointer grid-cols-[2.75rem_1fr_auto] items-center gap-3 rounded-xl border p-2.5 text-left text-slate-100 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#E0BB95]/10 ${view.selectedId === item.row.itemId ? "border-[#E0BB95]/35 bg-[#E0BB95]/12" : "border-transparent bg-transparent hover:bg-[#E0BB95]/10"}`}
+          className={`vault-item-row grid min-h-16 w-full cursor-pointer grid-cols-[2.75rem_1fr_auto] items-center gap-3 rounded-xl border p-2.5 text-left text-slate-100 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#E0BB95]/10 ${view.selectedId === item.row.itemId ? "border-[#E0BB95]/35 bg-[#E0BB95]/12" : "border-transparent bg-transparent hover:bg-[#E0BB95]/10"}`}
+          aria-current={view.selectedId === item.row.itemId ? "true" : undefined}
           onClick={(event) =>
             (window as any).__vaultsActions.openItem(item, event.currentTarget)
           }
@@ -351,9 +372,15 @@ function ItemList() {
               {item.index.website || "No website"}
             </small>
           </span>
-          <span className="text-slate-600">›</span>
+          <span className="vault-grid-website min-w-0 truncate text-sm text-slate-400">{item.index.website || "—"}</span>
+          <span className="vault-grid-type min-w-0 truncate text-xs text-slate-400">{ITEM_TYPES[item.index.itemType as ItemType]?.label || "Type unavailable"}</span>
+          <span className="vault-grid-modified min-w-0 truncate text-xs text-slate-400">{browseColumnValue("updated", item.index)}</span>
+          <span className="vault-grid-id min-w-0 truncate font-mono text-xs text-slate-500" title={item.row.itemId}>{item.row.itemId}</span>
+          <span className="vault-list-arrow text-slate-600">›</span>
         </button>
       ))}
+      </div>)}
+      </div>
     </>
   );
 }
@@ -632,7 +659,7 @@ function Sidebar() {
 function ItemDetail() {
   return (
     <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:left-0 max-[560px]:max-h-[84dvh] max-[560px]:px-4 max-[560px]:py-5`}>
-      <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex">← Items</Button>
+      <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex" aria-label="Close item details"><X size={17} aria-hidden="true" /> Close</Button>
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">
           <KeyRound aria-hidden="true" />
@@ -762,8 +789,16 @@ function ItemDetail() {
 }
 
 function Vault() {
+  const [layout, setLayout] = useState<"list" | "grid">(() => {
+    try { return localStorage.getItem("127vaults:item-layout") === "grid" ? "grid" : "list"; }
+    catch { return "list"; }
+  });
+  const changeLayout = (next: "list" | "grid") => {
+    setLayout(next);
+    try { localStorage.setItem("127vaults:item-layout", next); } catch { /* Storage may be disabled. */ }
+  };
   return (
-    <div id="vault" className="grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:grid-cols-1 max-[560px]:grid-rows-[3.75rem_minmax(0,1fr)]" hidden>
+    <div id="vault" className={`grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:grid-cols-1 max-[560px]:grid-rows-[3.75rem_minmax(0,1fr)] ${layout === "grid" ? "vault-grid" : ""}`} hidden>
       <Sidebar />
       <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[560px]:col-start-1 max-[560px]:row-start-2 max-[560px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
         <header className="flex items-center justify-between gap-5 border-b border-white/5 px-5 backdrop-blur max-[560px]:px-3">
@@ -783,7 +818,7 @@ function Vault() {
             </Button>
           </div>
         </header>
-        <div className="grid min-h-0 grid-cols-[minmax(19rem,36%)_1fr] gap-3 p-3 max-[800px]:grid-cols-1 max-[560px]:h-full max-[560px]:p-2">
+        <div className="vault-content grid min-h-0 grid-cols-[minmax(19rem,36%)_1fr] gap-3 p-3 max-[800px]:grid-cols-1 max-[560px]:h-full max-[560px]:p-2">
           <section className={`${panel} p-5 max-[560px]:p-4`}>
             <div className="flex items-start justify-between gap-3 max-[560px]:flex-wrap [&_h1]:mb-1 [&_h1]:text-2xl [&_h1]:font-bold [&_span]:text-xs [&_span]:text-slate-500">
               <div>
@@ -791,12 +826,16 @@ function Vault() {
                 <h1 id="vault-title">Private</h1>
                 <span id="vault-state">No vault</span>
               </div>
-              <Button id="create-vault" variant="secondary">
-                Create vault
-              </Button>
+              <div className="flex items-center gap-2">
+                <div className="vault-layout-toggle rounded-xl border border-white/10 bg-white/4 p-1" role="group" aria-label="Item layout">
+                  <button type="button" className={`rounded-lg p-2 ${layout === "list" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white"}`} aria-label="List view" aria-pressed={layout === "list"} onClick={() => changeLayout("list")}><LayoutList size={17} /></button>
+                  <button type="button" className={`rounded-lg p-2 ${layout === "grid" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white"}`} aria-label="Grid view" aria-pressed={layout === "grid"} onClick={() => changeLayout("grid")}><LayoutGrid size={17} /></button>
+                </div>
+                <Button id="create-vault" variant="secondary">Create vault</Button>
+              </div>
             </div>
             <div id="items" className="mt-5 grid gap-1.5" role="list">
-              <ItemList />
+              <ItemList layout={layout} />
             </div>
           </section>
           <ItemDetail />

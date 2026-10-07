@@ -685,7 +685,11 @@ async function reload() {
         ),
       ),
     );
-    items.push({ row, index });
+    items.push({ row, index: {
+      ...index,
+      createdAt: row.createdAt ?? index.createdAt ?? null,
+      updatedAt: row.updatedAt ?? index.updatedAt ?? null,
+    } });
   }
   items.sort(
     (a, b) =>
@@ -1195,14 +1199,20 @@ async function save(event) {
   let draft, accepted = false;
   try {
     let itemId = $("item-id").value || null,
+      previousIndex = itemId ? loadedItems.find((item) => item.row.itemId === itemId)?.index : null,
+      now = Date.now(),
+      fields = collectCustomFields(),
       index = {
         title: $("title").value.trim(),
         website: normalizeWebsite($("url").value),
+        itemType: itemKind(fields),
+        createdAt: previousIndex?.createdAt ?? (itemId ? null : now),
+        updatedAt: now,
       },
       body = {
         username: $("item-username").value,
         password: $("item-password").value,
-        customFields: collectCustomFields(),
+        customFields: fields,
       };
     draft = { itemId, index, body };
     let

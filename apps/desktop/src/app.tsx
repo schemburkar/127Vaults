@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, Input, cn } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
+import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
 import { choicesForConflict } from "./conflict-choice.mjs";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
 import {
@@ -19,6 +20,7 @@ import {
   KeyRound,
   Landmark,
   LayoutList,
+  LayoutGrid,
   LoaderCircle,
   LockKeyhole,
   Menu,
@@ -34,7 +36,7 @@ import {
   X,
 } from "lucide-react";
 
-type Summary = { itemId: string; title: string; website: string; vaultId?: string };
+type Summary = { itemId: string; title: string; website: string; vaultId?: string; itemType?: string; createdAt?: number; updatedAt?: number };
 type CustomField = { id: string; label: string; type: string; value: string };
 type Item = Summary & {
   username: string;
@@ -128,6 +130,23 @@ export function App() {
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("Locked");
   const [viewMode, setViewMode] = useState<"single" | "all" | "collection">("single");
+  const [itemLayout, setItemLayout] = useState<"list" | "grid">(() => {
+    try { return localStorage.getItem("127vaults:desktop-item-layout") === "grid" ? "grid" : "list"; }
+    catch { return "list"; }
+  });
+  const [browseMode, setBrowseMode] = useState<BrowseMode>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | ItemType>("all");
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1440px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1440px)");
+    const updateWidth = () => setWide(media.matches);
+    media.addEventListener("change", updateWidth);
+    return () => media.removeEventListener("change", updateWidth);
+  }, []);
+  const changeItemLayout = (next: "list" | "grid") => {
+    setItemLayout(next);
+    try { localStorage.setItem("127vaults:desktop-item-layout", next); } catch { /* Storage may be disabled. */ }
+  };
   const [itemVaultId, setItemVaultId] = useState("");
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -191,7 +210,9 @@ export function App() {
   const friendlyError = (error: unknown) => {
     const message = String(error).replace(/^Error:\s*/, "");
     if (message.includes("sync unavailable while offline"))
-      return "This vault was unlocked offline. Lock and unlock again while the server is available to resume sync.";
+      return offlineReason?.includes("checkpoint verification key changed")
+        ? "Sync is paused because this server has a different checkpoint verification key. Your encrypted replica and pending changes are preserved. Restore the original server identity before reconnecting."
+        : `Sync is paused because online unlock did not complete. Reconnect from Profile with your master password.${offlineReason ? ` Online unlock failed: ${offlineReason}` : ""}`;
     if (
       message.includes("SERVER_TIMEOUT") ||
       message.toLowerCase().includes("timed out")
@@ -368,13 +389,17 @@ export function App() {
       setStatus(
         result.online
           ? "Unlocked · verified online replica"
-          : "Unlocked offline · changes will sync when the server is available",
+          : result.offlineReason?.includes("checkpoint verification key changed")
+            ? "Unlocked offline · server checkpoint key changed; sync paused"
+            : `Unlocked offline · online unlock failed: ${result.offlineReason || "reason unavailable"}`,
       );
       setLastSynced(result.online ? new Date() : null);
       notify(
         result.online ? "success" : "info",
         wasUnlocked ? (result.online ? "Connection restored" : "Still offline") : "Vault unlocked",
-        result.online ? "The server replica is up to date." : "Working from the encrypted offline replica.",
+        result.online ? "The server replica is up to date." : result.offlineReason?.includes("checkpoint verification key changed")
+          ? "The server is reachable but its checkpoint key differs from this replica. Local data and pending changes were preserved. Restore the original server identity before reconnecting."
+          : `Working from the encrypted offline replica. Online unlock failed: ${result.offlineReason || "reason unavailable"}`,
       );
       if (result.items[0]) await openItem(result.items[0], result.vaultId);
       return result.online;
@@ -666,6 +691,12 @@ export function App() {
     }
   };
   const synchronize = async () => {
+    if (!online) {
+      setSettingsTab("profile");
+      setSettingsOpen(true);
+      setStatus(`Reconnect with your master password to resume sync.${offlineReason ? ` Online unlock failed: ${offlineReason}` : ""}`);
+      return;
+    }
     try {
       const result = await invoke<{ accepted: number; items: Summary[]; vaults: VaultSummary[]; selectedVaultId: string | null; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
         "sync",
@@ -707,7 +738,6 @@ export function App() {
       notify(result.conflicts.length ? "info" : "success", result.conflicts.length ? "Sync needs review" : "Sync complete", result.conflicts.length ? "Review the queued edit before saving." : `${result.accepted} pending change${result.accepted === 1 ? "" : "s"} accepted.`);
       return result;
     } catch (e) {
-      setOnline(false);
       const detail = friendlyError(e);
       setStatus(detail);
       notify("error", "Sync failed", detail);
@@ -875,6 +905,9 @@ export function App() {
         ),
     [items, query],
   );
+  const visibleItems = itemLayout === "grid" && wide && typeFilter !== "all"
+    ? filtered.filter((item) => item.itemType === typeFilter)
+    : filtered;
   const omniActions = useMemo(() => {
     if (!query.trim()) return [];
     const actions = [
@@ -1168,7 +1201,7 @@ export function App() {
       </main>
     );
   return (
-    <div className="desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]">
+    <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
           <span className="grid size-9 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
@@ -1217,7 +1250,7 @@ export function App() {
             className="justify-start"
             onClick={synchronize}
           >
-            Sync now
+            {online ? "Sync now" : "Reconnect"}
           </Button>
           <Button
             variant="ghost"
@@ -1263,8 +1296,13 @@ export function App() {
             </div>
           )}
         </header>
-        <div className="flex items-center justify-between px-5 pb-3 pt-5">
+        <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
           <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : viewMode === "collection" ? collections.find((row) => row.id === selectedCollectionId)?.name ?? "Collection" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
+          <div className="ml-auto flex items-center gap-2">
+          <div className="desktop-layout-toggle rounded-xl border border-white/10 bg-white/4 p-1" role="group" aria-label="Item layout">
+            <button type="button" className={cn("rounded-lg p-2", itemLayout === "list" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white")} aria-label="List view" aria-pressed={itemLayout === "list"} onClick={() => changeItemLayout("list")}><LayoutList size={17} /></button>
+            <button type="button" className={cn("rounded-lg p-2", itemLayout === "grid" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white")} aria-label="Grid view" aria-pressed={itemLayout === "grid"} onClick={() => changeItemLayout("grid")}><LayoutGrid size={17} /></button>
+          </div>
           <Button
             size="icon"
             title={activeVaults.length ? "New item" : "Create or restore a vault before adding items"}
@@ -1285,31 +1323,44 @@ export function App() {
           >
             <Plus size={18} />
           </Button>
+          </div>
         </div>
         {!activeVaults.length && <p className="px-5 pb-4 text-sm text-slate-400">No active vaults. Create one or restore an archived vault in Settings.</p>}
-        <div className="overflow-auto px-3">
-          {filtered.map((item) => (
+        <div className="desktop-browse-controls" role="group" aria-label="Filter and group items">{([ ["all", "All"], ["updated", "Updated"], ["created", "Created"], ["type", "Item type"] ] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={browseMode === mode} className={browseMode === mode ? "active" : ""} onClick={() => setBrowseMode(mode)}>{label}</button>)}<label className="desktop-type-filter">Type <select aria-label="Filter by item type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "all" | ItemType)}><option value="all">All types</option>{(Object.keys(ITEM_TYPES) as ItemType[]).map((type) => <option key={type} value={type}>{ITEM_TYPES[type].label}</option>)}</select></label></div>
+        <div className="desktop-items overflow-auto px-3">
+          <div className="desktop-grid-head" aria-hidden="true"><span>Item</span><span>Website</span><span>Type</span><span>Last modified</span><span>Item ID</span>{viewMode !== "single" && <span>Vault</span>}</div>
+          {!visibleItems.length && <p className="px-4 py-8 text-sm text-slate-500">No matching items. Older items may not have a type until they are edited.</p>}
+          {browseGroups(visibleItems, itemLayout === "grid" && wide ? browseMode : "all", (item) => item).map((group) => <div className="desktop-item-group" key={group.key}>
+          {itemLayout === "grid" && browseMode !== "all" && <div className="desktop-group-heading"><span>{group.label}</span><span>{group.items.length}</span></div>}
+          {group.items.map((item) => (
             <button
               key={item.itemId}
               onClick={() => void openItem(item)}
               className={cn(
-                "mb-1 grid w-full grid-cols-[2.5rem_1fr] gap-3 rounded-xl p-3 text-left hover:bg-white/7",
+                "desktop-item-row mb-1 grid w-full grid-cols-[2.5rem_1fr] gap-3 rounded-xl p-3 text-left hover:bg-white/7",
                 selected?.itemId === item.itemId && "bg-white/10",
               )}
+              aria-current={selected?.itemId === item.itemId ? "true" : undefined}
             >
               <span className="grid size-10 place-items-center rounded-xl bg-[#E0BB95]/12 text-[#E0BB95]">
                 <KeyRound size={18} />
               </span>
-              <span>
+              <span className="min-w-0">
                 <strong className="block truncate text-sm">{item.title}</strong>
                 <small className="text-slate-500">{item.website}{viewMode !== "single" && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.code ?? item.vaultId}` : ""}</small>
               </span>
+              <span className="desktop-grid-website min-w-0 truncate text-sm text-slate-400">{item.website || "—"}</span>
+              <span className="desktop-grid-type min-w-0 truncate text-xs text-slate-400">{ITEM_TYPES[item.itemType as ItemType]?.label || "Type unavailable"}</span>
+              <span className="desktop-grid-modified min-w-0 truncate text-xs text-slate-400">{browseColumnValue("updated", item)}</span>
+              <span className="desktop-grid-id min-w-0 truncate font-mono text-xs text-slate-500" title={item.itemId}>{item.itemId}</span>
+              {viewMode !== "single" && <span className="desktop-grid-vault min-w-0 truncate text-xs text-slate-400">{vaults.find((vault) => vault.vaultId === item.vaultId)?.name || "—"}</span>}
             </button>
           ))}
+          </div>)}
         </div>
       </section>
       <main className={cn("desktop-detail overflow-auto p-7", selected && "detail-selected")}>
-        {selected && <div className="desktop-back-row"><Button variant="ghost" onClick={() => { setSelected(null); setEditing(false); }}>← Items</Button></div>}
+        {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { setSelected(null); setEditing(false); }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {selected ? (
           <div className="mx-auto max-w-3xl">
             {editing ? (
@@ -1529,11 +1580,17 @@ export function App() {
               </>
             ) : (
               <>
-                <div className="mb-7 flex items-start justify-between">
-                  <div>
+                <div className="mb-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" onClick={beginEditing}>Edit</Button>
+                      <Button variant="ghost" aria-label="Close item details" onClick={() => { setSelected(null); setEditing(false); }}><X size={17} aria-hidden="true" /> Close</Button>
+                    </div>
+                  </div>
+                  <div>
                     <h2 className="mt-1 text-3xl font-bold">
                       {selected.title || "Untitled"}
                     </h2>
@@ -1546,9 +1603,6 @@ export function App() {
                       </button>
                     )}
                   </div>
-                  <Button variant="secondary" onClick={beginEditing}>
-                    Edit
-                  </Button>
                 </div>
                 <section>
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
@@ -1704,7 +1758,7 @@ export function App() {
                 void synchronize();
               }}
             >
-              Sync now
+              {online ? "Sync now" : "Reconnect"}
             </button>
             <button
               className="w-full rounded-lg px-3 py-2 text-left hover:bg-white/8"
@@ -1760,7 +1814,7 @@ export function App() {
           <Button variant="ghost" className="desktop-settings-close absolute right-3 top-3 z-10 !size-9 !min-h-9 !justify-center !p-0" aria-label="Close settings" title="Close settings" onClick={() => setSettingsOpen(false)}><X size={18} /></Button>
           <aside className="desktop-settings-nav flex flex-col border-r border-white/10 p-4"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500">SETTINGS</p><h2 id="desktop-settings-title" className="mb-5 mt-2 text-xl font-bold">Settings</h2>{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} role="tab" aria-selected={settingsTab === tab} variant="ghost" className={cn("justify-start", settingsTab === tab && "bg-[#E0BB95]/12 text-[#E0BB95]")} onClick={() => { setSettingsTab(tab); if (tab === "devices") void loadDevices(); }}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</aside>
           <div className="desktop-settings-body overflow-auto p-8 pr-12 text-sm">
-            {settingsTab === "profile" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Profile</h3><p className="mt-1 text-slate-400">Your account on this device.</p></div><p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p>{!online && offlineReason && <p className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-200">Online unlock failed: {offlineReason}. Check the configured server and trusted certificate.</p>}<p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p>{online ? <Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button> : <div className="grid gap-2 rounded-xl border border-white/10 p-4"><strong>Reconnect to create vaults and manage devices</strong><p className="text-xs text-slate-400">Enter your master password to verify a live session.</p>{(!rememberedSecret || showSecretEntry) && <Input aria-label="Account secret for reconnect" type="password" autoComplete="off" placeholder="Account secret" value={accountSecret} onChange={(event) => setAccountSecret(event.target.value)} />}{errors.accountSecret && <p className="text-xs text-red-300">{errors.accountSecret}</p>}<Input aria-label="Master password for reconnect" type="password" autoComplete="current-password" placeholder="Master password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />{errors.masterPassword && <p className="text-xs text-red-300">{errors.masterPassword}</p>}<Button className="w-fit" disabled={busy} onClick={() => void unlock().then((connected) => { if (connected) setSettingsOpen(false); })}>Reconnect</Button></div>}</div>}
+            {settingsTab === "profile" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Profile</h3><p className="mt-1 text-slate-400">Your account on this device.</p></div><p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p>{!online && offlineReason && <p className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-200">{offlineReason.includes("checkpoint verification key changed") ? "The server checkpoint key differs from this encrypted replica. Your local data and pending changes are preserved. Restore the original server identity before reconnecting." : `Online unlock failed: ${offlineReason}. Check the configured server and trusted certificate.`}</p>}<p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p>{online ? <Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button> : <div className="grid gap-2 rounded-xl border border-white/10 p-4"><strong>Reconnect to create vaults and manage devices</strong><p className="text-xs text-slate-400">Enter your master password to verify a live session.</p>{(!rememberedSecret || showSecretEntry) && <Input aria-label="Account secret for reconnect" type="password" autoComplete="off" placeholder="Account secret" value={accountSecret} onChange={(event) => setAccountSecret(event.target.value)} />}{errors.accountSecret && <p className="text-xs text-red-300">{errors.accountSecret}</p>}<Input aria-label="Master password for reconnect" type="password" autoComplete="current-password" placeholder="Master password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />{errors.masterPassword && <p className="text-xs text-red-300">{errors.masterPassword}</p>}<Button className="w-fit" disabled={busy} onClick={() => void unlock().then((connected) => { if (connected) setSettingsOpen(false); })}>Reconnect</Button></div>}</div>}
             {settingsTab === "devices" && <div><h3 className="text-2xl font-bold">Devices</h3><p className="mt-1 text-slate-400">Devices registered to this account.</p>{deviceError && <p className="mt-5 text-amber-300">{deviceError}</p>}<div className="mt-5 grid gap-2">{devices.map((device) => <div key={device.deviceId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/3 p-3"><div><strong>{device.deviceId === currentDeviceId ? "This desktop" : `Device ${device.deviceId.slice(0, 8)}`}</strong><p className="mt-1 text-xs text-slate-400">{device.protectionClass ?? "Unknown"} protection · credential {device.credentialState ?? "unknown"} · {device.status ?? "unknown"}</p></div>{device.deviceId !== currentDeviceId && device.status === "active" && <Button variant="ghost" className="text-red-300" onClick={() => void revokeDevice(device.deviceId)}>Revoke</Button>}</div>)}</div><Button variant="secondary" className="mt-5" onClick={() => void loadDevices()}>Refresh devices</Button></div>}
             {settingsTab === "vaults" && <div className="grid gap-5">
               <div><h3 className="text-2xl font-bold">Vaults</h3><p className="mt-1 text-slate-400">Manage your encrypted vaults.</p></div>

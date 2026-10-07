@@ -116,7 +116,8 @@ test("custom fields stay in encrypted item bodies and domains normalize to HTTPS
   ]);
   assert.match(html, /id="add-custom-field"/);
   assert.match(html, /id="view-custom-fields"/);
-  assert.match(source, /customFields: collectCustomFields\(\)/);
+  assert.match(source, /fields = collectCustomFields\(\)/);
+  assert.match(source, /customFields: fields/);
   assert.match(
     app,
     /"text",\s+"password",\s+"url",\s+"date",\s+"email",\s+"number",\s+"note"/,
@@ -161,7 +162,7 @@ test("item and device rows are rendered by React rather than imperative DOM crea
     readFile(new URL("../src/app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../mvp-client.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(app, /function ItemList\(\)/);
+  assert.match(app, /function ItemList\(/);
   assert.match(app, /function DeviceList\(\)/);
   assert.match(source, /CustomEvent\("vaults:items"/);
   assert.match(source, /CustomEvent\("vaults:devices"/);

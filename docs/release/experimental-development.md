@@ -15,6 +15,14 @@ Prerequisites: Node 24, pnpm 11.19.0, Podman, and a Compose provider. Copy
 `.env.example` to `.env`, fill its credentials and absolute TLS directory, then
 provision the exact endpoint before startup:
 
+Keep `VAULTS_TLS_DIR` in a persistent, private location outside the OS Temp
+directory. It contains the checkpoint signing key pinned by desktop replicas.
+If moving an existing installation, copy the complete directory, verify the
+copy, update `.env`, and restart the stack with the same database volume. Keep
+the original directory until the replacement is verified. The startup helpers
+refuse Temp paths and will not silently regenerate a missing checkpoint key
+beside an existing token key.
+
 ```powershell
 pnpm tls:init -- 127.0.0.1 C:\private\127vaults-tls
 ```

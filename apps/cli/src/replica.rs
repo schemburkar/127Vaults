@@ -18,6 +18,10 @@ pub struct ReplicaItem {
     pub item_id: String,
     pub index: String,
     pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -395,6 +399,8 @@ mod tests {
                 item_id: item.clone(),
                 index: "encrypted-index".to_owned(),
                 body: "encrypted-body".to_owned(),
+                created_at: None,
+                updated_at: None,
             }),
         });
         replica.mark_stale(&operation, &item);
