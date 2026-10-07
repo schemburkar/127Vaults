@@ -2,6 +2,8 @@
 
 Status: implementation audit, 2026-10-07. This describes the intended Personal and Commercial path. A supervised simulation now covers email verification, mock checkout, test bundle download, installation-bound test license delivery, and owner bootstrap. The public release, real billing, and production license path are not open yet. Cloud has a separate lifecycle.
 
+The fresh-host operator and owner rehearsal is recorded in [self-hosted signup smoke](../release/self-hosted-signup-smoke-2026-10-07.md).
+
 | Stage | Customer action and expected result | Current implementation | Gap before public launch |
 | --- | --- | --- | --- |
 | Discover | Compare Personal and Commercial terms, deployment duties, and supported platforms. | Pricing, deployment, FAQ, and availability pages exist. | Legal review of terms and release-specific BSL parameters. |
