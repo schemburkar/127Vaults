@@ -30,6 +30,7 @@ import { createAdminHandler } from './admin/handler.mjs';
 import { loadOperators } from './admin/credentials.mjs';
 import { createLicenseHandler } from './license-handler.mjs';
 import { loadLicenseStatus } from './license-status.mjs';
+import { createLicenseWriteGuard } from './license-write-guard.mjs';
 import { createSetupHandler } from './setup-handler.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
@@ -102,6 +103,8 @@ const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_A
 const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE});
 const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
   publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,smtpConfigured:Boolean(env.SMTP_HOST)});
+const licenseWriteGuard=createLicenseWriteGuard({pool,authenticate,origin:transport.origin,
+  licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE});
 const webFiles=new Map([
   ['/', ['../../web/dist/index.html','text/html; charset=utf-8']],
   ['/app/react-client.js',['../../web/dist/app/react-client.js','text/javascript; charset=utf-8']],
@@ -139,6 +142,7 @@ const server = createServer(tls, async (req, res) => {
     });res.end(req.method==='HEAD'?undefined:bytes)}catch{reply(503,{error:'web_assets_unavailable'})}return;
   }
   if(await authHandler(req,res))return;
+  if(await licenseWriteGuard(req,res))return;
   if(await onboardingHandler(req,res))return;
   if(await licenseHandler(req,res))return;
   if(await deviceEnrollmentHandler(req,res))return;
