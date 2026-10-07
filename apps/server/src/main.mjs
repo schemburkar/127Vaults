@@ -31,10 +31,13 @@ import { loadOperators } from './admin/credentials.mjs';
 import { createLicenseHandler } from './license-handler.mjs';
 import { loadLicenseStatus } from './license-status.mjs';
 import { createLicenseWriteGuard } from './license-write-guard.mjs';
+import { LicenseClock } from './license-clock.mjs';
 import { createSetupHandler } from './setup-handler.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
 const env = process.env;
+if (env.VAULTS_LICENSE_FILE && !env.VAULTS_LICENSE_CLOCK_FILE) throw Error('Licensed server requires a persistent clock path.');
+const licenseClock = env.VAULTS_LICENSE_CLOCK_FILE ? new LicenseClock(env.VAULTS_LICENSE_CLOCK_FILE) : null;
 const telemetry = createOpsTelemetry();
 function fail(message) { throw new Error(message); }
 if (env.VAULTS_EXPERIMENTAL !== '1') fail('Set VAULTS_EXPERIMENTAL=1; use disposable data only.');
@@ -87,7 +90,8 @@ if (env.SMTP_HOST) {
     password, from: env.SMTP_FROM, installationLabel: env.VAULTS_INSTALLATION_LABEL });
 } else mailer = { sendCode: async () => { throw new Error('SMTP unavailable.'); } };
 const loadEntitlement = async (tenantId, now) => loadLicenseStatus({licenseFile:env.VAULTS_LICENSE_FILE,
-  publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,installationId:tenantId,now});
+  publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,
+  installationId:tenantId,now,clock:licenseClock});
 const onboardingService=new OnboardingService({store:new PgOnboardingStore(pool,{loadEntitlement}),mailer,tokenKey});
 const onboardingHandler=createOnboardingHandler(onboardingService,createRegistrationCompletion(opaque,registration),transport.origin,token=>authService.authenticate(token),registration);
 const authenticate=token=>authService.authenticate(token);
@@ -100,11 +104,13 @@ const deviceStore=new PgDeviceLifecycleStore(pool);
 const deviceLifecycleHandler=createDeviceLifecycleHandler(deviceStore,authenticate,transport.origin);
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
 const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion});
-const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE});
+const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
-  publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,smtpConfigured:Boolean(env.SMTP_HOST)});
+  publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,
+  smtpConfigured:Boolean(env.SMTP_HOST),clock:licenseClock});
 const licenseWriteGuard=createLicenseWriteGuard({pool,authenticate,origin:transport.origin,
-  licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE});
+  licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,
+  revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const webFiles=new Map([
   ['/', ['../../web/dist/index.html','text/html; charset=utf-8']],
   ['/app/react-client.js',['../../web/dist/app/react-client.js','text/javascript; charset=utf-8']],

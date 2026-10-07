@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AUTH_COOKIE } from '../src/auth-policy.mjs';
 import { createLicenseWriteGuard, isLicensedWrite } from '../src/license-write-guard.mjs';
+import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
 
 test('license gate covers vault writes and invitations while keeping access and restore paths open', () => {
   for (const path of ['/api/v1/vaults', '/api/v1/invitations', '/api/v1/vaults/abc/items',
@@ -29,6 +30,7 @@ test('signed license grace blocks writes and renewal reopens them', async () => 
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const keysFile = join(dir, 'keys.json');
   const licenseFile = join(dir, 'license.json');
+  const revocationFile = join(dir, 'revocation.json');
   await writeFile(keysFile, JSON.stringify({ test: publicKey.export({ type: 'spki', format: 'pem' }) }));
   const issue = async expiresAt => {
     const payload = Buffer.from(JSON.stringify({ licenseId: randomUUID(), installationId, plan: 'personal',
@@ -54,5 +56,18 @@ test('signed license grace blocks writes and renewal reopens them', async () => 
     assert.equal((await fetch(`${url}/api/v1/vaults/abc/restore`, { method: 'POST' })).status, 204);
     await issue('2030-10-01T00:00:00.000Z');
     assert.equal((await fetch(`${url}/api/v1/vaults`, { method: 'POST', headers })).status, 204);
+    const signed = JSON.parse(await readFile(licenseFile, 'utf8'));
+    const licenseId = JSON.parse(Buffer.from(signed.payload, 'base64url').toString()).licenseId;
+    await writeFile(revocationFile, issueLicenseRevocation({
+      privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }), keyId: 'test', installationId,
+      licenseId, now: new Date('2026-10-07T00:00:00.000Z'), revokedAt: 'now' }));
+    const revokedGuard = createLicenseWriteGuard({ pool: { query: async () => ({ rows: [{ id: installationId }] }) },
+      authenticate: async () => ({}), origin: 'https://127.0.0.1:12780', licenseFile,
+      publicKeyFile: keysFile, revocationFile });
+    const response = { status: null, body: null,
+      writeHead(status) { this.status = status; }, end(body) { this.body = JSON.parse(body); } };
+    assert.equal(await revokedGuard({ method: 'POST', url: '/api/v1/vaults', headers }, response), true);
+    assert.equal(response.status, 423);
+    assert.deepEqual(response.body, { error: 'license_revoked' });
   } finally { await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); }
 });

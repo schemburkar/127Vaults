@@ -50,12 +50,48 @@ export function licenseStatus(license, now = new Date()) {
     expiresAt: license.expiresAt, readOnlyUntil: new Date(grace).toISOString() };
 }
 
-export async function loadLicenseStatus({ licenseFile, publicKeyFile, installationId, now = new Date() }) {
-  if (!licenseFile && !publicKeyFile) return licenseStatus(null, now);
+export function verifyLicenseRevocationFile(file, publicKeys, installationId, licenseId = null) {
+  if (typeof file !== 'string' || Buffer.byteLength(file) > 4096 || !uuid.test(installationId)
+    || (licenseId !== null && !uuid.test(licenseId))) fail();
+  let envelope;
+  try { envelope = JSON.parse(file); } catch { fail(); }
+  if (!keys(envelope, ['schemaVersion', 'keyId', 'payload', 'signature']) || envelope.schemaVersion !== 1
+    || !/^[A-Za-z0-9_-]{1,40}$/.test(envelope.keyId) || !b64.test(envelope.payload)
+    || !b64.test(envelope.signature) || !Object.hasOwn(publicKeys, envelope.keyId)) fail();
+  const bytes = Buffer.from(envelope.payload, 'base64url');
+  const signature = Buffer.from(envelope.signature, 'base64url');
+  if (bytes.toString('base64url') !== envelope.payload || signature.length !== 64
+    || signature.toString('base64url') !== envelope.signature) fail();
+  let payload;
+  try { payload = JSON.parse(bytes.toString('utf8')); } catch { fail(); }
+  if (!keys(payload, ['revocationId', 'installationId', 'licenseId', 'issuedAt', 'revokedAt'])
+    || !uuid.test(payload.revocationId) || payload.installationId !== installationId
+    || !uuid.test(payload.licenseId) || (licenseId !== null && payload.licenseId !== licenseId)
+    || !iso(payload.issuedAt) || !iso(payload.revokedAt)
+    || payload.issuedAt > payload.revokedAt) fail();
+  let key;
+  try { key = createPublicKey(publicKeys[envelope.keyId]); } catch { fail(); }
+  if (key.asymmetricKeyType !== 'ed25519'
+    || !verify(null, Buffer.concat([Buffer.from('127Vaults license revocation v1\0'), bytes]), key, signature)) fail();
+  return payload;
+}
+
+export async function loadLicenseStatus({ licenseFile, publicKeyFile, revocationFile, installationId, now = new Date(), clock }) {
+  if (!licenseFile && !publicKeyFile) {
+    if (revocationFile) fail();
+    return licenseStatus(null, now);
+  }
   if (!licenseFile || !publicKeyFile) fail();
-  const [file, keyFile] = await Promise.all([readFile(licenseFile, 'utf8'), readFile(publicKeyFile, 'utf8')]);
+  const observed = clock ? await clock.observe() : { now, clockState: 'unmonitored' };
+  const [file, keyFile, revocationSource] = await Promise.all([readFile(licenseFile, 'utf8'),
+    readFile(publicKeyFile, 'utf8'), revocationFile ? readFile(revocationFile, 'utf8') : null]);
   let keys;
   try { keys = JSON.parse(keyFile); } catch { fail(); }
   if (!keys || typeof keys !== 'object' || Array.isArray(keys)) fail();
-  return licenseStatus(verifyLicenseFile(file, keys, installationId), now);
+  const license = verifyLicenseFile(file, keys, installationId);
+  const status = licenseStatus(license, observed.now);
+  const revocation = revocationSource ? verifyLicenseRevocationFile(revocationSource, keys, installationId) : null;
+  const revoked = revocation?.licenseId === license.licenseId && observed.now >= new Date(revocation.revokedAt);
+  return { ...status, mode: revoked ? 'revoked' : observed.clockState === 'rollback_detected' ? 'locked' : status.mode,
+    revokedAt: revoked ? revocation.revokedAt : null, clockState: observed.clockState };
 }

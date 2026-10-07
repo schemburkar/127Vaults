@@ -17,7 +17,7 @@ test('setup status guides first owner without disclosing account or bootstrap ma
   try {
     const first = await (await fetch(url)).json();
     assert.deepEqual(first, { ownerRequired: true, licenseMode: 'experimental',
-      licenseEnforcement: 'disabled', smtpConfigured: false });
+      licenseEnforcement: 'disabled', licenseClockState: 'not_applicable', smtpConfigured: false });
     assert.ok(!JSON.stringify(first).includes(installationId));
     ownerExists = true;
     assert.equal((await (await fetch(url)).json()).ownerRequired, false);

@@ -5,7 +5,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
-import { installLicenseFiles } from './license-files.mjs';
+import { installLicenseFiles, installRevocationFile } from './license-files.mjs';
 
 export async function runTestInstall(argv) {
 const action = argv[0];
@@ -14,7 +14,7 @@ const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?
 const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
 const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
-if (!['init', 'start', 'status', 'identify', 'license', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, stop, bootstrap, or restore.');
+if (!['init', 'start', 'status', 'identify', 'license', 'revoke', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, revoke, stop, bootstrap, or restore.');
 if (process.platform === 'win32' && engine === 'podman' && action !== 'init' && !provider) {
   throw Error('Windows Podman requires --compose-provider <full path to podman-compose>; the Docker Compose shim may stall.');
 }
@@ -173,11 +173,24 @@ async function installLicense() {
   console.log(`Signed ${accepted.plan} license sequence ${accepted.sequence} installed for ${info.installationId}. Run install start to activate status.`);
 }
 
+async function installRevocation() {
+  await verifyBundle();
+  const file = argv.find((value, index) => argv[index - 1] === '--file');
+  if (!file) throw Error('Revocation installation requires --file <signed revocation>.');
+  const content = await readFile('.env', 'utf8');
+  if (/^VAULTS_TLS_DIR=(.+)$/m.exec(content)?.[1] !== privateDir.replaceAll('\\', '/')) throw Error('Private directory does not match this installation.');
+  const info = JSON.parse(await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true }));
+  const accepted = await installRevocationFile({ runtimeDir: join(privateDir, 'runtime'), envPath: '.env',
+    installationId: info.installationId, revocationSource: await readFile(resolve(file), 'utf8') });
+  console.log(`Signed revocation installed for license ${accepted.licenseId}. Run install start to activate it.`);
+}
+
 if (action === 'init') { await verifyBundle(); await initialize(); }
 else {
   if (!existsSync('.env')) throw Error('Run init first.');
   if (action === 'restore') await restoreDatabase();
   else if (action === 'license') await installLicense();
+  else if (action === 'revoke') await installRevocation();
   else if (action === 'start') {
     await verifyBundle();
     const content = await readFile('.env', 'utf8');
@@ -186,6 +199,11 @@ else {
     if (/^SMTP_HOST=(.+)$/m.test(content)) {
       const dir = /^VAULTS_TLS_DIR=(.+)$/m.exec(content)?.[1];
       if (!dir || !existsSync(join(dir, 'runtime', 'smtp-password'))) throw Error('Configured SMTP requires runtime/smtp-password outside the bundle.');
+    }
+    const revocationName = /^VAULTS_LICENSE_REVOCATION_FILE=\/run\/secrets\/runtime\/licenses\/([0-9a-f-]{36}\.revocation\.json)$/m.exec(content)?.[1];
+    if (content.includes('VAULTS_LICENSE_REVOCATION_FILE=') && (!revocationName
+      || !existsSync(join(privateDir, 'runtime', 'licenses', revocationName)))) {
+      throw Error('Configured license revocation file is missing or invalid.');
     }
     await run(engine, ['load', '-i', 'server-image.tar']);
     await run(engine, ['load', '-i', 'postgres-image.tar']);
@@ -210,9 +228,11 @@ else {
       const info = JSON.parse(await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true }));
       const content = await readFile('.env', 'utf8');
       const hasLicense = /^VAULTS_LICENSE_FILE=\S+$/m.test(content) && /^VAULTS_LICENSE_PUBLIC_KEYS_FILE=\S+$/m.test(content);
+      const hasRevocation = /^VAULTS_LICENSE_REVOCATION_FILE=\S+$/m.test(content);
       const hasSmtp = /^SMTP_HOST=\S+$/m.test(content);
       console.log(`Installation ID: ${info.installationId}`);
       console.log(`Signed license configured: ${hasLicense ? 'yes' : 'no'}`);
+      console.log(`Signed revocation configured: ${hasRevocation ? 'yes' : 'no'}`);
       console.log(`Vault owner enrolled: ${info.bootstrapRequired ? 'no' : 'yes'}`);
       console.log(`Invitation SMTP configured: ${hasSmtp ? 'yes' : 'no'}`);
       console.log(info.bootstrapRequired

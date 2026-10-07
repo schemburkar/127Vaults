@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { licenseStatus, verifyLicenseFile } from '../src/license-status.mjs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { licenseStatus, loadLicenseStatus, verifyLicenseFile } from '../src/license-status.mjs';
+import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const installationId = randomUUID();
@@ -32,4 +36,30 @@ test('tampering, unknown keys, and malformed limits are rejected', () => {
   signed.keyId = 'missing';
   assert.throws(() => verifyLicenseFile(JSON.stringify(signed), publicKeys, installationId), /invalid_license/);
   assert.throws(() => verifyLicenseFile(file({ ...payload(), maxActiveUsers: 0 }), publicKeys, installationId), /invalid_license/);
+});
+
+test('current license enters revoked state but a renewed license is unaffected', async () => {
+  const dir = await mkdtemp(join(tmpdir(), '127v-license-status-'));
+  const licenseFile = join(dir, 'license.json');
+  const publicKeyFile = join(dir, 'keys.json');
+  const revocationFile = join(dir, 'revocation.json');
+  const now = new Date('2026-10-07T00:00:00.000Z');
+  try {
+    const first = payload();
+    await writeFile(licenseFile, file(first));
+    await writeFile(publicKeyFile, JSON.stringify(publicKeys));
+    await writeFile(revocationFile, issueLicenseRevocation({
+      privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }), keyId: 'test', installationId,
+      licenseId: first.licenseId, now, revokedAt: now.toISOString() }));
+    const options = { licenseFile, publicKeyFile, revocationFile, installationId, now };
+    const revoked = await loadLicenseStatus(options);
+    assert.equal(revoked.mode, 'revoked');
+    assert.equal(revoked.revokedAt, now.toISOString());
+    await writeFile(licenseFile, file({ ...payload(), sequence: 2 }));
+    assert.equal((await loadLicenseStatus(options)).mode, 'active');
+    const clockBlocked = await loadLicenseStatus({ ...options,
+      clock: { observe: async () => ({ now, clockState: 'rollback_detected' }) } });
+    assert.equal(clockBlocked.mode, 'locked');
+    assert.equal(clockBlocked.clockState, 'rollback_detected');
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
