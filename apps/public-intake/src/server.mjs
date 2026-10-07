@@ -1,9 +1,11 @@
 import { createServer } from 'node:http';
-import { createCipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { open, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createMockSelfHostHandler } from './mock-selfhost.mjs';
+import { SmtpMailer } from '../../server/src/smtp.mjs';
 
 const plans = new Set(['personal', 'commercial', 'cloud', 'undecided']);
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
@@ -85,6 +87,22 @@ export function createIntakeHandler({ origin, key, dataFile, now = () => Date.no
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const env = process.env;
   const key = Buffer.from((await readFile(env.PUBLIC_INTAKE_KEY_FILE, 'utf8')).trim(), 'hex');
-  const handler = createIntakeHandler({ origin: env.PUBLIC_INTAKE_ORIGIN, key, dataFile: env.PUBLIC_INTAKE_DATA_FILE });
-  createServer(handler).listen(Number(env.PUBLIC_INTAKE_PORT ?? 3101), '127.0.0.1');
+  const waitlist = createIntakeHandler({ origin: env.PUBLIC_INTAKE_ORIGIN, key, dataFile: env.PUBLIC_INTAKE_DATA_FILE });
+  let mock;
+  if (env.PUBLIC_MOCK_SELFHOST === '1') {
+    const smtpPassword = (await readFile(env.PUBLIC_MOCK_SMTP_PASSWORD_FILE, 'utf8')).trim();
+    const mailer = new SmtpMailer({ host: env.PUBLIC_MOCK_SMTP_HOST,
+      port: Number(env.PUBLIC_MOCK_SMTP_PORT ?? 465), username: env.PUBLIC_MOCK_SMTP_USERNAME,
+      password: smtpPassword, from: env.PUBLIC_MOCK_SMTP_FROM, installationLabel: '127Vaults signup' });
+    mock = createMockSelfHostHandler({ origin: env.PUBLIC_INTAKE_ORIGIN,
+      key: createHash('sha256').update(key).update('mock-selfhost-v1').digest(),
+      dataDir: env.PUBLIC_MOCK_SELFHOST_DATA_DIR, bundleFile: env.PUBLIC_MOCK_SELFHOST_BUNDLE_FILE,
+      issuerPrivateKey: await readFile(env.PUBLIC_MOCK_SELFHOST_ISSUER_KEY_FILE, 'utf8'), mailer });
+  }
+  createServer((req, res) => {
+    if (req.url?.startsWith('/api/selfhost/mock')) {
+      if (mock) Promise.resolve(mock(req, res)).catch(() => reply(res, 503, { error: 'unavailable' }));
+      else reply(res, 404, { error: 'not_found' });
+    } else waitlist(req, res);
+  }).listen(Number(env.PUBLIC_INTAKE_PORT ?? 3101), '127.0.0.1');
 }

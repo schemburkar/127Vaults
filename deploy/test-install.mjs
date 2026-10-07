@@ -5,6 +5,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
+import { installLicenseFiles } from './license-files.mjs';
 
 export async function runTestInstall(argv) {
 const action = argv[0];
@@ -13,7 +14,7 @@ const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?
 const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
 const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
-if (!['init', 'start', 'status', 'identify', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, stop, bootstrap, or restore.');
+if (!['init', 'start', 'status', 'identify', 'license', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, stop, bootstrap, or restore.');
 if (!/^(127\.0\.0\.1|localhost|(?:10|192\.168)\.(?:\d{1,3}\.){2}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.){2})$/.test(endpoint)) throw Error('Use loopback or a private IPv4 endpoint.');
 
 async function run(program, argv, { quiet = false } = {}) {
@@ -149,10 +150,27 @@ async function restoreDatabase() {
   }
 }
 
+async function installLicense() {
+  await verifyBundle();
+  const licensePath = argv.find((value, index) => argv[index - 1] === '--file');
+  const keysPath = argv.find((value, index) => argv[index - 1] === '--public-keys');
+  if (!licensePath || !keysPath) throw Error('License installation requires --file <signed license> and --public-keys <trusted issuer keys>.');
+  const currentEnv = await readFile('.env', 'utf8');
+  const configuredDir = /^VAULTS_TLS_DIR=(.+)$/m.exec(currentEnv)?.[1];
+  if (configuredDir !== privateDir.replaceAll('\\', '/')) throw Error('Private directory does not match this installation.');
+  const info = JSON.parse(await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true }));
+  const source = await readFile(resolve(licensePath), 'utf8');
+  const keySource = await readFile(resolve(keysPath), 'utf8');
+  const accepted = await installLicenseFiles({ runtimeDir: join(privateDir, 'runtime'), envPath: '.env',
+    installationId: info.installationId, licenseSource: source, keySource });
+  console.log(`Signed ${accepted.plan} license sequence ${accepted.sequence} installed for ${info.installationId}. Run install start to activate status.`);
+}
+
 if (action === 'init') { await verifyBundle(); await initialize(); }
 else {
   if (!existsSync('.env')) throw Error('Run init first.');
   if (action === 'restore') await restoreDatabase();
+  else if (action === 'license') await installLicense();
   else if (action === 'start') {
     await verifyBundle();
     const content = await readFile('.env', 'utf8');

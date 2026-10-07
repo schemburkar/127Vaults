@@ -1,7 +1,7 @@
 // Build an offline test bundle from a source checkout with the pinned Rust/WASM tools.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join, sep } from 'node:path';
 
@@ -9,6 +9,7 @@ export async function runMakeBundle(argv) {
 const destination = resolve(argv[0] ?? '');
 const checkout = resolve('.');
 if (!argv[0] || destination === checkout || destination.startsWith(checkout + sep)) throw Error('Supply a new output directory outside the checkout.');
+if (existsSync(`${destination}.tar`)) throw Error('Bundle archive already exists.');
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
 async function run(program, args, { capture = false } = {}) {
   const child = spawn(program, args, { stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', windowsHide: true });
@@ -37,6 +38,8 @@ for (const [source, target] of [
   ['deploy/compose.smtp.yaml', 'compose.smtp.yaml'],
   ['server.mjs', 'server.mjs'],
   ['deploy/test-install.mjs', 'lib/test-install.mjs'],
+  ['deploy/license-files.mjs', 'lib/license-files.mjs'],
+  ['apps/server/src/license-status.mjs', 'lib/license-status.mjs'],
   ['scripts/tls.mjs', 'lib/tls.mjs'],
   ['scripts/ops/backup-envelope.mjs', 'lib/backup-envelope.mjs'],
   ['scripts/ops/server-data.mjs', 'lib/server-data.mjs'],
@@ -47,7 +50,9 @@ for (const [source, target] of [
 const revision = await run('git', ['rev-parse', 'HEAD'], { capture: true });
 const changed = await run('git', ['status', '--porcelain'], { capture: true });
 const files = {};
-for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'lib/test-install.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
+for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'lib/test-install.mjs', 'lib/license-files.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
 await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image: 'localhost/127vaults-server:test', files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);
+await run('tar', ['-cf', `${destination}.tar`, '-C', resolve(destination, '..'), destination.split(sep).at(-1)]);
+console.log(`Offline test archive: ${destination}.tar`);
 }

@@ -3,6 +3,8 @@ import { cloudSeatEstimate } from './cloud-pricing.mjs';
 const form = document.querySelector('#waitlist-form');
 const status = document.querySelector('#access-status');
 const button = form.querySelector('button[type="submit"]');
+let waitlistOpen = false;
+let mockSelfHostOpen = false;
 const plan = new URLSearchParams(location.search).get('plan');
 if (['personal', 'commercial', 'cloud', 'undecided'].includes(plan)) {
   form.querySelector(`[name="plan"][value="${plan}"]`).checked = true;
@@ -19,22 +21,31 @@ function updateSeats() {
   estimate.textContent = cloud && value
     ? `$${value.annualUsd.toLocaleString('en-US')} per year, paid upfront each year · $${value.twoYearUsd.toLocaleString('en-US')} over the two-year commitment. Estimate only; no payment today.`
     : 'Enter 1–1,000 planned users to see the estimate.';
+  updateAvailability();
+}
+function updateAvailability() {
+  const selected = form.querySelector('[name="plan"]:checked')?.value;
+  const mock = mockSelfHostOpen && ['personal', 'commercial'].includes(selected);
+  button.disabled = !(mock || waitlistOpen);
+  button.textContent = mock ? 'Continue to simulated checkout' : 'Join waitlist';
+  status.textContent = mock
+    ? 'Supervised test only: checkout is simulated and collects no payment.'
+    : waitlistOpen ? 'The waitlist is open. No payment is collected.'
+      : 'The waitlist is not accepting requests from this site yet. Check back for updates.';
 }
 form.querySelectorAll('[name="plan"]').forEach(input => input.addEventListener('change', updateSeats));
 seatInput.addEventListener('input', updateSeats);
 updateSeats();
 
 async function checkAvailability() {
-  try {
-    const response = await fetch('/api/waitlist', { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    const state = response.ok ? await response.json() : null;
-    if (state?.open === true) {
-      button.disabled = false;
-      status.textContent = 'The waitlist is open. No payment is collected.';
-      return;
-    }
-  } catch { /* Static previews have no intake API. */ }
-  status.textContent = 'The waitlist is not accepting requests from this site yet. Check back for updates.';
+  const check = async path => {
+    try {
+      const response = await fetch(path, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      return response.ok && (await response.json()).open === true;
+    } catch { return false; }
+  };
+  [waitlistOpen, mockSelfHostOpen] = await Promise.all([check('/api/waitlist'), check('/api/selfhost/mock')]);
+  updateAvailability();
 }
 await checkAvailability();
 
@@ -48,8 +59,16 @@ form.addEventListener('submit', async event => {
     plan: String(data.get('plan') ?? ''), requestedSeats: data.get('plan') === 'cloud' ? Number(data.get('requestedSeats')) : null,
     website: String(data.get('website') ?? ''), consent: data.get('consent') === 'on' };
   try {
-    const response = await fetch('/api/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body), credentials: 'same-origin' });
+    const mock = mockSelfHostOpen && ['personal', 'commercial'].includes(body.plan);
+    const response = await fetch(mock ? '/api/selfhost/mock/orders' : '/api/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mock ? { email: body.email, organization: body.organization, plan: body.plan,
+        website: body.website, consent: body.consent } : body), credentials: 'same-origin' });
+    if (mock && response.status === 201) {
+      const order = await response.json();
+      sessionStorage.setItem(`127v-mock-${order.orderId}`, order.accessToken);
+      location.assign(`mock-checkout.html#${order.orderId}`);
+      return;
+    }
     if (response.status === 202) {
       form.reset();
       updateSeats();
@@ -60,5 +79,5 @@ form.addEventListener('submit', async event => {
   } catch {
     status.textContent = 'We could not reach the waitlist. Please try again later.';
   }
-  button.disabled = false;
+  updateAvailability();
 });

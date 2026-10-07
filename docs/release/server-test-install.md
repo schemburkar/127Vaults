@@ -33,6 +33,15 @@ node server.mjs install identify
 node server.mjs install bootstrap
 ```
 
+For the explicitly enabled self-hosted signup simulation, the customer downloads the `.tar` archive generated alongside the bundle directory. Extract it, enter the extracted directory, then follow the commands above. After `install identify`, save `license.json` and `issuer-keys.json` from the simulated order and run:
+
+```powershell
+node server.mjs install license --file license.json --public-keys issuer-keys.json
+node server.mjs install start
+```
+
+The operator command checks the license signature, installation binding, active dates, and increasing sequence, then places versioned files under the private runtime directory and configures the server's authenticated license status endpoint. Preserve the public issuer key file with the license for recovery. This test command does **not** enforce seats, expiry, or payment and does not turn the bundle into a production release. Verify the issuer key through a trusted operator channel before installing a license from outside the simulation.
+
 The installer checks every bundle file against `manifest.json` before `init` and `start`. The first command creates a local CA, certificate, runtime keys and `.env` without overwriting an existing installation. `start` loads the OCI images, starts a private PostgreSQL container and a non-root/read-only server, and preserves the named database volume across `stop`/`start`. Verify the displayed CA fingerprint through the operator channel, trust its public certificate on the test browser, and open `https://127.0.0.1:12780`. `bootstrap` prints a one-time owner setup code. The browser flow still needs a human acceptance pass on the target machine.
 
 For Podman, install `podman-compose` and pass its full executable path with `--compose-provider <path>` to `start`, `status`, `bootstrap`, and `stop`. This avoids Podman accidentally selecting a stale Docker Compose shim. For Docker, append `--docker` to each command and use Docker Compose without `--compose-provider`. TLS generation uses the selected engine. Docker is a candidate until the exact clean-host acceptance is recorded. For private LAN, pass a literal private IPv4 to `--endpoint` for `init`; `start` reads and verifies the initialized endpoint; the certificate and publication address are bound to it. Verify OS firewall rules and certificate trust on every client. Use `node server.mjs install stop` to stop without deleting data. **Never use `compose down --volumes` on a data-bearing installation.**
