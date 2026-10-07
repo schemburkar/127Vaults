@@ -37,6 +37,10 @@ test('mock checkout requires an access capability and binds one signed license t
     assert.equal((await post(`${base}/pay`, {}, created.accessToken)).status, 400);
     assert.deepEqual(await (await post(`${base}/pay`, { commitmentYears: 1, requestedUsers: 5, termsAcknowledged: true }, created.accessToken)).json(), { state: 'mock_paid', simulated: true });
     assert.equal(await (await fetch(`${base}/bundle`, { headers: { Authorization: `Bearer ${created.accessToken}` } })).text(), 'test bundle');
+    const ticket = await post(`${base}/bundle-ticket`, {}, created.accessToken);
+    assert.equal(ticket.status, 204);
+    assert.match(ticket.headers.get('set-cookie'), /Secure; HttpOnly; SameSite=Strict/);
+    assert.equal(await (await fetch(`${base}/bundle`, { headers: { Cookie: ticket.headers.get('set-cookie').split(';')[0] } })).text(), 'test bundle');
     const installationId = randomUUID();
     const first = await (await post(`${base}/license`, { installationId }, created.accessToken)).json();
     const repeat = await (await post(`${base}/license`, { installationId }, created.accessToken)).json();
@@ -49,6 +53,7 @@ test('mock checkout requires an access capability and binds one signed license t
     assert.equal((await post(`${base}/recover-complete`, { email: 'owner@example.com', code: '000000' })).status, 403);
     const recovered = await (await post(`${base}/recover-complete`, { email: 'owner@example.com', code })).json();
     assert.equal((await fetch(base, { headers: { Authorization: `Bearer ${created.accessToken}` } })).status, 401);
+    assert.equal((await fetch(`${base}/bundle`, { headers: { Cookie: ticket.headers.get('set-cookie').split(';')[0] } })).status, 401);
     assert.equal((await fetch(base, { headers: { Authorization: `Bearer ${recovered.accessToken}` } })).status, 200);
     const commercial = await (await post(`${root}/orders`, { ...orderInput, email: 'team@example.com', plan: 'commercial' })).json();
     const team = `${root}/orders/${commercial.orderId}`;

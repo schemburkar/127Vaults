@@ -15,6 +15,9 @@ const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--rest
 const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
 if (!['init', 'start', 'status', 'identify', 'license', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, stop, bootstrap, or restore.');
+if (process.platform === 'win32' && engine === 'podman' && action !== 'init' && !provider) {
+  throw Error('Windows Podman requires --compose-provider <full path to podman-compose>; the Docker Compose shim may stall.');
+}
 if (!/^(127\.0\.0\.1|localhost|(?:10|192\.168)\.(?:\d{1,3}\.){2}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.){2})$/.test(endpoint)) throw Error('Use loopback or a private IPv4 endpoint.');
 
 async function run(program, argv, { quiet = false } = {}) {

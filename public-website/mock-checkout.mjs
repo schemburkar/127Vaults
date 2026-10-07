@@ -48,7 +48,8 @@ async function refresh() {
     sessionStorage.setItem(`127v-mock-${id}`, code.value.trim());
     actions.hidden = false;
     currentPlan = order.plan;
-    details.textContent = `${order.plan === 'personal' ? 'Personal' : 'Commercial'} self-hosted · ${order.email} · ${order.state.replaceAll('_', ' ')}`;
+    details.textContent = `${order.plan === 'personal' ? 'Personal' : 'Commercial'} self-hosted · ${order.email} · ${order.state.replaceAll('_', ' ')}`
+      + (order.commitmentYears ? ` · ${order.commitmentYears} year commitment · ${order.requestedUsers} users` : '');
     const needsEmail = order.state === 'pending_email_verification';
     emailField.hidden = !needsEmail;
     verify.hidden = !needsEmail;
@@ -110,7 +111,10 @@ pay.addEventListener('click', async () => {
   catch (error) { status.textContent = error.message; }
 });
 bundle.addEventListener('click', async () => {
-  try { download(await (await request('/bundle')).blob(), '127vaults-supervised-test-bundle.tar'); }
+  try {
+    await request('/bundle-ticket', { method: 'POST', body: '{}' });
+    location.assign(`${base}/bundle`);
+  }
   catch (error) { status.textContent = error.message; }
 });
 issue.addEventListener('click', async () => {

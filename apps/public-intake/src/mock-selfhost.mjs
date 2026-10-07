@@ -1,11 +1,12 @@
 // Explicitly disposable checkout simulator. No payment or verified customer identity is created.
-import { createCipheriv, createDecipheriv, createHash, createPrivateKey, createPublicKey, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, createPrivateKey, createPublicKey, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const basePath = id => `/api/selfhost/mock/orders/${id}`;
 const email = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
 const sha = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value) => {
@@ -103,7 +104,7 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
       }
       return json(res, 201, { orderId: id, accessToken, state: record.state });
     }
-    const match = /^\/api\/selfhost\/mock\/orders\/([^/]+)(?:\/(verify|pay|bundle|license|public-keys|recover|recover-complete))?$/.exec(path);
+    const match = /^\/api\/selfhost\/mock\/orders\/([^/]+)(?:\/(verify|pay|bundle|bundle-ticket|license|public-keys|recover|recover-complete))?$/.exec(path);
     if (!match || !uuid.test(match[1])) return bad(res, 404);
     const [, id, action] = match;
     if ((action === 'recover' || action === 'recover-complete') && req.method === 'POST') return serialized(id, async () => {
@@ -141,11 +142,17 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
       await save(id, latest);
       return json(res, 200, { accessToken });
     });
-    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(String(req.headers.authorization ?? ''))?.[1];
-    if (!token) return bad(res, 401);
     let record;
     try { record = await read(id); } catch { return bad(res, 404); }
-    if (sha(token) !== record.tokenHash) return bad(res, 401);
+    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(String(req.headers.authorization ?? ''))?.[1];
+    const ticket = String(req.headers.cookie ?? '').split(';').map(part => part.trim())
+      .find(part => part.startsWith('__Secure-127v-mock-bundle='))?.split('=')[1];
+    const [expiry, tag] = String(ticket ?? '').split('.');
+    const expectedTag = /^\d{13}$/.test(expiry ?? '')
+      ? createHmac('sha256', key).update(`${id}:${record.tokenHash}:${expiry}`).digest('base64url') : '';
+    const ticketValid = action === 'bundle' && req.method === 'GET' && Number(expiry) > now().getTime()
+      && /^[A-Za-z0-9_-]{43}$/.test(tag ?? '') && timingSafeEqual(Buffer.from(tag), Buffer.from(expectedTag));
+    if (!ticketValid && (!token || sha(token) !== record.tokenHash)) return bad(res, 401);
     if (!action && req.method === 'GET') return json(res, 200, { orderId: id, plan: record.plan,
       email: record.email, state: record.state, installationId: record.installationId,
       commitmentYears: record.commitmentYears, requestedUsers: record.requestedUsers });
@@ -188,13 +195,20 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
       json(res, 200, { state: latest.state, simulated: true });
     });
     if (record.state === 'pending_email_verification' || record.state === 'pending_mock_payment') return bad(res, 403);
+    if (action === 'bundle-ticket' && req.method === 'POST') {
+      const until = String(now().getTime() + 60000);
+      const signature = createHmac('sha256', key).update(`${id}:${record.tokenHash}:${until}`).digest('base64url');
+      res.writeHead(204, { 'Set-Cookie': `__Secure-127v-mock-bundle=${until}.${signature}; Secure; HttpOnly; SameSite=Strict; Path=${basePath(id)}/bundle; Max-Age=60`,
+        'Cache-Control': 'no-store' });
+      return res.end();
+    }
     if (action === 'bundle' && req.method === 'GET') {
       try {
         const file = await stat(bundleFile);
         if (!file.isFile()) throw Error('not_file');
         res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': file.size,
           'Content-Disposition': 'attachment; filename="127vaults-supervised-test-bundle.tar"', 'Cache-Control': 'no-store' });
-        createReadStream(bundleFile).pipe(res);
+        createReadStream(bundleFile).on('error', () => res.destroy()).pipe(res);
       } catch { json(res, 503, { error: 'bundle_unavailable' }); }
       return;
     }
