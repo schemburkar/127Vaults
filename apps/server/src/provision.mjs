@@ -8,6 +8,14 @@ import { loadLicenseStatus } from './license-status.mjs';
 import { LicenseClock } from './license-clock.mjs';
 import { readSeatUsage } from './license-seats.mjs';
 
+async function inspectLicense(installationId) {
+  if (process.env.VAULTS_LICENSE_FILE && !process.env.VAULTS_LICENSE_CLOCK_FILE) throw Error('license_clock_unavailable');
+  const clock = process.env.VAULTS_LICENSE_CLOCK_FILE ? new LicenseClock(process.env.VAULTS_LICENSE_CLOCK_FILE) : null;
+  return loadLicenseStatus({ licenseFile: process.env.VAULTS_LICENSE_FILE,
+    publicKeyFile: process.env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,
+    revocationFile: process.env.VAULTS_LICENSE_REVOCATION_FILE, installationId, clock });
+}
+
 // Host-local installation and single-use owner bootstrap capability generation.
 export async function runProvision(action) {
 const reject = message => { throw new Error(message); };
@@ -39,6 +47,8 @@ try {
     const tenant = (await client.query('SELECT id FROM vaults.installation FOR UPDATE')).rows[0]?.id;
     if (!tenant) reject('Installation record missing.');
     if ((await client.query("SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND server_role='owner'",[tenant])).rowCount) reject('Bootstrap is already closed.');
+    const entitlement = await inspectLicense(tenant);
+    if (!['active', 'experimental'].includes(entitlement.mode)) reject('Owner bootstrap requires an active signed license.');
     const keyPath=process.env.VAULTS_TOKEN_KEY_FILE, outputPath=process.env.VAULTS_BOOTSTRAP_OUTPUT;
     if (!keyPath || !outputPath) reject('Token key and bootstrap output paths are required.');
     const key=await readFile(keyPath); if(key.length!==32) reject('Token key must contain exactly 32 bytes.');
@@ -60,12 +70,8 @@ try {
   }
   let license;
   if (action === 'status') {
-    try {
-      const clock = process.env.VAULTS_LICENSE_CLOCK_FILE ? new LicenseClock(process.env.VAULTS_LICENSE_CLOCK_FILE) : null;
-      license = await loadLicenseStatus({ licenseFile: process.env.VAULTS_LICENSE_FILE,
-        publicKeyFile: process.env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,
-        revocationFile: process.env.VAULTS_LICENSE_REVOCATION_FILE, installationId, clock });
-    } catch { license = { mode: 'unavailable', clockState: 'unavailable' }; }
+    try { license = await inspectLicense(installationId); }
+    catch { license = { mode: 'unavailable', clockState: 'unavailable' }; }
   }
   console.log(JSON.stringify({ experimental: true, schemaVersion, installationId, action, ...counts,
     ...invitations, bootstrapRequired: counts.provisional_owners === 0,
@@ -79,7 +85,7 @@ try {
 } catch (error) {
   await client.query('ROLLBACK').catch(() => {});
   // Never echo SQL values, URLs, or user-supplied identity data.
-  const safeMessages = ['Refusing non-empty database. Existing databases require verified backup/restore and a reviewed migration.', 'Schema is not initialized.', 'Unknown or changed schema; automatic upgrades are disabled.', 'Installation record missing.', 'Bootstrap is already closed.', 'Token key and bootstrap output paths are required.', 'Token key must contain exactly 32 bytes.', 'Database password file is required.', 'Database password file must be readable.', 'Database password file must be a regular file.', 'Database password file permissions are too broad.', 'Database password file is malformed.'];
+  const safeMessages = ['Refusing non-empty database. Existing databases require verified backup/restore and a reviewed migration.', 'Schema is not initialized.', 'Unknown or changed schema; automatic upgrades are disabled.', 'Installation record missing.', 'Bootstrap is already closed.', 'Owner bootstrap requires an active signed license.', 'Token key and bootstrap output paths are required.', 'Token key must contain exactly 32 bytes.', 'Database password file is required.', 'Database password file must be readable.', 'Database password file must be a regular file.', 'Database password file permissions are too broad.', 'Database password file is malformed.'];
   console.error(safeMessages.includes(error.message) ? error.message : `Provisioning failed${error.code === '23505' ? ': duplicate identity' : ''}. No changes committed.`);
   process.exitCode = 1;
 } finally { await client.end().catch(() => {}); }

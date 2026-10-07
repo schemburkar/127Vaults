@@ -9,6 +9,7 @@ export class PgOnboardingStore {
     await c.query('SELECT pg_advisory_xact_lock(127,6)');
     const row=(await c.query(`SELECT b.tenant_id FROM vaults.bootstrap_tokens b WHERE b.token_digest=$1 AND b.consumed_at IS NULL AND b.expires_at>$2 FOR UPDATE`,[input.bootstrapDigest,input.now])).rows[0];
     if (!row || (await c.query("SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND server_role='owner'",[row?.tenant_id])).rowCount) throw new OnboardingError();
+    await requireLicenseSeats(c, row.tenant_id, 1, input.now, this.loadEntitlement);
     const x=input.candidate, accountId=x.accountId, key=s=>Buffer.from(s,'base64url');
     await c.query(`INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state,email_verified) VALUES($1,$2,$3,$4,$5,'owner','active',false)`,[row.tenant_id,accountId,x.username,x.displayName,x.email]);
     await c.query(`INSERT INTO vaults.authentication_credentials(tenant_id,account_id,opaque_record,wrapped_root_descriptor,wrapped_root_envelope) VALUES($1,$2,$3,$4,$5)`,[row.tenant_id,accountId,key(x.opaqueRecord),key(x.wrappedRootDescriptor),key(x.wrappedRootEnvelope)]);
