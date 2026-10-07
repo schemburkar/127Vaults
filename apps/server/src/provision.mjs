@@ -4,6 +4,9 @@ import pg from 'pg';
 import { schemaSql, schemaChecksum, schemaVersion, requireSchema } from './schema.mjs';
 import { tokenDigest } from './onboarding.mjs';
 import { runtimeDatabaseConfig } from './runtime-config.mjs';
+import { loadLicenseStatus } from './license-status.mjs';
+import { LicenseClock } from './license-clock.mjs';
+import { readSeatUsage } from './license-seats.mjs';
 
 // Host-local installation and single-use owner bootstrap capability generation.
 export async function runProvision(action) {
@@ -48,14 +51,28 @@ try {
   if (!installationId) reject('Installation record missing.');
   const counts = (await client.query("SELECT count(*)::int AS pending_accounts, count(*) FILTER (WHERE server_role='owner')::int AS provisional_owners FROM vaults.accounts")).rows[0];
   const invitations = (await client.query('SELECT count(*) FILTER (WHERE expires_at > now())::int AS unexpired_invitation_records, count(*) FILTER (WHERE expires_at <= now())::int AS expired_invitation_records FROM vaults.invitation_records')).rows[0];
+  const seatUsage = action === 'status' ? await readSeatUsage(client, installationId, new Date()) : null;
   await client.query('COMMIT');
   if (bootstrapPlaintext) await writeFile(input.bootstrapOutputPath,`${bootstrapPlaintext}\n`,{encoding:'ascii',mode:0o600,flag:'w'});
   if (action === 'status' && process.env.VAULTS_BOOTSTRAP_OUTPUT) {
     const active=(await client.query('SELECT 1 FROM vaults.bootstrap_tokens WHERE consumed_at IS NULL AND expires_at>now()')).rowCount;
     if (!active) await unlink(process.env.VAULTS_BOOTSTRAP_OUTPUT).catch(error=>{if(error.code!=='ENOENT')throw error;});
   }
+  let license;
+  if (action === 'status') {
+    try {
+      const clock = process.env.VAULTS_LICENSE_CLOCK_FILE ? new LicenseClock(process.env.VAULTS_LICENSE_CLOCK_FILE) : null;
+      license = await loadLicenseStatus({ licenseFile: process.env.VAULTS_LICENSE_FILE,
+        publicKeyFile: process.env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,
+        revocationFile: process.env.VAULTS_LICENSE_REVOCATION_FILE, installationId, clock });
+    } catch { license = { mode: 'unavailable', clockState: 'unavailable' }; }
+  }
   console.log(JSON.stringify({ experimental: true, schemaVersion, installationId, action, ...counts,
     ...invitations, bootstrapRequired: counts.provisional_owners === 0,
+    ...(seatUsage ? { seatUsage, license: { mode: license.mode, plan: license.plan ?? null,
+      maxActiveUsers: license.maxActiveUsers ?? null, expiresAt: license.expiresAt ?? null,
+      readOnlyUntil: license.readOnlyUntil ?? null, revokedAt: license.revokedAt ?? null,
+      clockState: license.clockState ?? 'not_applicable' } } : {}),
     authenticationAvailable: true, bootstrapTokenWritten: Boolean(bootstrapPlaintext), nextStep: counts.provisional_owners === 0
       ? 'Retrieve the restricted bootstrap file locally and complete HTTPS onboarding within 60 minutes.'
       : 'Use authenticated owner invitation creation.' }));

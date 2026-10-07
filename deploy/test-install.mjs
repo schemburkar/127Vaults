@@ -7,6 +7,20 @@ import { homedir, tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { installLicenseFiles, installRevocationFile } from './license-files.mjs';
 
+export function nextSetupStep({ bootstrapRequired, license, seatUsage }, smtpConfigured) {
+  if (!license || license.mode === 'unavailable') return 'Next: inspect the signed license files and persistent clock checkpoint.';
+  if (license.clockState === 'rollback_detected') return 'Next: correct the host clock; licensed writes remain locked until time catches up.';
+  if (license.mode === 'revoked') return 'Next: obtain and install a new signed license for this installation.';
+  if (license.mode === 'read-only' || license.mode === 'locked') return 'Next: renew the signed license to restore vault writes.';
+  if (license.mode === 'experimental') return 'Next: install a signed test license for this installation.';
+  if (bootstrapRequired) return 'Next: run install bootstrap, then create the first owner in the HTTPS web client.';
+  if (!smtpConfigured) return 'Next: configure and verify SMTP before inviting users.';
+  if (seatUsage && seatUsage.activeUsers + seatUsage.reservedSeats >= license.maxActiveUsers) {
+    return 'Next: request a signed license with a higher user cap before inviting more users.';
+  }
+  return 'Next: verify backups and invite users from the enrolled owner account.';
+}
+
 export async function runTestInstall(argv) {
 const action = argv[0];
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
@@ -230,16 +244,18 @@ else {
       const hasLicense = /^VAULTS_LICENSE_FILE=\S+$/m.test(content) && /^VAULTS_LICENSE_PUBLIC_KEYS_FILE=\S+$/m.test(content);
       const hasRevocation = /^VAULTS_LICENSE_REVOCATION_FILE=\S+$/m.test(content);
       const hasSmtp = /^SMTP_HOST=\S+$/m.test(content);
+      const license = info.license ?? { mode: 'unavailable' };
       console.log(`Installation ID: ${info.installationId}`);
       console.log(`Signed license configured: ${hasLicense ? 'yes' : 'no'}`);
       console.log(`Signed revocation configured: ${hasRevocation ? 'yes' : 'no'}`);
+      console.log(`License state: ${license.mode}${license.plan ? ` (${license.plan})` : ''}`);
+      if (license.expiresAt) console.log(`License expires: ${license.expiresAt}`);
+      if (license.readOnlyUntil) console.log(`Read-only grace ends: ${license.readOnlyUntil}`);
+      if (license.clockState && license.clockState !== 'not_applicable') console.log(`Clock state: ${license.clockState}`);
+      if (info.seatUsage) console.log(`Seats: ${info.seatUsage.activeUsers} active, ${info.seatUsage.reservedSeats} reserved${license.maxActiveUsers ? ` / ${license.maxActiveUsers} allowed` : ''}`);
       console.log(`Vault owner enrolled: ${info.bootstrapRequired ? 'no' : 'yes'}`);
       console.log(`Invitation SMTP configured: ${hasSmtp ? 'yes' : 'no'}`);
-      console.log(info.bootstrapRequired
-        ? hasLicense ? 'Next: run install bootstrap, then create the first owner in the HTTPS web client.'
-          : 'Next: install the signed license if supplied, then run install bootstrap for the first owner.'
-        : hasSmtp ? 'Next: verify backups and invite users from the enrolled owner account.'
-          : 'Next: verify backups; configure SMTP before inviting users.');
+      console.log(nextSetupStep(info, hasSmtp));
     } catch { console.log('Server setup status is unavailable until the server is running and healthy.'); }
   }
   else if (action === 'identify') {

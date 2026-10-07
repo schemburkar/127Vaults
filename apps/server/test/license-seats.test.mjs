@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requireLicenseSeats } from '../src/license-seats.mjs';
+import { readSeatUsage, requireLicenseSeats } from '../src/license-seats.mjs';
 
 const now = new Date('2026-10-07T00:00:00.000Z');
 const client = (active, reserved) => ({ query: async (sql, values) => {
@@ -10,6 +10,7 @@ const client = (active, reserved) => ({ query: async (sql, values) => {
 } });
 
 test('live invitation reservations count against a signed license cap', async () => {
+  assert.deepEqual(await readSeatUsage(client(2, 1), 'installation', now), { activeUsers: 2, reservedSeats: 1 });
   const entitlement = async () => ({ mode: 'active', maxActiveUsers: 5 });
   await requireLicenseSeats(client(2, 1), 'installation', 2, now, entitlement);
   await assert.rejects(requireLicenseSeats(client(2, 2), 'installation', 2, now, entitlement),
