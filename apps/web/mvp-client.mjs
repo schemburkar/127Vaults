@@ -59,6 +59,7 @@ let core,
   authContext,
   loadedItems = [],
   registrationStep = 0,
+  ownerSetupRequired = false,
   generatedAccountSecret = "",
   lastSynced = null,
   lastLocalChange = null;
@@ -428,6 +429,9 @@ async function setup() {
     $("bootstrap").value = "";
     $("master").value = "";
     core.lock();
+    ownerSetupRequired = false;
+    $("show-registration").hidden = true;
+    $("registration-exit").hidden = false;
     showLogin();
     showLoginPassword();
     status(
@@ -1434,7 +1438,7 @@ async function lock(logout = true) {
   );
   $("lock").disabled = true;
   $("state").textContent = "Locked";
-  if (new URLSearchParams(location.search).get("register") === "1")
+  if (ownerSetupRequired)
     showRegistration();
   else showLogin();
 }
@@ -1712,12 +1716,20 @@ try {
     $("username").value = identity.username;
     $("device").value = identity.deviceId;
   }
-  showLogin();
-  msg(identity ? "Ready to sign in." : "Register this device to continue.");
-  $("state").textContent = "Locked";
+  const setupState = await call("/api/v1/setup");
+  ownerSetupRequired = setupState.ownerRequired === true;
+  $("show-registration").hidden = !ownerSetupRequired;
+  $("registration-exit").hidden = ownerSetupRequired;
+  $("setup-guidance").textContent = setupState.licenseMode === "active"
+    ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."
+    : "Run install bootstrap on the server and enter its one-time code below. This test server has no active license yet.";
+  if (ownerSetupRequired) showRegistration();
+  else showLogin();
+  msg(ownerSetupRequired ? "Create the first owner for this server." : identity ? "Ready to sign in." : "This browser needs device enrollment from an existing user.");
+  $("state").textContent = ownerSetupRequired ? "First owner setup" : "Locked";
 } catch (e) {
   msg(
-    "Rust/WASM failed to load. Reload the page; if it repeats, confirm the MVP stack was rebuilt.",
+    "Secure client or server setup status is unavailable. Reload the page; if it repeats, check server readiness.",
     "error",
   );
   $("state").textContent = "Unavailable";

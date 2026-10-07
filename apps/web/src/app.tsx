@@ -440,6 +440,7 @@ function Registration() {
       </Button>
       <p className={eyebrow}>FIRST USER REGISTRATION</p>
       <h1 className="mb-2 text-[2rem] font-bold tracking-[-0.025em]">Create your account</h1>
+      <p id="setup-guidance" className={muted}>Get the one-time bootstrap code from your server operator.</p>
       <div
         id="registration-progress"
         className="step-dots my-5 flex gap-2 [&>i]:h-1 [&>i]:flex-1 [&>i]:rounded-full [&>i]:bg-slate-700"
@@ -583,7 +584,7 @@ function Authentication() {
             variant="ghost"
             className="mx-auto mt-5 flex w-fit !px-2 text-[#E0BB95]"
           >
-            Not registered on this device? Register device
+            Create first owner
           </Button>
           <Button id="lock" hidden disabled>
             Lock

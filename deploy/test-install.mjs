@@ -157,13 +157,17 @@ async function installLicense() {
   await verifyBundle();
   const licensePath = argv.find((value, index) => argv[index - 1] === '--file');
   const keysPath = argv.find((value, index) => argv[index - 1] === '--public-keys');
-  if (!licensePath || !keysPath) throw Error('License installation requires --file <signed license> and --public-keys <trusted issuer keys>.');
+  const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
+  const pinned = Object.hasOwn(manifest.files, 'issuer-keys.json');
+  if (existsSync('issuer-keys.json') && !pinned) throw Error('Unverified issuer key file is present in the bundle.');
+  if (!licensePath || (!pinned && !keysPath)) throw Error('License installation requires --file <signed license>; older bundles also require --public-keys <trusted issuer keys>.');
   const currentEnv = await readFile('.env', 'utf8');
   const configuredDir = /^VAULTS_TLS_DIR=(.+)$/m.exec(currentEnv)?.[1];
   if (configuredDir !== privateDir.replaceAll('\\', '/')) throw Error('Private directory does not match this installation.');
   const info = JSON.parse(await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true }));
   const source = await readFile(resolve(licensePath), 'utf8');
-  const keySource = await readFile(resolve(keysPath), 'utf8');
+  const keySource = await readFile(pinned ? 'issuer-keys.json' : resolve(keysPath), 'utf8');
+  if (pinned && keysPath && (await readFile(resolve(keysPath), 'utf8')) !== keySource) throw Error('Supplied issuer keys differ from the bundle-pinned keys.');
   const accepted = await installLicenseFiles({ runtimeDir: join(privateDir, 'runtime'), envPath: '.env',
     installationId: info.installationId, licenseSource: source, keySource });
   console.log(`Signed ${accepted.plan} license sequence ${accepted.sequence} installed for ${info.installationId}. Run install start to activate status.`);
@@ -200,7 +204,24 @@ else {
     await runCompose(['up', '-d', '--no-build']);
     console.log(`Open https://${configuredEndpoint}:12780 after verifying and trusting the local CA.`);
   } else if (action === 'stop') await runCompose(['down']);
-  else if (action === 'status') await runCompose(['ps']);
+  else if (action === 'status') {
+    await runCompose(['ps']);
+    try {
+      const info = JSON.parse(await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true }));
+      const content = await readFile('.env', 'utf8');
+      const hasLicense = /^VAULTS_LICENSE_FILE=\S+$/m.test(content) && /^VAULTS_LICENSE_PUBLIC_KEYS_FILE=\S+$/m.test(content);
+      const hasSmtp = /^SMTP_HOST=\S+$/m.test(content);
+      console.log(`Installation ID: ${info.installationId}`);
+      console.log(`Signed license configured: ${hasLicense ? 'yes' : 'no'}`);
+      console.log(`Vault owner enrolled: ${info.bootstrapRequired ? 'no' : 'yes'}`);
+      console.log(`Invitation SMTP configured: ${hasSmtp ? 'yes' : 'no'}`);
+      console.log(info.bootstrapRequired
+        ? hasLicense ? 'Next: run install bootstrap, then create the first owner in the HTTPS web client.'
+          : 'Next: install the signed license if supplied, then run install bootstrap for the first owner.'
+        : hasSmtp ? 'Next: verify backups and invite users from the enrolled owner account.'
+          : 'Next: verify backups; configure SMTP before inviting users.');
+    } catch { console.log('Server setup status is unavailable until the server is running and healthy.'); }
+  }
   else if (action === 'identify') {
     const info = await runCompose(['exec', '-T', 'server', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { quiet: true });
     const { installationId } = JSON.parse(info);

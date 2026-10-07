@@ -29,6 +29,7 @@ import { createOpsTelemetry } from './ops-log.mjs';
 import { createAdminHandler } from './admin/handler.mjs';
 import { loadOperators } from './admin/credentials.mjs';
 import { createLicenseHandler } from './license-handler.mjs';
+import { createSetupHandler } from './setup-handler.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
 const env = process.env;
@@ -96,6 +97,8 @@ const deviceLifecycleHandler=createDeviceLifecycleHandler(deviceStore,authentica
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
 const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion});
 const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE});
+const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
+  publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,smtpConfigured:Boolean(env.SMTP_HOST)});
 const webFiles=new Map([
   ['/', ['../../web/dist/index.html','text/html; charset=utf-8']],
   ['/app/react-client.js',['../../web/dist/app/react-client.js','text/javascript; charset=utf-8']],
@@ -122,6 +125,7 @@ const server = createServer(tls, async (req, res) => {
   }
   if (stopping) { reply(503, { status: 'unavailable' }); return; }
   if(await adminHandler(req,res))return;
+  if(await setupHandler(req,res))return;
   const asset=webFiles.get(req.url);
   if(asset&&['GET','HEAD'].includes(req.method)){
     try{const bytes=await readFile(new URL(asset[0],import.meta.url));res.writeHead(200,{

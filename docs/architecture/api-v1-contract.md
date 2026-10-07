@@ -27,6 +27,8 @@ aliases were removed after browser, acceptance, and CLI consumers migrated.
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/` | Begin an authentication exchange. |
 | `GET` | `/api/v1/ceremony` | Issue the host-only pre-authentication CSRF cookie and matching token used by onboarding. |
+| `GET` | `/api/v1/setup` | Report redacted first-run owner, license, and SMTP setup state. |
+| `GET` | `/api/v1/license` | Report authenticated license status without returning the signed file. |
 | `POST` | `/api/v1/auth/{id}/password` | Complete the password/OPAQUE step. |
 | `POST` | `/api/v1/auth/{id}/device-proof` | Complete enrolled-device proof. |
 | `DELETE` | `/api/v1/session` | End the current session. |

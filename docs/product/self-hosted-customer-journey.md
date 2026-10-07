@@ -12,7 +12,7 @@ The fresh-host operator and owner rehearsal is recorded in [self-hosted signup s
 | Obtain release | Download an approved signed bundle and clients; verify signature, hash, version compatibility and release license text. | Mock flow delivers a supervised test archive with manifest hashes. Public release catalogue remains empty. | Signed immutable public artifacts, trusted signing key distribution, platform matrix and release approval. Current test bundle is not a public installer. |
 | Install server | Operator provides private IPv4 or loopback endpoint, container engine, Node 24, storage, private CA trust and backup locations. Run init/start/status. | Test bundle installer creates identity and starts server/database. | Supported clean-host matrix, remote-access design, update/rollback and recovery sign-off. |
 | Bind entitlement | Read installation ID locally, send it through the customer portal, download the signed license, install it locally. | Mock order issues an Ed25519 test license; `install identify` reports the ID and `install license` verifies and configures the file. Authenticated server status displays it. | Production portal, offline issuer custody, persistent server-side anti-rollback, cap/expiry enforcement and recovery policy. Never ask for vault secrets or upload a license to the public site. |
-| Create vault owner | Retrieve one-time setup code locally, enroll owner in the served HTTPS web client, save account secret and device recovery material. | `install bootstrap` and owner enrollment exist. | Human acceptance on supported hosts and user-facing recovery guidance. Public account identity is separate from vault owner identity. |
+| Create vault owner | Retrieve one-time setup code locally, enroll owner in the served HTTPS web client, save account secret and device recovery material. | `install status` guides the operator; `/api/v1/setup` lets the web client open first-owner registration automatically. `install bootstrap` and owner enrollment exist. | Human acceptance on supported hosts and user-facing recovery guidance. Public account identity is separate from vault owner identity. |
 | Add users and devices | Owner invites by email, recipients verify and enroll, each device establishes its own identity; install separate clients where approved. | Invitation and client flows exist in the experimental server. | SMTP provider and egress verification, production client distribution and cross-device acceptance. The default test install supports the owner only. |
 | Operate and renew | Monitor status, back up database and server identity separately, rehearse restore, renew entitlement and update safely. | Backup/rehearsal commands and experimental license status exist. | Automated and tested renewal, enforcement policy, emergency export, support and production operations. |
 
@@ -25,7 +25,7 @@ node server.mjs install init --endpoint 127.0.0.1
 node server.mjs install start
 node server.mjs install status
 node server.mjs install identify
-node server.mjs install license --file license.json --public-keys issuer-keys.json
+node server.mjs install license --file license.json
 node server.mjs install start
 node server.mjs install bootstrap
 ```
