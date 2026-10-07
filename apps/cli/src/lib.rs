@@ -1379,12 +1379,31 @@ pub fn run(cli: Cli) -> Result<String, String> {
     match cli.command {
         Command::License {
             command: LicenseCommand::Status { config_dir },
-        } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
-            "license.status",
-            serde_json::json!({}),
-        )?)
-        .map_err(|_| "could not encode license status".to_owned()),
+        } => {
+            let mut status = agent::call(
+                &effective_config_dir(&config_dir),
+                "license.status",
+                serde_json::json!({}),
+            )?;
+            let guidance = match status["mode"].as_str() {
+                Some("active") => "License active. Check expiresAt and renew before expiry.",
+                Some("read-only") => {
+                    "License expired. Server vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
+                }
+                Some("revoked") => {
+                    "License revoked. Server writes are blocked. Ask the server operator to install a valid replacement license."
+                }
+                Some("locked") => {
+                    "License locked. Server writes are blocked. Check expiry and the server clock, then ask the operator to install a valid license if needed."
+                }
+                _ => {
+                    "Experimental or unavailable license status. Confirm the server operator status before relying on it."
+                }
+            };
+            status["guidance"] = serde_json::json!(guidance);
+            serde_json::to_string_pretty(&status)
+                .map_err(|_| "could not encode license status".to_owned())
+        }
         Command::Server {
             command: ServerCommand::Trust(args),
         } => establish_trust(&args),

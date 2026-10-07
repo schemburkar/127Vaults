@@ -609,7 +609,14 @@ async function login() {
     $("lock").disabled = false;
     $("state").textContent = "Unlocked";
     void call('/api/v1/license').then((license) => {
-      if (!$("vault").hidden) $("state").textContent = `Unlocked · license ${license.mode}${license.enforcement === 'disabled' ? ' (experimental)' : ''}`;
+      if (!$("vault").hidden) {
+        const guidance = license.mode === 'read-only' ? 'Expired: vault and invitation writes are blocked during the 30-day read-only period.'
+          : license.mode === 'revoked' ? 'Revoked: server writes are blocked. Ask the operator for a replacement license.'
+            : license.mode === 'locked' ? 'Locked: server writes are blocked. Check expiry and the server clock.'
+              : license.mode === 'active' ? `Active${license.expiresAt ? ` until ${license.expiresAt.slice(0, 10)}` : ''}.`
+                : 'Experimental license state.';
+        $("state").textContent = `Unlocked · ${guidance}`;
+      }
     }).catch(() => { /* Older servers may not expose license status. */ });
     arm();
     await reloadDevices();

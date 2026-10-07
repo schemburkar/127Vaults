@@ -8,8 +8,10 @@ use std::{
     sync::Mutex,
 };
 use vaults_cli::{
+    TrustArgs,
     client::{Session, unlock_with_offline_fallback},
-    connector_agent_active, enroll_device_with_status, start_connector_agent, stop_connector_agent,
+    connector_agent_active, enroll_device_with_status, establish_trust, start_connector_agent,
+    stop_connector_agent, validate_trust,
 };
 
 #[derive(Default)]
@@ -104,6 +106,40 @@ fn config_directory() -> Result<PathBuf, String> {
         .ok_or_else(|| "desktop configuration location is unavailable".to_owned())?;
     adopt_cli_profile(&destination)?;
     Ok(destination)
+}
+
+#[tauri::command]
+fn configure_server_trust(
+    url: String,
+    ca_path: String,
+    server_id: String,
+    expected_fingerprint: String,
+) -> Result<String, String> {
+    if !expected_fingerprint
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit())
+        || expected_fingerprint.len() != 64
+    {
+        return Err(
+            "enter the 64-character CA SHA-256 fingerprint from the server operator".to_owned(),
+        );
+    }
+    let args = TrustArgs {
+        url,
+        ca: PathBuf::from(ca_path),
+        server_id,
+        tailscale_name: None,
+        tailscale_ip: false,
+        config_dir: config_directory()?,
+    };
+    let validation = validate_trust(&args)?;
+    if !validation.contains(&format!(
+        "ca_sha256={}",
+        expected_fingerprint.to_ascii_lowercase()
+    )) {
+        return Err("CA fingerprint does not match the operator value".to_owned());
+    }
+    establish_trust(&args)
 }
 
 fn profile(path: &std::path::Path, key: &str) -> Option<String> {
@@ -714,7 +750,8 @@ fn main() {
             conflict_draft,
             lock,
             begin_device_enrollment,
-            device_enrollment_status
+            device_enrollment_status,
+            configure_server_trust
         ])
         .run(tauri::generate_context!())
         .expect("desktop POC runtime failed");

@@ -151,6 +151,11 @@ export function App() {
   const [editOriginal, setEditOriginal] = useState<Item | null>(null);
   const [expandedRelatedId, setExpandedRelatedId] = useState<string | null>(null);
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null),
+    [trustUrl, setTrustUrl] = useState(""),
+    [trustCaPath, setTrustCaPath] = useState(""),
+    [trustServerId, setTrustServerId] = useState(""),
+    [trustFingerprint, setTrustFingerprint] = useState(""),
+    [trustBusy, setTrustBusy] = useState(false),
     [username, setUsername] = useState("");
   const [accountSecret, setAccountSecret] = useState(""),
     [masterPassword, setMasterPassword] = useState("");
@@ -803,6 +808,21 @@ export function App() {
     setEditOriginal(null);
     setEditing(false);
   };
+  const configureTrust = async () => {
+    if (trustBusy) return;
+    setTrustBusy(true);
+    setStatus("Checking the private server and CA fingerprint…");
+    try {
+      await invoke<string>("configure_server_trust", {
+        url: trustUrl.trim(), caPath: trustCaPath.trim(), serverId: trustServerId.trim(),
+        expectedFingerprint: trustFingerprint.trim(),
+      });
+      const info = await invoke<DesktopInfo>("desktop_info");
+      setDesktopInfo(info);
+      setStatus("Server trust saved. Continue with owner setup or device enrollment.");
+    } catch (error) { setStatus(friendlyError(error)); }
+    finally { setTrustBusy(false); }
+  };
   const enrollDesktop = async () => {
     if (enrolling) return;
     const enrolledUsername = registrationUsername.trim();
@@ -955,6 +975,17 @@ export function App() {
                 </p>
               </div>
               <div className="grid gap-5">
+                {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-5">
+                  <h2 className="font-bold">Connect to your private server</h2>
+                  <p className="mb-3 mt-1 text-sm text-slate-400">Get the exact HTTPS address, installation ID, public CA certificate file, and SHA-256 CA fingerprint from your server operator. The certificate must match before trust is saved.</p>
+                  <div className="grid gap-2">
+                    <Input aria-label="Private server URL" placeholder="https://192.168.1.10:12780" value={trustUrl} onChange={event => setTrustUrl(event.target.value)} />
+                    <Input aria-label="Installation ID" placeholder="Installation ID" value={trustServerId} onChange={event => setTrustServerId(event.target.value)} />
+                    <Input aria-label="Public CA certificate path" placeholder="Path to ca.crt" value={trustCaPath} onChange={event => setTrustCaPath(event.target.value)} />
+                    <Input aria-label="Expected CA SHA-256 fingerprint" placeholder="64-character SHA-256 fingerprint" value={trustFingerprint} onChange={event => setTrustFingerprint(event.target.value)} />
+                  </div>
+                  <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button>
+                </section>}
                 <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <h2 className="font-bold">I already have an account</h2>
                   <p className="mb-4 mt-1 text-sm text-slate-400">
@@ -1110,7 +1141,7 @@ export function App() {
             <Button
               variant="ghost"
               className="text-[#E0BB95]"
-              disabled={!desktopInfo?.registrationUrl || enrolling}
+              disabled={enrolling}
               onClick={() => {
                 setRegistrationUsername(username);
                 setRegistrationOpen(true);
@@ -1171,7 +1202,15 @@ export function App() {
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         {removalPlan?.pending && <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/8 p-3 text-xs text-amber-100" role="status"><strong>Vault operation needs attention</strong><p className="mt-1">{removalPlan.choice === "move" ? "Move" : removalPlan.choice === "restore" ? "Restore" : "Archive"} · {removalPlan.stage === "copying" ? "copying items" : "finalizing request"} · {removalPlan.itemMappings?.length ?? 0} mapped item(s)</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
         <div className="mt-auto grid gap-1">
-          {licenseStatus && <p className="px-3 py-2 text-xs text-slate-400" role="status">License: {licenseStatus.mode}{licenseStatus.plan ? ` · ${licenseStatus.plan}` : ""}{licenseStatus.enforcement === "disabled" ? " · experimental" : ""}</p>}
+          {licenseStatus && <p className="px-3 py-2 text-xs text-slate-400" role="status">{licenseStatus.mode === "read-only"
+            ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
+            : licenseStatus.mode === "revoked"
+              ? "License revoked: server writes are blocked. Ask the server operator for a replacement license."
+              : licenseStatus.mode === "locked"
+                ? "License locked: server writes are blocked. Check expiry and the server clock."
+                : licenseStatus.mode === "active"
+                  ? `License active${licenseStatus.expiresAt ? ` until ${licenseStatus.expiresAt.slice(0, 10)}` : ""}.`
+                  : "Experimental license state; confirm server operator status before relying on it."}</p>}
           <Button variant="ghost" className="justify-start" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></Button>
           <Button
             variant="ghost"

@@ -65,6 +65,13 @@ async function findVaultTab() {
   const tabs = await chrome.tabs.query({});
   return tabs.find(tab => tab.id && tab.id !== targetTab.id && originOf(tab.url) === vaultOrigin) || null;
 }
+function licenseNotice(license) {
+  if (!license || license.enforcement === 'disabled') return '';
+  if (license.mode === 'read-only') return ' License expired: server writes are blocked during the 30-day read-only period. Existing logins may still be filled.';
+  if (license.mode === 'revoked') return ' License revoked: server writes are blocked. Existing unlocked logins may still be available from this source.';
+  if (license.mode === 'locked') return ' License locked: server writes are blocked. Check the server operator status and renewal.';
+  return license.expiresAt ? ` License active until ${license.expiresAt.slice(0, 10)}.` : '';
+}
 async function loadSelectedSource() {
   $('results').hidden = true;
   $('native-unlock').hidden = true;
@@ -73,7 +80,7 @@ async function loadSelectedSource() {
   const source = localSources.find(row => row.id === selectedSource);
   const license = source?.license;
   $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.'
-    : `${sourceStatus(source)}${license && ['read-only', 'locked'].includes(license.mode) ? ` License: ${license.mode}.` : ''}`;
+    : `${sourceStatus(source)}${licenseNotice(license)}${source?.online === false ? ' Offline license status may be stale.' : ''}`;
   $('open-vault').hidden = selectedSource !== 'web' || !vaultOrigin;
   items = [];
   if (selectedSource !== 'web') {
@@ -106,7 +113,7 @@ async function loadSelectedSource() {
       const response = await fetch('/api/v1/license', { credentials: 'same-origin' });
       return response.ok ? response.json() : null;
     }, [], {}, 'MAIN'))[0]?.result;
-    if (license && ['read-only', 'locked'].includes(license.mode)) $('source-state').textContent += ` License: ${license.mode}.`;
+    $('source-state').textContent += licenseNotice(license);
   } catch { /* Older server or unavailable status. */ }
   const result = (await script(vaultTab.id, site => window.__vaultsExtensionActions?.list(site), [originOf(targetTab.url)], {}, 'MAIN'))[0]?.result;
   if (!result || result.locked) { status('Unlock the vault web tab, or choose a local source.'); return; }
