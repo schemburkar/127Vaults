@@ -67,7 +67,7 @@ impl Session {
             let summary = self.item_get(vault, item, None)?;
             if let Ok(meta) = metadata(&summary, site) {
                 output.push(
-                    json!({"vaultId":vault,"itemId":item,"title":summary["title"],"metadata":meta}),
+                    json!({"vaultId":vault,"vaultName":self.vault_info(vault)?["name"],"itemId":item,"title":summary["title"],"metadata":meta,"sync":self.item_sync_status(vault,item)?}),
                 );
             }
         }
@@ -104,11 +104,33 @@ impl Session {
         }) {
             return Err("passkey already exists".to_owned());
         }
-        self.item_upsert(vault, None, &format!("{} · {}", meta["rpId"].as_str().unwrap_or("Passkey"), meta["username"].as_str().unwrap_or("")), site, meta["username"].as_str().unwrap_or(""), "", &[
+        let saved = self.item_upsert(vault, None, &format!("{} · {}", meta["rpId"].as_str().unwrap_or("Passkey"), meta["username"].as_str().unwrap_or("")), site, meta["username"].as_str().unwrap_or(""), "", &[
             json!({"id":"__127vaults_item_type","label":"Item type","type":"metadata","value":"passkey"}),
             json!({"id":META,"label":"Passkey","type":"metadata","value":meta.to_string()}),
             json!({"id":KEY,"label":"Passkey private key","type":"password","value":key}),
-        ])
+        ]);
+        match saved {
+            Ok(saved) => Ok(saved),
+            Err(error) if !error.contains("409") => {
+                // A failed delivery can still leave a durable encrypted item.
+                // Return offline success only after finding that exact key ID
+                // in the selected vault; never claim an uncertain save.
+                let rows = self.passkey_list(site)?;
+                let item = rows.as_array().and_then(|rows| {
+                    rows.iter().find(|row| {
+                        row["vaultId"] == vault
+                            && row["metadata"]["credentialId"] == meta["credentialId"]
+                    })
+                });
+                match item {
+                    Some(item) => {
+                        Ok(json!({"itemId":item["itemId"],"queued":true,"syncError":error}))
+                    }
+                    None => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 

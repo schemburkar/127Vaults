@@ -15,7 +15,11 @@ let localSources = [];
 let sourceSignature = '';
 let refreshInProgress = false;
 let userSelectedSource = false;
-const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, getSources: () => localSources, status });
+const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, getSources: () => localSources, status, listSavedPasskeys: async origin => {
+  if (selectedSource !== 'web') return native({ action: 'passkey.list', source: selectedSource, siteOrigin: origin });
+  if (!vaultTab?.id) return [];
+  return (await script(vaultTab.id, site => window.__vaultsExtensionActions?.passkeyList(site), [origin], {}, 'MAIN'))[0]?.result || [];
+} });
 
 function status(message, error = false) {
   $('status').textContent = message;
@@ -82,7 +86,7 @@ async function loadSelectedSource() {
   const source = localSources.find(row => row.id === selectedSource);
   const license = source?.license;
   $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.'
-    : `${sourceStatus(source)}${licenseNotice(license)}${source?.online === false ? ' Offline license status may be stale.' : ''}`;
+    : `${sourceStatus(source)}${licenseNotice(license)}${source?.online === false && selectedSource !== 'desktop' ? ' Offline license status may be stale.' : ''}`;
   $('open-vault').hidden = selectedSource !== 'web' || !vaultOrigin;
   items = [];
   if (selectedSource !== 'web') {
@@ -92,6 +96,7 @@ async function loadSelectedSource() {
       $('results').hidden = false;
       $('lock-vault').hidden = false;
       renderItems();
+      await passkeys.refreshSaved();
     } catch (error) {
       if (source?.active || source?.localUnlocked) {
         status(`Could not read ${selectedSource} logins: ${errorMessage(error)} Refresh or lock and unlock the client.`, true);
@@ -124,6 +129,7 @@ async function loadSelectedSource() {
   $('results').hidden = false;
   $('lock-vault').hidden = false;
   renderItems();
+  await passkeys.refreshSaved();
 }
 async function refresh() {
   if (refreshInProgress || pending) return;
@@ -279,6 +285,7 @@ setInterval(async () => {
   if (document.hidden || pending || refreshInProgress || !$('frames').hidden) return;
   try {
     await passkeys.refresh();
+    await passkeys.refreshSaved();
     const sources = (await native({ action: 'sources' })).sources || [];
     const next = JSON.stringify(sources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
     if (next !== sourceSignature) await refresh();

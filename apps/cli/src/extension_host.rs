@@ -298,7 +298,7 @@ impl Host {
                     path.as_deref().and_then(|path| agent::call(path, "license.status", json!({})).ok())
                 } else { None };
                 let username_hint = if *source == "desktop" { path.as_deref().and_then(cached_username) } else { None };
-                json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":self.local.as_ref().is_some_and(|local|local.source == *source),"usernameHint":username_hint,"sync":sync,"license":license})
+                json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":self.local.as_ref().is_some_and(|local|local.source == *source),"usernameHint":username_hint,"hasCachedSecret":username_hint.as_deref().is_some_and(|username| path.as_deref().and_then(|path| cached_secret(path, username)).is_some()),"sync":sync,"license":license})
             }).collect::<Vec<_>>();
             return Ok(json!({"version":1,"sources":sources}));
         }
@@ -455,7 +455,7 @@ impl Host {
             client::unlock_offline(path, &username, &secret, request.master_password.as_bytes())?;
         let active = agent::call(path, "status", json!({})).is_ok();
         self.last_activity = Instant::now();
-        if active {
+        if active && request.action == "passkey.get" {
             agent::call(
                 path,
                 &request.action,
@@ -464,12 +464,31 @@ impl Host {
         } else if request.action == "passkey.get" {
             verified.passkey_get(&request.vault_id, &request.item_id, site)
         } else {
-            verified.passkey_save(
+            // A connector agent may be offline even while Desktop is online.
+            // Creation uses a fresh authenticated session, not that agent.
+            verified = client::unlock_with_offline_fallback(
+                path,
+                &username,
+                &secret,
+                request.master_password.as_bytes(),
+            )?;
+            let sync_error = if verified.is_online() {
+                verified.sync_now().err()
+            } else {
+                verified.offline_reason().map(str::to_owned)
+            };
+            let mut saved = verified.passkey_save(
                 &request.vault_id,
                 site,
                 &request.metadata,
                 &request.private_key,
-            )
+            )?;
+            saved["vaultId"] = json!(request.vault_id);
+            saved["source"] = json!(request.source);
+            if saved["syncError"].is_null() {
+                saved["syncError"] = json!(sync_error);
+            }
+            Ok(saved)
         }
     }
 }

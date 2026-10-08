@@ -919,6 +919,29 @@ export function App() {
     catch { setPendingChanges(null); }
   };
   useEffect(() => { if (unlocked) void refreshSyncStatus(); }, [unlocked]);
+  // Connector saves use this same encrypted replica. Refresh external writes
+  // without replacing an editor draft, and deliver queued writes when online.
+  useEffect(() => {
+    if (!unlocked || editing || saving) return;
+    let disposed = false, busy = false;
+    const refreshExternalItems = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        const replica = await invoke<{ pending: number }>("replica_status");
+        if (disposed || dirtyRef.current) return;
+        if (online && replica.pending > 0) {
+          try { await invoke("sync", { vaultId }); } catch { /* Show local writes even when delivery fails. */ }
+        }
+        const next = viewMode === "single" ? await invoke<Summary[]>("item_list", { vaultId }) : await listVisibleItems();
+        if (!disposed && !dirtyRef.current) { setItems(next); await refreshSyncStatus(); }
+      } catch { /* Explicit Sync reports failures; local items remain intact. */ }
+      finally { busy = false; }
+    };
+    const timer = window.setInterval(() => void refreshExternalItems(), 5000);
+    window.addEventListener("focus", refreshExternalItems);
+    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", refreshExternalItems); };
+  }, [unlocked, editing, saving, online, vaultId, viewMode, selectedCollectionId, vaults]);
   const loadHealthItems = useCallback(async () => {
     const summaries = await listAllItems();
     const result: Item[] = [];

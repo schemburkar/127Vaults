@@ -64,7 +64,7 @@ export function installPasskeyProvider(nativeRequest) {
       await rows(row, selectedSource);
       await current(row);
       queue.finish(row.id, { value: response });
-      return { ok: true, queued: saved?.queued === true };
+      return { ok: true, queued: saved?.queued === true, itemId: saved?.itemId, vaultId: saved?.vaultId || message.vaultId, source: selectedSource, syncError: saved?.syncError || null };
     } catch (error) {
       // A failed/ambiguous registration is terminal: never silently generate a
       // second key for the same website request after an uncertain save.

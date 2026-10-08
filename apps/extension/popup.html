@@ -18,15 +18,16 @@
         <strong id="passkey-origin"></strong>
         <p id="passkey-hint" class="hint"></p>
         <label id="passkey-label" for="passkey-choice">Passkey</label><select id="passkey-choice"></select>
-        <div id="passkey-native-fields">
+        <details id="passkey-native-fields"><summary>Account setup (only if needed)</summary>
           <label for="passkey-username">127Vaults username</label><input id="passkey-username" autocomplete="username">
           <label for="passkey-secret">Account secret (optional if desktop remembers it)</label><input id="passkey-secret" type="password" autocomplete="off">
-        </div>
+        </details>
         <label for="passkey-master">Verify master password</label><input id="passkey-master" type="password" autocomplete="off">
         <button id="passkey-approve" type="button">Verify and use passkey</button>
-        <button id="passkey-browser" type="button">Use browser instead</button>
+        <button id="passkey-browser" type="button">Save with another provider</button>
         <button id="passkey-cancel" type="button">Cancel</button>
       </section>
+      <section id="saved-passkeys" hidden><h2>Saved passkeys for this site</h2><p id="passkey-save-status" class="hint" role="status"></p><div id="saved-passkey-items"></div></section>
       <section id="source-panel" hidden>
         <p id="source-state" class="hint" role="status"></p>
         <div id="native-unlock" hidden>

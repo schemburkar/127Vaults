@@ -106,3 +106,20 @@ verification. Enable the provider, reload the page, and click Register normally.
 127Vaults is not registered as a Windows passkey provider; its browser extension
 handles the ceremony before the native picker. Use browser instead remains
 available in the approval popup.
+
+### Saved passkeys and sync
+
+The extension lists passkeys for the current site separately from fillable logins,
+including the destination vault and whether each local mutation is waiting to
+sync. Approved native saves attempt online authentication and delivery even when
+the password-fill connector agent is offline. A network failure retains a
+confirmed encrypted local credential and reports it as waiting to sync.
+Desktop refreshes external writes while its editor is idle and attempts delivery
+of queued changes when its session is online. Refresh sources reloads extension
+metadata; it is not a sync button. For an offline Desktop session, unlock again
+once the server is reachable and click Sync. For CLI, log in and run
+`127vaults sync`. Account setup fields are hidden when Desktop remembers the
+account secret; fresh master-password verification remains required.
+
+Native OS-provider support is a separate proposed integration; see
+[the native provider direction](../../docs/security/native-passkey-providers.md).

@@ -2331,6 +2331,16 @@ impl Session {
                 .collect(),
         ))
     }
+    pub(crate) fn item_sync_status(&self, vault: &str, item: &str) -> Result<Value, String> {
+        let replica = self
+            .replica_store
+            .load(vault)?
+            .ok_or("local replica is unavailable")?;
+        Ok(
+            json!({"pending":replica.pending.iter().any(|mutation| mutation.operation["itemId"] == item),"error":replica.sync_error}),
+        )
+    }
+
     pub fn replica_status(&self) -> Result<Value, String> {
         let replicas = self.replica_store.list()?;
         let last_verified_sync_at = replicas
