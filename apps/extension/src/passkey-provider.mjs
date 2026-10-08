@@ -1,3 +1,4 @@
+import { passkeysEnabled } from './passkey-settings.mjs';
 import { createPasskeyQueue } from './passkey-queue.mjs';
 import { createPasskey, assertPasskey, matches } from './passkeys.mjs';
 import { originOf, permissionPattern } from './match.mjs';
@@ -8,8 +9,8 @@ export function installPasskeyProvider(nativeRequest) {
     if (queue.get(row.id) !== row) throw Error('Passkey request expired or cancelled.');
     const tab = await chrome.tabs.get(row.tabId);
     if (originOf(tab.url) !== row.origin || queue.get(row.id) !== row) throw Error('The page changed.');
-    const { passkeyOrigins = [] } = await chrome.storage.local.get('passkeyOrigins');
-    if (!passkeyOrigins.includes(row.origin)) throw Error('The passkey provider is disabled on this site.');
+    const settings = await chrome.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
+    if (!passkeysEnabled(settings, row.origin) || !(await chrome.permissions.contains({ origins: [permissionPattern(row.origin)] }))) throw Error('The passkey provider is disabled or site access was revoked.');
   }
   async function web(row, method, args = []) {
     const { vaultOrigin } = await chrome.storage.local.get('vaultOrigin');
@@ -82,8 +83,8 @@ export function installPasskeyProvider(nativeRequest) {
         if (sender.frameId !== 0) throw Error('Passkeys require a top-level page.');
         if (message.kind === 'passkey.cancel') { queue.cancelPage(sender, message.id); return { ok: true }; }
         if (message.kind !== 'passkey.request') throw Error('Page cannot perform this passkey operation.');
-        const origin = originOf(sender.url), { passkeyOrigins = [] } = await chrome.storage.local.get('passkeyOrigins');
-        if (!origin || !passkeyOrigins.includes(origin) || !(await chrome.permissions.contains({ origins: [permissionPattern(origin)] }))) return { useBrowser: true };
+        const origin = originOf(sender.url), settings = await chrome.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
+        if (!origin || !passkeysEnabled(settings, origin) || !(await chrome.permissions.contains({ origins: [permissionPattern(origin)] }))) return { useBrowser: true };
         try {
           queue.add(message, sender, response => { chrome.action.setBadgeText({ tabId: sender.tab.id, text: '' }).catch(() => {}); respond(response); });
           await chrome.action.setBadgeText({ tabId: sender.tab.id, text: 'KEY' }).catch(() => {});
@@ -116,6 +117,9 @@ export function installPasskeyProvider(nativeRequest) {
     return true;
   });
   chrome.tabs.onRemoved?.addListener(tabId => queue.cancelTab(tabId));
+  chrome.storage.onChanged?.addListener((changes, area) => {
+    if (area === 'local' && changes.passkeysAllSites?.newValue === false) queue.cancelAll();
+  });
   chrome.tabs.onUpdated?.addListener((tabId, change) => { if (change.url || change.status === 'loading') queue.cancelTab(tabId); });
   return queue;
 }

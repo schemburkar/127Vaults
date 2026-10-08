@@ -4,7 +4,9 @@
 
 Rebuild the desktop/CLI native host and reload this unpacked extension after
 updating. On an HTTPS website, open the extension and choose **Enable 127Vaults
-passkeys on this site**, grant that site's permission, then reload the website.
+passkeys on all HTTPS sites**, grant the one-time HTTPS-site permission, then reload
+the website. This applies to newly visited HTTPS sites automatically; existing
+per-site grants are migrated when you enable all-sites mode.
 When the site creates or requests a passkey, open the extension (it may open
 automatically) and review the displayed origin, account and selected source.
 Choose a destination vault for registration or a matching saved passkey for
@@ -24,8 +26,10 @@ This first provider handles top-level HTTPS pages, exact-host RP IDs, ES256,
 none attestation, discoverable credentials and registration credProps. Parent-domain RP IDs, frames,
 conditional mediation, WebAuthn extensions other than registration credProps and platform-only requests retain the
 native browser path. **Use browser instead** is available before approval.
-**Disable passkeys on this site** removes its provider registration; reload the
-page to restore the original methods. No account sign-in changes are included.
+**Disable 127Vaults passkeys** removes provider registrations for all sites;
+reload existing pages to restore the original methods. Disabling preserves the
+shared browser site permission used by the vault connector. You can revoke site
+access separately in the browser extension settings. No account sign-in changes are included.
 
 See the [security design](../../docs/security/website-passkeys.md). Node tests
 cover signatures, verification, exclusions, persistence ordering, navigation,
@@ -34,6 +38,27 @@ Edge credential/response prototypes, typed buffers and native fallthrough with a
 disposable synthetic source; it needs Playwright and an installed Edge browser.
 This does not replace the installed-extension Chrome/Edge site matrix or an
 independent security review.
+
+### Testing alongside 1Password
+
+Use a separate Chrome or Edge profile containing only 127Vaults for repeatable
+tests. Keep 1Password installed in your usual browser/profile and desktop.
+Alternatively, temporarily disable the 1Password browser extension, or turn off
+its passkey save and sign-in offers under Settings > Autofill & save while keeping
+password filling enabled. See [1Password's browser instructions](https://support.1password.com/save-use-passkeys/).
+
+Windows also has a separate 1Password passkey-manager integration. If the Windows
+picker still offers 1Password, it can be disabled temporarily under Settings >
+Accounts > Passkeys > Advanced options, where available; see [the Windows guide](https://support.1password.com/save-use-passkeys-windows/).
+This changes the provider setting, not the stored credentials or app installation.
+
+Reload the test page after changing extension settings. A supported 127Vaults
+ceremony should show its approval popup (or a KEY badge requiring you to open
+the extension). A native Windows picker indicates a browser fallback or a
+competing provider, not a confirmed 127Vaults save. All-sites permission does not
+change the exact-host RP, algorithm, frame and extension limitations above.
+Multiple extensions wrapping WebAuthn can override or chain each other's hooks;
+127Vaults does not guarantee priority over another enabled provider.
 
 The extension is a read-only password connector with an opt-in website passkey provider. Passkey registration has a narrow, explicitly approved create-only save exception. It can use an unlocked web tab, an active desktop or CLI unlock agent, or an installed desktop/CLI encrypted replica. A local replica can be unlocked with the account secret and master password when the server is unavailable. Desktop can reuse its cached account secret when available. The extension itself stores no vault replica or login edits.
 

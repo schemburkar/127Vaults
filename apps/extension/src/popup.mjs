@@ -230,8 +230,8 @@ $('connect').onclick = async () => {
     if (!granted) { status('Vault access was not granted.', true); return; }
     const previous = await configuredOrigin();
     await chrome.storage.local.set({ vaultOrigin: origin });
-    const { passkeyOrigins = [] } = await chrome.storage.local.get("passkeyOrigins");
-    if (previous && previous !== origin && permissionPattern(previous) !== permissionPattern(origin) && !passkeyOrigins.some(site => permissionPattern(site) === permissionPattern(previous))) {
+    const { passkeyOrigins = [], passkeysAllSites = false } = await chrome.storage.local.get(["passkeyOrigins", "passkeysAllSites"]);
+    if (previous && previous !== origin && permissionPattern(previous) !== permissionPattern(origin) && !passkeysAllSites && !passkeyOrigins.some(site => permissionPattern(site) === permissionPattern(previous))) {
       await chrome.permissions.remove({ origins: [permissionPattern(previous)] });
     }
     await refresh();

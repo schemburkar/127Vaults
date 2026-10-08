@@ -22,8 +22,10 @@ Parent-domain RP IDs, frames, WebAuthn extensions other than registration credPr
 platform-only requests use the native browser path. These limitations must be
 visible; this is experimental support, not a universal authenticator.
 
-The extension needs permission only for sites where the user enables its
-provider. The page-world shim sends serialized request options to an isolated
+The extension requests one optional permission for all HTTPS sites when the user
+enables its provider. Scripts run at document start on top-level HTTPS pages.
+Legacy per-site grants remain effective until migrated to the global mode;
+disabling removes all provider script registrations and cancels pending requests. The page-world shim sends serialized request options to an isolated
 bridge; the service worker derives the real HTTPS origin from the browser's
 sender, checks the top frame and current navigation, and queues a bounded,
 expiring request for approval. No page supplies a vault selector or operation.

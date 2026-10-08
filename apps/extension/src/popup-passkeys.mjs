@@ -1,5 +1,5 @@
-import { encode } from './passkeys.mjs';
-import { originOf, permissionPattern } from './match.mjs';
+import { enableAllPasskeys, disableAllPasskeys } from './passkey-settings.mjs';
+import { originOf } from './match.mjs';
 
 export function setupPasskeyPopup({ getTab, getSource, getSources, status }) {
   const $ = id => document.getElementById(id);
@@ -13,9 +13,9 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status }) {
   async function refresh(force = false) {
     if (processing || !getTab()?.id) return;
     const version = ++revision, tab = getTab();
-    const origin = originOf(tab.url), { passkeyOrigins = [] } = await chrome.storage.local.get('passkeyOrigins');
-    $('enable-passkeys').hidden = !origin || passkeyOrigins.includes(origin);
-    $('disable-passkeys').hidden = !origin || !passkeyOrigins.includes(origin);
+    const settings = await chrome.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
+    $('enable-passkeys').hidden = settings.passkeysAllSites === true && await chrome.permissions.contains({ origins: ['https://*/*'] });
+    $('disable-passkeys').hidden = settings.passkeysAllSites !== true && !settings.passkeyOrigins?.length;
     const pending = await send({ kind: 'passkey.pending', tabId: tab.id });
     if (version !== revision) return;
     request = pending?.requests?.[0] || null;
@@ -43,43 +43,23 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status }) {
     } catch (error) { $('passkey-hint').textContent = String(error?.message || error); }
   }
   $('enable-passkeys').onclick = async () => {
-    const origin = originOf(getTab()?.url);
-    if (!origin) return;
+    if (processing) return;
     try {
-      if (!(await chrome.permissions.request({ origins: [permissionPattern(origin)] }))) throw Error('Site permission was not granted.');
-      const { passkeyOrigins = [] } = await chrome.storage.local.get('passkeyOrigins');
-      const suffix = encode(new TextEncoder().encode(origin));
-      const ids = [`passkey-bridge-${suffix}`, `passkey-page-${suffix}`];
-      const registered = await chrome.scripting.getRegisteredContentScripts({ ids });
-      if (registered.length) await chrome.scripting.unregisterContentScripts({ ids: registered.map(script => script.id) });
-      await chrome.scripting.registerContentScripts([
-        { id: ids[0], matches: [permissionPattern(origin)], js: ['src/passkey-bridge.js'], runAt: 'document_start', world: 'ISOLATED', allFrames: false },
-        { id: ids[1], matches: [permissionPattern(origin)], js: ['src/passkey-page.js'], runAt: 'document_start', world: 'MAIN', allFrames: false },
-      ]);
-      await chrome.storage.local.set({ passkeyOrigins: [...new Set([...passkeyOrigins, origin])] });
-      // Install immediately for sites that haven't captured the native methods;
-      // reload is recommended so both scripts run before the site's own code.
-      await chrome.scripting.executeScript({ target: { tabId: getTab().id }, files: ['src/passkey-bridge.js'], world: 'ISOLATED' });
-      await chrome.scripting.executeScript({ target: { tabId: getTab().id }, files: ['src/passkey-page.js'], world: 'MAIN' });
-      status('Passkeys enabled for this site. Reload the page before creating or using one.');
+      await enableAllPasskeys(chrome);
+      if (originOf(getTab()?.url)) {
+        await chrome.scripting.executeScript({ target: { tabId: getTab().id }, files: ['src/passkey-bridge.js'], world: 'ISOLATED' }).catch(() => {});
+        await chrome.scripting.executeScript({ target: { tabId: getTab().id }, files: ['src/passkey-page.js'], world: 'MAIN' }).catch(() => {});
+      }
+      status('127Vaults passkeys enabled on all HTTPS sites. Reload existing pages before testing.');
       await refresh();
     } catch (error) { status(String(error?.message || error), true); }
   };
   $('disable-passkeys').onclick = async () => {
     if (processing) return;
-    const origin = originOf(getTab()?.url);
-    if (!origin) return;
     try {
       if (request) await send({ kind: 'passkey.cancel', id: request.id, useBrowser: true });
-      const { passkeyOrigins = [] } = await chrome.storage.local.get('passkeyOrigins');
-      await chrome.storage.local.set({ passkeyOrigins: passkeyOrigins.filter(value => value !== origin) });
-      const suffix = encode(new TextEncoder().encode(origin));
-      const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [`passkey-bridge-${suffix}`, `passkey-page-${suffix}`] });
-      if (registered.length) await chrome.scripting.unregisterContentScripts({ ids: registered.map(script => script.id) });
-      const { vaultOrigin } = await chrome.storage.local.get('vaultOrigin');
-      const pattern = permissionPattern(origin);
-      if ((!originOf(vaultOrigin) || permissionPattern(vaultOrigin) !== pattern) && !passkeyOrigins.some(site => site !== origin && permissionPattern(site) === pattern)) await chrome.permissions.remove({ origins: [pattern] });
-      status('127Vaults passkeys disabled on this site. Reload the page to restore the browser methods.');
+      await disableAllPasskeys(chrome);
+      status('127Vaults passkeys disabled. Reload existing pages to restore the browser methods.');
       await refresh();
     } catch (error) { status(String(error?.message || error), true); }
   };
