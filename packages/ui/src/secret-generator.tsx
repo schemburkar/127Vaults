@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "./button";
 
@@ -35,11 +35,15 @@ export function SecretGenerator({
   onUse,
   label = "password",
   initialMode = "password",
+  triggerIcon,
+  autoGenerate = false,
 }: {
   generate: (options: GeneratorOptions) => Promise<string>;
   onUse: (value: string) => void;
   label?: string;
   initialMode?: GeneratorOptions["mode"];
+  triggerIcon?: ReactNode;
+  autoGenerate?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState(defaults);
@@ -83,9 +87,9 @@ export function SecretGenerator({
     setOptions((current) => ({ ...current, ...change }));
     setValue("");
     setError("");
-    setBusy(false);
+    setBusy(autoGenerate);
   };
-  const run = async () => {
+  const run = useCallback(async () => {
     const request = ++revision.current;
     setBusy(true);
     setValue("");
@@ -99,7 +103,12 @@ export function SecretGenerator({
     } finally {
       if (revision.current === request) setBusy(false);
     }
-  };
+  }, [generate, options]);
+  useEffect(() => {
+    if (!open || !autoGenerate) return;
+    void run();
+    return () => { revision.current++; };
+  }, [open, autoGenerate, run]);
   const control =
     "min-h-11 rounded-xl border border-white/20 bg-[#11162b] px-3 py-2 text-sm text-white";
   const check = (
@@ -127,7 +136,9 @@ export function SecretGenerator({
       <Button
         type="button"
         variant="secondary"
+        size={triggerIcon ? "icon" : "default"}
         aria-label={`Generate ${label}`}
+        title={`Generate ${label}`}
         onClick={(event) => {
           trigger.current = event.currentTarget;
           setOptions({
@@ -136,10 +147,11 @@ export function SecretGenerator({
             length: initialMode === "pin" ? 6 : 20,
           });
           setCustomSeparator(false);
+          setBusy(autoGenerate);
           setOpen(true);
         }}
       >
-        Generate
+        {triggerIcon ?? "Generate"}
       </Button>
       {open &&
         createPortal(
@@ -163,7 +175,7 @@ export function SecretGenerator({
               </Button>
             </div>
             <p id={helpId} className="mt-2 text-sm text-slate-400">
-              Generated securely on this device. Use it when you are ready.
+              Generated securely on this device. {autoGenerate ? "Updates as you change options." : "Use it when you are ready."}
             </p>
             <div className="mt-5 grid gap-4">
               <label className="grid gap-2 text-sm">
@@ -281,7 +293,7 @@ export function SecretGenerator({
                 disabled={busy}
                 onClick={() => void run()}
               >
-                {busy ? "Generating…" : value ? "Regenerate" : "Generate"}
+                {busy ? "Generating…" : autoGenerate || value ? "Regenerate" : "Generate"}
               </Button>
               {error && (
                 <p role="alert" className="text-sm text-red-300">

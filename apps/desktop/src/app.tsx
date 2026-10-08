@@ -74,6 +74,9 @@ type Conflict = { draft: Item; message: string; operationId?: string; kind?: str
 type EngineConflict = { operationId: string; itemId: string; vaultId: string; kind: string; localFields?: string[]; remoteFields?: string[] };
 const dragSession = createDragSession();
 const generateSecret = (options: GeneratorOptions) => invoke<string>("generate_secret", { options });
+function DesktopSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
+  return <SecretGenerator {...props} autoGenerate triggerIcon={<RefreshCw size={16} aria-hidden="true" />} />;
+}
 const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound };
 const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
   login: "Website or app sign-in",
@@ -820,11 +823,10 @@ export function App() {
   };
   const knownFieldEditor = (field: CustomField) => <label key={field.id} className="grid gap-2 text-sm text-slate-400">
     {field.label}
-    <div className="grid grid-cols-[1fr_auto] gap-2">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
       <Input type={field.type === "password" && !revealed.has(field.id) ? "password" : "text"} value={field.value} onChange={(e) => updateCustom(field.id, { value: e.target.value })} />
-      {field.type === "password" && <Button variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} /> : <Eye size={16} />}<span>{revealed.has(field.id) ? "Hide" : "Reveal"}</span></Button>}
+      {field.type === "password" && <div className="flex gap-2"><Button variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} /> : <Eye size={16} />}<span>{revealed.has(field.id) ? "Hide" : "Reveal"}</span></Button><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
     </div>
-    {field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} />}
   </label>;
   const beginEditing = () => {
     if (!selected) return;
@@ -1295,9 +1297,9 @@ export function App() {
             </div>
           )}
         </header>
-        <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+        <div className="desktop-list-heading flex items-center justify-between gap-3 px-5 pb-3 pt-5">
           <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : viewMode === "collection" ? collections.find((row) => row.id === selectedCollectionId)?.name ?? "Collection" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="desktop-list-actions ml-auto flex items-center gap-2">
           <div className="desktop-layout-toggle rounded-xl border border-white/10 bg-white/4 p-1" role="group" aria-label="Item layout">
             <button type="button" className={cn("rounded-lg p-2", itemLayout === "list" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white")} aria-label="List view" aria-pressed={itemLayout === "list"} onClick={() => changeItemLayout("list")}><LayoutList size={17} /></button>
             <button type="button" className={cn("rounded-lg p-2", itemLayout === "grid" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white")} aria-label="Grid view" aria-pressed={itemLayout === "grid"} onClick={() => changeItemLayout("grid")}><LayoutGrid size={17} /></button>
@@ -1391,7 +1393,7 @@ export function App() {
                     BASICS
                   </h3>
                   <div className="grid gap-4">
-                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
+                    <div className="desktop-title-fields grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
                       <label className="grid gap-2 text-sm text-slate-400">
                         Title
                         <Input
@@ -1431,7 +1433,7 @@ export function App() {
                     </label>}
                     {ITEM_TYPES[itemType(selected.customFields)].password && <label className="grid gap-2 text-sm text-slate-400">
                       Password
-                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                         <Input
                           type={revealed.has("password") ? "text" : "password"}
                           value={selected.password}
@@ -1442,7 +1444,7 @@ export function App() {
                             })
                           }
                         />
-                        <Button
+                        <div className="flex gap-2"><Button
                           variant="secondary"
                           onClick={() => toggleReveal("password")}
                         >
@@ -1455,8 +1457,9 @@ export function App() {
                             {revealed.has("password") ? "Hide" : "Reveal"}
                           </span>
                         </Button>
+                        <DesktopSecretGenerator generate={generateSecret} onUse={(password) => setSelected((current) => current ? { ...current, password } : current)} />
+                        </div>
                       </div>
-                      <SecretGenerator generate={generateSecret} onUse={(password) => setSelected((current) => current ? { ...current, password } : current)} />
                     </label>}
                     {primaryFields(selected.customFields).map(knownFieldEditor)}
                   </div>
@@ -1547,7 +1550,7 @@ export function App() {
                             <option key={type}>{type}</option>
                           ))}
                         </select>
-                        <div className="grid gap-2">
+                        <div className={field.type === "password" ? "grid grid-cols-[minmax(0,1fr)_auto] gap-2" : "grid"}>
                           <Input
                             type={
                               field.type === "password" && !revealed.has(field.id)
@@ -1559,7 +1562,7 @@ export function App() {
                               updateCustom(field.id, { value: e.target.value })
                             }
                           />
-                          {field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => updateCustom(field.id, { value })} />}
+                          {field.type === "password" && <div className="flex gap-2"><Button variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? "Hide" : "Reveal"}</Button><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
                         </div>
                         <Button
                           size="icon"
@@ -1583,7 +1586,7 @@ export function App() {
               </>
             ) : (
               <>
-                <div className="mb-7">
+                <div className="desktop-detail-heading mb-7">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}

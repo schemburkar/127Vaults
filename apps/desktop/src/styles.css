@@ -47,3 +47,53 @@
 @media (max-width: 620px) {
   .desktop-shell{grid-template-columns:minmax(0,1fr)}.desktop-list,.desktop-detail{grid-column:1;grid-row:2}.desktop-shell:not(:has(.detail-selected)) .desktop-detail{display:none}.desktop-shell:has(.detail-selected) .desktop-list{display:none}.desktop-back-row{display:block!important;margin-bottom:1rem}.desktop-detail{padding:1rem}.desktop-custom-field{grid-template-columns:minmax(0,1fr) 7rem}.desktop-custom-field>:nth-child(3){grid-column:1/-1}.desktop-custom-field>:nth-child(4){grid-column:2}.desktop-field-row{grid-template-columns:5rem minmax(0,1fr);gap:.5rem;padding:.5rem}.desktop-field-row>div:last-child{grid-column:2;flex-wrap:wrap}.desktop-detail h2{overflow-wrap:anywhere}.desktop-shell>footer{overflow:hidden;white-space:nowrap}.desktop-edit-header{position:sticky;top:-1rem;z-index:10;flex-wrap:wrap;margin-inline:-1rem;padding:1rem;border-bottom:1px solid #ffffff18;background:#04071d}.desktop-edit-header>div:last-child{width:100%;justify-content:flex-end}.desktop-conflict-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem}.desktop-conflict-row>:first-child{grid-column:1/-1}
 }
+
+/* Match the web's natural spacing and field hierarchy; retain desktop colors. */
+.desktop-shell .desktop-list{display:flex;min-width:0;min-height:0;flex-direction:column}
+.desktop-list>header{position:relative;flex:none;padding:1.25rem 1rem}
+.desktop-list>header input{height:2.75rem;border-radius:.75rem}
+.desktop-list-heading{flex:none;flex-wrap:wrap;align-items:center;gap:1rem;padding:1.5rem 1.5rem 1.25rem}
+.desktop-list-heading h1{min-width:0;font-size:1.375rem;font-weight:600;letter-spacing:-.025em;overflow-wrap:anywhere}
+.desktop-list-actions{flex-wrap:wrap;gap:.5rem}
+.desktop-shell .desktop-items{min-height:0;flex:1;padding:0 1.25rem 1.25rem;scrollbar-gutter:stable}
+.desktop-item-row{min-width:0;border-radius:.75rem}
+.desktop-item-row>span:nth-child(2){overflow:hidden}
+.desktop-item-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.desktop-detail{min-width:0;container-type:inline-size}
+.desktop-detail-heading h2{font-weight:600;letter-spacing:-.025em;overflow-wrap:anywhere}
+.desktop-detail-heading>div:first-child{flex-wrap:wrap}
+.desktop-detail-heading>div>button{max-width:100%;text-align:left;overflow-wrap:anywhere}
+.desktop-field-row{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;gap:.25rem 1rem;padding:1rem}
+.desktop-field-row>span:first-child{grid-column:1;grid-row:1}
+.desktop-field-row>strong{grid-column:1;grid-row:2;line-height:1.5}
+.desktop-field-row>div:last-child{grid-column:2;grid-row:1 / 3;align-self:center}
+@media (min-width: 851px) {
+  .desktop-shell{grid-template-columns:13rem clamp(19rem,30vw,25rem) minmax(0,1fr)}
+  .desktop-sidebar{padding:1.25rem .75rem}
+  .desktop-brand{margin-bottom:1.5rem}
+  .desktop-nav-content{gap:.25rem}
+  .desktop-shell .desktop-detail{padding:2rem clamp(1.25rem,2.5vw,2.5rem)}
+  .desktop-shell:not(.desktop-grid) .desktop-item-row{grid-template-columns:2.25rem minmax(0,1fr);padding:.875rem .75rem}
+  .desktop-shell:not(.desktop-grid) .desktop-item-row>span:first-child{width:2.25rem;height:2.25rem;border-radius:.625rem}
+}
+@media (min-width: 1440px) {
+  .desktop-shell.desktop-grid{grid-template-columns:13rem minmax(0,1fr)}
+  .desktop-grid .desktop-item-row small{display:none}
+}
+@container (max-width: 32rem) {
+  .desktop-field-row>div:last-child{grid-column:1 / -1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin-top:.5rem}
+  .desktop-title-fields{grid-template-columns:minmax(0,1fr)}
+  .desktop-edit-header{flex-wrap:wrap}
+  .desktop-edit-header>div:last-child{flex-wrap:wrap}
+  .desktop-custom-field{grid-template-columns:minmax(0,1fr) 7rem}
+  .desktop-custom-field>:nth-child(3){grid-column:1 / -1}
+  .desktop-custom-field>:nth-child(4){grid-column:2;justify-self:end}
+}
+@media (max-width: 850px) {
+  .desktop-list>header{padding:1rem}
+  .desktop-list-heading{gap:.75rem;padding:1.25rem 1rem 1rem}
+  .desktop-shell .desktop-items{padding:0 .75rem 1rem}
+}
+@media (max-width: 620px) {
+  .desktop-field-row{gap:.375rem .5rem;padding:.875rem .75rem}
+}

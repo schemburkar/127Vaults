@@ -45,6 +45,10 @@ const detailSection = "mt-7 [&>h3]:mb-3 [&>h3]:text-xs [&>h3]:font-bold [&>h3]:u
 const inlineStatus = "inline-block min-h-5 text-xs text-slate-500";
 const backButton = "mb-3 w-fit !px-1 text-[#E0BB95]";
 
+function WebSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
+  return <SecretGenerator {...props} autoGenerate triggerIcon={<RefreshCw size={16} aria-hidden="true" />} />;
+}
+
 class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -178,7 +182,7 @@ function CustomFieldsEditor() {
     setExpandedRelatedId(added?.id ?? null);
   };
   const toggleReveal = (id: string) => setRevealed((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[1fr_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <Button type="button" variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={15} /> : <Eye size={15} />}{revealed.has(field.id) ? "Hide" : "Reveal"}</Button>}</div>{field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => update(field.id, { value })} />}</label>;
+  const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <div className="flex gap-2"><Button type="button" variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={15} /> : <Eye size={15} />}{revealed.has(field.id) ? "Hide" : "Reveal"}</Button><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => update(field.id, { value })} /></div>}</div></label>;
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
       {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
@@ -231,6 +235,7 @@ function CustomFieldsEditor() {
               ))}
             </select>
             <div className="grid gap-2 max-[560px]:col-span-2">
+              <div className={field.type === "password" ? "grid grid-cols-[minmax(0,1fr)_auto] gap-2" : "grid"}>
               {field.type === "note" ? (
                 <textarea
                   className={`${inputClass} min-h-20 resize-y`}
@@ -242,14 +247,15 @@ function CustomFieldsEditor() {
                 <input
                   className={inputClass}
                   type={
-                    field.type === "password" ? "password" : field.type || "text"
+                    field.type === "password" ? (revealed.has(id) ? "text" : "password") : field.type || "text"
                   }
                   value={field.value ?? ""}
                   aria-label={`Custom field ${index + 1} value`}
                   onChange={(event) => update(id, { value: event.target.value })}
                 />
               )}
-              {field.type === "password" && <SecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => update(id, { value })} />}
+              {field.type === "password" && <div className="flex gap-2"><Button type="button" variant="secondary" onClick={() => toggleReveal(id)}>{revealed.has(id) ? "Hide" : "Reveal"}</Button><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => update(id, { value })} /></div>}
+              </div>
             </div>
             <Button
               variant="ghost"
@@ -291,7 +297,7 @@ function CustomFieldsView() {
   };
   const renderField = (field: ItemField) => {
     const secret = field.type === "password", shown = revealed.has(field.id);
-    return <div key={field.id} className="grid min-h-16 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-2 border-t border-white/7 px-3 max-[560px]:grid-cols-[5rem_minmax(0,1fr)]">
+    return <div key={field.id} className="vault-detail-field grid min-h-16 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-2 border-t border-white/7 px-3 max-[560px]:grid-cols-[5rem_minmax(0,1fr)]">
       <span className="text-xs font-medium text-slate-500">{field.label}</span>
       <strong className={`min-w-0 break-all text-sm ${secret ? "font-mono" : ""}`}>{secret && !shown ? "••••••••••••" : field.value || "—"}</strong>
       <div className="flex gap-1 max-[560px]:col-start-2">{secret && <Button variant="ghost" size="sm" onClick={() => setRevealed((current) => { const next = new Set(current); shown ? next.delete(field.id) : next.add(field.id); return next; })}>{shown ? "Hide" : "Reveal"}</Button>}<Button variant="ghost" size="sm" onClick={() => copy(field.value)}>Copy</Button></div>
@@ -680,7 +686,7 @@ function ItemDetail() {
         <p>Choose an item from the list or create a new item.</p>
       </div>
       <article id="item-view" hidden>
-        <div className="flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">
+        <div className="vault-detail-heading flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">
           <div>
             <p id="view-type" className={eyebrow}>LOGIN</p>
             <h2 id="view-title" />
@@ -693,7 +699,7 @@ function ItemDetail() {
         <section id="view-signin" className={detailSection}>
           <h3>Sign in</h3>
           <div className="overflow-hidden rounded-xl border border-white/8 bg-black/5">
-            <div id="view-username-row" className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
+            <div id="view-username-row" className="vault-detail-field grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
               <span className="text-xs font-medium text-slate-500">Username</span>
               <strong id="view-username" className="min-w-0 truncate text-sm" />
               <Button
@@ -704,7 +710,7 @@ function ItemDetail() {
                 Copy
               </Button>
             </div>
-            <div id="view-password-row" className="grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 border-t border-white/7 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
+            <div id="view-password-row" className="vault-detail-field grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 border-t border-white/7 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
               <span className="text-xs font-medium text-slate-500">Password</span>
               <strong id="view-password" className="min-w-0 truncate font-mono text-sm">
                 ••••••••••••
@@ -770,7 +776,7 @@ function ItemDetail() {
           </Field>
           <label className={fieldLabel}>
             Password
-            <div className="grid grid-cols-[1fr_auto] gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <Input
                 id="item-password"
                 type="password"
@@ -778,14 +784,14 @@ function ItemDetail() {
                 data-1p-ignore
                 data-lpignore="true"
               />
-              <Button id="toggle-edit-password" variant="secondary">
-                Reveal
-              </Button>
+              <div className="flex gap-2">
+                <Button id="toggle-edit-password" variant="secondary">Reveal</Button>
+                <WebSecretGenerator generate={generateSecret} onUse={(value) => {
+                  const input = document.getElementById("item-password") as HTMLInputElement;
+                  input.value = value; input.dispatchEvent(new Event("input", { bubbles: true }));
+                }} />
+              </div>
             </div>
-            <SecretGenerator generate={generateSecret} onUse={(value) => {
-              const input = document.getElementById("item-password") as HTMLInputElement;
-              input.value = value; input.dispatchEvent(new Event("input", { bubbles: true }));
-            }} />
           </label>
         </section>
         <section className={detailSection}>
@@ -818,7 +824,7 @@ function Vault() {
       <Sidebar />
       <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[560px]:col-start-1 max-[560px]:row-start-2 max-[560px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
         <header className="flex items-center justify-between gap-5 border-b border-white/5 px-5 backdrop-blur max-[560px]:px-3">
-          <div className="flex h-12 w-full max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,.03)] transition focus-within:border-[#E0BB95]/60 focus-within:bg-white/8 focus-within:ring-4 focus-within:ring-[#E0BB95]/10 max-[560px]:max-w-none">
+          <div className="vault-search flex h-12 w-full max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,.03)] transition focus-within:border-[#E0BB95]/60 focus-within:bg-white/8 focus-within:ring-4 focus-within:ring-[#E0BB95]/10 max-[560px]:max-w-none">
             <Search className="size-4 shrink-0" aria-hidden="true" />
             <Input
               id="search"
@@ -835,14 +841,14 @@ function Vault() {
           </div>
         </header>
         <div className="vault-content grid min-h-0 grid-cols-[minmax(19rem,36%)_1fr] gap-3 p-3 max-[800px]:grid-cols-1 max-[560px]:h-full max-[560px]:p-2">
-          <section className={`${panel} p-5 max-[560px]:p-4`}>
-            <div className="flex items-start justify-between gap-3 max-[560px]:flex-wrap [&_h1]:mb-1 [&_h1]:text-2xl [&_h1]:font-bold [&_span]:text-xs [&_span]:text-slate-500">
+          <section className={`vault-browser ${panel} p-5 max-[560px]:p-4`} aria-label="Vault items">
+            <div className="vault-browser-heading flex items-start justify-between gap-3 max-[560px]:flex-wrap [&_h1]:mb-1 [&_h1]:text-2xl [&_h1]:font-bold [&_span]:text-xs [&_span]:text-slate-500">
               <div>
                 <p id="vault-label" className={eyebrow}>PRIVATE VAULT</p>
                 <h1 id="vault-title">Private</h1>
                 <span id="vault-state">No vault</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="vault-browser-actions flex items-center gap-2">
                 <div className="vault-layout-toggle rounded-xl border border-white/10 bg-white/4 p-1" role="group" aria-label="Item layout">
                   <button type="button" className={`rounded-lg p-2 ${layout === "list" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white"}`} aria-label="List view" aria-pressed={layout === "list"} onClick={() => changeLayout("list")}><LayoutList size={17} /></button>
                   <button type="button" className={`rounded-lg p-2 ${layout === "grid" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white"}`} aria-label="Grid view" aria-pressed={layout === "grid"} onClick={() => changeLayout("grid")}><LayoutGrid size={17} /></button>
