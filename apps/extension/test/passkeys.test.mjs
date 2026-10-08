@@ -41,3 +41,13 @@ test('reports discoverability only when credProps is requested', async () => {
   assert.deepEqual(made.response.clientExtensionResults, { credProps: { rk: true } });
   assert.throws(() => validateRequest('get', { challenge: createOptions.challenge, extensions: { credProps: true } }, origin));
 });
+
+test('local vault authenticator accepts platform registration with fresh verification', async () => {
+  const options = { ...createOptions, authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred', requireResidentKey: false } };
+  const made = await createPasskey(options, origin, true);
+  assert.equal(made.response.authenticatorAttachment, 'platform');
+  assert.equal(decode(made.response.response.authenticatorData)[32], 0x4d);
+  await assert.rejects(createPasskey(options, origin, false));
+  const signed = await assertPasskey(made.metadata, made.privateKey, { challenge: createOptions.challenge }, origin, true);
+  assert.equal(signed.authenticatorAttachment, 'platform');
+});

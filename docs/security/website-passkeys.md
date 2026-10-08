@@ -18,8 +18,7 @@ Failure or an ambiguous save must never return registration success.
 
 The initial provider supports HTTPS top-level pages, exact-host RP IDs, ES256,
 none attestation, discoverable credentials and explicit allow/exclude lists.
-Parent-domain RP IDs, frames, WebAuthn extensions other than registration credProps, conditional mediation and
-platform-only requests use the native browser path. These limitations must be
+Parent-domain RP IDs, frames, WebAuthn extensions other than registration credProps, conditional mediation use the native browser path. These limitations must be
 visible; this is experimental support, not a universal authenticator.
 
 The extension requests one optional permission for all HTTPS sites when the user
@@ -46,3 +45,8 @@ release gates. Test that signatures verify, RP/origin/challenge substitution
 fails, exclusions prevent duplicate registration, persistence precedes success,
 and cancellation / lock never releases a response. Deleting a vault item does not
 revoke the website credential; users must remove it from that website as well.
+
+The local software vault authenticator accepts platform attachment requests and
+reports platform attachment and internal transport. This describes local access,
+not hardware-bound key storage or Windows Hello integration. Fresh source password
+verification remains mandatory even for platform requests.

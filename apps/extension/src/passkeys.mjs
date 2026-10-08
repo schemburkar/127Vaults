@@ -28,7 +28,6 @@ export function validateRequest(kind, options, origin) {
   if (kind === 'create') {
     if (!options.pubKeyCredParams?.some(p => p.type === 'public-key' && p.alg === -7)) throw Error('The website must support ES256.');
     if (options.attestation && options.attestation !== 'none') throw Error('Attestation is not supported. Use the browser.');
-    if (options.authenticatorSelection?.authenticatorAttachment === 'platform') throw Error('Use the browser platform authenticator.');
     decode(options.user?.id, 1, 64);
     for (const name of ['name', 'displayName']) if (typeof options.user?.[name] !== 'string' || options.user[name].length > 256) throw Error('Invalid passkey user.');
   }
@@ -76,7 +75,7 @@ export async function createPasskey(options, origin, userVerified) {
   const metadata = { version: 1, algorithm: -7, rpId, origin, credentialId, userHandle: options.user.id, username: options.user.name, displayName: options.user.displayName, signCount: 0 };
   const cose = cbor(new Map([[1, 2], [3, -7], [-1, 1], [-2, decode(publicKey.x, 32, 32)], [-3, decode(publicKey.y, 32, 32)]]));
   const data = concat(await authData(rpId, true), new Uint8Array(16), Uint8Array.of(0, 32), decode(credentialId), cose);
-  return { metadata, privateKey, response: { id: credentialId, rawId: credentialId, type: 'public-key', authenticatorAttachment: 'cross-platform', response: { clientDataJSON: encode(clientData('create', options, origin)), attestationObject: encode(cbor({ fmt: 'none', attStmt: {}, authData: data })), authenticatorData: encode(data), publicKey: encode(await crypto.subtle.exportKey('spki', pair.publicKey)), publicKeyAlgorithm: -7, transports: ['internal'] }, clientExtensionResults: options.extensions?.credProps ? { credProps: { rk: true } } : {} } };
+  return { metadata, privateKey, response: { id: credentialId, rawId: credentialId, type: 'public-key', authenticatorAttachment: 'platform', response: { clientDataJSON: encode(clientData('create', options, origin)), attestationObject: encode(cbor({ fmt: 'none', attStmt: {}, authData: data })), authenticatorData: encode(data), publicKey: encode(await crypto.subtle.exportKey('spki', pair.publicKey)), publicKeyAlgorithm: -7, transports: ['internal'] }, clientExtensionResults: options.extensions?.credProps ? { credProps: { rk: true } } : {} } };
 }
 export function passkeyFields(metadata, privateKey) {
   decode(privateKey, 64, 512);
@@ -99,5 +98,5 @@ export async function assertPasskey(metadata, privateKey, options, origin, userV
   try { key = await crypto.subtle.importKey('pkcs8', bytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']); } finally { bytes.fill(0); }
   const data = await authData(metadata.rpId, false), client = clientData('get', options, origin);
   const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, concat(data, await digest(client))));
-  return { id: metadata.credentialId, rawId: metadata.credentialId, type: 'public-key', authenticatorAttachment: 'cross-platform', response: { clientDataJSON: encode(client), authenticatorData: encode(data), signature: encode(derSignature(sig)), userHandle: metadata.userHandle }, clientExtensionResults: {} };
+  return { id: metadata.credentialId, rawId: metadata.credentialId, type: 'public-key', authenticatorAttachment: 'platform', response: { clientDataJSON: encode(client), authenticatorData: encode(data), signature: encode(derSignature(sig)), userHandle: metadata.userHandle }, clientExtensionResults: {} };
 }

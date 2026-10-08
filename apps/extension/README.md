@@ -24,7 +24,7 @@ website's account settings too.
 
 This first provider handles top-level HTTPS pages, exact-host RP IDs, ES256,
 none attestation, discoverable credentials and registration credProps. Parent-domain RP IDs, frames,
-conditional mediation, WebAuthn extensions other than registration credProps and platform-only requests retain the
+conditional mediation, WebAuthn extensions other than registration credProps retain the
 native browser path. **Use browser instead** is available before approval.
 **Disable 127Vaults passkeys** removes provider registrations for all sites;
 reload existing pages to restore the original methods. Disabling preserves the
@@ -97,13 +97,12 @@ The vault web address is optional for desktop/CLI use. The popup now offers Refr
 ### Autofill.me registration test
 
 The [Autofill.me registration page](https://autofill.me/form/passkeys-register.html)
-currently requests `authenticatorAttachment: "platform"` from `/register/start`.
-That asks for a device platform authenticator, so our software vault provider
-intentionally falls through to Windows. No existing vault item is needed for
-registration: a supported request creates a new encrypted passkey item.
-127Vaults is not registered as a Windows passkey provider and does not appear in
-the Windows picker. Use a test request that omits `authenticatorAttachment` or
-requests `"cross-platform"` to exercise the extension. For a temporary test of
-this page, remove only the attachment restriction from its registration options
-in browser developer tools; this changes the test request, not the website’s
-normal policy. Reload afterward to restore the original request.
+requests `authenticatorAttachment: "platform"` from `/register/start`.
+The local vault authenticator accepts this request and reports platform attachment
+for registration and assertion, with internal transport. Platform attachment does
+not imply Windows Hello or hardware-bound storage. No existing vault item is
+needed: registration creates a new encrypted passkey item after fresh password
+verification. Enable the provider, reload the page, and click Register normally.
+127Vaults is not registered as a Windows passkey provider; its browser extension
+handles the ceremony before the native picker. Use browser instead remains
+available in the approval popup.

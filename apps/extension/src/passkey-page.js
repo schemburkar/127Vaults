@@ -12,7 +12,7 @@
     const publicKey = input.publicKey;
     if (['conditional', 'silent'].includes(input.mediation) || publicKey.extensions && Object.entries(publicKey.extensions).some(([key, value]) => operation !== 'create' || key !== 'credProps' || typeof value !== 'boolean') || publicKey.attestation && publicKey.attestation !== 'none') return null;
     const rpId = operation === 'create' ? publicKey.rp?.id : publicKey.rpId;
-    if (rpId && rpId !== location.hostname || publicKey.authenticatorSelection?.authenticatorAttachment === 'platform') return null;
+    if (rpId && rpId !== location.hostname) return null;
     const key = operation === 'create' ? 'excludeCredentials' : 'allowCredentials';
     const result = { challenge: encode(publicKey.challenge), timeout: publicKey.timeout, extensions: publicKey.extensions, [key]: publicKey[key]?.map(c => ({ type: c.type, id: encode(c.id) })) };
     if (operation === 'create') Object.assign(result, { rp: { id: publicKey.rp?.id, name: publicKey.rp?.name }, user: { id: encode(publicKey.user.id), name: publicKey.user.name, displayName: publicKey.user.displayName }, pubKeyCredParams: publicKey.pubKeyCredParams, authenticatorSelection: publicKey.authenticatorSelection, attestation: publicKey.attestation });
