@@ -93,3 +93,17 @@ Each fillable login in a related detail appears as its own choice when its HTTPS
 If the popup shows no local source, check the extension ID in the native-host registration, the host executable path, and whether the desktop/CLI vault is unlocked. Web-tab source availability requires the matching web vault tab to remain unlocked. See [the browser extension security boundary](../../docs/security/browser-extension-boundary.md) for the wider acceptance matrix.
 
 The vault web address is optional for desktop/CLI use. The popup now offers Refresh and checks for source changes while open, so unlocking desktop should appear without reloading the extension. A web-tab source still needs its HTTPS vault origin and browser permission. Reloading an unpacked extension is needed after changing extension code or its ID, not after an ordinary desktop unlock.
+
+### Autofill.me registration test
+
+The [Autofill.me registration page](https://autofill.me/form/passkeys-register.html)
+currently requests `authenticatorAttachment: "platform"` from `/register/start`.
+That asks for a device platform authenticator, so our software vault provider
+intentionally falls through to Windows. No existing vault item is needed for
+registration: a supported request creates a new encrypted passkey item.
+127Vaults is not registered as a Windows passkey provider and does not appear in
+the Windows picker. Use a test request that omits `authenticatorAttachment` or
+requests `"cross-platform"` to exercise the extension. For a temporary test of
+this page, remove only the attachment restriction from its registration options
+in browser developer tools; this changes the test request, not the website’s
+normal policy. Reload afterward to restore the original request.

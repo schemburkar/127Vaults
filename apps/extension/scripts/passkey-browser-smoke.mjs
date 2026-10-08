@@ -29,6 +29,7 @@ try {
   await page.evaluate(() => {
     // Record fallthrough without opening an OS authenticator prompt.
     navigator.credentials.get = async () => ({ browserFallback: true });
+    navigator.credentials.create = async () => ({ browserFallback: true });
     window.addEventListener('message', async event => {
       if (event.source !== window || event.data?.channel !== '127vaults.passkey.request') return;
       const value = await window.syntheticVaultRequest(event.data);
@@ -40,10 +41,11 @@ try {
     const backing = new Uint8Array(40).fill(8), challenge = new DataView(backing.buffer, 4, 32);
     const registered = await navigator.credentials.create({ publicKey: { challenge, rp: { id: location.hostname, name: 'Test' }, user: { id: new Uint8Array([1]), name: 'sample', displayName: 'Sample' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }], authenticatorSelection: { residentKey: 'required', userVerification: 'required' }, extensions: { credProps: true } } });
     const signed = await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32).fill(9), rpId: location.hostname, userVerification: 'required', allowCredentials: [{ type: 'public-key', id: registered.rawId }] } });
-    return { registered: registered.toJSON(), signed: signed.toJSON(), credentialPrototype: registered instanceof PublicKeyCredential && signed instanceof PublicKeyCredential, responsePrototypes: registered.response instanceof AuthenticatorAttestationResponse && signed.response instanceof AuthenticatorAssertionResponse, buffers: registered.rawId instanceof ArrayBuffer && registered.response.getPublicKey() instanceof ArrayBuffer && signed.response.signature instanceof ArrayBuffer, transports: registered.response.getTransports(), fallback: await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32) }, mediation: 'conditional' }) };
+    return { registered: registered.toJSON(), signed: signed.toJSON(), credentialPrototype: registered instanceof PublicKeyCredential && signed instanceof PublicKeyCredential, responsePrototypes: registered.response instanceof AuthenticatorAttestationResponse && signed.response instanceof AuthenticatorAssertionResponse, buffers: registered.rawId instanceof ArrayBuffer && registered.response.getPublicKey() instanceof ArrayBuffer && signed.response.signature instanceof ArrayBuffer, transports: registered.response.getTransports(), platformFallback: await navigator.credentials.create({ publicKey: { challenge: new Uint8Array(32), rp: { id: location.hostname, name: 'Autofillme' }, user: { id: new Uint8Array(32), name: 'test@example.com', displayName: 'test@example.com' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred', requireResidentKey: false } } }), fallback: await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32) }, mediation: 'conditional' }) };
   });
   assert(result.credentialPrototype && result.responsePrototypes && result.buffers);
   assert.equal(result.fallback.browserFallback, true);
+  assert.equal(result.platformFallback.browserFallback, true, 'Autofill.me platform-only registration must use the native authenticator');
   assert.deepEqual(result.registered.clientExtensionResults, { credProps: { rk: true } });
   assert.equal(result.signed.id, result.registered.id);
   const publicKey = createPublicKey({ key: Buffer.from(decode(result.registered.response.publicKey)), format: 'der', type: 'spki' });
