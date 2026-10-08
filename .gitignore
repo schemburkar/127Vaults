@@ -1,4 +1,5 @@
 **/target/
+/apps/desktop/src-tauri/binaries/
 /apps/web/wasm/
 /apps/server/wasm-auth/
 /.tools/

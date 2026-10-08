@@ -1,6 +1,6 @@
 const grid = document.querySelector('.download-grid');
 const state = document.querySelector('.download-state');
-const names = { 'desktop-windows': 'Desktop for Windows', 'extension-chrome': 'Chrome extension',
+const names = { 'desktop-windows': 'Desktop for Windows', 'desktop-linux': 'Desktop for Linux', 'extension-chrome': 'Chrome extension',
   'extension-edge': 'Edge extension', 'cli-windows': 'CLI for Windows', 'cli-linux': 'CLI for Linux', server: 'Self-hosted server' };
 
 try {

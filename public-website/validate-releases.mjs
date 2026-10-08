@@ -6,7 +6,7 @@ export function validateReleaseCatalog(catalog) {
   if (!catalog || catalog.schemaVersion !== 1 || !Array.isArray(catalog.releases)) throw new Error('invalid release catalogue');
   const ids = new Set();
   for (const item of catalog.releases) {
-    if (!item || !['desktop-windows', 'extension-chrome', 'extension-edge', 'cli-windows', 'cli-linux', 'server'].includes(item.platform)
+    if (!item || !['desktop-windows', 'desktop-linux', 'extension-chrome', 'extension-edge', 'cli-windows', 'cli-linux', 'server'].includes(item.platform)
       || !/^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$/.test(item.version)
       || !['stable', 'beta'].includes(item.channel)
       || !/^https:\/\//.test(item.url) || !/^https:\/\//.test(item.signatureUrl) || !/^https:\/\//.test(item.licenseUrl)

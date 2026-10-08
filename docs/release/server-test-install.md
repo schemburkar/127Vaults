@@ -18,6 +18,14 @@ The bundle contains `server-image.tar`, `postgres-image.tar`, `compose.test.yaml
 
 ## Test-machine prerequisites
 
+New bundles provide a standard launcher. After extracting, run `./install.ps1 doctor`
+then `./install.ps1 setup --endpoint 127.0.0.1` on Windows, or `bash install.sh doctor`
+then `bash install.sh setup --endpoint 127.0.0.1` on Linux. For Docker append
+`--docker`; Windows Podman discovers `podman-compose.exe` on PATH or accepts an
+explicit `--compose-provider` path. `verify` checks the bundle without engine
+access; `bootstrap`, `status`, `start` and `stop` use the same launcher. Existing
+identities are preserved. The detailed operator commands below remain available.
+
 - Windows 11 with Podman machine and a Compose provider, or Linux with Podman plus a Compose provider. Docker Engine with Docker Compose is an alternate **unverified** path until the Docker matrix is run.
 - Node.js 24 for the operator scripts. The client machine does not need Rust, wasm-bindgen, pnpm or source files.
 - A private IPv4 or loopback endpoint, adequate disk for both image archives and a persistent PostgreSQL volume, and a separate location for backup keys and encrypted backups.

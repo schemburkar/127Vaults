@@ -3,6 +3,9 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "package:local": "node scripts/release/package.mjs",
+    "package:verify": "node scripts/release/verify.mjs",
+    "test:packaging": "node --test scripts/release/*.test.mjs deploy/install.test.mjs",
     "server": "node server.mjs",
     "fixture:build": "node scripts/build-fixture.mjs",
     "fixture:serve": "node apps/web/fixture-server.mjs",

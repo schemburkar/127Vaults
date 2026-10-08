@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { access, copyFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -26,5 +26,7 @@ try {
   try { await access(compiler); } catch { compiler = 'cargo'; }
   await run(compiler, ['build', '--locked', '-p', 'vaults-browser-fixture', '--target', 'wasm32-unknown-unknown', '--release']);
   await run(generator, ['--target', 'web', '--out-dir', 'apps/web/wasm', 'target/wasm32-unknown-unknown/release/vaults_browser_fixture.wasm']);
+  await run(generator, ['--target', 'nodejs', '--out-dir', 'apps/server/wasm-auth', 'target/wasm32-unknown-unknown/release/vaults_browser_fixture.wasm']);
+  await copyFile(join(root, 'apps/server/wasm-auth/vaults_browser_fixture.js'), join(root, 'apps/server/wasm-auth/vaults_browser_fixture.cjs'));
   console.log('Built Rust WASM fixture and disposable ECF1 bindings. Stable cryptographic formats remain disabled.');
 } catch (error) { console.error(error.message); process.exitCode = 1; }
