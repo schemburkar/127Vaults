@@ -112,3 +112,15 @@
   #vault .vault-browser-heading{gap:.75rem;padding-bottom:1rem}
   #vault .vault-detail-field{gap:.375rem .5rem;padding:.875rem .75rem}
 }
+
+/* Keep creation and editing actions in predictable places. */
+.secret-visibility:not([aria-pressed=true])>.hide-icon,.secret-visibility[aria-pressed=true]>.reveal-icon{display:none!important}
+#vault .vault-edit-header{position:sticky;top:-2rem;z-index:10;flex-wrap:wrap;padding-block:1rem;border-bottom:1px solid #ffffff12;background:#04071d}
+#vault #item-form{padding-bottom:1rem}
+#vault #item-form>section{margin-top:1.75rem}
+#vault #view-custom-fields h4{padding:1rem;font-size:.75rem;letter-spacing:.08em}
+#vault .vault-nav-heading{gap:.5rem;margin-top:1.5rem;margin-bottom:.5rem}
+#vault .vault-browser-actions:empty{display:none}
+@media (min-width: 1440px){#vault.vault-grid .vault-edit-header{background:#11162b}}
+@media (max-width: 800px){#vault .vault-edit-header{background:#11162b}#vault .vault-nav-heading{justify-content:center;padding-inline:0}}
+@media (max-width: 560px){#vault .vault-edit-header{top:-1.25rem}#vault .vault-nav-heading{justify-content:space-between;padding-inline:.75rem}#vault .vault-nav-heading p{display:block}}

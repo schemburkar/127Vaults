@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
@@ -825,7 +825,7 @@ export function App() {
     {field.label}
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
       <Input type={field.type === "password" && !revealed.has(field.id) ? "password" : "text"} value={field.value} onChange={(e) => updateCustom(field.id, { value: e.target.value })} />
-      {field.type === "password" && <div className="flex gap-2"><Button variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} /> : <Eye size={16} />}<span>{revealed.has(field.id) ? "Hide" : "Reveal"}</span></Button><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
+      {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
     </div>
   </label>;
   const beginEditing = () => {
@@ -833,6 +833,14 @@ export function App() {
     setEditOriginal(structuredClone(selected));
     setSelected({ ...selected, customFields: completeRelatedFields(selected.customFields) });
     setExpandedRelatedId(null);
+    setEditing(true);
+  };
+  const beginNewItem = () => {
+    if (!activeVaults.length) return;
+    setSelected({ itemId: "", title: "", website: "", username: "", password: "", customFields: setItemType([], "login") });
+    setEditOriginal(null);
+    setItemVaultId(viewMode === "single" ? vaultId : "");
+    setRevealed(new Set());
     setEditing(true);
   };
   const cancelEditing = () => {
@@ -1226,17 +1234,11 @@ export function App() {
           <span>All items</span>
           <span className="ml-auto">{items.length}</span>
         </Button>
-        <p className="mb-2 mt-7 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">
-          VAULTS
-        </p>
+        <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-600">VAULTS</p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
         {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
           <span className="truncate">{vault.name}</span>
         </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setVaultActionId(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button><button onClick={() => openRemoval(vault.vaultId)}>Remove vault…</button></div></details></div>)}
-        <Button variant="ghost" className="justify-start" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}>
-          <Plus size={17} />
-          <span>Add vault</span>
-        </Button>
         <p className="mb-2 mt-6 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">COLLECTIONS</p>
         {collections.map((collection) => <div className="desktop-nav-row" key={collection.id}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
           <LayoutList size={17} /><span className="truncate">{collection.name}</span>
@@ -1305,32 +1307,19 @@ export function App() {
             <button type="button" className={cn("rounded-lg p-2", itemLayout === "grid" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white")} aria-label="Grid view" aria-pressed={itemLayout === "grid"} onClick={() => changeItemLayout("grid")}><LayoutGrid size={17} /></button>
           </div>
           <Button
-            size="icon"
             title={activeVaults.length ? "New item" : "Create or restore a vault before adding items"}
             disabled={!activeVaults.length}
-            onClick={() => {
-              setSelected({
-                itemId: "",
-                title: "",
-                website: "",
-                username: "",
-                password: "",
-                customFields: setItemType([], "login"),
-              });
-              setEditOriginal(null);
-              setItemVaultId(viewMode === "single" ? vaultId : "");
-              setEditing(true);
-            }}
+            onClick={beginNewItem}
           >
             <Plus size={18} />
+            <span>New item</span>
           </Button>
           </div>
         </div>
-        {!activeVaults.length && <p className="px-5 pb-4 text-sm text-slate-400">No active vaults. Create one or restore an archived vault in Settings.</p>}
         <div className="desktop-browse-controls" role="group" aria-label="Filter and group items">{([ ["all", "All"], ["updated", "Updated"], ["created", "Created"], ["type", "Item type"] ] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={browseMode === mode} className={browseMode === mode ? "active" : ""} onClick={() => setBrowseMode(mode)}>{label}</button>)}<label className="desktop-type-filter">Type <select aria-label="Filter by item type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "all" | ItemType)}><option value="all">All types</option>{(Object.keys(ITEM_TYPES) as ItemType[]).map((type) => <option key={type} value={type}>{ITEM_TYPES[type].label}</option>)}</select></label></div>
         <div className="desktop-items overflow-auto px-3">
           <div className="desktop-grid-head" aria-hidden="true"><span>Item</span><span>Website</span><span>Type</span><span>Last modified</span><span>Item ID</span>{viewMode !== "single" && <span>Vault</span>}</div>
-          {!visibleItems.length && <p className="px-4 py-8 text-sm text-slate-500">No matching items. Older items may not have a type until they are edited.</p>}
+          {!visibleItems.length && <div className="desktop-empty-state rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><h2 className="text-base font-semibold">{!activeVaults.length ? "Create your first vault" : !items.length && !query ? "Add your first item" : "No matching items"}</h2><p className="mt-2 text-sm text-slate-400">{!activeVaults.length ? "Start with a vault, or restore an archived one in Settings." : !items.length && !query ? "Add a login, card, or another detail you want to keep handy." : "Try a different search or item type."}</p>{!activeVaults.length ? <Button className="mt-5" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" />{online ? "Create vault" : "Reconnect to create vault"}</Button> : !items.length && !query && <Button className="mt-5" onClick={beginNewItem}><Plus size={16} aria-hidden="true" />Add item</Button>}</div>}
           {browseGroups(visibleItems, itemLayout === "grid" && wide ? browseMode : "all", (item) => item).map((group) => <div className="desktop-item-group" key={group.key}>
           {itemLayout === "grid" && browseMode !== "all" && <div className="desktop-group-heading"><span>{group.label}</span><span>{group.items.length}</span></div>}
           {group.items.map((item) => (
@@ -1444,7 +1433,9 @@ export function App() {
                             })
                           }
                         />
-                        <div className="flex gap-2"><Button
+                        <div className="flex gap-2"><IconButton
+                          label={revealed.has("password") ? "Hide password" : "Reveal password"}
+                          aria-pressed={revealed.has("password")}
                           variant="secondary"
                           onClick={() => toggleReveal("password")}
                         >
@@ -1453,10 +1444,7 @@ export function App() {
                           ) : (
                             <Eye size={16} />
                           )}
-                          <span>
-                            {revealed.has("password") ? "Hide" : "Reveal"}
-                          </span>
-                        </Button>
+                        </IconButton>
                         <DesktopSecretGenerator generate={generateSecret} onUse={(password) => setSelected((current) => current ? { ...current, password } : current)} />
                         </div>
                       </div>
@@ -1562,7 +1550,7 @@ export function App() {
                               updateCustom(field.id, { value: e.target.value })
                             }
                           />
-                          {field.type === "password" && <div className="flex gap-2"><Button variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? "Hide" : "Reveal"}</Button><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
+                          {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
                         </div>
                         <Button
                           size="icon"
@@ -1657,9 +1645,9 @@ export function App() {
                         </strong>
                         <div className="flex gap-1">
                           {field.secret && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
+                            <IconButton
+                              label={`${revealed.has(field.key) ? "Hide" : "Reveal"} ${field.label}`}
+                              aria-pressed={revealed.has(field.key)}
                               onClick={() => toggleReveal(field.key)}
                             >
                               {revealed.has(field.key) ? (
@@ -1667,22 +1655,16 @@ export function App() {
                               ) : (
                                 <Eye size={15} />
                               )}
-                              <span>
-                                {revealed.has(field.key) ? "Hide" : "Reveal"}
-                              </span>
-                            </Button>
+                            </IconButton>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          <IconButton
+                            label={`Copy ${field.label}`}
                             onClick={() => void copyValue(field.value)}
                           >
                             <Copy size={15} />
-                            <span>Copy</span>
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          </IconButton>
+                          <IconButton
+                            label={`Drag ${field.label}`}
                             draggable
                             onDragStart={(event) =>
                               dragValue(event, field.label, field.value)
@@ -1691,8 +1673,7 @@ export function App() {
                             title={`Drag ${field.label}`}
                           >
                             <GripVertical size={15} />
-                            <span>Drag</span>
-                          </Button>
+                          </IconButton>
                         </div>
                       </div>
                     ))}
@@ -1703,9 +1684,9 @@ export function App() {
                       <span className="text-xs text-slate-500">{field.label}</span>
                       <strong className="min-w-0 truncate text-sm">{field.type === "password" && !revealed.has(field.id) ? "••••••••••••" : field.value || "—"}</strong>
                       <div className="flex gap-1">
-                        {field.type === "password" && <Button size="sm" variant="ghost" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={15} /> : <Eye size={15} />}<span>{revealed.has(field.id) ? "Hide" : "Reveal"}</span></Button>}
-                        <Button size="sm" variant="ghost" onClick={() => void copyValue(field.value)}><Copy size={15} /><span>Copy</span></Button>
-                        <Button size="sm" variant="ghost" draggable onDragStart={(event) => dragValue(event, field.label, field.value)} onDragEnd={() => dragSession.end()}><GripVertical size={15} /><span>Drag</span></Button>
+                        {field.type === "password" && <IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="ghost" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton>}
+                        <IconButton label={`Copy ${field.label}`} onClick={() => void copyValue(field.value)}><Copy size={16} aria-hidden="true" /></IconButton>
+                        <IconButton label={`Drag ${field.label}`} draggable onDragStart={(event) => dragValue(event, field.label, field.value)} onDragEnd={() => dragSession.end()}><GripVertical size={16} aria-hidden="true" /></IconButton>
                       </div>
                     </div>)}
                   </section>)}
@@ -1718,7 +1699,7 @@ export function App() {
             )}
           </div>
         ) : (
-          <p className="text-slate-500">Select an item.</p>
+          <div className="grid h-full place-content-center gap-2 text-center"><KeyRound className="mx-auto mb-2 text-[#E0BB95]" size={28} aria-hidden="true" /><h2 className="text-xl font-semibold">Select an item</h2><p className="text-sm text-slate-400">Choose an item from the list to see its details.</p></div>
         )}
       </main>
       <footer

@@ -1014,6 +1014,12 @@ function showItemKind(kind, editing = false) {
     $("view-signin").hidden = !shape.username && !shape.password;
   }
 }
+function setPasswordVisibilityButton(button, revealed) {
+  const label = revealed ? "Hide password" : "Reveal password";
+  button.setAttribute("aria-pressed", String(revealed));
+  button.setAttribute("aria-label", label);
+  button.title = label;
+}
 function displayItem(item, button) {
   currentItem = item;
   // Do not leave credential-shaped values in the hidden editor. Password-manager
@@ -1037,7 +1043,7 @@ function displayItem(item, button) {
   $("view-username").textContent = item.body.username || "—";
   showItemKind(itemKind(item.body.customFields));
   $("view-password").textContent = "••••••••••••";
-  $("reveal-password").textContent = "Reveal";
+  setPasswordVisibilityButton($("reveal-password"), false);
   renderCustomFields(item.body.customFields, item.body.password || "");
   $("item-empty").hidden = true;
   $("item-form").hidden = true;
@@ -1400,6 +1406,7 @@ function beginEdit(item = currentItem) {
   $("item-username").value = item?.body.username ?? "";
   $("item-password").value = item?.body.password ?? "";
   $("item-password").type = "password";
+  setPasswordVisibilityButton($("toggle-edit-password"), false);
   window.dispatchEvent(
     new CustomEvent("vaults:set-editor-fields", {
       detail: item?.body.customFields ?? [],
@@ -1690,13 +1697,13 @@ $("reveal-password").onclick = () => {
   $("view-password").textContent = hidden
     ? currentItem?.body.password || "—"
     : "••••••••••••";
-  $("reveal-password").textContent = hidden ? "Hide" : "Reveal";
+  setPasswordVisibilityButton($("reveal-password"), hidden);
 };
 $("toggle-edit-password").onclick = () => {
   let input = $("item-password"),
     show = input.type === "password";
   input.type = show ? "text" : "password";
-  $("toggle-edit-password").textContent = show ? "Hide" : "Reveal";
+  setPasswordVisibilityButton($("toggle-edit-password"), show);
 };
 async function copyField(value) {
   if (!value) return;

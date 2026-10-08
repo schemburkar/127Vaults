@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   CreditCard,
+  Copy,
   Eye,
   EyeOff,
   Globe2,
@@ -23,7 +24,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { Button, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
@@ -182,7 +183,7 @@ function CustomFieldsEditor() {
     setExpandedRelatedId(added?.id ?? null);
   };
   const toggleReveal = (id: string) => setRevealed((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <div className="flex gap-2"><Button type="button" variant="secondary" onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={15} /> : <Eye size={15} />}{revealed.has(field.id) ? "Hide" : "Reveal"}</Button><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => update(field.id, { value })} /></div>}</div></label>;
+  const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => update(field.id, { value })} /></div>}</div></label>;
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
       {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
@@ -254,7 +255,7 @@ function CustomFieldsEditor() {
                   onChange={(event) => update(id, { value: event.target.value })}
                 />
               )}
-              {field.type === "password" && <div className="flex gap-2"><Button type="button" variant="secondary" onClick={() => toggleReveal(id)}>{revealed.has(id) ? "Hide" : "Reveal"}</Button><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => update(id, { value })} /></div>}
+              {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(id)} onClick={() => toggleReveal(id)}>{revealed.has(id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => update(id, { value })} /></div>}
               </div>
             </div>
             <Button
@@ -300,7 +301,7 @@ function CustomFieldsView() {
     return <div key={field.id} className="vault-detail-field grid min-h-16 grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-2 border-t border-white/7 px-3 max-[560px]:grid-cols-[5rem_minmax(0,1fr)]">
       <span className="text-xs font-medium text-slate-500">{field.label}</span>
       <strong className={`min-w-0 break-all text-sm ${secret ? "font-mono" : ""}`}>{secret && !shown ? "••••••••••••" : field.value || "—"}</strong>
-      <div className="flex gap-1 max-[560px]:col-start-2">{secret && <Button variant="ghost" size="sm" onClick={() => setRevealed((current) => { const next = new Set(current); shown ? next.delete(field.id) : next.add(field.id); return next; })}>{shown ? "Hide" : "Reveal"}</Button>}<Button variant="ghost" size="sm" onClick={() => copy(field.value)}>Copy</Button></div>
+      <div className="flex gap-1 max-[560px]:col-start-2">{secret && <IconButton label={`${shown ? "Hide" : "Reveal"} ${field.label}`} aria-pressed={shown} onClick={() => setRevealed((current) => { const next = new Set(current); shown ? next.delete(field.id) : next.add(field.id); return next; })}>{shown ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton>}<IconButton label={`Copy ${field.label}`} onClick={() => copy(field.value)}><Copy size={16} aria-hidden="true" /></IconButton></div>
     </div>;
   };
   const ssid = fields.find((field) => field.id === "ssid")?.value;
@@ -318,6 +319,12 @@ function CustomFieldsView() {
 }
 
 function ItemList({ layout }: { layout: "list" | "grid" }) {
+  const [vaultCount, setVaultCount] = useState(() => (window as any).__vaultsSnapshot?.length ?? 0);
+  useEffect(() => {
+    const update = (event: Event) => setVaultCount((event as CustomEvent<WebVaultSummary[]>).detail.length);
+    window.addEventListener("vaults:vaults", update);
+    return () => window.removeEventListener("vaults:vaults", update);
+  }, []);
   const [browseMode, setBrowseMode] = useState<BrowseMode>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | ItemType>("all");
   const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1440px)").matches);
@@ -348,9 +355,11 @@ function ItemList({ layout }: { layout: "list" | "grid" }) {
   }, []);
   if (!view.items.length && !view.actions.length)
     return (
-      <p className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-500">
-        {view.empty}
-      </p>
+      <div className="vault-empty-state rounded-xl border border-dashed border-white/10 px-4 py-8 text-center">
+        <h2 className="text-base font-semibold">{!vaultCount ? "Create your first vault" : view.empty === "No matching items." ? "No matching items" : "Add your first item"}</h2>
+        <p className="mt-2 text-sm text-slate-400">{!vaultCount ? "Start with a vault to keep your items together." : view.empty === "No matching items." ? "Try a different name or website." : "Add a login, card, or another detail you want to keep handy."}</p>
+        {(!vaultCount || view.empty !== "No matching items.") && <Button className="mt-5" onClick={() => !vaultCount ? document.getElementById("create-vault")?.click() : document.getElementById("new-item")?.click()}><Plus size={16} aria-hidden="true" />{!vaultCount ? "Create vault" : "Add item"}</Button>}
+      </div>
     );
   const visibleItems = layout === "grid" && wide && typeFilter !== "all"
     ? view.items.filter((item) => item.index.itemType === typeFilter)
@@ -655,7 +664,7 @@ function Sidebar() {
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
       </Button>
-      <p className="mb-2 mt-6 px-3 text-[9px] font-bold tracking-[0.18em] text-slate-500 max-[800px]:hidden">VAULTS</p>
+      <div className="vault-nav-heading mt-6 mb-2 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500 max-[800px]:hidden">VAULTS</p><IconButton id="create-vault" label="Add vault" className="!size-9 !min-h-9"><Plus size={16} aria-hidden="true" /></IconButton></div>
       {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={`${nav} ${vault.selected ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`} onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon aria-hidden="true" /><span>{vault.name}</span></Button>)}
       <div className="mt-auto space-y-1 max-[560px]:contents">
         <Button id="reload" variant="ghost" className={`${nav} max-[560px]:hidden`} title="Sync now"><RefreshCw aria-hidden="true" /><span>Sync</span></Button>
@@ -702,13 +711,13 @@ function ItemDetail() {
             <div id="view-username-row" className="vault-detail-field grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
               <span className="text-xs font-medium text-slate-500">Username</span>
               <strong id="view-username" className="min-w-0 truncate text-sm" />
-              <Button
+              <IconButton
                 id="copy-username"
-                variant="ghost"
+                label="Copy username"
                 className="!min-h-9 !border-0 !bg-transparent !px-2 !text-xs !text-[#E0BB95] shadow-none hover:!bg-[#E0BB95]/10"
               >
-                Copy
-              </Button>
+                <Copy size={16} aria-hidden="true" />
+              </IconButton>
             </div>
             <div id="view-password-row" className="vault-detail-field grid min-h-16 grid-cols-[6rem_1fr_auto] items-center gap-4 border-t border-white/7 px-4 max-[560px]:grid-cols-[4.5rem_1fr] max-[560px]:gap-2">
               <span className="text-xs font-medium text-slate-500">Password</span>
@@ -716,20 +725,21 @@ function ItemDetail() {
                 ••••••••••••
               </strong>
               <div className="flex items-center gap-1 max-[560px]:col-start-2">
-                <Button
+                <IconButton
                   id="reveal-password"
-                  variant="ghost"
-                  className="!min-h-9 !border-0 !bg-transparent !px-2 !text-xs !text-[#E0BB95] shadow-none hover:!bg-[#E0BB95]/10"
+                  label="Reveal password"
+                  aria-pressed={false}
+                  className="secret-visibility !border-0 !bg-transparent !text-[#E0BB95] shadow-none hover:!bg-[#E0BB95]/10"
                 >
-                  Reveal
-                </Button>
-                <Button
+                  <Eye size={16} className="reveal-icon" aria-hidden="true" /><EyeOff size={16} className="hide-icon" aria-hidden="true" />
+                </IconButton>
+                <IconButton
                   id="copy-password"
-                  variant="ghost"
+                  label="Copy password"
                   className="!min-h-9 !border-0 !bg-transparent !px-2 !text-xs !text-[#E0BB95] shadow-none hover:!bg-[#E0BB95]/10"
                 >
-                  Copy
-                </Button>
+                  <Copy size={16} aria-hidden="true" />
+                </IconButton>
               </div>
             </div>
             <CustomFieldsView />
@@ -745,16 +755,16 @@ function ItemDetail() {
         data-form-type="other"
       >
         <input id="item-id" type="hidden" />
-        <div className="flex items-start justify-between gap-4 max-[560px]:sticky max-[560px]:top-0 max-[560px]:z-10 max-[560px]:-mx-4 max-[560px]:-mt-5 max-[560px]:border-b max-[560px]:border-white/10 max-[560px]:bg-[#11162b] max-[560px]:px-4 max-[560px]:py-3 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold max-[560px]:[&_h2]:text-xl">
+        <div className="vault-edit-header flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold max-[560px]:[&_h2]:text-xl">
           <div>
             <p id="form-mode" className={eyebrow}>
               NEW LOGIN
             </p>
             <h2 id="form-title">Create item</h2>
           </div>
-          <div className="hidden shrink-0 gap-2 max-[560px]:flex">
-            <Button size="sm" onClick={() => (document.getElementById("item-form") as HTMLFormElement)?.requestSubmit()}>Save</Button>
-            <Button size="sm" variant="secondary" onClick={() => document.getElementById("cancel-edit")?.click()}>Cancel</Button>
+          <div className="flex shrink-0 gap-2">
+            <Button id="cancel-edit" variant="secondary">Cancel</Button>
+            <Button id="save" type="submit" disabled>Save</Button>
           </div>
         </div>
         <section className={detailSection}>
@@ -785,7 +795,7 @@ function ItemDetail() {
                 data-lpignore="true"
               />
               <div className="flex gap-2">
-                <Button id="toggle-edit-password" variant="secondary">Reveal</Button>
+                <IconButton id="toggle-edit-password" label="Reveal password" variant="secondary" aria-pressed={false} className="secret-visibility"><Eye size={16} className="reveal-icon" aria-hidden="true" /><EyeOff size={16} className="hide-icon" aria-hidden="true" /></IconButton>
                 <WebSecretGenerator generate={generateSecret} onUse={(value) => {
                   const input = document.getElementById("item-password") as HTMLInputElement;
                   input.value = value; input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -797,14 +807,6 @@ function ItemDetail() {
         <section className={detailSection}>
           <CustomFieldsEditor />
         </section>
-        <div className="sticky bottom-0 -mx-3 mt-7 flex justify-end gap-2 border-t border-white/7 px-3 pb-1 pt-4 max-[560px]:hidden">
-          <Button id="save" type="submit" disabled>
-            Save
-          </Button>
-          <Button id="cancel-edit" variant="secondary">
-            Cancel
-          </Button>
-        </div>
       </form>
     </section>
   );
@@ -853,7 +855,6 @@ function Vault() {
                   <button type="button" className={`rounded-lg p-2 ${layout === "list" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white"}`} aria-label="List view" aria-pressed={layout === "list"} onClick={() => changeLayout("list")}><LayoutList size={17} /></button>
                   <button type="button" className={`rounded-lg p-2 ${layout === "grid" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white"}`} aria-label="Grid view" aria-pressed={layout === "grid"} onClick={() => changeLayout("grid")}><LayoutGrid size={17} /></button>
                 </div>
-                <Button id="create-vault" variant="secondary">Create vault</Button>
               </div>
             </div>
             <div id="items" className="mt-5 grid gap-1.5" role="list">

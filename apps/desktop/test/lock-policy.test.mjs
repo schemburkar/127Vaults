@@ -24,15 +24,18 @@ test("desktop registration enrolls a device instead of reopening account signup"
 });
 
 test("desktop item details include custom fields and field actions", async () => {
-  const [app, rust, client] = await Promise.all([
+  const [app, rust, client, iconButton] = await Promise.all([
     readFile(new URL("../src/app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8"),
     readFile(new URL("../../cli/src/client.rs", import.meta.url), "utf8"),
+    readFile(new URL("../../../packages/ui/src/icon-button.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(app, /customFields: CustomField\[\]/);
   assert.match(app, /"Hide"\s*:\s*"Reveal"/);
-  assert.match(app, /<span>Copy<\/span>/);
-  assert.match(app, /<span>Drag<\/span>/);
+  assert.match(app, /label=\{`Copy \$\{field.label\}`\}/);
+  assert.match(app, /label=\{`Drag \$\{field.label\}`\}/);
+  assert.match(iconButton, /aria-label=\{label\}/);
+  assert.match(iconButton, /title=\{label\}/);
   assert.match(app, /Add field/);
   assert.match(rust, /fn item_secret/);
   assert.match(rust, /custom_fields: Vec<Value>/);
