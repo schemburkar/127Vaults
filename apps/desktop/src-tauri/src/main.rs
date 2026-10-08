@@ -528,10 +528,38 @@ fn item_save(
     website: String,
     username: String,
     password: String,
-    custom_fields: Vec<Value>,
+    mut custom_fields: Vec<Value>,
     resolving_operation_id: Option<String>,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
+        if let Some(item) = item_id.as_deref() {
+            let original = session.item_get(&vault_id, item, None)?;
+            if original["itemType"] == "passkey" {
+                if website != original["website"].as_str().unwrap_or("") {
+                    return Err("A passkey's website cannot be changed".to_owned());
+                }
+                let key = session.item_get(&vault_id, item, Some("__127vaults_passkey_key"))?;
+                custom_fields.retain(|field| {
+                    field["id"] != "__127vaults_passkey_key"
+                        && field["id"] != "__127vaults_passkey"
+                        && field["id"] != "__127vaults_item_type"
+                });
+                for field in original["customFields"]
+                    .as_array()
+                    .ok_or("invalid passkey")?
+                {
+                    if field["id"] == "__127vaults_passkey_key" {
+                        let mut restored = field.clone();
+                        restored["value"] = key.clone();
+                        custom_fields.push(restored);
+                    } else if field["id"] == "__127vaults_passkey"
+                        || field["id"] == "__127vaults_item_type"
+                    {
+                        custom_fields.push(field.clone());
+                    }
+                }
+            }
+        }
         let save = |session: &mut Session| {
             if let Some(operation_id) = resolving_operation_id.as_deref() {
                 session.item_upsert_resolving(

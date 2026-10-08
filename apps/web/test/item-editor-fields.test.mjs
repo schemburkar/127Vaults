@@ -15,7 +15,7 @@ test('saving a collapsed related detail retains its marker and every field once'
     if (selector === '#custom-fields input.item-metadata[data-field-id]') return [marker];
     throw Error(`Unexpected selector: ${selector}`);
   } };
-  const collect = new Function('document', 'normalizeWebsite', `${source.slice(start, end)}; return collectCustomFields;`)(document, (value) => value);
+  const collect = new Function('document', 'normalizeWebsite', 'editorPasskeyFields', `${source.slice(start, end)}; return collectCustomFields;`)(document, (value) => value, []);
   assert.deepEqual(collect(), [
     { id: marker.dataset.fieldId, label: 'Section', type: 'metadata', value: marker.value },
     { id: cardNumber.dataset.fieldId, label: 'Card number', type: 'password', value: cardNumber.value },

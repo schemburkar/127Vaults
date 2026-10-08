@@ -3,6 +3,22 @@ import init, {
   ExperimentalOpaqueBridge,
   generate_secret,
 } from "/wasm/vaults_browser_fixture.js";
+import { PASSKEY_META, PASSKEY_KEY, readMetadata, passkeyFields } from '/app/passkeys.mjs';
+let passkeyVerifier = null, editorPasskeyFields = [];
+async function passwordCheckBytes(password, salt) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600000 }, key, 256));
+}
+async function verifyPasskeyPassword(password) {
+  const verifier = passkeyVerifier, activeRoot = root;
+  if (!verifier || !activeRoot || typeof password !== 'string' || password.length > 16384) throw Error('Unlock the web vault first.');
+  const candidate = await passwordCheckBytes(password, verifier.salt);
+  const ok = equal(candidate, verifier.value);
+  candidate.fill(0);
+  if (!ok || root !== activeRoot || passkeyVerifier !== verifier) throw Error('Master password verification failed or vault locked.');
+  arm();
+  return true;
+}
 const $ = (id) => document.getElementById(id),
   te = new TextEncoder(),
   td = new TextDecoder(),
@@ -612,6 +628,8 @@ async function login() {
       body: { signature: b64(signature) },
     });
     csrf = logged.csrf;
+    const verificationSalt = crypto.getRandomValues(new Uint8Array(32));
+    passkeyVerifier = { salt: verificationSalt, value: await passwordCheckBytes($("master").value, verificationSalt) };
     await reload();
     if (!identity.secretExpiresAt || !reusableSecret(identity) || identity.accountSecret) {
       try {
@@ -1026,7 +1044,7 @@ function collectCustomFields() {
     type: input.dataset.fieldType,
     value: input.value,
   }));
-  return [...metadata, ...typed, ...custom];
+  return [...metadata, ...typed, ...custom, ...editorPasskeyFields];
 }
 function renderCustomFields(fields = [], password = "") {
   window.dispatchEvent(
@@ -1034,6 +1052,7 @@ function renderCustomFields(fields = [], password = "") {
   );
 }
 const itemKinds = {
+  passkey: { label: "Passkey", username: true, website: true },
   login: { label: "Login", username: true, password: true, website: true },
   bank: { label: "Bank account", username: true, password: true, website: true },
   card: { label: "Payment card" },
@@ -1144,6 +1163,54 @@ function extensionRelatedLogins(item, siteOrigin) {
   return output;
 }
 window.__vaultsExtensionActions = {
+  async passkeyList(siteOrigin) {
+    if (!root || !vault || !catalogue) throw Error('Unlock the web vault first.');
+    const activeVault = vault, output = [];
+    for (const { row, index } of loadedItems) {
+      if (index.itemType !== 'passkey' || index.website !== siteOrigin) continue;
+      const item = await fetchItem(row.itemId, index);
+      if (!root || vault !== activeVault) throw Error('Vault locked or changed.');
+      const metadata = readMetadata(item.body.customFields);
+      if (metadata?.origin === siteOrigin) output.push({ vaultId, itemId: row.itemId, title: index.title, metadata });
+    }
+    return output;
+  },
+  async passkeyGet(itemId, requestedVault, siteOrigin, password) {
+    await verifyPasskeyPassword(password);
+    const activeVault = vault;
+    if (requestedVault !== vaultId) throw Error('Vault changed.');
+    const row = loadedItems.find(row => row.row.itemId === itemId);
+    if (!row || row.index.itemType !== 'passkey' || row.index.website !== siteOrigin) throw Error('Passkey does not match.');
+    const item = await fetchItem(itemId, row.index), metadata = readMetadata(item.body.customFields);
+    if (!root || vault !== activeVault || metadata?.origin !== siteOrigin) throw Error('Vault locked or changed.');
+    const key = item.body.customFields.find(f => f.id === PASSKEY_KEY && f.type === 'password');
+    if (!key) throw Error('Passkey key is missing.');
+    return { metadata, privateKey: key.value };
+  },
+  async passkeySave(metadata, privateKey, siteOrigin, password) {
+    if (busy || !$("item-form").hidden || !root || !vault || !catalogue) throw Error('Finish editing and unlock the destination vault first.');
+    const fields = passkeyFields(metadata, privateKey);
+    if (metadata.origin !== siteOrigin) throw Error('Passkey origin mismatch.');
+    const activeVault = vault, targetVault = vaultId;
+    setBusy(true);
+    try {
+      await verifyPasskeyPassword(password);
+      if ((await window.__vaultsExtensionActions.passkeyList(siteOrigin)).some(row => row.metadata.credentialId === metadata.credentialId)) throw Error('Passkey already exists.');
+      if (!root || vault !== activeVault || vaultId !== targetVault) throw Error('Vault changed.');
+      const now = Date.now(), index = { title: `${metadata.rpId} · ${metadata.username}`, website: siteOrigin, itemType: 'passkey', favorite: false, createdAt: now, updatedAt: now };
+      const made = core.upsert_private_item(vault, catalogue, undefined, te.encode(JSON.stringify(index)), te.encode(JSON.stringify({ username: metadata.username, password: '', customFields: fields })));
+      const itemId = uuid(made.item()), payload = { requestId: crypto.randomUUID(), baseCatalogueRevision: uuid(catalogue.slice(44, 60)), catalogue: b64(made.catalogue()), index: b64(made.index()), body: b64(made.body()), itemId };
+      payload.signedOperation = await signedMutation('item.create', itemId, made.catalogue(), made.index(), made.body());
+      if (!root || vault !== activeVault || vaultId !== targetVault) throw Error('Vault changed.');
+      await call(`/api/v1/vaults/${targetVault}/items`, { method: 'POST', body: payload });
+      if (!root || vault !== activeVault || vaultId !== targetVault) throw Error('Saved, but vault changed. Check the vault before retrying.');
+      catalogue = made.catalogue();
+      await reload();
+      if (!root || vaultId !== targetVault) throw Error('Vault changed.');
+      toast('Passkey saved', `${metadata.username} on ${metadata.rpId}`, 'success');
+      return { itemId, vaultId: targetVault, saved: true };
+    } finally { setBusy(false); }
+  },
   async lock() {
     await lock();
     return true;
@@ -1461,6 +1528,7 @@ function showEmpty() {
   $("item-form").hidden = true;
 }
 function beginEdit(item = currentItem, preserveDraft = false) {
+  editorPasskeyFields = (item?.body.customFields || []).filter(f => f.id === PASSKEY_META || f.id === PASSKEY_KEY);
   if (!preserveDraft && !confirmDiscard()) return;
   editorBaseline = null;
   const prefilledDraft = item && item !== currentItem;
@@ -1487,6 +1555,7 @@ function beginEdit(item = currentItem, preserveDraft = false) {
   requestAnimationFrame(() => { editorBaseline = prefilledDraft ? "prefilled-unsaved-draft" : editorSnapshot(); updateSessionDates(); });
 }
 function clearItem() {
+  editorPasskeyFields = [];
   editorBaseline = null;
   currentItem = null;
   window.dispatchEvent(new Event("vaults:clear-generator"));
@@ -1517,6 +1586,9 @@ function arm() {
   );
 }
 async function lock(logout = true) {
+  passkeyVerifier?.value.fill(0);
+  passkeyVerifier = null;
+  editorPasskeyFields = [];
   editorBaseline = null; favoritesOnly = false; favoriteItems = []; lastSynced = lastLocalChange = null; syncState = "idle";
   window.dispatchEvent(new Event('vaults:locked'));
   window.dispatchEvent(new Event("vaults:clear-generator"));
@@ -1737,7 +1809,7 @@ $("create-vault").onclick = openCreateVaultDialog;
 $("web-create-vault-form").onsubmit = submitVaultDialog;
 $("web-create-vault-cancel").onclick = () => $("web-create-vault-dialog").close();
 $("new-item").onclick = () => beginEdit(null);
-$("duplicate-item").onclick = () => { if (!currentItem) return; beginEdit({ ...structuredClone(currentItem), itemId: null, index: { ...currentItem.index, title: `${currentItem.index.title} (copy)` }, body: { ...currentItem.body, customFields: features.setFavorite(currentItem.body.customFields || [], false) } }); $("form-title").textContent = 'Create a copy'; };
+$("duplicate-item").onclick = () => { if (!currentItem || itemKind(currentItem.body.customFields) === "passkey") return; beginEdit({ ...structuredClone(currentItem), itemId: null, index: { ...currentItem.index, title: `${currentItem.index.title} (copy)` }, body: { ...currentItem.body, customFields: features.setFavorite(currentItem.body.customFields || [], false) } }); $("form-title").textContent = 'Create a copy'; };
 $("favorite-item").onclick = async () => {
   if (!currentItem || busy) return;
   const item = { ...structuredClone(currentItem), body: { ...currentItem.body, customFields: features.setFavorite(currentItem.body.customFields || [], !features.isFavorite(currentItem.body.customFields)) } };

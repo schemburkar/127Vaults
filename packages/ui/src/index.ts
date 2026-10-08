@@ -7,3 +7,4 @@ export { PasswordHealth } from "./password-health";
 export { KeyboardHelp } from "./keyboard-help";
 export * from "./product-features.mjs";
 export { IconButton } from "./icon-button";
+export { PasskeyDetails } from "./passkey-details";

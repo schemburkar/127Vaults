@@ -2,6 +2,7 @@
 
 mod agent;
 mod generator;
+mod passkeys;
 use generator::generate_command;
 pub use generator::{GenerateCommand, generate_secret};
 pub mod client;

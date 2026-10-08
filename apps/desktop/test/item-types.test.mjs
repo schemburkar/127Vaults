@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RELATED_TYPES, addRelatedSection, addSection, addSectionField, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType } from '../src/item-types.ts';
 
+test('passkey reserved fields are hidden and survive attempted type conversion', () => {
+  const fields = setItemType([{ id: '__127vaults_passkey', label: 'Passkey', type: 'metadata', value: '{}' }, { id: '__127vaults_passkey_key', label: 'Private key', type: 'password', value: 'secret' }], 'passkey');
+  assert.equal(itemType(fields), 'passkey');
+  assert.deepEqual(ordinaryFields(fields), []);
+  assert.deepEqual(replaceItemType(fields, 'login'), fields);
+});
+
 test('favorites and authenticator metadata survive type changes without appearing as ordinary fields', () => {
   const favorite = { id: '__127vaults_favorite', label: 'Favorite', type: 'metadata', value: 'true' };
   const otp = { id: '__127vaults_totp', label: 'Authenticator secret', type: 'password', value: 'JBSWY3DPEHPK3PXP' };

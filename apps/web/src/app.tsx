@@ -26,7 +26,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
@@ -94,8 +94,8 @@ type CustomField = {
 };
 type ToastNotice = { id: string; title: string; detail: string; kind: "info" | "success" | "error" };
 
-const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound };
-const TYPE_DESCRIPTIONS: Record<ItemType, string> = { login: "Website or app sign-in", bank: "Account and online banking", card: "Debit or credit card", wifi: "Wireless network access", router: "Network device and admin access", ssh: "Server or device access", password: "A standalone secret or code" };
+const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound, passkey: KeyRound };
+const TYPE_DESCRIPTIONS: Record<ItemType, string> = { login: "Website or app sign-in", passkey: "Website passkey saved by the extension", bank: "Account and online banking", card: "Debit or credit card", wifi: "Wireless network access", router: "Network device and admin access", ssh: "Server or device access", password: "A standalone secret or code" };
 
 function ItemTypePicker() {
   const [type, setType] = useState<ItemType>("login");
@@ -155,7 +155,7 @@ function CustomFieldsEditor() {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   useEffect(() => {
     const set = (event: Event) => { setFields(completeRelatedFields((event as CustomEvent<ItemField[]>).detail.map((field) => ({ ...field })))); setExpandedRelatedId(null); setRevealed(new Set()); };
-    const selectType = (event: Event) => { const type = (event as CustomEvent<ItemType>).detail; setFields((current) => replaceItemType(current, type)); setExpandedRelatedId(null); window.dispatchEvent(new CustomEvent("vaults:item-type", { detail: type })); };
+    const selectType = (event: Event) => { const type = (event as CustomEvent<ItemType>).detail; if (fields.some(f => f.id === "__127vaults_passkey")) return; setFields((current) => replaceItemType(current, type)); setExpandedRelatedId(null); window.dispatchEvent(new CustomEvent("vaults:item-type", { detail: type })); };
     const add = (event: Event) =>
       setFields((current) =>
         ordinaryFields(current).length >= 32 || current.length >= 50
@@ -202,6 +202,7 @@ function CustomFieldsEditor() {
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
       <label className="flex items-center gap-2 text-sm text-slate-400"><input type="checkbox" checked={isFavorite(fields)} onChange={e => setFields(current => setFavorite(current, e.target.checked))} />Favorite</label>
+      <PasskeyDetails fields={fields} />
       <AuthenticatorEditor value={fields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setFields(current => setAuthenticator(current, value))} />
       {fields.filter(f => f.id === TOTP_ID).map(f => <input key={f.id} type="hidden" className="item-metadata" data-field-id={f.id} data-field-label={f.label} data-field-type={f.type} value={f.value} />)}
       {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id === FAVORITE_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
@@ -327,6 +328,7 @@ function CustomFieldsView() {
   const escapeWifi = (value: string) => value.replace(/([\\;,:"])/g, "\\$1");
   return (
     <div id="view-custom-fields">
+      <PasskeyDetails fields={fields} />
       {fields.find(f => f.id === TOTP_ID)?.value && <AuthenticatorCode value={fields.find(f => f.id === TOTP_ID)!.value} copy={copy} />}
       {primaryFields(fields).length > 0 && <h4 className="border-t border-white/10 px-3 py-2 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label}</h4>}
       {primaryFields(fields).map(renderField)}

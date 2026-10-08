@@ -35,6 +35,10 @@ struct Request {
     entry_id: String,
     #[serde(default)]
     site_origin: String,
+    #[serde(default)]
+    metadata: Value,
+    #[serde(default)]
+    private_key: String,
 }
 
 #[derive(Serialize)]
@@ -306,7 +310,21 @@ impl Host {
             }
             return Ok(json!({"locked":true}));
         }
-        if !matches!(request.action.as_str(), "unlock" | "list" | "get") {
+        if request.action == "passkey.vaults" {
+            let path = profile(&request.source)?;
+            if let Some(local) = self
+                .local
+                .as_mut()
+                .filter(|local| local.source == request.source)
+            {
+                return local.session.vault_list();
+            }
+            return agent::call(&path, "vault.list", json!({}));
+        }
+        if !matches!(
+            request.action.as_str(),
+            "unlock" | "list" | "get" | "passkey.list" | "passkey.get" | "passkey.save"
+        ) {
             return Err("unsupported read-only connector action".to_owned());
         }
         let path = profile(&request.source)?;
@@ -347,6 +365,9 @@ impl Host {
             return Err("invalid item identity".to_owned());
         }
         let site = site_origin(&request.site_origin)?;
+        if request.action.starts_with("passkey.") {
+            return self.passkey_request(request, &path, &site);
+        }
         if let Some(local) = self
             .local
             .as_mut()
@@ -387,6 +408,66 @@ impl Host {
             )?;
             Ok(
                 json!({"itemId":request.item_id,"entryId":request.entry_id,"website":site,"username":username,"password":password}),
+            )
+        }
+    }
+
+    fn passkey_request(
+        &mut self,
+        request: &Request,
+        path: &Path,
+        site: &str,
+    ) -> Result<Value, String> {
+        if request.action == "passkey.list" {
+            if let Some(local) = self
+                .local
+                .as_mut()
+                .filter(|local| local.source == request.source)
+            {
+                return local.session.passkey_list(site);
+            }
+            return agent::call(path, "passkey.list", json!({"website":site}));
+        }
+        if !valid_id(&request.vault_id)
+            || request.action == "passkey.get" && !valid_id(&request.item_id)
+        {
+            return Err("invalid passkey identity".to_owned());
+        }
+        // Fresh decryption verifies the password for every assertion/registration;
+        // an already unlocked agent alone is not user verification.
+        let username = if request.username.trim().is_empty() && request.source == "desktop" {
+            cached_username(path).unwrap_or_default()
+        } else {
+            request.username.clone()
+        };
+        let secret = Zeroizing::new(
+            if request.account_secret.is_empty() && request.source == "desktop" {
+                cached_secret(path, &username).ok_or("account secret is required")?
+            } else {
+                request.account_secret.clone()
+            },
+        );
+        if username.trim().is_empty() || request.master_password.is_empty() {
+            return Err("verify your master password".to_owned());
+        }
+        let mut verified =
+            client::unlock_offline(path, &username, &secret, request.master_password.as_bytes())?;
+        let active = agent::call(path, "status", json!({})).is_ok();
+        self.last_activity = Instant::now();
+        if active {
+            agent::call(
+                path,
+                &request.action,
+                json!({"vault":request.vault_id,"item":request.item_id,"website":site,"passkey_metadata":request.metadata,"password":request.private_key}),
+            )
+        } else if request.action == "passkey.get" {
+            verified.passkey_get(&request.vault_id, &request.item_id, site)
+        } else {
+            verified.passkey_save(
+                &request.vault_id,
+                site,
+                &request.metadata,
+                &request.private_key,
             )
         }
     }
@@ -444,6 +525,7 @@ pub fn run() -> Result<(), String> {
         let outcome = host.dispatch(&mut request);
         request.account_secret.zeroize();
         request.master_password.zeroize();
+        request.private_key.zeroize();
         let response = match outcome {
             Ok(value) => Response {
                 id: request.id,

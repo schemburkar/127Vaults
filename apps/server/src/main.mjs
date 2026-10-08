@@ -118,6 +118,7 @@ const webFiles=new Map([
   ['/legacy',['../../web/mvp.html','text/html; charset=utf-8']],
   ['/app/style.css',['../../web/style.css','text/css; charset=utf-8']],
   ['/app/mvp-client.mjs',['../../web/mvp-client.mjs','text/javascript; charset=utf-8']],
+  ['/app/passkeys.mjs',['../../extension/src/passkeys.mjs','text/javascript; charset=utf-8']],
   ['/app/private-vault-client.mjs',['../../web/src/private-vault-client.mjs','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture.js',['../../web/wasm/vaults_browser_fixture.js','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture_bg.wasm',['../../web/wasm/vaults_browser_fixture_bg.wasm','application/wasm']]

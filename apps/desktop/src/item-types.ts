@@ -1,4 +1,4 @@
-export type ItemType = "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password";
+export type ItemType = "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password" | "passkey";
 export type ItemField = { id: string; label: string; type: string; value: string };
 
 // Stored inside the encrypted item body alongside custom fields, so older clients
@@ -8,6 +8,7 @@ export const SECTION_PREFIX = "__127vaults_section:";
 export const SECTION_FIELD_PREFIX = "__127vaults_field:";
 export const ITEM_TYPES: Record<ItemType, { label: string; fields: Omit<ItemField, "value">[]; username?: boolean; password?: boolean; website?: boolean }> = {
   login: { label: "Login", username: true, password: true, website: true, fields: [] },
+  passkey: { label: "Passkey", username: true, website: true, fields: [] },
   bank: { label: "Bank account", username: true, password: true, website: true, fields: [
     { id: "bank_name", label: "Bank name", type: "text" },
     { id: "account_number", label: "Account number", type: "password" },
@@ -55,6 +56,7 @@ export const RELATED_TYPES: Record<ItemType, { type: SectionType; label: string;
     { type: "password", label: "Authenticator or backup code", description: "A named recovery secret" },
     { type: "login", label: "Another login", description: "A second account for the same service" },
   ],
+  passkey: [],
   bank: [
     { type: "card", label: "Payment card", description: "A card tied to this account" },
     { type: "password", label: "App PIN or password", description: "Mobile or phone banking secret" },
@@ -154,7 +156,7 @@ export function primaryFields(fields: ItemField[]): ItemField[] {
 
 export function ordinaryFields(fields: ItemField[]): ItemField[] {
   const primary = new Set(primaryFields(fields).map((field) => field.id));
-  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith(SECTION_PREFIX) &&
+  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith("__127vaults_passkey") && !field.id.startsWith(SECTION_PREFIX) &&
     !field.id.startsWith(SECTION_FIELD_PREFIX) && !primary.has(field.id));
 }
 
@@ -164,7 +166,7 @@ export function itemType(fields: ItemField[]): ItemType {
 }
 
 export function visibleFields(fields: ItemField[]): ItemField[] {
-  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith(SECTION_PREFIX));
+  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith("__127vaults_passkey") && !field.id.startsWith(SECTION_PREFIX));
 }
 
 export function setItemType(fields: ItemField[], type: ItemType): ItemField[] {
@@ -188,5 +190,6 @@ export function setItemType(fields: ItemField[], type: ItemType): ItemField[] {
 
 /** Explicitly replace the parent type without turning unrelated old fields into a child. */
 export function replaceItemType(fields: ItemField[], type: ItemType): ItemField[] {
+  if (fields.some(field => field.id === "__127vaults_passkey")) return fields;
   return setItemType([...ordinaryFields(fields), ...fields.filter(field => field.id === "__127vaults_favorite" || field.id === "__127vaults_totp")], type);
 }

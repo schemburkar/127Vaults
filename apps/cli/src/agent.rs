@@ -70,6 +70,8 @@ struct Request {
     password: Option<String>,
     #[serde(default, rename = "customFields")]
     custom_fields: Vec<Value>,
+    #[serde(default)]
+    passkey_metadata: Value,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -140,6 +142,9 @@ fn dispatch(
                 | "item.list"
                 | "item.list.all"
                 | "item.get"
+                | "passkey.list"
+                | "passkey.get"
+                | "passkey.save"
         )
     {
         if let Some(password) = request.password.as_mut() {
@@ -274,6 +279,29 @@ fn dispatch(
             session.item_list(&vault)
         }
         "item.list.all" => session.item_list_all(),
+        "passkey.list" => session.passkey_list(
+            request
+                .website
+                .as_deref()
+                .ok_or("site origin is required")?,
+        ),
+        "passkey.get" => session.passkey_get(
+            request.vault.as_deref().ok_or("vault is required")?,
+            request.item.as_deref().ok_or("item is required")?,
+            request
+                .website
+                .as_deref()
+                .ok_or("site origin is required")?,
+        ),
+        "passkey.save" => session.passkey_save(
+            request.vault.as_deref().ok_or("vault is required")?,
+            request
+                .website
+                .as_deref()
+                .ok_or("site origin is required")?,
+            &request.passkey_metadata,
+            request.password.as_deref().ok_or("key is required")?,
+        ),
         "item.get" => session.item_get(
             &vault_selector(session, request.vault.as_deref())?,
             request.item.as_deref().ok_or("item is required")?,
