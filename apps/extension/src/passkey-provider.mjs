@@ -1,4 +1,4 @@
-import { passkeysEnabled } from './passkey-settings.mjs';
+import { passkeysEnabled, windowsNativeOnly } from './passkey-settings.mjs';
 import { createPasskeyQueue } from './passkey-queue.mjs';
 import { createPasskey, assertPasskey, matches } from './passkeys.mjs';
 import { originOf, permissionPattern } from './match.mjs';
@@ -6,6 +6,7 @@ import { originOf, permissionPattern } from './match.mjs';
 export function installPasskeyProvider(nativeRequest) {
   const queue = createPasskeyQueue();
   async function current(row) {
+    if (await windowsNativeOnly(chrome)) throw Error('Use the Windows passkey picker with 127Vaults Desktop.');
     if (queue.get(row.id) !== row) throw Error('Passkey request expired or cancelled.');
     const tab = await chrome.tabs.get(row.tabId);
     if (originOf(tab.url) !== row.origin || queue.get(row.id) !== row) throw Error('The page changed.');
@@ -80,6 +81,7 @@ export function installPasskeyProvider(nativeRequest) {
     if (sender.id !== chrome.runtime.id || !message?.kind?.startsWith('passkey.')) return;
     const work = async () => {
       if (sender.tab) {
+        if (await windowsNativeOnly(chrome)) return { useBrowser: true };
         if (sender.frameId !== 0) throw Error('Passkeys require a top-level page.');
         if (message.kind === 'passkey.cancel') { queue.cancelPage(sender, message.id); return { ok: true }; }
         if (message.kind !== 'passkey.request') throw Error('Page cannot perform this passkey operation.');

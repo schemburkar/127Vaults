@@ -1,6 +1,6 @@
 # Native passkey provider direction
 
-Researched 2026-10-09. This is a proposed integration, not implemented provider support.
+Researched 2026-10-09. An experimental Windows implementation is built; installed-package activation and real website ceremonies remain unverified. See [build and installation instructions](../../apps/desktop/native/windows/README.md).
 
 ## Windows
 
@@ -8,7 +8,7 @@ Prefer the native Windows passkey manager integration for supported Windows 11
 installations. The intended flow is website WebAuthn request → Windows picker →
 127Vaults native provider → encrypted vault item and sync. The browser extension
 does not need to create or sign credentials on this path and should disable its
-WebAuthn interception when the native provider is enabled. Password filling can
+WebAuthn interception on Windows. Password filling can
 remain available through the existing read-only connector.
 
 This requires an actual COM `IPluginAuthenticator` implementation and registration

@@ -98,13 +98,13 @@ The vault web address is optional for desktop/CLI use. The popup now offers Refr
 
 The [Autofill.me registration page](https://autofill.me/form/passkeys-register.html)
 requests `authenticatorAttachment: "platform"` from `/register/start`.
-The local vault authenticator accepts this request and reports platform attachment
+On non-Windows platforms, the experimental local vault authenticator accepts this request and reports platform attachment
 for registration and assertion, with internal transport. Platform attachment does
 not imply Windows Hello or hardware-bound storage. No existing vault item is
 needed: registration creates a new encrypted passkey item after fresh password
 verification. Enable the provider, reload the page, and click Register normally.
-127Vaults is not registered as a Windows passkey provider; its browser extension
-handles the ceremony before the native picker. Use browser instead remains
+On non-Windows platforms, its experimental browser extension
+handles the ceremony before the native picker. Save with another provider remains
 available in the approval popup.
 
 ### Saved passkeys and sync
@@ -123,3 +123,8 @@ account secret; fresh master-password verification remains required.
 
 Native OS-provider support is a separate proposed integration; see
 [the native provider direction](../../docs/security/native-passkey-providers.md).
+
+
+### Windows native provider default
+
+On Windows the extension disables WebAuthn interception, removes legacy passkey scripts, and refuses passkey creation or signing through the browser connector. Password filling and passkey metadata remain available. Native save/sign is supplied by the experimental packaged desktop provider; see [build and installation instructions](../desktop/native/windows/README.md). The unsigned package is built, but live Windows picker, Hello, registration and assertion testing awaits installation. Desktop must be open and unlocked.

@@ -1,4 +1,4 @@
-import { enableAllPasskeys, disableAllPasskeys, restorePasskeyScripts } from './passkey-settings.mjs';
+import { enableAllPasskeys, disableAllPasskeys, restorePasskeyScripts, windowsNativeOnly } from './passkey-settings.mjs';
 import { originOf } from './match.mjs';
 
 export function setupPasskeyPopup({ getTab, getSource, getSources, status, listSavedPasskeys }) {
@@ -13,6 +13,12 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status, listS
   async function refresh(force = false) {
     if (processing || !getTab()?.id) return;
     const version = ++revision, tab = getTab();
+    const windows = await windowsNativeOnly(chrome);
+    $('windows-passkeys').hidden = !windows;
+    if (windows) {
+      $('enable-passkeys').hidden = true; $('disable-passkeys').hidden = true; $('passkey-request').hidden = true;
+      await restorePasskeyScripts(chrome); return;
+    }
     const settings = await chrome.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
     $('enable-passkeys').hidden = settings.passkeysAllSites === true && await chrome.permissions.contains({ origins: ['https://*/*'] });
     $('disable-passkeys').hidden = settings.passkeysAllSites !== true && !settings.passkeyOrigins?.length;

@@ -2,6 +2,7 @@
 
 mod agent;
 mod generator;
+pub mod native_passkeys;
 mod passkeys;
 use generator::generate_command;
 pub use generator::{GenerateCommand, generate_secret};
@@ -36,6 +37,13 @@ pub fn start_connector_agent(
 #[must_use]
 pub fn connector_agent_active(config_dir: &std::path::Path) -> bool {
     agent::call(config_dir, "status", serde_json::json!({})).is_ok()
+}
+
+/// Reports whether the unlocked agent supports native OS passkey operations.
+#[must_use]
+pub fn connector_agent_native_capable(config_dir: &std::path::Path) -> bool {
+    agent::call(config_dir, "status", serde_json::json!({}))
+        .is_ok_and(|status| status["nativePasskeyProtocol"] == 1)
 }
 
 /// Locks a local agent started by this application.

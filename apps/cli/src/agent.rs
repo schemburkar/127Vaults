@@ -145,6 +145,9 @@ fn dispatch(
                 | "passkey.list"
                 | "passkey.get"
                 | "passkey.save"
+                | "native.preview"
+                | "native.perform"
+                | "native.cache"
         )
     {
         if let Some(password) = request.password.as_mut() {
@@ -154,7 +157,7 @@ fn dispatch(
     }
     let result = match request.action.as_str() {
         "status" => Ok(
-            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs()}),
+            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":1}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),
@@ -293,6 +296,33 @@ fn dispatch(
                 .as_deref()
                 .ok_or("site origin is required")?,
         ),
+        "native.cache" => {
+            let mut entries = Vec::new();
+            let rows = session.item_list_all()?;
+            let mut sites = std::collections::HashSet::new();
+            for row in rows.as_array().ok_or("Invalid item list")? {
+                if row["itemType"] == "passkey"
+                    && let Some(site) = row["website"].as_str()
+                    && sites.insert(site.to_owned())
+                {
+                    entries.extend(
+                        session
+                            .passkey_list(site)?
+                            .as_array()
+                            .ok_or("Invalid passkey list")?
+                            .iter()
+                            .cloned(),
+                    );
+                }
+            }
+            Ok(json!({"entries":entries}))
+        }
+        "native.preview" => {
+            crate::native_passkeys::dispatch(session, &request.passkey_metadata, true)
+        }
+        "native.perform" => {
+            crate::native_passkeys::dispatch(session, &request.passkey_metadata, false)
+        }
         "passkey.save" => session.passkey_save(
             request.vault.as_deref().ok_or("vault is required")?,
             request

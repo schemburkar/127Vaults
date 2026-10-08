@@ -10,8 +10,8 @@ use std::{
 use vaults_cli::{
     TrustArgs,
     client::{Session, unlock_with_offline_fallback},
-    connector_agent_active, enroll_device_with_status, establish_trust, start_connector_agent,
-    stop_connector_agent, validate_trust,
+    connector_agent_active, connector_agent_native_capable, enroll_device_with_status,
+    establish_trust, start_connector_agent, stop_connector_agent, validate_trust,
 };
 
 #[derive(Default)]
@@ -19,6 +19,37 @@ struct DesktopState {
     session: Mutex<Option<Session>>,
     enrollment: std::sync::Arc<Mutex<Value>>,
     connector_owned: Mutex<Option<PathBuf>>,
+}
+
+#[tauri::command]
+async fn native_passkey_provider(action: String) -> Result<Value, String> {
+    if !cfg!(target_os = "windows") {
+        return Ok(json!({"available":false,"windows":false}));
+    }
+    let argument = match action.as_str() {
+        "status" => "--status",
+        "register" => "--register",
+        "unregister" => "--unregister",
+        "refresh" => "--sync-cache",
+        "settings" => "--settings",
+        _ => return Err("Unknown native passkey provider action".to_owned()),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let exe = std::env::current_exe().map_err(|_| "Desktop location is unavailable")?.with_file_name("127vaults-passkey-provider.exe");
+        if !exe.is_file() { return Ok(json!({"available":false,"windows":true,"installed":false})); }
+        let mut command = std::process::Command::new(exe); command.arg(argument);
+        #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
+        let result = command.output().map_err(|_| "Could not launch native passkey provider")?;
+        let mut value: Value = serde_json::from_slice(&result.stdout).map_err(|_| "Invalid native passkey provider response")?;
+        value["windows"] = json!(true); value["installed"] = json!(true);
+        if !result.status.success() {
+            let message = if value["errorCode"] == 2_147_958_100_u64 {
+                "Install and open the packaged 127Vaults Desktop build before registering native passkeys."
+            } else { "Native provider operation failed. Check that Desktop is unlocked and Windows Hello is configured." };
+            return Err(message.to_owned());
+        }
+        Ok(value)
+    }).await.map_err(|_| "Native provider task failed".to_owned())?
 }
 
 #[tauri::command]
@@ -312,7 +343,7 @@ async fn unlock(
             default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected && row["retired"] != true))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
-        let connector_owned = if connector_agent_active(&config) { false } else {
+        let connector_owned = if connector_agent_active(&config) && connector_agent_native_capable(&config) { false } else {
             let executable = std::env::current_exe().ok().and_then(|path| {
                 let name = if cfg!(windows) { "127vaults.exe" } else { "127vaults" };
                 let sibling = path.parent()?.join(name);
@@ -759,6 +790,7 @@ fn main() {
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
             generate_secret,
+            native_passkey_provider,
             desktop_info,
             unlock,
             item_list,
