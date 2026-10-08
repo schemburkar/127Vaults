@@ -1,5 +1,5 @@
 //! Disposable live check against the fictitious API010 owner and enrolled devices.
-//! Run only on the local acceptance stack: cargo run -p vaults-cli --example vault_removal_acceptance
+//! Run only on the local acceptance stack: cargo run -p vaults-cli --example `vault_removal_acceptance`
 use std::{fs, path::Path};
 use vaults_cli::client;
 

@@ -26,11 +26,9 @@ pub(crate) fn validate(meta: &Value, site: &str) -> Result<(), String> {
         || meta["signCount"] != 0
         || meta["origin"] != site
         || meta["rpId"].as_str() != url.host_str()
-        || ["username", "displayName"].iter().any(|name| {
-            !meta[name]
-                .as_str()
-                .is_some_and(|v| v.chars().count() <= 256)
-        })
+        || ["username", "displayName"]
+            .iter()
+            .any(|name| meta[name].as_str().is_none_or(|v| v.chars().count() > 256))
     {
         return Err("invalid passkey metadata".to_owned());
     }

@@ -219,9 +219,9 @@ fn login_entries(summary: &Value, vault_id: &str, site: &str) -> Vec<Value> {
                 continue;
             };
             if !valid_id(id)
-                || !marker["value"]
+                || marker["value"]
                     .as_str()
-                    .is_some_and(|value| value.split('|').next() == Some("login"))
+                    .is_none_or(|value| value.split('|').next() != Some("login"))
             {
                 continue;
             }
@@ -243,7 +243,7 @@ fn login_entries(summary: &Value, vault_id: &str, site: &str) -> Vec<Value> {
 }
 
 fn list_entries(
-    rows: Value,
+    rows: &Value,
     site: &str,
     mut get: impl FnMut(&str, &str) -> Result<Value, String>,
 ) -> Result<Value, String> {
@@ -277,6 +277,7 @@ fn credential(
 }
 
 impl Host {
+    #[allow(clippy::too_many_lines)]
     fn dispatch(&mut self, request: &mut Request) -> Result<Value, String> {
         if self.last_activity.elapsed() >= Duration::from_mins(30) {
             self.local = None;
@@ -375,7 +376,7 @@ impl Host {
         {
             self.last_activity = Instant::now();
             return if request.action == "list" {
-                list_entries(list(&mut local.session)?, &site, |vault, item| {
+                list_entries(&list(&mut local.session)?, &site, |vault, item| {
                     local.session.item_get(vault, item, None)
                 })
             } else {
@@ -390,7 +391,7 @@ impl Host {
         }
         if request.action == "list" {
             list_entries(
-                agent::call(&path, "item.list.all", json!({}))?,
+                &agent::call(&path, "item.list.all", json!({}))?,
                 &site,
                 |vault, item| agent::call(&path, "item.get", json!({"vault":vault,"item":item})),
             )
@@ -582,7 +583,7 @@ mod tests {
             {"id":format!("__127vaults_field:{section}:password"),"type":"password","value":"[redacted]"}
         ]});
         let origin = site_origin("https://accounts.example.test").unwrap();
-        let filtered = list_entries(rows, &origin, |_, _| Ok(summary.clone())).unwrap();
+        let filtered = list_entries(&rows, &origin, |_, _| Ok(summary.clone())).unwrap();
         assert_eq!(filtered.as_array().unwrap().len(), 2);
         assert_eq!(filtered[1]["entryId"], section);
         assert_eq!(filtered[1]["username"], "secondary");

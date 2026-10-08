@@ -28,10 +28,10 @@ fn generate_secret(options: Value) -> Result<String, String> {
 
 impl Drop for DesktopState {
     fn drop(&mut self) {
-        if let Ok(owned) = self.connector_owned.get_mut() {
-            if let Some(path) = owned.take() {
-                stop_connector_agent(&path);
-            }
+        if let Ok(owned) = self.connector_owned.get_mut()
+            && let Some(path) = owned.take()
+        {
+            stop_connector_agent(&path);
         }
     }
 }

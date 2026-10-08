@@ -496,7 +496,7 @@ fn post(
         .header("Cookie", cookie)
         .json(body)
         .send()
-        .map_err(server_connection_error)?;
+        .map_err(|error| server_connection_error(&error))?;
     if !response.status().is_success() {
         return Err(format!(
             "server rejected request ({})",
@@ -559,7 +559,7 @@ fn http_client(config_dir: &Path) -> Result<(Client, String, String, String), St
     Ok((client, origin, server_id, device_id))
 }
 
-fn server_connection_error(error: reqwest::Error) -> String {
+fn server_connection_error(error: &reqwest::Error) -> String {
     let mut source: Option<&dyn std::error::Error> = Some(&error);
     while let Some(current) = source {
         let detail = current.to_string().to_ascii_lowercase();
@@ -596,7 +596,7 @@ pub fn unlock(
     let ceremony = client
         .get(format!("{origin}/api/v1/ceremony"))
         .send()
-        .map_err(server_connection_error)?;
+        .map_err(|error| server_connection_error(&error))?;
     if ceremony.status() != StatusCode::OK {
         return Err("authentication ceremony unavailable".to_owned());
     }
@@ -1003,7 +1003,7 @@ impl Session {
         };
         self.edit_vault_settings(|settings| {
             if let Some(existing) = settings.collections.iter_mut().find(|row| row.id == id) {
-                existing.name = name.to_owned();
+                name.clone_into(&mut existing.name);
                 existing.vault_ids = ids;
             } else {
                 if editing {
@@ -2287,7 +2287,7 @@ impl Session {
             .get(format!("{}{}", self.origin, path))
             .header("Cookie", &self.cookie)
             .send()
-            .map_err(server_connection_error)?;
+            .map_err(|error| server_connection_error(&error))?;
         if !r.status().is_success() {
             return Err(format!("server rejected request ({})", r.status().as_u16()));
         }
@@ -2313,7 +2313,7 @@ impl Session {
             .header("Cookie", &self.cookie)
             .json(body)
             .send()
-            .map_err(server_connection_error)?;
+            .map_err(|error| server_connection_error(&error))?;
         if !r.status().is_success() {
             return Err(format!("server rejected request ({})", r.status().as_u16()));
         }
@@ -2429,7 +2429,7 @@ impl Session {
             .ok_or("invalid item list")?
             .len();
         Ok(
-            json!({"name":self.settings_data.names.get(&vault_id).map(String::as_str).unwrap_or("Private"),"code":Self::reference("V",&vault_id),"vaultId":vault_id,"itemCount":item_count}),
+            json!({"name":self.settings_data.names.get(&vault_id).map_or("Private", String::as_str),"code":Self::reference("V",&vault_id),"vaultId":vault_id,"itemCount":item_count}),
         )
     }
     fn open_vault(&mut self, selector: &str) -> Result<(String, KeyHandle, Vec<u8>), String> {

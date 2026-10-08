@@ -40,7 +40,9 @@ pub struct Collection {
     rename_all = "lowercase",
     deny_unknown_fields
 )]
+#[derive(Default)]
 pub enum View {
+    #[default]
     All,
     Vault(String),
     Collection(String),
@@ -73,13 +75,8 @@ impl Default for SettingsRecord {
     }
 }
 
-impl Default for View {
-    fn default() -> Self {
-        Self::All
-    }
-}
-
 impl SettingsData {
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             version: 1,
@@ -128,11 +125,16 @@ pub struct SettingsStore {
     path: PathBuf,
 }
 impl SettingsStore {
+    #[must_use]
     pub fn new(config_dir: &Path) -> Self {
         Self {
             path: config_dir.join("vault-settings.json"),
         }
     }
+    /// Loads and validates the bounded settings record.
+    ///
+    /// # Errors
+    /// Returns an error for unreadable, oversized or inconsistent settings.
     pub fn load(&self) -> Result<SettingsRecord, String> {
         let file = match File::open(&self.path) {
             Ok(file) => file,
@@ -174,6 +176,10 @@ impl SettingsStore {
         }
         Ok(record)
     }
+    /// Atomically persists the bounded encrypted settings record.
+    ///
+    /// # Errors
+    /// Returns an error for encoding, size-limit or filesystem failures.
     pub fn commit(&self, record: &SettingsRecord) -> Result<(), String> {
         let bytes =
             serde_json::to_vec(record).map_err(|_| "vault settings could not be encoded")?;
@@ -191,6 +197,10 @@ impl SettingsStore {
     }
 }
 
+/// Reads the envelope revision.
+///
+/// # Errors
+/// Returns an error if the encoded envelope or revision is malformed.
 pub fn revision(envelope: &str) -> Result<String, String> {
     let bytes = URL_SAFE_NO_PAD
         .decode(envelope)
@@ -203,6 +213,10 @@ pub fn revision(envelope: &str) -> Result<String, String> {
     Ok(uuid::Uuid::from_bytes(raw).to_string())
 }
 
+/// Authenticates and decodes account settings.
+///
+/// # Errors
+/// Returns an error for malformed, unauthenticated or invalid settings.
 pub fn decrypt(core: &Core, root: KeyHandle, envelope: &str) -> Result<SettingsData, String> {
     let bytes = URL_SAFE_NO_PAD
         .decode(envelope)
@@ -216,6 +230,10 @@ pub fn decrypt(core: &Core, root: KeyHandle, envelope: &str) -> Result<SettingsD
     Ok(data)
 }
 
+/// Validates and encrypts account settings.
+///
+/// # Errors
+/// Returns an error for invalid settings, encoding or encryption failures.
 pub fn encrypt(core: &Core, root: KeyHandle, data: &SettingsData) -> Result<String, String> {
     data.validate()?;
     let plain = serde_json::to_vec(data).map_err(|_| "vault settings could not be encoded")?;

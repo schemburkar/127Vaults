@@ -377,6 +377,9 @@ impl Core {
     }
     /// Encrypts bounded account settings (vault labels and collections) with
     /// the user root key. The envelope carries its authenticated revision.
+    ///
+    /// # Errors
+    /// Returns an error for an invalid root handle, oversized settings or encryption failure.
     pub fn encrypt_account_settings(
         &self,
         root: KeyHandle,
@@ -403,6 +406,9 @@ impl Core {
     }
 
     /// Authenticates and decrypts root-scoped settings from a stored envelope.
+    ///
+    /// # Errors
+    /// Returns an error for an invalid root handle or unauthenticated envelope.
     pub fn decrypt_account_settings(
         &self,
         root: KeyHandle,
@@ -734,10 +740,9 @@ fn validate_context(c: &[u8], p: u8) -> Result<(), Error> {
     let o = &c[49..65];
     let zero = [0u8; 16];
     let good = match p {
-        1 => valid_uuid(a, false) && v == zero && o == zero,
+        1 | 5 => valid_uuid(a, false) && v == zero && o == zero,
         2 => valid_uuid(a, false) && valid_uuid(v, false) && o == v,
         3 | 4 => a == zero && valid_uuid(v, false) && valid_uuid(o, false),
-        5 => valid_uuid(a, false) && v == zero && o == zero,
         _ => false,
     };
     if good {
