@@ -1,7 +1,13 @@
 import { readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sha256 } from './package.mjs';
+async function sha256(path) {
+  const digest = createHash('sha256');
+  for await (const bytes of createReadStream(path)) digest.update(bytes);
+  return digest.digest('hex');
+}
 
 export async function verifyPackages(directory) {
   const manifest = JSON.parse(await readFile(resolve(directory, 'manifest.json'), 'utf8'));

@@ -32,7 +32,7 @@ export function outputDirectory(value) {
   }
   return output;
 }
-async function archive(directory, filename, zip = false) {
+export async function archive(directory, filename, zip = false) {
   if (zip && process.platform === 'win32') {
     // bsdtar on Windows supports ZIP; filenames are passed directly, never through a shell.
     await run('tar', ['-a', '-cf', filename, '-C', dirname(directory), directory.split(/[\\/]/).at(-1)]);
@@ -125,6 +125,7 @@ export async function main(args) {
   }
   await copyFile(join(root, 'docs/release/local-packaging.md'), join(output, 'README.md'));
   await copyFile(join(root, 'LICENSE-POLICY.md'), join(output, 'LICENSE-POLICY.md'));
+  await copyFile(join(root, 'scripts/release/verify.mjs'), join(output, 'verify.mjs'));
   await writeManifest(output, components);
   console.log(`Private test packages and SHA256SUMS: ${output}`);
 }

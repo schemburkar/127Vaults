@@ -35,7 +35,7 @@ test('release verifier rejects path traversal', async () => {
     await assert.rejects(verifyPackages(directory), /Invalid package entry/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
-test('assembler collects verified artifacts and refuses conflicting files and mixed revisions', async () => {
+test('assembler collects verified artifacts in a ZIP and refuses mixed revisions', async () => {
   const directory = await mkdtemp(join(tmpdir(), '127vaults-assemble-'));
   try {
     const first = join(directory, 'first');
@@ -46,8 +46,9 @@ test('assembler collects verified artifacts and refuses conflicting files and mi
     await writeFile(join(second, 'server.tar'), 'server');
     await writeManifest(first, ['desktop']); await writeManifest(second, ['server']);
     const output = join(directory, 'combined');
-    await assemble(output, [first, second]);
+    await assemble(output, [first, second], true);
     assert.equal((await verifyPackages(output)).files.some(file => file.name === 'client.zip'), true);
+    assert.match(await readFile(`${output}.zip.sha256`, 'utf8'), /^[a-f0-9]{64}  combined.zip\n$/);
     const path = join(second, 'manifest.json');
     const manifest = JSON.parse(await readFile(path, 'utf8'));
     manifest.revision = 'different-revision';

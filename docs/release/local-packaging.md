@@ -27,23 +27,29 @@ CARGO_BUILD_JOBS=2 pnpm package:local --out /home/you/127vaults-packages/linux-0
 ```
 
 This builds a Debian package, AppImage and portable desktop/CLI/native-host TAR.GZ.
-Linux packaging also needs `zip` when including the extension. The server TAR
+Linux packaging also needs `zip` when including the extension.
+AppImage packaging needs `xdg-utils` (`sudo apt install xdg-utils`). The server TAR
 built on Windows already contains Linux amd64 containers and can be shared with
 both Windows x64 and Linux x64 recipients; it does not need rebuilding in WSL.
 Use `--components server,extension` or `--components desktop` to build a subset.
 Linux binaries built on Ubuntu 24.04 target that baseline; older distributions,
 ARM64 and macOS are not covered by these packages.
+Native Linux server installation still needs a clean-host permission and
+container-engine acceptance run; the server runtime rehearsal recorded for this
+handoff used Windows Podman. Treat Linux server commands as a test candidate.
 
 Copy the Linux output back to the Windows machine and collect all matching
 builds into a single handoff directory. The assembler verifies each input and
 refuses mixed source revisions or conflicting files:
 
 ```powershell
-pnpm package:assemble --out C:\127Vaults-Packages\handoff-0.1.0 --from C:\127Vaults-Packages\windows-0.1.0 --from C:\127Vaults-Packages\linux-0.1.0
+pnpm package:assemble --out C:\127Vaults-Packages\handoff-0.1.0 --from C:\127Vaults-Packages\windows-0.1.0 --from C:\127Vaults-Packages\linux-0.1.0 --zip
 ```
 
 Transfer the resulting directory; the server is one TAR, desktop installers and
 portable client archives are separate files, and the extension is one ZIP.
+`--zip` also produces a single ZIP containing the complete handoff plus an
+external `.zip.sha256` file for checking it before extraction.
 
 Every completed output has `manifest.json`, `SHA256SUMS`, file sizes, source
 revision and dirty-tree state. Verify before transfer and after receipt:
@@ -51,6 +57,9 @@ revision and dirty-tree state. Verify before transfer and after receipt:
 ```sh
 node scripts/release/verify.mjs /path/to/package-directory
 ```
+
+The assembled handoff includes a standalone `verify.mjs`; recipients can run
+`node verify.mjs .` from the extracted handoff without a repository checkout.
 
 Keep package contents together. Compare SHA256SUMS with a copy received directly
 from the sender. Hashes detect corruption; these unsigned builds have no public
