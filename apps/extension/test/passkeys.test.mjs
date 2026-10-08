@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createPublicKey, verify, createHash } from 'node:crypto';
+import { createPasskey, assertPasskey, decode, encode, passkeyFields, readMetadata, validateRequest, matches } from '../src/passkeys.mjs';
+const origin = 'https://login.example.test';
+const createOptions = { challenge: encode(new Uint8Array(32).fill(9)), rp: { id: 'login.example.test', name: 'Example' }, user: { id: encode(Uint8Array.of(1, 2)), name: 'alice', displayName: 'Alice' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }] };
+test('ES256 none registration and DER assertions verify against the registered SPKI', async () => {
+  const made = await createPasskey(createOptions, origin, true);
+  assert.deepEqual(readMetadata(passkeyFields(made.metadata, made.privateKey)), made.metadata);
+  const data = decode(made.response.response.authenticatorData);
+  assert.deepEqual(data.slice(0, 32), new Uint8Array(createHash('sha256').update('login.example.test').digest()));
+  assert.equal(data[32], 0x5d); assert.deepEqual(data.slice(33, 37), new Uint8Array(4));
+  assert.deepEqual(data.slice(37, 53), new Uint8Array(16));
+  assert.deepEqual(data.slice(55, 87), decode(made.metadata.credentialId));
+  const options = { challenge: encode(new Uint8Array(32).fill(7)), rpId: 'login.example.test', userVerification: 'required', allowCredentials: [{ id: made.metadata.credentialId, type: 'public-key' }] };
+  const assertion = await assertPasskey(made.metadata, made.privateKey, options, origin, true);
+  const client = decode(assertion.response.clientDataJSON), auth = decode(assertion.response.authenticatorData);
+  assert.equal(auth[32], 0x1d);
+  assert.equal(JSON.parse(new TextDecoder().decode(client)).challenge, options.challenge);
+  const publicKey = createPublicKey({ key: Buffer.from(decode(made.response.response.publicKey)), format: 'der', type: 'spki' });
+  const signed = Buffer.concat([auth, createHash('sha256').update(client).digest()]);
+  assert(verify('sha256', signed, publicKey, decode(assertion.response.signature)));
+  signed[0] ^= 1;
+  assert.equal(verify('sha256', signed, publicKey, decode(assertion.response.signature)), false);
+  assert.equal(assertion.response.userHandle, createOptions.user.id);
+});
+test('rejects substitution, missing verification and unsupported requests', async () => {
+  const made = await createPasskey(createOptions, origin, true);
+  await assert.rejects(createPasskey(createOptions, origin, false));
+  await assert.rejects(assertPasskey(made.metadata, made.privateKey, { challenge: createOptions.challenge }, origin, false));
+  await assert.rejects(assertPasskey(made.metadata, made.privateKey, { challenge: createOptions.challenge }, 'https://evil.test', true));
+  assert.equal(matches(made.metadata, { allowCredentials: [{ id: encode(new Uint8Array(32)) }] }, origin), false);
+  for (const bad of [{ ...createOptions, rp: { id: 'example.test' } }, { ...createOptions, extensions: { prf: {} } }, { ...createOptions, attestation: 'direct' }, { ...createOptions, user: { ...createOptions.user, id: encode(new Uint8Array(65)) } }, { ...createOptions, pubKeyCredParams: [{ type: 'public-key', alg: -257 }] }]) assert.throws(() => validateRequest('create', bad, origin));
+  assert.throws(() => validateRequest('create', createOptions, 'http://login.example.test'));
+  assert.throws(() => decode('AB'));
+  assert.throws(() => readMetadata([...passkeyFields(made.metadata, made.privateKey), passkeyFields(made.metadata, made.privateKey)[1]]));
+});
