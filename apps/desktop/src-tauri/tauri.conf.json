@@ -29,6 +29,7 @@
                 "windows": ["*"],
                 "permissions": [
                   "core:default",
+                  "core:window:allow-destroy",
                   "opener:default"
                 ]
               }

@@ -64,11 +64,28 @@ let core,
   generatedAccountSecret = "",
   lastSynced = null,
   lastLocalChange = null;
+const features = window.__vaultsFeatures;
+let favoritesOnly = false, favoriteItems = [], editorBaseline = null, syncState = 'idle', syncFailure = '';
+function editorSnapshot() {
+  if ($("item-form").hidden) return null;
+  try { return JSON.stringify({ values: ["item-id", "title", "url", "item-username", "item-password"].map(id => $(id).value), fields: collectCustomFields() }); }
+  catch { return JSON.stringify([...$("item-form").querySelectorAll('input,select,textarea')].map(input => [input.value, input.checked])); }
+}
+function hasUnsavedChanges() { return editorBaseline !== null && !$("item-form").hidden && editorSnapshot() !== editorBaseline; }
+function confirmDiscard() {
+  if (!hasUnsavedChanges()) return true;
+  if (!window.confirm("Discard your unsaved changes?")) return false;
+  editorBaseline = null;
+  if (currentItem) displayItem(currentItem); else clearItem();
+  return true;
+}
+window.addEventListener('beforeunload', event => { if (hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; } });
 const updateSessionDates = () => {
   let node = $("session-dates");
   if (!node) return;
   let time = (value) => value ? value.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
-  node.textContent = `Local change ${time(lastLocalChange)} · Server sync ${time(lastSynced)}`;
+  node.textContent = `${syncState === 'syncing' ? 'Syncing…' : syncState === 'error' ? 'Sync failed · retry Sync' : hasUnsavedChanges() ? 'Unsaved changes' : lastSynced ? 'Up to date' : 'Not synced'} · ${hasUnsavedChanges() ? 'Unsaved edit · ' : ''}Server sync ${time(lastSynced)}`;
+  node.title = syncFailure || 'Web saves directly to the server. Unsaved edits have not been synced.';
 };
 const toast = (title, detail = "", type = "info") => {
   window.dispatchEvent(new CustomEvent("vaults:toast", { detail: { title, detail, kind: type } }));
@@ -635,10 +652,12 @@ async function login() {
     setBusy(false);
   }
 }
-async function reload() {
+async function reload({ preserveDraft = false } = {}) {
+  if (!preserveDraft && !confirmDiscard()) return;
+  syncState = 'syncing'; syncFailure = ''; updateSessionDates();
+  try {
   await loadVaultSettings();
   let data = await call("/api/v1/vaults");
-  lastSynced = new Date();
   updateSessionDates();
   if (!data.directory || !data.vaultEnvelopes.some((row) => !row.retired)) {
     availableVaults = [];
@@ -646,6 +665,7 @@ async function reload() {
     vault = catalogue = null;
     vaultId = null;
     loadedItems = [];
+    favoriteItems = [];
     showEmpty();
     renderItems([]);
     $("vault-state").textContent = "No vault yet";
@@ -654,6 +674,7 @@ async function reload() {
     $("create-vault").disabled = false;
     $("new-item").disabled = true;
     $("save").disabled = true;
+    lastSynced = new Date(); syncState = "idle"; updateSessionDates();
     return;
   }
   let directory = un(data.directory),
@@ -705,6 +726,7 @@ async function reload() {
   vault = nextVault;
   catalogue = nextCatalogue;
   loadedItems = items;
+  if (favoritesOnly) favoriteItems = await loadFavorites();
   renderItems(items);
   $("vault-state").textContent =
     `${items.length} item${items.length === 1 ? "" : "s"}`;
@@ -712,10 +734,34 @@ async function reload() {
   $("create-vault").disabled = false;
   $("new-item").disabled = false;
   $("save").disabled = false;
+  if (favoritesOnly) { $("vault-title").textContent = "Favorites"; $("vault-state").textContent = "All active vaults"; }
+  lastSynced = new Date(); syncState = 'idle'; updateSessionDates();
+  } catch (error) { syncState = 'error'; syncFailure = safeError(error); updateSessionDates(); throw error; }
+}
+async function loadFavorites() {
+  const sessionRoot = root;
+  const data = await call('/api/v1/vaults');
+  const result = [];
+  for (const row of data.vaultEnvelopes.filter(row => !row.retired)) {
+    if (!sessionRoot || root !== sessionRoot) throw Error('LOCKED');
+    const localVault = core.open_private_vault(sessionRoot, un(data.directory), id(row.vaultId), un(row.envelope));
+    const listed = await call(`/api/v1/vaults/${row.vaultId}/items`);
+    const localCatalogue = un(listed.catalogue);
+    for (const summary of listed.indices) {
+      if (root !== sessionRoot) throw Error('LOCKED');
+      const index = JSON.parse(td.decode(core.decrypt_private_part(localVault, localCatalogue, id(summary.itemId), un(summary.envelope), 4)));
+      if (!index.favorite) continue;
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(summary.itemId)));
+      const code = 'I-' + Array.from(digest.slice(0,5), byte => byte.toString(16).padStart(2,'0')).join('').toUpperCase();
+      result.push({ row: { ...summary, vaultId: row.vaultId, code }, index });
+    }
+  }
+  return result.sort((a,b) => (a.index.title || '').localeCompare(b.index.title || ''));
 }
 function renderItems(items) {
+  if (favoritesOnly) items = favoriteItems;
   let query = $("search").value.trim().toLowerCase();
-  let filtered = items.filter((x) =>
+  let filtered = items.filter((x) => (!favoritesOnly || x.index.favorite) &&
     `${x.index.title ?? ""} ${x.index.website ?? ""}`
       .toLowerCase()
       .includes(query),
@@ -737,7 +783,8 @@ function renderItems(items) {
         items: filtered,
         actions,
         selectedId: currentItem?.itemId ?? null,
-        empty: query ? "No matching items." : "This vault has no items yet.",
+        favoriteView: favoritesOnly,
+        empty: query ? "No matching items." : favoritesOnly ? "No favorites yet." : "This vault has no items yet.",
       },
     }),
   );
@@ -1021,7 +1068,12 @@ function setPasswordVisibilityButton(button, revealed) {
   button.title = label;
 }
 function displayItem(item, button) {
+  editorBaseline = null;
   currentItem = item;
+  const favorite = features.isFavorite(item.body.customFields);
+  $("favorite-item").setAttribute('aria-pressed', String(favorite));
+  $("favorite-item").setAttribute('aria-label', favorite ? 'Remove from favorites' : 'Add to favorites');
+  $("favorite-item").title = favorite ? 'Remove from favorites' : 'Add to favorites';
   // Do not leave credential-shaped values in the hidden editor. Password-manager
   // extensions can otherwise mistake item selection for a completed login form.
   for (let x of ["item-id", "title", "url", "item-username", "item-password"])
@@ -1050,6 +1102,7 @@ function displayItem(item, button) {
   $("item-view").hidden = false;
 }
 async function openItem(itemId, index, button) {
+  if (!confirmDiscard()) return;
   const requestedItem = itemId;
   $("items").setAttribute("aria-busy", "true");
   try {
@@ -1135,6 +1188,7 @@ window.__vaultsExtensionActions = {
   },
 };
 function openCreateVaultDialog() {
+  if (!confirmDiscard()) return;
   vaultDialogTarget = null;
   $("web-vault-name").value = availableVaults.length ? `Vault ${availableVaults.length + 1}` : "Private";
   $("web-vault-dialog-title").textContent = "Create vault";
@@ -1175,6 +1229,8 @@ async function createVault(event) {
       ).PrivateVaultClient({ core, root, csrf }),
       newId = await client.create(un(data.directory));
     accepted = true;
+    syncState = "idle"; syncFailure = "";
+    editorBaseline = null;
     vaultId = newId;
     vault = client.vault;
     catalogue = client.catalogue;
@@ -1191,15 +1247,18 @@ async function createVault(event) {
     setBusy(false);
   }
 }
-async function selectVault(nextVaultId) {
+async function selectVault(nextVaultId, preserveFavorites = false) {
+  if (!confirmDiscard()) return;
+  if (!preserveFavorites) favoritesOnly = false;
   if (!availableVaults.some((row) => row.vaultId === nextVaultId)) return;
   vaultId = nextVaultId;
   clearItem();
   try { await reload(); }
   catch (error) { toast("Vault could not be opened", safeError(error), "error"); }
 }
-async function save(event) {
+async function save(event, retry = false) {
   event.preventDefault();
+  if ((busy && !retry) || !root) return;
   let titleInput = $("title"), titleError = $("title-error");
   titleInput.setAttribute("aria-invalid", String(!titleInput.value.trim()));
   titleError.classList.toggle("hidden", !!titleInput.value.trim());
@@ -1215,6 +1274,7 @@ async function save(event) {
         title: $("title").value.trim(),
         website: normalizeWebsite($("url").value),
         itemType: itemKind(fields),
+        favorite: features.isFavorite(fields),
         createdAt: previousIndex?.createdAt ?? (itemId ? null : now),
         updatedAt: now,
       },
@@ -1223,6 +1283,8 @@ async function save(event) {
         password: $("item-password").value,
         customFields: fields,
       };
+    const authenticator = fields.find(field => field.id === features.TOTP_ID)?.value;
+    if (authenticator) features.parseTotp(authenticator);
     draft = { itemId, index, body };
     let
       made = core.upsert_private_item(
@@ -1278,28 +1340,28 @@ async function save(event) {
     if (["HTTP_409", "BASE_CHANGED", "sync_conflict"].includes(e.message) || e.message.includes("409")) {
       let serverItem = null, serverLoadFailed = false;
       try {
-        await reload();
+        await reload({ preserveDraft: true });
         let summary = loadedItems.find((row) => row.row.itemId === draft?.itemId);
         if (summary) serverItem = await fetchItem(summary.row.itemId, summary.index);
       } catch (loadError) {
         serverLoadFailed = true;
         toast("Server version could not be loaded", safeError(loadError), "error");
       }
-      if (serverLoadFailed) { beginEdit(draft); return; }
+      if (serverLoadFailed) { beginEdit(draft, true); return; }
       let choice = await resolveConflict(draft, serverItem);
       if (choice === "mine") {
-        beginEdit(serverItem ? draft : { ...draft, itemId: null });
+        beginEdit(serverItem ? draft : { ...draft, itemId: null }, true);
         await new Promise(requestAnimationFrame);
-        await save(event);
+        await save(event, true);
       } else if (choice === "server") {
         if (serverItem) displayItem(serverItem); else clearItem();
         toast("Server version restored", "Your unsaved local edit was discarded.", "success");
       } else if (choice?.kind === "merge") {
-        beginEdit(choice.item);
+        beginEdit(choice.item, true);
         await new Promise(requestAnimationFrame);
-        await save(event);
+        await save(event, true);
       } else if (draft) {
-        beginEdit(draft);
+        beginEdit(draft, true);
       }
     } else toast("Item was not saved", messages[e.message] || `${safeError(e)} Check the highlighted values and try again.`, "error");
     if (e.message === "WEBSITE_INVALID") $("url").focus();
@@ -1398,7 +1460,10 @@ function showEmpty() {
   $("item-view").hidden = true;
   $("item-form").hidden = true;
 }
-function beginEdit(item = currentItem) {
+function beginEdit(item = currentItem, preserveDraft = false) {
+  if (!preserveDraft && !confirmDiscard()) return;
+  editorBaseline = null;
+  const prefilledDraft = item && item !== currentItem;
   window.dispatchEvent(new Event("vaults:clear-generator"));
   $("item-id").value = item?.itemId ?? "";
   $("title").value = item?.index.title ?? "";
@@ -1419,8 +1484,11 @@ function beginEdit(item = currentItem) {
   $("item-view").hidden = true;
   $("item-form").hidden = false;
   $("title").focus();
+  requestAnimationFrame(() => { editorBaseline = prefilledDraft ? "prefilled-unsaved-draft" : editorSnapshot(); updateSessionDates(); });
 }
 function clearItem() {
+  editorBaseline = null;
+  currentItem = null;
   window.dispatchEvent(new Event("vaults:clear-generator"));
   for (let x of ["item-id", "title", "url", "item-username", "item-password"])
     $(x).value = "";
@@ -1449,6 +1517,8 @@ function arm() {
   );
 }
 async function lock(logout = true) {
+  editorBaseline = null; favoritesOnly = false; favoriteItems = []; lastSynced = lastLocalChange = null; syncState = "idle";
+  window.dispatchEvent(new Event('vaults:locked'));
   window.dispatchEvent(new Event("vaults:clear-generator"));
   clearTimeout(sessionTimer);
   try {
@@ -1593,7 +1663,9 @@ window.__vaultsActions = {
   openCreateVaultDialog,
   openRenameVaultDialog,
   selectVault,
-  openItem: ({ row, index }, button) => {
+  openItem: async ({ row, index }, button) => {
+    if (!confirmDiscard()) return;
+    if (row.vaultId && row.vaultId !== vaultId) await selectVault(row.vaultId, true);
     $("items").dataset.requestedItem = row.itemId;
     return openItem(row.itemId, index, button);
   },
@@ -1605,9 +1677,36 @@ window.__vaultsActions = {
     else if (id === "create-vault") openCreateVaultDialog();
     else if (id === "reload") reload().catch(() => msg("Vault refresh failed.", "error"));
     else if (id === "settings") $("settings-toggle").click();
-    else if (id === "lock") lock();
+    else if (id === "lock" && confirmDiscard()) lock();
   },
   revokeDevice,
+  healthItems: async () => {
+    const sessionRoot = root;
+    const data = await call('/api/v1/vaults');
+    const result = [];
+    for (const row of data.vaultEnvelopes.filter(row => !row.retired)) {
+      if (!sessionRoot || root !== sessionRoot) throw Error('LOCKED');
+      const healthVault = core.open_private_vault(sessionRoot, un(data.directory), id(row.vaultId), un(row.envelope));
+      const listed = await call(`/api/v1/vaults/${row.vaultId}/items`);
+      const healthCatalogue = un(listed.catalogue);
+      const revision = uuid(healthCatalogue.slice(44, 60));
+      for (const summary of listed.indices) {
+        if (root !== sessionRoot) throw Error('LOCKED');
+        const index = JSON.parse(td.decode(core.decrypt_private_part(healthVault, healthCatalogue, id(summary.itemId), un(summary.envelope), 4)));
+        const got = await call(`/api/v1/vaults/${row.vaultId}/items/${summary.itemId}?catalogueRevision=${revision}`);
+        if (root !== sessionRoot) throw Error('LOCKED');
+        const body = JSON.parse(td.decode(core.decrypt_private_part(healthVault, healthCatalogue, id(summary.itemId), un(got.envelope), 3)));
+        result.push({ itemId: summary.itemId, vaultId: row.vaultId, title: index.title, password: body.password, customFields: body.customFields || [] });
+      }
+    }
+    return result;
+  },
+  openHealthItem: async (itemId, ownerVault) => {
+    if (!confirmDiscard()) return;
+    if (ownerVault && ownerVault !== vaultId) await selectVault(ownerVault);
+    const row = loadedItems.find(x => x.row.itemId === itemId);
+    if (row) { $("items").dataset.requestedItem = itemId; await openItem(itemId, row.index); }
+  },
 };
 $("setup").onclick = setup;
 $("login-next").onclick = showLoginPassword;
@@ -1632,23 +1731,43 @@ $("master").onkeydown = (e) => {
   if (e.key === "Enter") login();
 };
 $("login").onclick = login;
-$("lock").onclick = () => lock();
-$("lock-app").onclick = () => lock();
+$("lock").onclick = () => { if (confirmDiscard()) void lock(); };
+$("lock-app").onclick = () => { if (confirmDiscard()) void lock(); };
 $("create-vault").onclick = openCreateVaultDialog;
 $("web-create-vault-form").onsubmit = submitVaultDialog;
 $("web-create-vault-cancel").onclick = () => $("web-create-vault-dialog").close();
 $("new-item").onclick = () => beginEdit(null);
+$("duplicate-item").onclick = () => { if (!currentItem) return; beginEdit({ ...structuredClone(currentItem), itemId: null, index: { ...currentItem.index, title: `${currentItem.index.title} (copy)` }, body: { ...currentItem.body, customFields: features.setFavorite(currentItem.body.customFields || [], false) } }); $("form-title").textContent = 'Create a copy'; };
+$("favorite-item").onclick = async () => {
+  if (!currentItem || busy) return;
+  const item = { ...structuredClone(currentItem), body: { ...currentItem.body, customFields: features.setFavorite(currentItem.body.customFields || [], !features.isFavorite(currentItem.body.customFields)) } };
+  beginEdit(item);
+  // Wait for React to populate all typed and custom fields before encrypting.
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await save({ preventDefault() {} });
+};
+$("password-health").onclick = () => { if (root) window.dispatchEvent(new Event('vaults:health')); };
+$("nav-favorites").onclick = async () => {
+  if (busy || !confirmDiscard()) return;
+  setBusy(true);
+  try { favoriteItems = await loadFavorites(); clearItem(); favoritesOnly = true; renderItems(loadedItems); $("vault-title").textContent = 'Favorites'; $("vault-state").textContent = 'All active vaults'; }
+  catch (error) { toast('Favorites unavailable', safeError(error), 'error'); }
+  finally { setBusy(false); }
+};
+$("item-form").addEventListener('input', () => updateSessionDates());
 $("edit-item").onclick = () => beginEdit();
-$("cancel-edit").onclick = () =>
+$("cancel-edit").onclick = () => {
+  if (!confirmDiscard()) return;
   currentItem
     ? displayItem(
         currentItem,
         document.querySelector(`[data-item-id="${currentItem.itemId}"]`),
       )
-    : showEmpty();
-$("close-item-detail").onclick = () => { clearItem(); renderItems(loadedItems); };
-$("nav-all-items").onclick = () => { clearItem(); renderItems(loadedItems); };
-$("reload").onclick = () => reload().catch(() => {});
+    : clearItem();
+};
+$("close-item-detail").onclick = () => { if (!confirmDiscard()) return; clearItem(); renderItems(loadedItems); };
+$("nav-all-items").onclick = () => { if (!confirmDiscard()) return; favoritesOnly = false; $("vault-title").textContent = availableVaults.find(row => row.selected)?.name || "Items"; clearItem(); renderItems(loadedItems); };
+$("reload").onclick = () => reload().catch(error => toast("Sync failed", safeError(error), "error"));
 for (const [id, key, fallback] of [["preference-lock-minutes", "127vaults:lock-minutes", "30"], ["preference-clipboard-seconds", "127vaults:clipboard-seconds", "30"]]) {
   const control = $(id);
   control.value = localStorage.getItem(key) || fallback;
@@ -1729,6 +1848,18 @@ $("items").onkeydown = (e) => {
           );
   rows[next]?.focus();
 };
+document.addEventListener('keydown', event => {
+  if (!root || document.querySelector('dialog[open]') || document.querySelector('[aria-labelledby="password-health-title"]')) return;
+  const modifier = event.ctrlKey || event.metaKey, key = event.key.toLowerCase();
+  if (modifier && ['k', 'f', 'n', 's'].includes(key)) {
+    event.preventDefault();
+    if (['k', 'f'].includes(key)) $("search").focus();
+    if (key === 'n') $("new-item").click();
+    if (key === 's' && !$("item-form").hidden && !busy) $("item-form").requestSubmit();
+  }
+  if (event.key === 'Escape' && !$("item-form").hidden) { event.preventDefault(); $("cancel-edit").click(); }
+  if (event.key === 'ArrowDown' && event.target === $("search")) { event.preventDefault(); $("items").querySelector('[data-item-id]')?.focus(); }
+});
 $("item-form").onsubmit = save;
 for (let n of ["pointerdown", "keydown"])
   document.addEventListener(n, (e) => {

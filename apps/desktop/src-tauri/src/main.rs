@@ -573,6 +573,11 @@ fn item_save(
 }
 
 #[tauri::command]
+fn replica_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.replica_status())
+}
+
+#[tauri::command]
 fn sync(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
     with_session(&state, |session| {
         let result = session.sync_now()?;
@@ -750,6 +755,7 @@ fn main() {
             item_get,
             item_secret,
             item_save,
+            replica_status,
             sync,
             discard_local_changes,
             discard_conflict,

@@ -1,5 +1,7 @@
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import {
+  Star,
+  ShieldCheck,
   Check,
   ChevronDown,
   CreditCard,
@@ -24,10 +26,13 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
+
+import * as productFeatures from "../../../packages/ui/src/product-features.mjs";
+(window as any).__vaultsFeatures = productFeatures;
 
 const generateSecret = (options: GeneratorOptions) => new Promise<string>((resolve, reject) => {
   const timer = window.setTimeout(() => reject(new Error("Generator unavailable. Reload the app and unlock the vault.")), 5000);
@@ -71,7 +76,7 @@ const Field = ({ label, children }: { label: string; children: ReactNode }) => (
 
 type ItemSummary = {
   row: { itemId: string; code: string };
-  index: { title?: string; website?: string; itemType?: string; createdAt?: number; updatedAt?: number };
+  index: { title?: string; website?: string; itemType?: string; createdAt?: number; updatedAt?: number; favorite?: boolean };
 };
 type SearchAction = { id: string; label: string; description: string };
 type DeviceSummary = {
@@ -134,6 +139,16 @@ function ToastRegion() {
   return <div className="pointer-events-none fixed right-5 top-5 z-[70] grid w-[min(22rem,calc(100vw-2rem))] gap-2" aria-live="polite" aria-label="Notifications">{notices.map((notice) => <div key={notice.id} className={`pointer-events-auto rounded-xl border p-4 shadow-2xl ${notice.kind === "error" ? "border-red-400/25 bg-[#2a1118]" : notice.kind === "success" ? "border-emerald-400/25 bg-[#10251f]" : "border-white/10 bg-[#11162b]"}`}><strong className="block text-sm">{notice.title}</strong>{notice.detail && <p className="mt-1 text-xs leading-5 text-slate-400">{notice.detail}</p>}</div>)}</div>;
 }
 
+function WebPasswordHealth() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const show = () => setOpen(true), hide = () => setOpen(false);
+    window.addEventListener("vaults:health", show); window.addEventListener("vaults:locked", hide);
+    return () => { window.removeEventListener("vaults:health", show); window.removeEventListener("vaults:locked", hide); };
+  }, []);
+  return open ? <PasswordHealth scope="All active vaults" load={(window as any).__vaultsActions.healthItems} close={() => setOpen(false)} open={finding => { setOpen(false); (window as any).__vaultsActions.openHealthItem(finding.itemId, finding.vaultId); }} /> : null;
+}
+
 function CustomFieldsEditor() {
   const [fields, setFields] = useState<ItemField[]>([]);
   const [expandedRelatedId, setExpandedRelatedId] = useState<string | null>(null);
@@ -186,7 +201,10 @@ function CustomFieldsEditor() {
   const typedEditor = (field: ItemField) => <label key={field.id} className={fieldLabel}>{field.label}<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} className="typed-value min-h-11 min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white" type={field.type === "password" && !revealed.has(field.id) ? "password" : field.type === "number" ? "number" : "text"} value={field.value} onChange={(event) => update(field.id, { value: event.target.value })} />{field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><WebSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => update(field.id, { value })} /></div>}</div></label>;
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
-      {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
+      <label className="flex items-center gap-2 text-sm text-slate-400"><input type="checkbox" checked={isFavorite(fields)} onChange={e => setFields(current => setFavorite(current, e.target.checked))} />Favorite</label>
+      <AuthenticatorEditor value={fields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setFields(current => setAuthenticator(current, value))} />
+      {fields.filter(f => f.id === TOTP_ID).map(f => <input key={f.id} type="hidden" className="item-metadata" data-field-id={f.id} data-field-label={f.label} data-field-type={f.type} value={f.value} />)}
+      {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id === FAVORITE_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
       {primaryFields(fields).length > 0 && <h4 className="mt-4 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label} fields</h4>}
       {primaryFields(fields).map(typedEditor)}
       <section className="mt-7 border-t border-white/10 pt-6"><div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[.08em] text-slate-500">Related to this {ITEM_TYPES[itemType(fields)].label}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(fields).length} added</span></div>
@@ -309,6 +327,7 @@ function CustomFieldsView() {
   const escapeWifi = (value: string) => value.replace(/([\\;,:"])/g, "\\$1");
   return (
     <div id="view-custom-fields">
+      {fields.find(f => f.id === TOTP_ID)?.value && <AuthenticatorCode value={fields.find(f => f.id === TOTP_ID)!.value} copy={copy} />}
       {primaryFields(fields).length > 0 && <h4 className="border-t border-white/10 px-3 py-2 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label}</h4>}
       {primaryFields(fields).map(renderField)}
       {sections(fields).map((section) => <section key={section.id}><h4 className="border-t border-white/10 px-3 py-2 text-xs font-bold uppercase text-[#E0BB95]">{section.label}</h4>{section.fields.map(renderField)}</section>)}
@@ -356,9 +375,9 @@ function ItemList({ layout }: { layout: "list" | "grid" }) {
   if (!view.items.length && !view.actions.length)
     return (
       <div className="vault-empty-state rounded-xl border border-dashed border-white/10 px-4 py-8 text-center">
-        <h2 className="text-base font-semibold">{!vaultCount ? "Create your first vault" : view.empty === "No matching items." ? "No matching items" : "Add your first item"}</h2>
-        <p className="mt-2 text-sm text-slate-400">{!vaultCount ? "Start with a vault to keep your items together." : view.empty === "No matching items." ? "Try a different name or website." : "Add a login, card, or another detail you want to keep handy."}</p>
-        {(!vaultCount || view.empty !== "No matching items.") && <Button className="mt-5" onClick={() => !vaultCount ? document.getElementById("create-vault")?.click() : document.getElementById("new-item")?.click()}><Plus size={16} aria-hidden="true" />{!vaultCount ? "Create vault" : "Add item"}</Button>}
+        <h2 className="text-base font-semibold">{!vaultCount ? "Create your first vault" : view.empty === "No favorites yet." ? "No favorites yet" : view.empty === "No matching items." ? "No matching items" : "Add your first item"}</h2>
+        <p className="mt-2 text-sm text-slate-400">{!vaultCount ? "Start with a vault to keep your items together." : view.empty === "No favorites yet." ? "Star an item to keep it handy here." : view.empty === "No matching items." ? "Try a different name or website." : "Add a login, card, or another detail you want to keep handy."}</p>
+        {(!vaultCount || view.empty !== "No matching items." && view.empty !== "No favorites yet.") && <Button className="mt-5" onClick={() => !vaultCount ? document.getElementById("create-vault")?.click() : document.getElementById("new-item")?.click()}><Plus size={16} aria-hidden="true" />{!vaultCount ? "Create vault" : "Add item"}</Button>}
       </div>
     );
   const visibleItems = layout === "grid" && wide && typeFilter !== "all"
@@ -393,7 +412,7 @@ function ItemList({ layout }: { layout: "list" | "grid" }) {
           </span>
           <span className="min-w-0">
             <b className="block truncate text-sm font-semibold">
-              {item.index.title || "Untitled"}
+              {item.index.favorite && <Star size={12} className="mr-1 inline text-[#E0BB95]" aria-label="Favorite" />}{item.index.title || "Untitled"}
             </b>
             <small className="block truncate text-[11px] text-[#E0BB95]">
               {item.index.website || "No website"}
@@ -652,6 +671,12 @@ function Authentication() {
 
 function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  useEffect(() => {
+    const update = (event: Event) => setFavoritesOnly(!!(event as CustomEvent<{ favoriteView?: boolean }>).detail?.favoriteView);
+    window.addEventListener("vaults:items", update);
+    return () => window.removeEventListener("vaults:items", update);
+  }, []);
   const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
   useEffect(() => { const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:vaults", update); if ((window as any).__vaultsSnapshot) setVaults((window as any).__vaultsSnapshot); return () => window.removeEventListener("vaults:vaults", update); }, []);
   const nav = "nav !min-h-11 w-full justify-start !border-0 !bg-transparent !px-3 text-slate-400 shadow-none hover:!bg-[#E0BB95]/10 hover:!text-[#E0BB95] max-[560px]:h-14 max-[560px]:min-w-0 max-[560px]:flex-1 max-[560px]:gap-1.5 max-[560px]:!px-2 max-[560px]:text-[10px] [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:shrink [&>span]:truncate [&>span]:text-left [&>b]:ml-auto [&>b]:rounded-full [&>b]:bg-white/10 [&>b]:px-2 [&>b]:py-0.5 [&>b]:text-[10px] max-[560px]:[&>b]:hidden";
@@ -660,10 +685,12 @@ function Sidebar() {
       <Brand />
       <Button variant="ghost" className="mobile-menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
       <nav className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
-      <Button id="nav-all-items" variant="ghost" className={`${nav} active !bg-[#E0BB95]/12 !text-[#E0BB95]`}>
+      <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly} className={`${nav} ${!favoritesOnly ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
       </Button>
+      <Button id="nav-favorites" variant="ghost" aria-pressed={favoritesOnly} className={`${nav} ${favoritesOnly ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}><Star aria-hidden="true" /><span>Favorites</span></Button>
+      <Button id="password-health" variant="ghost" className={nav}><ShieldCheck aria-hidden="true" /><span>Password health</span></Button>
       <div className="vault-nav-heading mt-6 mb-2 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500 max-[800px]:hidden">VAULTS</p><IconButton id="create-vault" label="Add vault" className="!size-9 !min-h-9"><Plus size={16} aria-hidden="true" /></IconButton></div>
       {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={`${nav} ${vault.selected ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`} onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon aria-hidden="true" /><span>{vault.name}</span></Button>)}
       <div className="mt-auto space-y-1 max-[560px]:contents">
@@ -701,9 +728,9 @@ function ItemDetail() {
             <h2 id="view-title" />
             <a id="view-url" className="text-sm text-[#E0BB95] hover:underline" target="_blank" rel="noreferrer" />
           </div>
-          <Button id="edit-item" variant="secondary">
+          <div className="flex flex-wrap items-center gap-1"><IconButton id="favorite-item" label="Add to favorites" aria-pressed={false}><Star size={17} /></IconButton><Button id="duplicate-item" variant="ghost">Duplicate</Button><Button id="edit-item" variant="secondary">
             Edit
-          </Button>
+          </Button></div>
         </div>
         <section id="view-signin" className={detailSection}>
           <h3>Sign in</h3>
@@ -869,6 +896,7 @@ function Vault() {
         <b>Personal server</b>
         <span>Private connection</span>
         <span id="session-dates" className="ml-auto">Local change — · Server sync —</span>
+        <Button id="footer-inline-sync" size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs" onClick={() => document.getElementById("reload")?.click()}>Sync now</Button>
         <div id="session-menu" className="absolute bottom-7 right-3 z-40 hidden w-64 rounded-xl border border-white/10 bg-[#11162b] p-1 text-sm text-slate-100 shadow-2xl">
           <button id="footer-sync" className="w-full rounded-lg px-3 py-2 text-left hover:bg-white/8">Sync now</button>
           <button id="footer-use-server" className="w-full rounded-lg px-3 py-2 text-left hover:bg-white/8">Discard local edits and use server…</button>
@@ -928,7 +956,7 @@ function Settings() {
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Account secret</span><span id="profile-secret-status" className="text-sm" /></div>
         </section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden={activeTab !== "preferences"}>
-          <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p>
+          <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p><KeyboardHelp />
           <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Lock after inactivity<select id="preference-lock-minutes" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label><label className="grid gap-2">Clear copied values after<select id="preference-clipboard-seconds" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select></label></div>
         </section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center gap-2 rounded-xl border border-white/10 p-1"><Button variant={vault.selected ? "secondary" : "ghost"} className="min-w-0 flex-1 justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} /><span className="truncate">{vault.name}</span>{vault.selected ? " · Current" : ""}</Button><Button variant="ghost" onClick={() => (window as any).__vaultsActions.openRenameVaultDialog(vault.vaultId)}>Rename</Button></div>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button></section>
@@ -1001,6 +1029,7 @@ export function App() {
     <AppErrorBoundary>
       <Authentication />
       <Vault />
+      <WebPasswordHealth />
       <Settings />
       <ToastRegion />
       <dialog id="web-create-vault-dialog" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><form id="web-create-vault-form"><h2 id="web-vault-dialog-title" className="text-xl font-bold">Create vault</h2><p className="mt-2 text-sm text-slate-400">Your vault name is stored in encrypted account settings.</p><label className="mt-5 grid gap-2 text-sm">Vault name<Input id="web-vault-name" autoFocus maxLength={80} required /></label><div className="mt-6 flex justify-end gap-2"><Button id="web-create-vault-cancel" type="button" variant="secondary">Cancel</Button><Button id="web-create-vault-submit" type="submit">Create vault</Button></div></form></dialog>

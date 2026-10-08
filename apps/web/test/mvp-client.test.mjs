@@ -138,7 +138,7 @@ test("ordinary app switching does not lock and item interactions stay local", as
   );
   assert.match(
     source,
-    /\$\("cancel-edit"\)\.onclick = \(\) =>\s+currentItem\s+\? displayItem/,
+    /\$\("cancel-edit"\)\.onclick = \(\) => \{\s+if \(!confirmDiscard\(\)\) return;\s+currentItem\s+\? displayItem/,
   );
 });
 

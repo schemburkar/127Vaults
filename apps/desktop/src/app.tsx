@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
 import { choicesForConflict } from "./conflict-choice.mjs";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
 import {
+  Star,
+  ShieldCheck,
   AlertTriangle,
   Check,
   ChevronDown,
@@ -37,7 +40,7 @@ import {
   X,
 } from "lucide-react";
 
-type Summary = { code: string; itemId: string; title: string; website: string; vaultId?: string; itemType?: string; createdAt?: number; updatedAt?: number };
+type Summary = { code: string; itemId: string; title: string; website: string; vaultId?: string; itemType?: string; createdAt?: number; updatedAt?: number; favorite?: boolean };
 type CustomField = { id: string; label: string; type: string; value: string };
 type Item = Omit<Summary, "code"> & {
   username: string;
@@ -127,6 +130,14 @@ export function App() {
     [online, setOnline] = useState(false),
     [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [pendingChanges, setPendingChanges] = useState<number | null>(null);
+  const [syncConflicts, setSyncConflicts] = useState(0);
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "error">("idle");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const dirtyRef = useRef(false);
   const [enrolling, setEnrolling] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false),
@@ -247,6 +258,13 @@ export function App() {
   const lock = async (reason = "Locked") => {
     window.dispatchEvent(new Event("vaults:clear-generator"));
     await invoke("lock").catch(() => undefined);
+    setHealthOpen(false);
+    setPendingChanges(null);
+    setSyncConflicts(0);
+    setFavoritesOnly(false);
+    setSyncState("idle");
+    setLastSynced(null);
+    setLastLocalChange(null);
     setUnlocked(false);
     setLicenseStatus(null);
     setVaults([]);
@@ -302,6 +320,7 @@ export function App() {
     return { ...item, password, customFields: hydrated };
   };
   const openItem = async (summary: Summary, vault = vaultId) => {
+    if (!confirmDiscard()) return;
     try {
       const ownerVault = summary.vaultId ?? vault;
       setSelected(await loadItem(summary, ownerVault));
@@ -386,6 +405,7 @@ export function App() {
       setOnline(result.online);
       setLicenseStatus(result.online ? await invoke<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string }>("license_status").catch(() => null) : null);
       setOfflineReason(result.offlineReason);
+      setLastSynced(result.online ? new Date() : null);
       setUnlocked(true);
       dragSession.unlock();
       setAccountSecret("");
@@ -425,6 +445,8 @@ export function App() {
     }
   };
   const selectVault = async (nextVaultId: string) => {
+    if (!confirmDiscard()) return;
+    setFavoritesOnly(false);
     if (nextVaultId === vaultId && viewMode === "single") return;
     try {
       const nextItems = await invoke<Summary[]>("item_list", { vaultId: nextVaultId });
@@ -457,9 +479,11 @@ export function App() {
     }
     return listAllItems(sourceVaults);
   };
-  const selectAllVaults = async () => {
+  const selectAllVaults = async (favorites = false) => {
+    if (!confirmDiscard()) return;
     try {
       const allItems = await listAllItems();
+      setFavoritesOnly(favorites);
       setViewMode("all");
       setSelectedCollectionId(null);
       setItems(allItems);
@@ -472,6 +496,8 @@ export function App() {
     }
   };
   const selectCollection = async (collectionId: string) => {
+    if (!confirmDiscard()) return;
+    setFavoritesOnly(false);
     try {
       const result = await invoke<{ items: Summary[]; unavailableVaultIds: string[] }>("collection_items", { collectionId });
       setViewMode("collection");
@@ -623,7 +649,7 @@ export function App() {
     } catch (error) { notify("error", "Could not clear move plan", friendlyError(error)); }
   };
   const save = async (draft = selected, resolutionId = resolvingOperationId) => {
-    if (!draft) return;
+    if (!draft || saving) return;
     const destination = draft.itemId ? itemVaultId : viewMode === "single" ? vaultId : itemVaultId;
     if (!destination) {
       notify("error", "Choose a vault", "Select the destination vault before saving this item.");
@@ -645,9 +671,12 @@ export function App() {
       return;
     }
     try {
+      const authenticator = draft.customFields.find(f => f.id === TOTP_ID)?.value;
+      if (authenticator) parseTotp(authenticator);
+      setSaving(true);
       setStatus("Saving encrypted item…");
       const response = await invoke<{
-        result: { queued?: boolean };
+        result: { queued?: boolean; itemId?: string };
         items: Summary[];
       }>("item_save", {
         vaultId: destination,
@@ -660,9 +689,12 @@ export function App() {
         resolvingOperationId: resolutionId,
       });
       setItems(viewMode === "single" ? response.items : await listVisibleItems());
+      dirtyRef.current = false;
       setEditing(false);
       setEditOriginal(null);
       setResolvingOperationId(null);
+      await refreshSyncStatus();
+      if (!response.result.queued) setLastSynced(new Date());
       if (response.result.queued) setOnline(false);
       setLastLocalChange(new Date());
       setStatus(
@@ -678,10 +710,10 @@ export function App() {
           : "Your encrypted item is up to date.",
       );
       const saved =
-        response.items.find((item) => item.itemId === draft.itemId) ||
-        response.items.find((item) => item.title === draft.title);
+        response.items.find((item) => item.itemId === (response.result.itemId || draft.itemId));
       if (saved) await openItem(saved, destination);
     } catch (e) {
+      await refreshSyncStatus();
       const message = String(e);
       if (message.includes("409")) {
         setConflict({
@@ -694,9 +726,10 @@ export function App() {
         setStatus(detail);
         notify("error", "Item was not saved", detail);
       }
-    }
+    } finally { setSaving(false); }
   };
   const synchronize = async () => {
+    if (!confirmDiscard()) return;
     if (!online) {
       setSettingsTab("profile");
       setSettingsOpen(true);
@@ -704,6 +737,7 @@ export function App() {
       return;
     }
     try {
+      setSyncState("syncing");
       const result = await invoke<{ accepted: number; items: Summary[]; vaults: VaultSummary[]; selectedVaultId: string | null; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
         "sync",
         { vaultId },
@@ -729,6 +763,8 @@ export function App() {
         setItems(viewMode === "single" ? result.items : await listVisibleItems(result.vaults.filter((row) => !row.retired)));
       }
       setLastSynced(new Date());
+      setSyncState("idle");
+      await refreshSyncStatus();
       setStatus(
         result.conflicts.length
           ? `Sync needs review · ${result.conflicts.length} pending conflict(s)`
@@ -746,6 +782,7 @@ export function App() {
     } catch (e) {
       const detail = friendlyError(e);
       setStatus(detail);
+      setSyncState("error");
       notify("error", "Sync failed", detail);
       throw e;
     }
@@ -830,13 +867,14 @@ export function App() {
   </label>;
   const beginEditing = () => {
     if (!selected) return;
-    setEditOriginal(structuredClone(selected));
-    setSelected({ ...selected, customFields: completeRelatedFields(selected.customFields) });
+    const draft = { ...selected, customFields: completeRelatedFields(selected.customFields) };
+    setEditOriginal(structuredClone(draft));
+    setSelected(draft);
     setExpandedRelatedId(null);
     setEditing(true);
   };
   const beginNewItem = () => {
-    if (!activeVaults.length) return;
+    if (!activeVaults.length || !confirmDiscard()) return;
     setSelected({ itemId: "", title: "", website: "", username: "", password: "", customFields: setItemType([], "login") });
     setEditOriginal(null);
     setItemVaultId(viewMode === "single" ? vaultId : "");
@@ -844,10 +882,74 @@ export function App() {
     setEditing(true);
   };
   const cancelEditing = () => {
+    if (!confirmDiscard()) return;
     setSelected(editOriginal);
     setEditOriginal(null);
     setEditing(false);
   };
+  useEffect(() => { if (editing) document.querySelector<HTMLInputElement>("[data-editor-title]")?.focus(); }, [editing]);
+  const dirty = editing && !!selected && JSON.stringify(selected) !== JSON.stringify(editOriginal ?? { itemId: "", title: "", website: "", username: "", password: "", customFields: setItemType([], "login") });
+  dirtyRef.current = dirty;
+  const confirmDiscard = () => {
+    if (!dirtyRef.current) return true;
+    if (!window.confirm("Discard your unsaved changes?")) return false;
+    dirtyRef.current = false;
+    setEditing(false);
+    setSelected(editOriginal);
+    return true;
+  };
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (dirtyRef.current) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", beforeUnload);
+    let disposed = false, removeClose: (() => void) | undefined;
+    void getCurrentWindow().onCloseRequested(event => {
+      if (dirtyRef.current && !window.confirm("Discard your unsaved changes and close 127Vaults?")) event.preventDefault();
+      else dirtyRef.current = false;
+    }).then(unlisten => { if (disposed) unlisten(); else removeClose = unlisten; }).catch(() => {});
+    return () => { disposed = true; removeClose?.(); window.removeEventListener("beforeunload", beforeUnload); };
+  }, []);
+  const refreshSyncStatus = async () => {
+    try {
+      const result = await invoke<{ pending: number; conflicts: number; lastVerifiedSyncAt: number | null }>("replica_status");
+      setPendingChanges(result.pending);
+      setSyncConflicts(result.conflicts);
+      if (result.lastVerifiedSyncAt) setLastSynced(new Date(result.lastVerifiedSyncAt * 1000));
+    }
+    catch { setPendingChanges(null); }
+  };
+  useEffect(() => { if (unlocked) void refreshSyncStatus(); }, [unlocked]);
+  const loadHealthItems = useCallback(async () => {
+    const summaries = await listAllItems();
+    const result: Item[] = [];
+    for (const summary of summaries) { const item = await loadItem(summary, summary.vaultId); result.push({ ...item, vaultId: summary.vaultId }); }
+    return result;
+  }, [vaults]);
+  const duplicateItem = () => {
+    if (!selected || !confirmDiscard()) return;
+    setSelected({ ...structuredClone(selected), itemId: "", title: `${selected.title} (copy)`, customFields: setFavorite(selected.customFields, false) });
+    setEditOriginal(null); setItemVaultId(vaultId); setRevealed(new Set()); setEditing(true);
+  };
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (!unlocked || healthOpen || settingsOpen || conflict || vaultDialog || collectionDialog || removalDialog || document.querySelector("[role=dialog]")) return;
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && ["k", "f", "n", "s"].includes(event.key.toLowerCase())) {
+        event.preventDefault();
+        if (["k", "f"].includes(event.key.toLowerCase())) searchRef.current?.focus();
+        if (event.key.toLowerCase() === "n") beginNewItem();
+        if (event.key.toLowerCase() === "s" && editing) document.querySelector<HTMLButtonElement>("[data-save-item]")?.click();
+      }
+      if (event.key === "Escape" && editing) { event.preventDefault(); cancelEditing(); }
+      const target = event.target as HTMLElement;
+      if (event.key === "ArrowDown" && target === searchRef.current) { event.preventDefault(); document.querySelector<HTMLButtonElement>("[data-desktop-item]")?.focus(); }
+      if (target.matches("[data-desktop-item]") && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault(); const rows = [...document.querySelectorAll<HTMLButtonElement>("[data-desktop-item]")];
+        const index = rows.indexOf(target as HTMLButtonElement);
+        rows[event.key === "Home" ? 0 : event.key === "End" ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))]?.focus();
+      }
+    };
+    window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
+  });
   const configureTrust = async () => {
     if (trustBusy) return;
     setTrustBusy(true);
@@ -915,9 +1017,7 @@ export function App() {
         ),
     [items, query],
   );
-  const visibleItems = itemLayout === "grid" && wide && typeFilter !== "all"
-    ? filtered.filter((item) => item.itemType === typeFilter)
-    : filtered;
+  const visibleItems = filtered.filter(item => (!favoritesOnly || item.favorite) && (!(itemLayout === "grid" && wide && typeFilter !== "all") || item.itemType === typeFilter));
   const omniActions = useMemo(() => {
     if (!query.trim()) return [];
     const actions = [
@@ -970,7 +1070,7 @@ export function App() {
     }
     if (id === "edit-item" && selected) beginEditing();
     if (id === "sync") void synchronize();
-    if (id === "lock") void lock();
+    if (id === "lock" && confirmDiscard()) void lock();
   };
 
   if (!unlocked && registrationOpen)
@@ -1229,11 +1329,13 @@ export function App() {
         </div>
         <Button variant="ghost" className="desktop-menu-toggle" aria-expanded={compactNavOpen} aria-label="Toggle navigation" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
         <nav className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
-        <Button variant="ghost" className={cn("justify-start", viewMode === "all" && "bg-white/7")} onClick={() => void selectAllVaults()}>
+        <Button variant="ghost" className={cn("justify-start", viewMode === "all" && !favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />
           <span>All items</span>
           <span className="ml-auto">{items.length}</span>
         </Button>
+        <Button variant="ghost" className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
+        <Button variant="ghost" className="justify-start" onClick={() => setHealthOpen(true)}><ShieldCheck size={17} /><span>Password health</span></Button>
         <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-600">VAULTS</p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
         {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
@@ -1251,14 +1353,14 @@ export function App() {
           <Button
             variant="ghost"
             className="justify-start"
-            onClick={synchronize}
+            onClick={() => void synchronize().catch(() => {})}
           >
             <RefreshCw size={17} /><span>{online ? "Sync now" : "Reconnect"}</span>
           </Button>
           <Button
             variant="ghost"
             className="justify-start"
-            onClick={() => void lock()}
+            onClick={() => { if (confirmDiscard()) void lock(); }}
           >
             <LockKeyhole size={17} />
             <span>Lock</span>
@@ -1274,6 +1376,7 @@ export function App() {
               size={17}
             />
             <Input
+              ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10"
@@ -1300,7 +1403,7 @@ export function App() {
           )}
         </header>
         <div className="desktop-list-heading flex items-center justify-between gap-3 px-5 pb-3 pt-5">
-          <h1 className="text-xl font-bold">{viewMode === "all" ? "All items" : viewMode === "collection" ? collections.find((row) => row.id === selectedCollectionId)?.name ?? "Collection" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
+          <h1 className="text-xl font-bold">{favoritesOnly ? "Favorites" : viewMode === "all" ? "All items" : viewMode === "collection" ? collections.find((row) => row.id === selectedCollectionId)?.name ?? "Collection" : vaults.find((vault) => vault.vaultId === vaultId)?.name ?? "Items"}</h1>
           <div className="desktop-list-actions ml-auto flex items-center gap-2">
           <div className="desktop-layout-toggle rounded-xl border border-white/10 bg-white/4 p-1" role="group" aria-label="Item layout">
             <button type="button" className={cn("rounded-lg p-2", itemLayout === "list" ? "bg-[#E0BB95]/15 text-[#E0BB95]" : "text-slate-400 hover:text-white")} aria-label="List view" aria-pressed={itemLayout === "list"} onClick={() => changeItemLayout("list")}><LayoutList size={17} /></button>
@@ -1319,12 +1422,13 @@ export function App() {
         <div className="desktop-browse-controls" role="group" aria-label="Filter and group items">{([ ["all", "All"], ["updated", "Updated"], ["created", "Created"], ["type", "Item type"] ] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={browseMode === mode} className={browseMode === mode ? "active" : ""} onClick={() => setBrowseMode(mode)}>{label}</button>)}<label className="desktop-type-filter">Type <select aria-label="Filter by item type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "all" | ItemType)}><option value="all">All types</option>{(Object.keys(ITEM_TYPES) as ItemType[]).map((type) => <option key={type} value={type}>{ITEM_TYPES[type].label}</option>)}</select></label></div>
         <div className="desktop-items overflow-auto px-3">
           <div className="desktop-grid-head" aria-hidden="true"><span>Item</span><span>Website</span><span>Type</span><span>Last modified</span><span>Item ID</span>{viewMode !== "single" && <span>Vault</span>}</div>
-          {!visibleItems.length && <div className="desktop-empty-state rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><h2 className="text-base font-semibold">{!activeVaults.length ? "Create your first vault" : !items.length && !query ? "Add your first item" : "No matching items"}</h2><p className="mt-2 text-sm text-slate-400">{!activeVaults.length ? "Start with a vault, or restore an archived one in Settings." : !items.length && !query ? "Add a login, card, or another detail you want to keep handy." : "Try a different search or item type."}</p>{!activeVaults.length ? <Button className="mt-5" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" />{online ? "Create vault" : "Reconnect to create vault"}</Button> : !items.length && !query && <Button className="mt-5" onClick={beginNewItem}><Plus size={16} aria-hidden="true" />Add item</Button>}</div>}
+          {!visibleItems.length && <div className="desktop-empty-state rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><h2 className="text-base font-semibold">{!activeVaults.length ? "Create your first vault" : favoritesOnly && !query ? "No favorites yet" : !items.length && !query ? "Add your first item" : "No matching items"}</h2><p className="mt-2 text-sm text-slate-400">{!activeVaults.length ? "Start with a vault, or restore an archived one in Settings." : favoritesOnly && !query ? "Star an item to keep it handy here." : !items.length && !query ? "Add a login, card, or another detail you want to keep handy." : "Try a different search or item type."}</p>{!activeVaults.length ? <Button className="mt-5" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" />{online ? "Create vault" : "Reconnect to create vault"}</Button> : !favoritesOnly && !items.length && !query && <Button className="mt-5" onClick={beginNewItem}><Plus size={16} aria-hidden="true" />Add item</Button>}</div>}
           {browseGroups(visibleItems, itemLayout === "grid" && wide ? browseMode : "all", (item) => item).map((group) => <div className="desktop-item-group" key={group.key}>
           {itemLayout === "grid" && browseMode !== "all" && <div className="desktop-group-heading"><span>{group.label}</span><span>{group.items.length}</span></div>}
           {group.items.map((item) => (
             <button
-              key={item.itemId}
+              key={`${item.vaultId || vaultId}:${item.itemId}`}
+              data-desktop-item="true"
               onClick={() => void openItem(item)}
               className={cn(
                 "desktop-item-row mb-1 grid w-full grid-cols-[2.5rem_1fr] gap-3 rounded-xl p-3 text-left hover:bg-white/7",
@@ -1336,7 +1440,7 @@ export function App() {
                 <KeyRound size={18} />
               </span>
               <span className="min-w-0">
-                <strong className="block truncate text-sm">{item.title}</strong>
+                <strong className="block truncate text-sm">{item.favorite && <Star size={12} className="mr-1 inline text-[#E0BB95]" aria-label="Favorite" />}{item.title}</strong>
                 <small className="text-slate-500">{item.website}{viewMode === "all" && activeVaults.length > 1 && item.vaultId ? ` · ${vaults.find((vault) => vault.vaultId === item.vaultId)?.name ?? ""}` : ""}</small>
               </span>
               <span className="desktop-grid-website min-w-0 truncate text-sm text-slate-400">{item.website || "—"}</span>
@@ -1350,7 +1454,8 @@ export function App() {
         </div>
       </section>
       <main className={cn("desktop-detail overflow-auto p-7", selected && "detail-selected")}>
-        {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { setSelected(null); setEditing(false); }}><X size={17} aria-hidden="true" /> Close</Button></div>}
+        {healthOpen && <PasswordHealth scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
+        {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {selected ? (
           <div className="mx-auto max-w-3xl">
             {editing ? (
@@ -1368,7 +1473,7 @@ export function App() {
                     <Button variant="secondary" onClick={cancelEditing}>
                       Cancel
                     </Button>
-                    <Button onClick={() => void save()}>Save</Button>
+                    <Button data-save-item disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
                   </div>
                 </div>
                 {!selected.itemId && viewMode !== "single" && <label className="mb-6 block text-sm text-slate-300">Destination vault
@@ -1377,6 +1482,7 @@ export function App() {
                     {activeVaults.filter((vault) => viewMode !== "collection" || collections.find((row) => row.id === selectedCollectionId)?.vault_ids.includes(vault.vaultId)).map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
                   </select>
                 </label>}
+                <label className="mb-4 flex items-center gap-2 text-sm text-slate-400"><input type="checkbox" checked={isFavorite(selected.customFields)} onChange={e => setSelected({ ...selected, customFields: setFavorite(selected.customFields, e.target.checked) })} />Favorite</label>
                 <section>
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
                     BASICS
@@ -1386,6 +1492,7 @@ export function App() {
                       <label className="grid gap-2 text-sm text-slate-400">
                         Title
                         <Input
+                          data-editor-title
                           value={selected.title}
                           aria-invalid={!!errors.title}
                           className={errors.title ? "border-red-400 ring-4 ring-red-400/10" : ""}
@@ -1452,6 +1559,7 @@ export function App() {
                     {primaryFields(selected.customFields).map(knownFieldEditor)}
                   </div>
                 </section>
+                <AuthenticatorEditor value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />
                 <section className="mt-8 border-t border-white/10 pt-7">
                   <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
                   <div className="grid gap-3">{sections(selected.customFields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/12 bg-white/3">
@@ -1580,8 +1688,8 @@ export function App() {
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
                     <div className="flex items-center gap-2">
-                      <Button variant="secondary" onClick={beginEditing}>Edit</Button>
-                      <Button variant="ghost" aria-label="Close item details" onClick={() => { setSelected(null); setEditing(false); }}><X size={17} aria-hidden="true" /> Close</Button>
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton><Button variant="ghost" onClick={duplicateItem}>Duplicate</Button><Button variant="secondary" onClick={beginEditing}>Edit</Button>
+                      <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
                     </div>
                   </div>
                   <div>
@@ -1598,6 +1706,7 @@ export function App() {
                     )}
                   </div>
                 </div>
+                {selected.customFields.find(f => f.id === TOTP_ID)?.value && <AuthenticatorCode value={selected.customFields.find(f => f.id === TOTP_ID)!.value} copy={copyValue} />}
                 <section>
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
                     {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
@@ -1716,7 +1825,7 @@ export function App() {
             online ? "bg-emerald-400" : "bg-amber-400",
           )}
         ></span>
-        <strong>{online ? "Online" : "Offline"}</strong>
+        <strong>{syncState === "syncing" ? "Syncing…" : syncState === "error" ? "Sync failed" : syncConflicts ? "Needs review" : online ? "Online" : "Offline"}</strong><span>{pendingChanges === null ? "Pending changes unknown" : `${pendingChanges} pending change${pendingChanges === 1 ? "" : "s"}`}</span><Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs" disabled={syncState === "syncing"} onClick={() => void synchronize().catch(() => {})}>{syncState === "error" ? "Retry sync" : "Sync now"}</Button>
         <span className="ml-auto">
           Local change{" "}
           {lastLocalChange
@@ -1811,7 +1920,7 @@ export function App() {
               <Button variant="secondary" className="w-fit" onClick={() => { if (!online) { setSettingsTab("profile"); return; } setSettingsOpen(false); setVaultNameDraft(""); setVaultDialog("create"); }}>{online ? "Create vault" : "Reconnect to create vault"}</Button>
               {!online && <p className="text-xs text-amber-300">Vault creation and removal require an online session.</p>}
             </div>}
-            {settingsTab === "preferences" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Preferences</h3><p className="mt-1 text-slate-400">Choose what opens first and how vault removal is handled.</p></div><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{activeVaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
+            {settingsTab === "preferences" && <div className="grid gap-5"><div><h3 className="text-2xl font-bold">Preferences</h3><p className="mt-1 text-slate-400">Choose what opens first and how vault removal is handled.</p></div><KeyboardHelp /><label className="grid gap-2">Default view<select className="desktop-settings-select" value={defaultView ? `${defaultView.kind}:${defaultView.id ?? ""}` : "all:"} onChange={(event) => { const [kind, selector] = event.target.value.split(":"); void saveDefaultView(kind, selector || null); }}><option value="all:">All items</option>{activeVaults.map((vault) => <option key={vault.vaultId} value={`vault:${vault.vaultId}`}>Vault: {vault.name}</option>)}{collections.map((collection) => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}</select></label><label className="grid gap-2">When removing a vault<select className="desktop-settings-select" value={removalPreference ?? "ask"} onChange={(event) => void invoke<VaultSettings>("vault_removal_preference", { choice: event.target.value === "ask" ? null : event.target.value }).then((result) => { setRemovalPreference(result.removalPreference); setSettingsConflict(result.conflict); }).catch((error) => notify("error", "Could not save preference", friendlyError(error)))}><option value="ask">Ask me each time</option><option value="move">Move items</option><option value="archive">Archive items</option></select></label></div>}
           </div>
         </section>
       </div>}

@@ -154,7 +154,7 @@ export function primaryFields(fields: ItemField[]): ItemField[] {
 
 export function ordinaryFields(fields: ItemField[]): ItemField[] {
   const primary = new Set(primaryFields(fields).map((field) => field.id));
-  return fields.filter((field) => field.id !== TYPE_FIELD_ID && !field.id.startsWith(SECTION_PREFIX) &&
+  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith(SECTION_PREFIX) &&
     !field.id.startsWith(SECTION_FIELD_PREFIX) && !primary.has(field.id));
 }
 
@@ -164,7 +164,7 @@ export function itemType(fields: ItemField[]): ItemType {
 }
 
 export function visibleFields(fields: ItemField[]): ItemField[] {
-  return fields.filter((field) => field.id !== TYPE_FIELD_ID && !field.id.startsWith(SECTION_PREFIX));
+  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith(SECTION_PREFIX));
 }
 
 export function setItemType(fields: ItemField[], type: ItemType): ItemField[] {
@@ -188,5 +188,5 @@ export function setItemType(fields: ItemField[], type: ItemType): ItemField[] {
 
 /** Explicitly replace the parent type without turning unrelated old fields into a child. */
 export function replaceItemType(fields: ItemField[], type: ItemType): ItemField[] {
-  return setItemType(ordinaryFields(fields), type);
+  return setItemType([...ordinaryFields(fields), ...fields.filter(field => field.id === "__127vaults_favorite" || field.id === "__127vaults_totp")], type);
 }

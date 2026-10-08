@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RELATED_TYPES, addRelatedSection, addSection, addSectionField, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType } from '../src/item-types.ts';
 
+test('favorites and authenticator metadata survive type changes without appearing as ordinary fields', () => {
+  const favorite = { id: '__127vaults_favorite', label: 'Favorite', type: 'metadata', value: 'true' };
+  const otp = { id: '__127vaults_totp', label: 'Authenticator secret', type: 'password', value: 'JBSWY3DPEHPK3PXP' };
+  const fields = replaceItemType(setItemType([favorite, otp], 'login'), 'bank');
+  assert.deepEqual(fields.find(f => f.id === favorite.id), favorite);
+  assert.deepEqual(fields.find(f => f.id === otp.id), otp);
+  assert.deepEqual(ordinaryFields(fields), []);
+});
+
 test('known fields stay in typed sections while user fields stay custom', () => {
   let fields = setItemType([], 'bank');
   assert.equal(itemType(fields), 'bank');

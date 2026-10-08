@@ -2340,6 +2340,8 @@ impl Session {
             .and_then(|times| times.into_iter().min());
         Ok(json!({
             "vaultCount": replicas.len(),
+            "pending": replicas.iter().map(|r| r.pending.len()).sum::<usize>() + usize::from(self.settings_record.pending.is_some()),
+            "conflicts": replicas.iter().map(|r| r.conflicts.len()).sum::<usize>() + usize::from(self.settings_conflict),
             "lastVerifiedSyncAt": last_verified_sync_at,
             "online": self.online,
         }))
@@ -2486,7 +2488,7 @@ impl Session {
                 .map_err(|_| "item index verification failed".to_owned())?;
             let index: Value =
                 serde_json::from_slice(&plain).map_err(|_| "item index is invalid".to_owned())?;
-            out.push(json!({"code":Self::reference("I",item_id),"itemId":item_id,"title":index["title"],"website":index["website"],"itemType":index["itemType"],"createdAt":row.created_at.or(index["createdAt"].as_u64()),"updatedAt":row.updated_at.or(index["updatedAt"].as_u64())}));
+            out.push(json!({"code":Self::reference("I",item_id),"itemId":item_id,"title":index["title"],"website":index["website"],"itemType":index["itemType"],"favorite":index["favorite"] == true,"createdAt":row.created_at.or(index["createdAt"].as_u64()),"updatedAt":row.updated_at.or(index["updatedAt"].as_u64())}));
         }
         Ok(Value::Array(out))
     }
@@ -2746,7 +2748,10 @@ impl Session {
         } else {
             json!(now)
         };
-        let index = serde_json::to_vec(&json!({"title":title,"website":website,"itemType":item_type,"createdAt":created_at,"updatedAt":now}))
+        let favorite = custom_fields
+            .iter()
+            .any(|field| field["id"] == "__127vaults_favorite" && field["value"] == "true");
+        let index = serde_json::to_vec(&json!({"title":title,"website":website,"itemType":item_type,"favorite":favorite,"createdAt":created_at,"updatedAt":now}))
             .map_err(|_| "invalid item")?;
         let body = serde_json::to_vec(
             &json!({"username":username,"password":password,"customFields":custom_fields}),
@@ -2867,7 +2872,7 @@ impl Session {
             &body,
         );
         match result {
-            Ok(response) => {
+            Ok(mut response) => {
                 self.replica_store.update(&vault_id, |replica| {
                     replica
                         .pending
@@ -2875,6 +2880,7 @@ impl Session {
                     replica.sync_error = None;
                     Ok(())
                 })?;
+                response["itemId"] = json!(new_id);
                 Ok(response)
             }
             Err(error) => {

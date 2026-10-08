@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { setFavorite, setAuthenticator, isFavorite, TOTP_ID, totp } from '../../../packages/ui/src/product-features.mjs';
+
+test('favorite index and authenticator body survive real Rust encryption, update and copy', async () => {
+  const { default: init, ExperimentalEcf1Core } = await import('../wasm/vaults_browser_fixture.js');
+  await init({ module_or_path: await readFile(new URL('../wasm/vaults_browser_fixture_bg.wasm', import.meta.url)) });
+  const core = new ExperimentalEcf1Core(), encoder = new TextEncoder(), decoder = new TextDecoder();
+  const template = new Uint8Array(77); template[0] = 1;
+  template.set(new Uint8Array(16).fill(1), 1); template.set(new Uint8Array(16).fill(2), 17);
+  template[7] = template[23] = 0x40; template[9] = template[25] = 0x80;
+  template.set([0,0,0,1], 65); template[76] = 1;
+  const root = core.create_root(template, encoder.encode('disposable-test-master-password'), new Uint8Array(32).fill(3));
+  const created = core.create_private_vault(root, core.create_empty_directory(root)), vault = created.vault();
+  const customFields = setAuthenticator(setFavorite([{ id: 'note', label: 'Note', type: 'text', value: 'Retain this' }], true), 'JBSWY3DPEHPK3PXP');
+  const index = { title: 'Synthetic', favorite: true }, body = { username: 'sample', password: 'synthetic-password', customFields };
+  const original = core.upsert_private_item(vault, created.catalogue(), undefined, encoder.encode(JSON.stringify(index)), encoder.encode(JSON.stringify(body)));
+  const decrypt = (item, part) => JSON.parse(decoder.decode(core.decrypt_private_part(vault, item.catalogue(), item.item(), part === 3 ? item.body() : item.index(), part)));
+  assert.deepEqual(decrypt(original, 4), index); assert.deepEqual(decrypt(original, 3), body);
+  assert.equal(isFavorite(decrypt(original,3).customFields), true);
+  const changedBody = { ...body, customFields: setFavorite(body.customFields, false) };
+  const updated = core.upsert_private_item(vault, original.catalogue(), original.item(), encoder.encode(JSON.stringify({ ...index, favorite: false })), encoder.encode(JSON.stringify(changedBody)));
+  assert.equal(decrypt(updated, 4).favorite, false); assert.deepEqual(decrypt(updated, 3), changedBody);
+  const copied = core.upsert_private_item(vault, updated.catalogue(), undefined, encoder.encode(JSON.stringify({ title: 'Synthetic (copy)', favorite: false })), encoder.encode(JSON.stringify(changedBody)));
+  assert.notDeepEqual(copied.item(), original.item());
+  const copiedSecret = decrypt(copied,3).customFields.find(field => field.id === TOTP_ID).value;
+  assert.equal((await totp(copiedSecret, 59)).code, (await totp('JBSWY3DPEHPK3PXP', 59)).code);
+  const ciphertext = Buffer.from(copied.body()).toString('utf8');
+  assert.ok(!ciphertext.includes(copiedSecret)); assert.ok(!ciphertext.includes('synthetic-password'));
+  core.lock(); core.free();
+});

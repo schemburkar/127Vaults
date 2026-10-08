@@ -6,7 +6,7 @@ test("switching apps does not clear login material or lock the vault", async () 
   const source = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /addEventListener\(["']blur["']/);
   assert.doesNotMatch(source, /addEventListener\(["']visibilitychange["']/);
-  assert.match(source, /onClick=\{\(\)\s*=>\s*void lock\(\)\}/);
+  assert.match(source, /onClick=\{\(\) => \{ if \(confirmDiscard\(\)\) void lock\(\); \}\}/);
 });
 
 test("desktop registration enrolls a device instead of reopening account signup", async () => {
