@@ -1506,6 +1506,7 @@ export function App() {
                     {ITEM_TYPES[itemType(selected.customFields)].website && <label className="grid gap-2 text-sm text-slate-400">
                       Website
                       <Input
+                        readOnly={itemType(selected.customFields) === "passkey"}
                         value={selected.website}
                         onChange={(e) =>
                           setSelected({ ...selected, website: e.target.value })
@@ -1522,6 +1523,7 @@ export function App() {
                     {ITEM_TYPES[itemType(selected.customFields)].username && <label className="grid gap-2 text-sm text-slate-400">
                       Username
                       <Input
+                        readOnly={itemType(selected.customFields) === "passkey"}
                         value={selected.username}
                         onChange={(e) =>
                           setSelected({ ...selected, username: e.target.value })
@@ -1690,7 +1692,7 @@ export function App() {
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
                     <div className="flex items-center gap-2">
-                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton><Button variant="ghost" onClick={duplicateItem}>Duplicate</Button><Button variant="secondary" onClick={beginEditing}>Edit</Button>
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{itemType(selected.customFields) !== "passkey" && <Button variant="ghost" onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" onClick={beginEditing}>Edit</Button>
                       <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
                     </div>
                   </div>

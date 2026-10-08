@@ -1,4 +1,5 @@
 import { originOf, permissionPattern } from './match.mjs';
+import { installPasskeyProvider } from './passkey-provider.mjs';
 
 let nativePort = null;
 let nextNativeId = 1;
@@ -30,10 +31,12 @@ function nativeRequest(value) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id || message?.kind !== 'connector.request') return;
+  if (sender.id !== chrome.runtime.id || sender.tab || message?.kind !== 'connector.request') return;
+  if (message.request?.action === 'lock') passkeyQueue.cancelAll();
   nativeRequest(message.request).then(value => sendResponse({ ok: true, value }), error => sendResponse({ ok: false, error: String(error?.message || error) }));
   return true;
 });
+const passkeyQueue = installPasskeyProvider(nativeRequest);
 
 async function lockOpenVaultTabs() {
   const { vaultOrigin } = await chrome.storage.local.get('vaultOrigin');
@@ -57,6 +60,7 @@ async function lockOpenVaultTabs() {
 chrome.idle.setDetectionInterval(30 * 60);
 chrome.idle.onStateChanged.addListener(state => {
   if (state === 'locked' || state === 'idle') {
+    passkeyQueue.cancelAll();
     return Promise.allSettled([
       nativeRequest({ action: 'lock', source: 'desktop' }),
       nativeRequest({ action: 'lock', source: 'cli' }),

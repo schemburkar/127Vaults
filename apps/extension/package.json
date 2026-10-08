@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/popup.mjs && node --check src/background.mjs && node --check src/fill.mjs && node --check src/match.mjs && node --check src/source-status.mjs && node -e \"JSON.parse(require('fs').readFileSync('manifest.json','utf8'))\"",
+    "check": "node --check src/passkeys.mjs && node --check src/passkey-page.js && node --check src/passkey-bridge.js && node --check src/passkey-queue.mjs && node --check src/passkey-provider.mjs && node --check src/popup-passkeys.mjs && node --check src/popup.mjs && node --check src/background.mjs && node --check src/fill.mjs && node --check src/match.mjs && node --check src/source-status.mjs && node -e \"JSON.parse(require('fs').readFileSync('manifest.json','utf8'))\"",
     "test": "node --test"
   }
 }

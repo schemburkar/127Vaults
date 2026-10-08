@@ -108,7 +108,7 @@ function ItemTypePicker() {
   }, []);
   const select = (next: ItemType, target: HTMLButtonElement) => {
     target.closest("details")?.removeAttribute("open");
-    if (next === type) return;
+    if (next === type || type === "passkey") return;
     const populated = ["url", "item-username", "item-password"].some((id) => (document.getElementById(id) as HTMLInputElement | null)?.value) || [...document.querySelectorAll<HTMLInputElement>("#custom-fields .typed-value")].some((input) => input.value) || !!document.querySelector("#custom-fields input[data-field-id^='__127vaults_section:']");
     if (populated && !window.confirm("Change the main type? Its current type fields and related details will be removed. Save a copy first if you need them.")) return;
     for (const id of ["url", "item-username", "item-password"]) { const input = document.getElementById(id) as HTMLInputElement | null; if (input) input.value = ""; }
@@ -155,7 +155,7 @@ function CustomFieldsEditor() {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   useEffect(() => {
     const set = (event: Event) => { setFields(completeRelatedFields((event as CustomEvent<ItemField[]>).detail.map((field) => ({ ...field })))); setExpandedRelatedId(null); setRevealed(new Set()); };
-    const selectType = (event: Event) => { const type = (event as CustomEvent<ItemType>).detail; if (fields.some(f => f.id === "__127vaults_passkey")) return; setFields((current) => replaceItemType(current, type)); setExpandedRelatedId(null); window.dispatchEvent(new CustomEvent("vaults:item-type", { detail: type })); };
+    const selectType = (event: Event) => { const type = (event as CustomEvent<ItemType>).detail; setFields((current) => replaceItemType(current, type)); setExpandedRelatedId(null); window.dispatchEvent(new CustomEvent("vaults:item-type", { detail: type })); };
     const add = (event: Event) =>
       setFields((current) =>
         ordinaryFields(current).length >= 32 || current.length >= 50

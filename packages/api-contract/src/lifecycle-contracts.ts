@@ -50,6 +50,8 @@ export interface RemoteWipeService {
 export interface OptionalCapabilities {
   // Deferred features must be reported unavailable until their own designs land.
   readonly attachments: false;
-  readonly passkeys: false;
+  // Website credential provider is experimental and opt-in per browser site.
+  // This does not imply passkey authentication for the 127Vaults account.
+  readonly passkeys: false | "experimental-website-provider";
   readonly transparencyNotary: false;
 }

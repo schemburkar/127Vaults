@@ -9,13 +9,13 @@ test('ES256 none registration and DER assertions verify against the registered S
   assert.deepEqual(readMetadata(passkeyFields(made.metadata, made.privateKey)), made.metadata);
   const data = decode(made.response.response.authenticatorData);
   assert.deepEqual(data.slice(0, 32), new Uint8Array(createHash('sha256').update('login.example.test').digest()));
-  assert.equal(data[32], 0x5d); assert.deepEqual(data.slice(33, 37), new Uint8Array(4));
+  assert.equal(data[32], 0x4d); assert.deepEqual(data.slice(33, 37), new Uint8Array(4));
   assert.deepEqual(data.slice(37, 53), new Uint8Array(16));
   assert.deepEqual(data.slice(55, 87), decode(made.metadata.credentialId));
   const options = { challenge: encode(new Uint8Array(32).fill(7)), rpId: 'login.example.test', userVerification: 'required', allowCredentials: [{ id: made.metadata.credentialId, type: 'public-key' }] };
   const assertion = await assertPasskey(made.metadata, made.privateKey, options, origin, true);
   const client = decode(assertion.response.clientDataJSON), auth = decode(assertion.response.authenticatorData);
-  assert.equal(auth[32], 0x1d);
+  assert.equal(auth[32], 0x0d);
   assert.equal(JSON.parse(new TextDecoder().decode(client)).challenge, options.challenge);
   const publicKey = createPublicKey({ key: Buffer.from(decode(made.response.response.publicKey)), format: 'der', type: 'spki' });
   const signed = Buffer.concat([auth, createHash('sha256').update(client).digest()]);
@@ -34,4 +34,10 @@ test('rejects substitution, missing verification and unsupported requests', asyn
   assert.throws(() => validateRequest('create', createOptions, 'http://login.example.test'));
   assert.throws(() => decode('AB'));
   assert.throws(() => readMetadata([...passkeyFields(made.metadata, made.privateKey), passkeyFields(made.metadata, made.privateKey)[1]]));
+});
+
+test('reports discoverability only when credProps is requested', async () => {
+  const made = await createPasskey({ ...createOptions, extensions: { credProps: true } }, origin, true);
+  assert.deepEqual(made.response.clientExtensionResults, { credProps: { rk: true } });
+  assert.throws(() => validateRequest('get', { challenge: createOptions.challenge, extensions: { credProps: true } }, origin));
 });

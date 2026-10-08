@@ -1070,6 +1070,8 @@ function showItemKind(kind, editing = false) {
   if (editing) {
     $("form-mode").textContent = `${$("item-id").value ? "EDIT" : "NEW"} ${shape.label.toUpperCase()}`;
     $("url").closest("label").hidden = !shape.website;
+    $("url").readOnly = kind === "passkey";
+    $("item-username").readOnly = kind === "passkey";
     $("item-username").closest("label").hidden = !shape.username;
     $("item-password").closest("label").hidden = !shape.password;
     $("form-signin").hidden = !shape.username && !shape.password;
@@ -1113,6 +1115,7 @@ function displayItem(item, button) {
   }
   $("view-username").textContent = item.body.username || "—";
   showItemKind(itemKind(item.body.customFields));
+  $("duplicate-item").hidden = itemKind(item.body.customFields) === "passkey";
   $("view-password").textContent = "••••••••••••";
   setPasswordVisibilityButton($("reveal-password"), false);
   renderCustomFields(item.body.customFields, item.body.password || "");
@@ -1163,6 +1166,10 @@ function extensionRelatedLogins(item, siteOrigin) {
   return output;
 }
 window.__vaultsExtensionActions = {
+  passkeyVaults() {
+    if (!root || !vault || !catalogue) throw Error("Unlock the web vault first.");
+    return [{ vaultId, name: availableVaults.find(row => row.vaultId === vaultId)?.name || "Current vault" }];
+  },
   async passkeyList(siteOrigin) {
     if (!root || !vault || !catalogue) throw Error('Unlock the web vault first.');
     const activeVault = vault, output = [];
@@ -1187,7 +1194,8 @@ window.__vaultsExtensionActions = {
     if (!key) throw Error('Passkey key is missing.');
     return { metadata, privateKey: key.value };
   },
-  async passkeySave(metadata, privateKey, siteOrigin, password) {
+  async passkeySave(metadata, privateKey, siteOrigin, password, requestedVaultId) {
+    if (requestedVaultId !== vaultId) throw Error("The destination vault changed. Review the request again.");
     if (busy || !$("item-form").hidden || !root || !vault || !catalogue) throw Error('Finish editing and unlock the destination vault first.');
     const fields = passkeyFields(metadata, privateKey);
     if (metadata.origin !== siteOrigin) throw Error('Passkey origin mismatch.');
@@ -1352,6 +1360,8 @@ async function save(event, retry = false) {
       };
     const authenticator = fields.find(field => field.id === features.TOTP_ID)?.value;
     if (authenticator) features.parseTotp(authenticator);
+    const passkey = readMetadata(fields);
+    if (passkey && (index.itemType !== "passkey" || index.website !== passkey.origin)) throw Error("A passkey’s website and type cannot be changed.");
     draft = { itemId, index, body };
     let
       made = core.upsert_private_item(

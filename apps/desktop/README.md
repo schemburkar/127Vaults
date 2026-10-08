@@ -6,6 +6,14 @@ hydrate a replica, later unlocks can authenticate and decrypt it offline, edits
 are encrypted and durably queued before delivery, and explicit sync retries the
 queue. The React renderer receives only the currently requested plaintext item.
 
+Website passkeys registered through the extension appear as dedicated encrypted
+items and sync through the same replica. Their private keys are excluded from
+generic item summaries and renderer field hydration; saving an existing passkey
+preserves its key inside Rust. Use the extension to register and sign in, with a
+fresh master-password check for each request. The connector agent supports only
+the narrow create-only passkey save exception to its read-only password policy.
+See [passkey setup and limits](../extension/README.md#website-passkeys).
+
 Vault removal is available from a vault's menu or Settings > Vaults. Archive
 retains the encrypted source vault for later restore; move requires a chosen
 active destination and re-encrypts its items there before retiring the source.

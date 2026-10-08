@@ -24,7 +24,7 @@ export function validateRequest(kind, options, origin) {
   const descriptors = kind === 'create' ? options.excludeCredentials : options.allowCredentials;
   if (descriptors !== undefined && (!Array.isArray(descriptors) || descriptors.length > 64)) throw Error('Invalid credential list.');
   for (const value of descriptors || []) { if (value.type !== 'public-key') throw Error('Invalid credential type.'); decode(value.id, 1, 1024); }
-  if (options.extensions && Object.keys(options.extensions).length) throw Error('WebAuthn extensions are not supported by this provider. Use the browser.');
+  if (options.extensions && Object.entries(options.extensions).some(([key, value]) => kind !== 'create' || key !== 'credProps' || typeof value !== 'boolean')) throw Error('This WebAuthn extension is not supported by this provider. Use the browser.');
   if (kind === 'create') {
     if (!options.pubKeyCredParams?.some(p => p.type === 'public-key' && p.alg === -7)) throw Error('The website must support ES256.');
     if (options.attestation && options.attestation !== 'none') throw Error('Attestation is not supported. Use the browser.');
@@ -61,9 +61,10 @@ function cbor(value) {
 }
 function clientData(kind, options, origin) { return enc.encode(JSON.stringify({ type: `webauthn.${kind}`, challenge: options.challenge, origin, crossOrigin: false })); }
 async function authData(rpId, attested) {
-  // UP + UV (fresh master-password verification required by the caller), BE + BS.
+  // UP + UV (fresh master-password verification required by the caller), BE.
+  // Conservatively keep BS clear: a durable local save is not proof of backup.
   // Synced software credentials use a permanent zero signature counter.
-  return concat(await digest(enc.encode(rpId)), Uint8Array.of(attested ? 0x5d : 0x1d), new Uint8Array(4));
+  return concat(await digest(enc.encode(rpId)), Uint8Array.of(attested ? 0x4d : 0x0d), new Uint8Array(4));
 }
 export async function createPasskey(options, origin, userVerified) {
   const { rpId } = validateRequest('create', options, origin);
@@ -75,7 +76,7 @@ export async function createPasskey(options, origin, userVerified) {
   const metadata = { version: 1, algorithm: -7, rpId, origin, credentialId, userHandle: options.user.id, username: options.user.name, displayName: options.user.displayName, signCount: 0 };
   const cose = cbor(new Map([[1, 2], [3, -7], [-1, 1], [-2, decode(publicKey.x, 32, 32)], [-3, decode(publicKey.y, 32, 32)]]));
   const data = concat(await authData(rpId, true), new Uint8Array(16), Uint8Array.of(0, 32), decode(credentialId), cose);
-  return { metadata, privateKey, response: { id: credentialId, rawId: credentialId, type: 'public-key', authenticatorAttachment: 'cross-platform', response: { clientDataJSON: encode(clientData('create', options, origin)), attestationObject: encode(cbor({ fmt: 'none', attStmt: {}, authData: data })), authenticatorData: encode(data), publicKey: encode(await crypto.subtle.exportKey('spki', pair.publicKey)), publicKeyAlgorithm: -7, transports: ['internal'] }, clientExtensionResults: {} } };
+  return { metadata, privateKey, response: { id: credentialId, rawId: credentialId, type: 'public-key', authenticatorAttachment: 'cross-platform', response: { clientDataJSON: encode(clientData('create', options, origin)), attestationObject: encode(cbor({ fmt: 'none', attStmt: {}, authData: data })), authenticatorData: encode(data), publicKey: encode(await crypto.subtle.exportKey('spki', pair.publicKey)), publicKeyAlgorithm: -7, transports: ['internal'] }, clientExtensionResults: options.extensions?.credProps ? { credProps: { rk: true } } : {} } };
 }
 export function passkeyFields(metadata, privateKey) {
   decode(privateKey, 64, 512);

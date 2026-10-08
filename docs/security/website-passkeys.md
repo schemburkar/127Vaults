@@ -10,14 +10,15 @@ implements a website's relying-party verification or receives plaintext keys.
 Each ceremony requires explicit approval in the extension and fresh master
 password verification by the selected vault source. Mere approval is user
 presence, not user verification. Only after verification may the authenticator
-set UP and UV. Credentials are backup eligible and backed up (BE/BS), use a
+set UP and UV. Credentials are backup eligible (BE); BS stays clear because a local save is not
+proof of a completed backup. They use a
 permanent zero signature counter, and return none attestation with zero AAGUID.
 Registration must persist the encrypted item before the website gets success.
 Failure or an ambiguous save must never return registration success.
 
 The initial provider supports HTTPS top-level pages, exact-host RP IDs, ES256,
 none attestation, discoverable credentials and explicit allow/exclude lists.
-Parent-domain RP IDs, frames, WebAuthn extensions, conditional mediation and
+Parent-domain RP IDs, frames, WebAuthn extensions other than registration credProps, conditional mediation and
 platform-only requests use the native browser path. These limitations must be
 visible; this is experimental support, not a universal authenticator.
 

@@ -1,6 +1,7 @@
 import { matchingLogin, originOf, permissionPattern } from './match.mjs';
 import { probeFrame, fillFrame } from './fill.mjs';
 import { sourceStatus } from './source-status.mjs';
+import { setupPasskeyPopup } from './popup-passkeys.mjs';
 
 const $ = id => document.getElementById(id);
 let vaultOrigin = null;
@@ -14,6 +15,7 @@ let localSources = [];
 let sourceSignature = '';
 let refreshInProgress = false;
 let userSelectedSource = false;
+const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, getSources: () => localSources, status });
 
 function status(message, error = false) {
   $('status').textContent = message;
@@ -172,7 +174,7 @@ async function refresh() {
   $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
     : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
-  } finally { refreshInProgress = false; }
+  } finally { refreshInProgress = false; await passkeys.refresh().catch(error => status(errorMessage(error), true)); }
 }
 async function choose(item) {
   if (pending) return;
@@ -228,13 +230,14 @@ $('connect').onclick = async () => {
     if (!granted) { status('Vault access was not granted.', true); return; }
     const previous = await configuredOrigin();
     await chrome.storage.local.set({ vaultOrigin: origin });
-    if (previous && previous !== origin && permissionPattern(previous) !== permissionPattern(origin)) {
+    const { passkeyOrigins = [] } = await chrome.storage.local.get("passkeyOrigins");
+    if (previous && previous !== origin && permissionPattern(previous) !== permissionPattern(origin) && !passkeyOrigins.some(site => permissionPattern(site) === permissionPattern(previous))) {
       await chrome.permissions.remove({ origins: [permissionPattern(previous)] });
     }
     await refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
-$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().catch(error => status(errorMessage(error), true)); };
+$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => passkeys.refresh(true)).catch(error => status(errorMessage(error), true)); };
 $('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('unlock-native').onclick = async () => {
@@ -244,6 +247,7 @@ $('unlock-native').onclick = async () => {
     $('native-secret').value = '';
     $('native-master').value = '';
     await loadSelectedSource();
+    await passkeys.refresh(true);
   } catch (error) { $('native-secret').value = ''; $('native-master').value = ''; status(errorMessage(error), true); }
 };
 $('settings').onclick = () => {
@@ -266,6 +270,7 @@ $('lock-vault').onclick = async () => {
     $('results').hidden = true;
     $('lock-vault').hidden = true;
     status('Connector locked. Unlock the source before filling again.');
+    await passkeys.refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
 $('search').oninput = renderItems;
@@ -273,6 +278,7 @@ refresh().catch(error => status(errorMessage(error), true));
 setInterval(async () => {
   if (document.hidden || pending || refreshInProgress || !$('frames').hidden) return;
   try {
+    await passkeys.refresh();
     const sources = (await native({ action: 'sources' })).sources || [];
     const next = JSON.stringify(sources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
     if (next !== sourceSignature) await refresh();

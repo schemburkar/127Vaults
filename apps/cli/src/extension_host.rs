@@ -1,4 +1,4 @@
-//! Read-only Chromium native-messaging connector for active/local clients.
+//! Chromium connector: read-only passwords and approved create-only passkeys.
 use std::{
     fs,
     io::{self, Read, Write},

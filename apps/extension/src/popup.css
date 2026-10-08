@@ -1,7 +1,7 @@
 :root{font:14px system-ui,sans-serif;color:#f3f4f8;background:#11162b}
 *{box-sizing:border-box}
-body{margin:0;width:380px;min-height:150px;max-height:560px;overflow:hidden}
-main{padding:14px 18px 12px;max-height:560px;display:flex;flex-direction:column}
+body{margin:0;width:380px;min-height:150px;max-height:600px;overflow-y:auto}
+main{padding:14px 18px 12px;display:flex;flex-direction:column}
 main>section{min-height:0}
 header,footer,.section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 header strong{font-size:18px}
@@ -28,7 +28,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 #source-panel{padding:0}
 #source-state{margin:3px 0 9px}
 #setup{border-top:1px solid #414b63;padding-top:10px}
-#results{display:flex;flex:1 1 auto;flex-direction:column;min-height:0}
+#results{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;max-height:320px}
+#passkey-request{border-top:1px solid #414b63;margin-top:10px;padding-top:6px;flex:none}
+#passkey-origin{display:block;overflow-wrap:anywhere}
+#passkey-approve{display:block;width:100%;margin:12px 0 8px}
+#enable-passkeys,#disable-passkeys{margin:8px 0}
 #results[hidden]{display:none}
 #items{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin-top:5px;padding-right:3px;scrollbar-color:#6b7690 #11162b}
 .item{display:block;text-align:left;width:100%;background:#1c253b;color:#f3f4f8;border-color:#414b63;margin:5px 0;min-height:48px}
