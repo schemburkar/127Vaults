@@ -1,5 +1,9 @@
 # Desktop platform phase 1 — 2026-10-08
 
+Follow-up: a separate Ubuntu 24.04 environment was subsequently installed;
+see [Linux setup and verification](linux-ubuntu-24-setup-2026-10-08.md) for the
+newer evidence. The observations below describe the original gate-creation run.
+
 The shared Tauri desktop now has a repeatable Windows/Linux development gate:
 `pnpm check:desktop`. It checks native Linux prerequisites, TypeScript/Vite,
 desktop JavaScript tests, shared CLI library tests, and a locked Tauri release

@@ -45,6 +45,9 @@ Use Ubuntu 24.04 with a graphical desktop, or a separate Ubuntu 24.04 WSL2
 instance with WSLg. The existing Ubuntu 20.04 WSL instance lacks WebKitGTK 4.1
 and cannot build this Tauri 2 shell.
 
+This workstation now has a separate `Ubuntu-24.04` WSL2 development instance;
+see [installed environment and commands](../../docs/release/linux-ubuntu-24-setup-2026-10-08.md).
+
 Install the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/)
 and the shared engine's keyring dependencies:
 
