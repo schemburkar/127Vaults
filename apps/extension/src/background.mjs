@@ -1,3 +1,4 @@
+import { restorePasskeyScripts } from './passkey-settings.mjs';
 import { originOf, permissionPattern } from './match.mjs';
 import { installPasskeyProvider } from './passkey-provider.mjs';
 
@@ -68,3 +69,5 @@ chrome.idle.onStateChanged.addListener(state => {
     ]).finally(() => { nativePort?.disconnect(); nativePort = null; });
   }
 });
+
+restorePasskeyScripts(chrome).catch(error => console.error('Passkey script registration failed:', error));

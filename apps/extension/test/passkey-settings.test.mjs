@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enableAllPasskeys, disableAllPasskeys, passkeysEnabled, PASSKEY_MATCH } from '../src/passkey-settings.mjs';
+import { enableAllPasskeys, disableAllPasskeys, passkeysEnabled, PASSKEY_MATCH, restorePasskeyScripts } from '../src/passkey-settings.mjs';
 
 test('all-sites mode authorizes HTTPS origins while retaining legacy site grants', () => {
   assert(passkeysEnabled({ passkeysAllSites: true }, 'https://unseen.example.test:8443'));
@@ -37,4 +37,20 @@ test('denied permission and registration failure never activate all-sites mode',
   api.permissions.request = async () => true;
   await assert.rejects(enableAllPasskeys(api), /registration failed/);
   assert.equal(wrote, false);
+});
+
+test('restores enabled provider after reload without prompting for permission', async () => {
+  let scripts = [], installs = 0;
+  const api = {
+    storage: { local: { async get() { return { passkeysAllSites: true }; } } },
+    permissions: { async contains() { return true; } },
+    scripting: { async getRegisteredContentScripts() { return scripts; }, async unregisterContentScripts() { scripts = []; }, async registerContentScripts(value) { scripts = value; installs++; } },
+  };
+  assert.equal(await restorePasskeyScripts(api), true);
+  assert.equal(installs, 1);
+  assert.equal(await restorePasskeyScripts(api), true);
+  assert.equal(installs, 1);
+  api.permissions.contains = async () => false;
+  assert.equal(await restorePasskeyScripts(api), false);
+  assert.equal(installs, 1);
 });

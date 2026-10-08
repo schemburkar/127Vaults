@@ -1,4 +1,4 @@
-import { enableAllPasskeys, disableAllPasskeys } from './passkey-settings.mjs';
+import { enableAllPasskeys, disableAllPasskeys, restorePasskeyScripts } from './passkey-settings.mjs';
 import { originOf } from './match.mjs';
 
 export function setupPasskeyPopup({ getTab, getSource, getSources, status }) {
@@ -16,6 +16,8 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status }) {
     const settings = await chrome.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
     $('enable-passkeys').hidden = settings.passkeysAllSites === true && await chrome.permissions.contains({ origins: ['https://*/*'] });
     $('disable-passkeys').hidden = settings.passkeysAllSites !== true && !settings.passkeyOrigins?.length;
+    try { await restorePasskeyScripts(chrome); }
+    catch (error) { status('Passkey scripts could not load: ' + String(error?.message || error), true); }
     const pending = await send({ kind: 'passkey.pending', tabId: tab.id });
     if (version !== revision) return;
     request = pending?.requests?.[0] || null;

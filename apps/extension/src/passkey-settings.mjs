@@ -27,3 +27,20 @@ export async function disableAllPasskeys(api) {
   await api.storage.local.set({ passkeysAllSites: false, passkeyOrigins: [] });
   await clearProviderScripts(api);
 }
+
+// Storage can survive an unpacked reload even when dynamic registrations do not.
+// Restore only already-authorized scripts; never request permission on startup.
+export async function restorePasskeyScripts(api) {
+  const settings = await api.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
+  const matches = settings.passkeysAllSites === true ? [PASSKEY_MATCH] : (settings.passkeyOrigins || []).filter(origin => passkeysEnabled(settings, origin)).map(origin => 'https://' + new URL(origin).hostname + '/*');
+  if (!matches.length || !(await api.permissions.contains({ origins: matches }))) return false;
+  const scripts = await api.scripting.getRegisteredContentScripts();
+  const wanted = [
+    { id: IDS[0], matches, js: ['src/passkey-bridge.js'], runAt: 'document_start', world: 'ISOLATED', allFrames: false },
+    { id: IDS[1], matches, js: ['src/passkey-page.js'], runAt: 'document_start', world: 'MAIN', allFrames: false },
+  ];
+  if (wanted.every(script => scripts.some(existing => existing.id === script.id && existing.world === script.world && JSON.stringify(existing.matches) === JSON.stringify(matches)))) return true;
+  await clearProviderScripts(api);
+  await api.scripting.registerContentScripts(wanted);
+  return true;
+}
