@@ -1,6 +1,6 @@
 # 127Vaults Desktop
 
-This is the Windows-first installed client shell. Its Tauri commands use the same
+This is the shared Windows/Linux development client shell. Its Tauri commands use the same
 Rust session and encrypted local replica as the CLI: online authentication can
 hydrate a replica, later unlocks can authenticate and decrypt it offline, edits
 are encrypted and durably queued before delivery, and explicit sync retries the
@@ -38,6 +38,62 @@ Select an item, then drag either field's handle onto a browser `<input>`, Notepa
 or another editable text control. Press Escape to exercise cancellation.
 Use DevTools only with fictitious data: the HTML drag payload necessarily enters
 the WebView2/Windows drag subsystem while a drag is active.
+
+## Run on Linux (development)
+
+Use Ubuntu 24.04 with a graphical desktop, or a separate Ubuntu 24.04 WSL2
+instance with WSLg. The existing Ubuntu 20.04 WSL instance lacks WebKitGTK 4.1
+and cannot build this Tauri 2 shell.
+
+Install the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/)
+and the shared engine's keyring dependencies:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config curl wget file libxdo-dev libwebkit2gtk-4.1-dev \
+  libssl-dev libsecret-1-dev libdbus-1-dev librsvg2-dev \
+  libayatana-appindicator3-dev patchelf
+```
+
+Install Rust through rustup (the repository selects its pinned toolchain),
+Node.js 24, and the pnpm version in the root `packageManager` field. Use a
+Linux-side checkout and dependency installation; do not reuse Windows
+`node_modules` or Cargo targets through `/mnt/c`.
+
+```bash
+pnpm install --frozen-lockfile
+pnpm check:desktop
+pnpm --filter @127vaults/desktop dev
+```
+
+A running, unlocked Secret Service on the user's D-Bus session is required for
+credential storage. Installing development headers does not establish a usable
+keyring. Use fictitious credentials for testing.
+
+## Shared Windows/Linux development gate
+
+From the repository root, `pnpm check:desktop` runs frontend checks and desktop
+tests, shared CLI unit tests, and a locked Tauri release build without installers.
+On Linux it first checks native dependencies with `pkg-config`.
+`.github/workflows/desktop.yml` runs the same gate independently on Windows and
+Ubuntu 24.04 for pull requests, main pushes, and manual dispatch. No signed
+installer or update artifact is produced.
+
+Build success is only the first Linux milestone. Record the distro, desktop,
+WebKitGTK version, display protocol, and keyring provider for GUI acceptance:
+
+- Launch, enroll with a fictitious account, online unlock, lock, and restart.
+- Hydrate a replica, stop the server, then offline unlock and queue an edit;
+  restart, reconnect, and sync without losing the edit.
+- Exercise a missing/locked keyring and verify useful errors without plaintext
+  persistence or silent fallback storage.
+- Exercise reveal/copy and drag cancellation/lock on Wayland and X11, including
+  browser login inputs and a native text editor.
+- Repeat installation and keyring behavior on a clean native Linux host before
+  accepting Linux packaging or supported distribution claims.
+
+WSLg launch evidence alone does not close native Linux acceptance. Track these
+gates in [the desktop backlog](../../docs/product/desktop-backlog.md).
 
 ## Scope and security boundary
 

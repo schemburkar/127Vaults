@@ -1,0 +1,42 @@
+name: Windows and Linux desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop development gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config curl wget file libxdo-dev libwebkit2gtk-4.1-dev libssl-dev libsecret-1-dev libdbus-1-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check, test, and build desktop
+        run: node scripts/check-desktop.mjs
