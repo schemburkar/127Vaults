@@ -65,7 +65,7 @@ async function packageDesktop(output) {
   }
   const config = join(output, 'tauri-package-config.json');
   await writeFile(config, JSON.stringify({ version, bundle: { active: true,
-    targets: windows ? ['nsis', 'msi'] : ['deb', 'appimage'],
+    targets: windows ? ['nsis'] : ['deb', 'appimage'],
     externalBin: ['binaries/127vaults', 'binaries/127vaults-extension-host'],
     resources: { '../../../apps/extension/install-native-host.ps1': 'install-native-host.ps1',
       '../../../apps/extension/install-native-host.sh': 'install-native-host.sh' },
@@ -85,7 +85,7 @@ async function packageDesktop(output) {
   await copyFile(join(root, 'docs/release/client-install.md'), join(portable, 'README.md'));
   await copyFile(join(root, 'LICENSE-POLICY.md'), join(portable, 'LICENSE-POLICY.md'));
   await archive(portable, `${portable}.${windows ? 'zip' : 'tar.gz'}`, windows);
-  for (const target of windows ? ['nsis', 'msi'] : ['deb', 'appimage']) {
+  for (const target of windows ? ['nsis'] : ['deb', 'appimage']) {
     const directory = join(root, 'target/release/bundle', target);
     const extension = { nsis: '.exe', msi: '.msi', deb: '.deb', appimage: '.AppImage' }[target];
     const candidates = (await readdir(directory)).filter(name => name.endsWith(extension) && name.includes(version));

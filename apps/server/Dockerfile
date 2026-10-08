@@ -19,6 +19,7 @@ COPY apps/web/src apps/web/src
 COPY apps/desktop/src/item-types.ts apps/desktop/src/item-types.ts
 COPY apps/desktop/src/item-browser.ts apps/desktop/src/item-browser.ts
 COPY packages/ui/src packages/ui/src
+COPY apps/extension/src/passkeys.mjs apps/extension/src/passkeys.mjs
 RUN pnpm --filter @127vaults/web build
 
 FROM ${NODE_RUNTIME_IMAGE} AS runtime
@@ -34,6 +35,7 @@ COPY apps/web/mvp.html apps/web/mvp.html
 COPY apps/web/style.css apps/web/style.css
 COPY apps/web/src/private-vault-client.mjs apps/web/src/private-vault-client.mjs
 COPY apps/web/mvp-client.mjs apps/web/mvp-client.mjs
+COPY apps/extension/src/passkeys.mjs apps/extension/src/passkeys.mjs
 COPY apps/web/wasm apps/web/wasm
 USER node
 EXPOSE 12780

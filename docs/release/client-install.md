@@ -5,7 +5,7 @@ OS/architecture. Use fictitious data for supervised testing. Binaries are unsign
 check the sender's SHA256SUMS. LICENSE-POLICY.md is the intended licensing policy,
 not a public release license. No automatic updater is enabled.
 
-Windows: install the accompanying setup EXE or MSI. Alternatively extract this
+Windows: install the accompanying setup EXE. Alternatively extract this
 portable ZIP to a stable, user-owned directory and run `vaults-desktop-poc.exe`.
 Install Microsoft WebView2 if it is absent; the setup EXE can download it.
 `127vaults.exe --help` lists CLI commands.

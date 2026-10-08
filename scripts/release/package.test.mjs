@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { outputDirectory, packageExtension, writeManifest } from './package.mjs';
 import { verifyPackages } from './verify.mjs';
+import { assemble } from './assemble.mjs';
 
 test('packaging refuses output in the source checkout', () => {
   assert.throws(() => outputDirectory(null));
@@ -26,11 +27,31 @@ test('extension handoff excludes tests and developer installers; manifest detect
     await assert.rejects(verifyPackages(directory), /checksum mismatch/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
-test('release verifier rejects path traversal and duplicate file names', async () => {
+test('release verifier rejects path traversal', async () => {
   const directory = await mkdtemp(join(tmpdir(), '127vaults-manifest-'));
   try {
     const file = { name: '../outside', sha256: 'a'.repeat(64), sizeBytes: 1 };
     await writeFile(join(directory, 'manifest.json'), JSON.stringify({ schemaVersion: 1, channel: 'private-test', files: [file] }));
     await assert.rejects(verifyPackages(directory), /Invalid package entry/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+test('assembler collects verified artifacts and refuses conflicting files and mixed revisions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), '127vaults-assemble-'));
+  try {
+    const first = join(directory, 'first');
+    const second = join(directory, 'second');
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(first); await mkdir(second);
+    await writeFile(join(first, 'client.zip'), 'client');
+    await writeFile(join(second, 'server.tar'), 'server');
+    await writeManifest(first, ['desktop']); await writeManifest(second, ['server']);
+    const output = join(directory, 'combined');
+    await assemble(output, [first, second]);
+    assert.equal((await verifyPackages(output)).files.some(file => file.name === 'client.zip'), true);
+    const path = join(second, 'manifest.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.revision = 'different-revision';
+    await writeFile(path, JSON.stringify(manifest));
+    await assert.rejects(assemble(join(directory, 'mixed'), [first, second]), /same source revision/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

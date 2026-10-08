@@ -13,7 +13,7 @@ From the repository root, after `pnpm install --frozen-lockfile`:
 pnpm package:local --out C:\127Vaults-Packages\windows-0.1.0
 ```
 
-This builds Windows NSIS setup EXE and MSI, a portable desktop/CLI/native-host ZIP,
+This builds a Windows NSIS setup EXE, a portable desktop/CLI/native-host ZIP,
 the Chrome/Edge extension ZIP, and an offline server TAR containing the web app,
 PostgreSQL and TLS helper images. Requires the pinned Rust/WASM generator,
 Node 24, pnpm, Windows C++ build tools and a running Podman engine (or `--docker`).
@@ -33,6 +33,17 @@ both Windows x64 and Linux x64 recipients; it does not need rebuilding in WSL.
 Use `--components server,extension` or `--components desktop` to build a subset.
 Linux binaries built on Ubuntu 24.04 target that baseline; older distributions,
 ARM64 and macOS are not covered by these packages.
+
+Copy the Linux output back to the Windows machine and collect all matching
+builds into a single handoff directory. The assembler verifies each input and
+refuses mixed source revisions or conflicting files:
+
+```powershell
+pnpm package:assemble --out C:\127Vaults-Packages\handoff-0.1.0 --from C:\127Vaults-Packages\windows-0.1.0 --from C:\127Vaults-Packages\linux-0.1.0
+```
+
+Transfer the resulting directory; the server is one TAR, desktop installers and
+portable client archives are separate files, and the extension is one ZIP.
 
 Every completed output has `manifest.json`, `SHA256SUMS`, file sizes, source
 revision and dirty-tree state. Verify before transfer and after receipt:
@@ -69,7 +80,7 @@ server runs under the container engine and restarts with it; this does not insta
 a second OS service. See server-test-install.md in the repository (README.md in
 the extracted server bundle) for CA trust, licensing, backups and recovery.
 
-Desktop: run the Windows setup EXE (current-user installation) or MSI, or on
+Desktop: run the Windows setup EXE (current-user installation), or on
 Ubuntu run `sudo apt install ./127vaults-desktop-0.1.0-linux-x64.deb`.
 Windows setup can download WebView2 when absent, so that prerequisite needs
 internet access. Linux installs WebKitGTK and native runtime dependencies from
