@@ -5,9 +5,9 @@ import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join, sep } from 'node:path';
 
-export async function runMakeBundle(argv) {
+export async function runMakeBundle(argv, options = {}) {
 const destination = resolve(argv[0] ?? '');
-const checkout = resolve('.');
+const checkout = resolve(options.checkout ?? '.');
 if (!argv[0] || destination === checkout || destination.startsWith(checkout + sep)) throw Error('Supply a new output directory outside the checkout.');
 if (existsSync(`${destination}.tar`)) throw Error('Bundle archive already exists.');
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
@@ -25,7 +25,7 @@ if (issuerKeysPath) {
   }
 }
 async function run(program, args, { capture = false } = {}) {
-  const child = spawn(program, args, { stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', windowsHide: true });
+  const child = spawn(program, args, { cwd: checkout, stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', windowsHide: true });
   let output = '';
   child.stdout?.on('data', chunk => { output += chunk; });
   const code = await new Promise((done, reject) => { child.on('error', reject); child.on('close', done); });
@@ -41,10 +41,11 @@ await mkdir(destination, { recursive: false });
 await mkdir(join(destination, 'lib'));
 if (issuerKeys) await writeFile(join(destination, 'issuer-keys.json'), JSON.stringify(issuerKeys, null, 2) + '\n', { flag: 'wx' });
 await run(process.execPath, ['scripts/build-fixture.mjs']);
-await run(engine, ['build', '-t', 'localhost/127vaults-server:test', '-f', 'apps/server/Dockerfile', '.']);
+const image = options.image ?? 'localhost/127vaults-server:test';
+await run(engine, ['build', ...(options.refreshImages ? [engine === 'docker' ? '--pull' : '--pull=always'] : []), '-t', image, '-f', 'apps/server/Dockerfile', '.']);
 await run(engine, ['pull', 'docker.io/library/postgres:17-bookworm']);
 await run(engine, ['pull', 'docker.io/alpine/openssl:3.5.4']);
-await run(engine, ['save', '-o', join(destination, 'server-image.tar'), 'localhost/127vaults-server:test']);
+await run(engine, ['save', '-o', join(destination, 'server-image.tar'), image]);
 await run(engine, ['save', '-o', join(destination, 'postgres-image.tar'), 'docker.io/library/postgres:17-bookworm']);
 await run(engine, ['save', '-o', join(destination, 'openssl-image.tar'), 'docker.io/alpine/openssl:3.5.4']);
 for (const [source, target] of [
@@ -63,13 +64,23 @@ for (const [source, target] of [
   ['scripts/ops/identity-backup.mjs', 'lib/identity-backup.mjs'],
   ['docs/release/server-test-install.md', 'README.md'],
   ['LICENSE-POLICY.md', 'LICENSE-POLICY.md']
-]) await copyFile(source, join(destination, target));
-const revision = await run('git', ['rev-parse', 'HEAD'], { capture: true });
-const changed = await run('git', ['status', '--porcelain'], { capture: true });
+]) await copyFile(join(checkout, source), join(destination, target));
+if (image !== 'localhost/127vaults-server:test') {
+  const compose = await readFile(join(destination, 'compose.test.yaml'), 'utf8');
+  await writeFile(join(destination, 'compose.test.yaml'), compose.replace('localhost/127vaults-server:test', image));
+}
+const revision = options.provenance?.revision ?? await run('git', ['rev-parse', 'HEAD'], { capture: true });
+const changed = options.provenance ? options.provenance.sourceDirty : Boolean(await run('git', ['status', '--porcelain'], { capture: true }));
+const imageIds = {};
+if (options.provenance) {
+  for (const reference of [image, 'docker.io/library/postgres:17-bookworm', 'docker.io/alpine/openssl:3.5.4']) {
+    imageIds[reference] = await run(engine, ['image', 'inspect', '--format', '{{.Id}}', reference], { capture: true });
+  }
+}
 const files = {};
 for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/license-files.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
 if (issuerKeys) files['issuer-keys.json'] = await hash(join(destination, 'issuer-keys.json'));
-await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image: 'localhost/127vaults-server:test', files }, null, 2) + '\n', { flag: 'wx' });
+await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image, ...(options.provenance ? { imageIds } : {}), files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);
 await run('tar', ['-cf', `${destination}.tar`, '-C', resolve(destination, '..'), destination.split(sep).at(-1)]);
 console.log(`Offline test archive: ${destination}.tar`);

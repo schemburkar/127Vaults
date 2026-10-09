@@ -6,6 +6,7 @@
     "package:local": "node scripts/release/package.mjs",
     "package:verify": "node scripts/release/verify.mjs",
     "package:assemble": "node scripts/release/assemble.mjs",
+    "release:help": "node scripts/release/release.mjs --help",
     "test:packaging": "node --test scripts/release/*.test.mjs deploy/install.test.mjs",
     "server": "node server.mjs",
     "fixture:build": "node scripts/build-fixture.mjs",

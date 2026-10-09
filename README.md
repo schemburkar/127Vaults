@@ -21,6 +21,7 @@ Current work and release documents:
 - [Beta-readiness gates](docs/release/beta-readiness.md)
 - [Experimental development runbook](docs/release/experimental-development.md)
 - [Offline server test bundle and installation](docs/release/server-test-install.md)
+- [Independent local releases with release.ps1](docs/release/release-command.md)
 - [Selected real-data pilot gate](docs/release/selected-real-data-pilot.md)
 - [Cross-surface MVP and platform audit](docs/release/cross-surface-audit-2026-10-06.md)
 

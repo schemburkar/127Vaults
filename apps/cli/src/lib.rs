@@ -72,7 +72,7 @@ use zeroize::Zeroizing;
 #[derive(Debug, Parser)]
 #[command(
     name = "127vaults",
-    version,
+    version = option_env!("VAULTS_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
     about = "Official 127Vaults private-beta client"
 )]
 pub struct Cli {
