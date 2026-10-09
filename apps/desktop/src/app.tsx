@@ -83,7 +83,7 @@ function DesktopSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
 const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound, passkey: KeyRound };
 const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
   login: "Website or app sign-in",
-  passkey: "Website passkey saved by the extension",
+  passkey: "Passwordless website sign-in",
   bank: "Account and online banking",
   card: "Debit or credit card",
   wifi: "Wireless network access",
@@ -865,7 +865,7 @@ export function App() {
     setExpandedRelatedId(added?.id ?? null);
   };
   const changePrimaryType = (type: ItemType) => {
-    if (!selected || itemType(selected.customFields) === "passkey" || type === itemType(selected.customFields)) return;
+    if (!selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || type === itemType(selected.customFields)) return;
     const hasValues = !!(selected.website || selected.username || selected.password || primaryFields(selected.customFields).some((field) => field.value) || sections(selected.customFields).length);
     if (hasValues && !window.confirm("Change the main type? Its current type fields and related details will be removed. Save a copy first if you need them.")) return;
     setSelected({ ...selected, website: "", username: "", password: "", customFields: replaceItemType(selected.customFields, type) });
@@ -961,7 +961,7 @@ export function App() {
     return result;
   }, [vaults]);
   const duplicateItem = () => {
-    if (!selected || !confirmDiscard()) return;
+    if (!selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || !confirmDiscard()) return;
     setSelected({ ...structuredClone(selected), itemId: "", title: `${selected.title} (copy)`, customFields: setFavorite(selected.customFields, false) });
     setEditOriginal(null); setItemVaultId(vaultId); setRevealed(new Set()); setEditing(true);
   };
@@ -1541,7 +1541,7 @@ export function App() {
                     {ITEM_TYPES[itemType(selected.customFields)].website && <label className="grid gap-2 text-sm text-slate-400">
                       Website
                       <Input
-                        readOnly={itemType(selected.customFields) === "passkey"}
+                        readOnly={selected.customFields.some(field => field.id === "__127vaults_passkey")}
                         value={selected.website}
                         onChange={(e) =>
                           setSelected({ ...selected, website: e.target.value })
@@ -1597,8 +1597,8 @@ export function App() {
                     {primaryFields(selected.customFields).map(knownFieldEditor)}
                   </div>
                 </section>
-                <PasskeyDetails fields={selected.customFields} />
-                <AuthenticatorEditor value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />
+                <PasskeyDetails fields={selected.customFields} onRemove={() => setSelected({ ...selected, customFields: [...setItemType(selected.customFields.filter(f => f.id !== "__127vaults_passkey" && f.id !== "__127vaults_passkey_key"), itemType(selected.customFields) === "passkey" ? "login" : itemType(selected.customFields)), { id: "__127vaults_remove_passkey", label: "Remove passkey", type: "metadata", value: "true" }] })} />
+                {(itemType(selected.customFields) !== "passkey" || selected.customFields.some(f => f.id === TOTP_ID && f.value)) && <AuthenticatorEditor value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />}
                 <section className="mt-8 border-t border-white/10 pt-7">
                   <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
                   <div className="grid gap-3">{sections(selected.customFields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/12 bg-white/3">
@@ -1727,7 +1727,7 @@ export function App() {
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
                     <div className="flex items-center gap-2">
-                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{itemType(selected.customFields) !== "passkey" && <Button variant="ghost" onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" onClick={beginEditing}>Edit</Button>
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" onClick={beginEditing}>Edit</Button>
                       <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
                     </div>
                   </div>
@@ -1747,7 +1747,7 @@ export function App() {
                 </div>
                 <PasskeyDetails fields={selected.customFields} />
                 {selected.customFields.find(f => f.id === TOTP_ID)?.value && <AuthenticatorCode value={selected.customFields.find(f => f.id === TOTP_ID)!.value} copy={copyValue} />}
-                <section>
+                <section hidden={itemType(selected.customFields) === "passkey" && !primaryFields(selected.customFields).length && !ordinaryFields(selected.customFields).length}>
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
                     {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                   </h3>

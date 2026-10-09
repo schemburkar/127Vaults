@@ -50,3 +50,9 @@ The local software vault authenticator accepts platform attachment requests and
 reports platform attachment and internal transport. This describes local access,
 not hardware-bound key storage or Windows Hello integration. Fresh source password
 verification remains mandatory even for platform requests.
+
+## Credential fields and existing logins
+
+A passkey is a credential field within an encrypted item, not a public secret to copy. The detail and editor show account, RP and credential ID; the private key remains concealed from generic desktop rendering. Dedicated passkey items hide empty username/password rows. The editor stages removal until Save; Cancel preserves the original key. Removing the last credential from a dedicated item converts it to a login shell. A website's registration remains independently managed by the website.
+
+Registration offers a new item or an existing same-origin login without a passkey. Attachment preserves its item ID, password, custom secrets, title, URL path, favorites and other metadata. One passkey is supported per item; additional credentials can use separate items. The native host validates the target before updating, and the web source uses the normal encrypted item-update and signed-operation flow. Passkey lookup is based on encrypted metadata rather than the main item type, so attached credentials remain usable. The extension lists searchable, selectable passkeys alongside password sign-ins; selection is a preference, never authorization to sign without a site request and explicit approval.

@@ -1,7 +1,7 @@
 import { enableAllPasskeys, disableAllPasskeys, restorePasskeyScripts, windowsNativeOnly } from './passkey-settings.mjs';
 import { originOf } from './match.mjs';
 
-export function setupPasskeyPopup({ getTab, getSource, getSources, status, listSavedPasskeys }) {
+export function setupPasskeyPopup({ getTab, getSource, getSources, status, listSavedPasskeys, onSavedPasskeys }) {
   const $ = id => document.getElementById(id);
   let request = null, entries = [], processing = false, revision = 0, choicesKey = '', savedContext = '';
   async function send(message) {
@@ -51,9 +51,16 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status, listS
       document.querySelector('label[for=\"passkey-master\"]')?.toggleAttribute('hidden', choices.reuseDesktopUnlock === true);
       if (choices.reuseDesktopUnlock) { $('passkey-master').value = ''; $('passkey-native-fields').hidden = true; }
       if (request.operation === 'get') for (const [index, entry] of entries.entries()) $('passkey-choice').append(option(String(index), `${entry.metadata.displayName || entry.metadata.username} · ${entry.title}`));
-      else for (const vault of choices.vaults || []) $('passkey-choice').append(option(vault.vaultId, vault.name || vault.code || vault.vaultId));
+      else {
+        for (const vault of choices.vaults || []) $('passkey-choice').append(option(JSON.stringify({ vaultId: vault.vaultId }), `New item · ${vault.name || vault.code || vault.vaultId}`));
+        for (const item of choices.targets || []) $('passkey-choice').append(option(JSON.stringify({ vaultId: item.vaultId, itemId: item.itemId }), `Add to ${item.title}${item.username ? ' · ' + item.username : ''}`));
+      }
+      if (request.operation === 'get' && choices.preferred) {
+        const preferred = entries.findIndex(entry => entry.itemId === choices.preferred.itemId && entry.vaultId === choices.preferred.vaultId);
+        if (preferred >= 0) $('passkey-choice').value = String(preferred);
+      }
       $('passkey-approve').disabled = !$('passkey-choice').options.length || request.processing;
-      $('passkey-hint').textContent = request.operation === 'create' ? 'A new encrypted passkey item will be saved before this website receives success. 127Vaults will try to sync it to your server.' : entries.length ? choices.reuseDesktopUnlock ? 'Your unlocked Desktop verifies this request. Click Use passkey to approve sign-in.' : 'Your master password is checked for this request. The website receives a signature, never the private key.' : 'No matching passkey in this source. Select another source or use the browser.';
+      $('passkey-hint').textContent = request.operation === 'create' ? 'Choose where to save this passkey.' : entries.length ? choices.reuseDesktopUnlock ? 'Ready to sign in.' : 'Confirm your master password to sign in.' : 'No matching passkeys in this vault.';
     } catch (error) { $('passkey-hint').textContent = String(error?.message || error); }
   }
   $('enable-passkeys').onclick = async () => {
@@ -81,15 +88,15 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status, listS
     if (!request || processing) return;
     processing = true;
     $('source-select').disabled = true;
-    const selected = entries[Number($('passkey-choice').value)];
-    const message = { kind: 'passkey.approve', id: request.id, source: getSource(), vaultId: request.operation === 'get' ? selected?.vaultId : $('passkey-choice').value, itemId: selected?.itemId, username: $('passkey-username').value.trim(), accountSecret: $('passkey-secret').value, masterPassword: $('passkey-master').value };
+    const selected = request.operation === 'get' ? entries[Number($('passkey-choice').value)] : JSON.parse($('passkey-choice').value);
+    const message = { kind: 'passkey.approve', id: request.id, source: getSource(), vaultId: selected?.vaultId, itemId: selected?.itemId, username: $('passkey-username').value.trim(), accountSecret: $('passkey-secret').value, masterPassword: $('passkey-master').value };
     $('passkey-secret').value = ''; $('passkey-master').value = '';
     $('passkey-approve').disabled = true; $('passkey-browser').disabled = true; $('passkey-cancel').disabled = true;
     try {
       const response = await send(message);
       const vaultName = $('passkey-choice').selectedOptions[0]?.textContent || 'your vault';
       const savedText = response?.queued
-        ? `Saved in ${vaultName} on this device. ${getSource() === 'cli' ? 'Run 127vaults sync in your CLI profile. If it is offline, log in again when the server is reachable.' : 'Open 127Vaults Desktop and click Sync. If Desktop is offline, unlock it again when the server is reachable.'} Refresh sources only reloads this list.`
+        ? `Passkey saved in ${vaultName}. Waiting to sync.`
         : request.operation === 'create' ? `Passkey saved in ${vaultName} and synced to your server.` : 'Passkey used successfully.';
       $('passkey-save-status').textContent = savedText;
       status(savedText);
@@ -113,6 +120,7 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status, listS
     try {
       const saved = await listSavedPasskeys(origin);
       if (getSource() !== selectedSource || originOf(getTab()?.url) !== origin) return;
+      onSavedPasskeys?.(saved || []);
       $('saved-passkey-items').replaceChildren();
       for (const entry of saved || []) {
         const row = document.createElement('p');
@@ -121,8 +129,17 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status, listS
         detail.textContent = ' · ' + (entry.vaultName || entry.metadata.rpId) + ' · ' + (entry.sync?.pending === true ? 'Waiting to sync' : entry.sync?.pending === false ? 'Synced' : selectedSource === 'desktop' ? 'Desktop' : selectedSource === 'cli' ? 'CLI' : 'Web');
         row.append(detail); row.title = `Vault: ${entry.vaultId} · Item: ${entry.itemId}`; $('saved-passkey-items').append(row);
       }
-      $('saved-passkeys').hidden = !saved?.length && !$('passkey-save-status').textContent;
+      $('saved-passkeys').hidden = !$('passkey-save-status').textContent;
     } catch { $('saved-passkeys').hidden = !$('passkey-save-status').textContent; }
   }
-  return { refresh, refreshSaved };
+  async function selectSaved(entry) {
+    await send({ kind: 'passkey.select', tabId: getTab().id, source: getSource(), itemId: entry.itemId, vaultId: entry.vaultId });
+    await refresh(true);
+    if (request?.operation === 'get') {
+      const index = entries.findIndex(row => row.itemId === entry.itemId && row.vaultId === entry.vaultId);
+      if (index >= 0) { $('passkey-choice').value = String(index); $('passkey-approve').focus(); return; }
+    }
+    status(`Passkey selected: ${entry.metadata.displayName || entry.metadata.username || entry.metadata.rpId}.`);
+  }
+  return { refresh, refreshSaved, selectSaved };
 }

@@ -321,6 +321,21 @@ impl Host {
             let status = agent::call(&path, "status", json!({}))?;
             return Ok(json!({"verificationSession":status["passkeyVerificationSession"]}));
         }
+        if request.action == "passkey.targets" {
+            let path = profile(&request.source)?;
+            if let Some(local) = self
+                .local
+                .as_mut()
+                .filter(|local| local.source == request.source)
+            {
+                return local.session.passkey_targets(&request.site_origin);
+            }
+            return agent::call(
+                &path,
+                "passkey.targets",
+                json!({"website":request.site_origin}),
+            );
+        }
         if request.action == "passkey.vaults" {
             let path = profile(&request.source)?;
             if let Some(local) = self
@@ -446,6 +461,7 @@ impl Host {
             return agent::call(path, "passkey.list", json!({"website":site}));
         }
         if !valid_id(&request.vault_id)
+            || !request.item_id.is_empty() && !valid_id(&request.item_id)
             || request.action == "passkey.get" && !valid_id(&request.item_id)
         {
             return Err("invalid passkey identity".to_owned());
@@ -503,8 +519,9 @@ impl Host {
             } else {
                 verified.offline_reason().map(str::to_owned)
             };
-            let mut saved = verified.passkey_save(
+            let mut saved = verified.passkey_save_into(
                 &request.vault_id,
+                (!request.item_id.is_empty()).then_some(request.item_id.as_str()),
                 site,
                 &request.metadata,
                 &request.private_key,

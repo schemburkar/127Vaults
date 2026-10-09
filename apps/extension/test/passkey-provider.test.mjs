@@ -17,6 +17,7 @@ test('approved registration persists before success; assertions never disclose k
   };
   const queue = installPasskeyProvider(async request => {
     if (request.action === 'passkey.list') { if (locked) throw Error('Vault locked.'); return stored ? [{ vaultId, itemId, metadata: stored.metadata, title: 'Alice' }] : []; }
+    if (request.action === 'passkey.targets') return [{ vaultId, itemId: 'existing-login', title: 'Existing login' }];
     if (request.action === 'passkey.vaults') return [{ vaultId, name: 'Private' }];
     if (request.action === 'passkey.session') { if (locked) throw Error('Vault locked.'); return { verificationSession }; }
     if (request.action === 'passkey.get' && request.verificationSession) {
@@ -29,7 +30,7 @@ test('approved registration persists before success; assertions never disclose k
       events.push('save-start');
       if (delaySave) await new Promise(resolve => { allowSave = resolve; });
       stored = { metadata: request.metadata, privateKey: request.privateKey }; events.push('saved');
-      return { itemId, queued: true };
+      return { itemId: request.itemId || itemId, queued: true };
     }
     if (request.action === 'passkey.get') return { ...stored };
     throw Error('Unexpected operation.');
@@ -51,6 +52,13 @@ test('approved registration persists before success; assertions never disclose k
   const made = await registration;
   assert(made.value.response.attestationObject);
   assert.deepEqual(events, ['save-start', 'saved', 'page-success']);
+  const attach = send({ ...request, id: 'attach-create' }, page);
+  await tick();
+  const attachRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
+  assert.equal((await send({ kind: 'passkey.choices', id: attachRow.id, source: 'desktop' })).targets[0].itemId, 'existing-login');
+  delaySave = false;
+  assert.equal((await send({ kind: 'passkey.approve', id: attachRow.id, source: 'desktop', vaultId, itemId: 'existing-login', masterPassword: 'correct-password' })).itemId, 'existing-login');
+  assert((await attach).value.response.attestationObject);
   assert.equal(JSON.stringify(made).includes(stored.privateKey), false);
   const assertion = send({ ...request, id: 'page-get', operation: 'get', options: { challenge: request.options.challenge, rpId: 'example.test', userVerification: 'required' } }, page);
   await tick();

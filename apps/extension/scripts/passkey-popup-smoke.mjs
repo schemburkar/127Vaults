@@ -39,13 +39,52 @@ try {
     const localText = document.getElementById('saved-passkey-items').textContent;
     entry.sync.pending = false;
     await popup.refreshSaved();
-    return { hiddenSetup, savedText, localText, syncedText: document.getElementById('saved-passkey-items').textContent, visible: !document.getElementById('saved-passkeys').hidden, passwordCleared: !document.getElementById('passkey-master').value, submittedPassword: approval.masterPassword };
+    return { submittedVault: approval.vaultId, hiddenSetup, savedText, localText, syncedText: document.getElementById('saved-passkey-items').textContent, visible: !document.getElementById('saved-passkeys').hidden, passwordCleared: !document.getElementById('passkey-master').value, submittedPassword: approval.masterPassword };
   });
   assert(result.hiddenSetup && result.visible && result.passwordCleared);
   assert.equal(result.submittedPassword, 'synthetic-test-password');
-  assert.match(result.savedText, /Private.*on this device/);
-  assert.match(result.savedText, /Desktop and click Sync/);
+  assert.equal(result.submittedVault, 'vault');
+  assert.match(result.savedText, /Private.*Waiting to sync/);
   assert.match(result.localText, /Alice.*Private.*Waiting to sync/);
   assert.match(result.syncedText, /Alice.*Private.*Synced/);
+  // Render the complete popup, not just the ceremony panel. Passkeys must
+  // contribute to the matching list, search and empty-state calculation.
+  const listing = await browser.newPage({ viewport: { width: 440, height: 650 } });
+  await listing.route('https://popup.example.test/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    let body = await readFile(new URL(path === '/' ? '../popup.html' : '..' + path, import.meta.url), 'utf8');
+    if (path === '/') body = body.replace('<script type="module" src="src/popup.mjs"></script>', '');
+    await route.fulfill({ contentType: path.endsWith('.mjs') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html', body });
+  });
+  await listing.goto('https://popup.example.test/');
+  await listing.evaluate(async () => {
+    const entries = ['Alice', 'Bob'].map((name, index) => ({ itemId: 'item-' + index, vaultId: 'vault', vaultName: 'Private', title: name, metadata: { username: name.toLowerCase(), displayName: name, rpId: 'autofill.me' }, sync: { pending: false } }));
+    window.chrome = {
+      storage: { local: { async get() { return { passkeysAllSites: true }; } } },
+      permissions: { async contains() { return true; } },
+      scripting: { async getRegisteredContentScripts() { return [{ id: 'passkey-bridge-all', world: 'ISOLATED', matches: ['https://*/*'] }, { id: 'passkey-page-all', world: 'MAIN', matches: ['https://*/*'] }]; } },
+      tabs: { async query() { return [{ id: 1, url: 'https://autofill.me/login' }]; } },
+      runtime: { async sendMessage(message) {
+        if (message.kind === 'passkey.select') { window.selectedPasskey = message.itemId; return { ok: true }; }
+        if (message.kind === 'passkey.pending') return { requests: [] };
+        if (message.kind === 'connector.request') {
+          if (message.request.action === 'sources') return { ok: true, value: { sources: [{ id: 'desktop', configured: true, active: true, online: true }] } };
+          if (message.request.action === 'list') return { ok: true, value: [] };
+          if (message.request.action === 'passkey.list') return { ok: true, value: entries };
+        }
+        throw Error('Unexpected popup request');
+      } },
+    };
+    await import('/src/popup.mjs');
+  });
+  await listing.waitForFunction(() => document.querySelectorAll('#items .item').length === 2);
+  assert.equal(await listing.locator('#status').textContent(), '');
+  await listing.getByRole('button', { name: 'Select passkey for Bob', exact: true }).click();
+  await listing.waitForFunction(() => window.selectedPasskey === 'item-1');
+  await listing.locator('#search').fill('alice');
+  assert.equal(await listing.locator('#items .item').count(), 1);
+  await listing.locator('#search').fill('');
+  await listing.screenshot({ path: 'C:/Projects/127Vaults/target/passkey-popup-review.png', fullPage: true });
+  console.log('Complete Edge popup: multiple passkeys are selectable, searchable sign-in rows; no false empty-state message.');
   console.log('Edge popup: cached account setup hidden, password verified and cleared, saved credential visible, sync status refreshes.');
 } finally { await browser.close(); }

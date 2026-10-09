@@ -157,6 +157,7 @@ fn dispatch(
                 | "item.list.all"
                 | "item.get"
                 | "passkey.list"
+                | "passkey.targets"
                 | "passkey.get"
                 | "passkey.save"
                 | "native.preview"
@@ -171,7 +172,7 @@ fn dispatch(
     }
     let result = match request.action.as_str() {
         "status" => Ok(
-            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":2,"passkeyVerificationSession":passkey_session()}),
+            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":3,"passkeyVerificationSession":passkey_session()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),
@@ -296,6 +297,9 @@ fn dispatch(
             session.item_list(&vault)
         }
         "item.list.all" => session.item_list_all(),
+        "passkey.targets" => {
+            session.passkey_targets(request.website.as_deref().ok_or("Site required")?)
+        }
         "passkey.list" => session.passkey_list(
             request
                 .website

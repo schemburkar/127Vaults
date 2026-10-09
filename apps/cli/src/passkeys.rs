@@ -51,10 +51,17 @@ fn metadata(summary: &Value, site: &str) -> Result<Value, String> {
     )
     .map_err(|_| "invalid passkey metadata")?;
     validate(&meta, site)?;
-    if summary["itemType"] != "passkey" || summary["website"] != site {
+    if !same_site(&summary["website"], site) {
         return Err("passkey does not match site".to_owned());
     }
     Ok(meta)
+}
+
+fn same_site(website: &Value, site: &str) -> bool {
+    website
+        .as_str()
+        .and_then(|s| url::Url::parse(s).ok())
+        .is_some_and(|url| url.origin().ascii_serialization() == site)
 }
 
 impl Session {
@@ -62,7 +69,7 @@ impl Session {
         let rows = self.item_list_all()?;
         let mut output = Vec::new();
         for row in rows.as_array().ok_or("invalid item list")? {
-            if row["itemType"] != "passkey" || row["website"] != site {
+            if !same_site(&row["website"], site) {
                 continue;
             }
             let vault = row["vaultId"].as_str().ok_or("invalid vault identity")?;
@@ -97,21 +104,99 @@ impl Session {
         meta: &Value,
         key: &str,
     ) -> Result<Value, String> {
+        self.passkey_save_into(vault, None, site, meta, key)
+    }
+
+    pub(crate) fn passkey_targets(&mut self, site: &str) -> Result<Value, String> {
+        let rows = self.item_list_all()?;
+        let mut targets = Vec::new();
+        for row in rows.as_array().ok_or("Invalid items")? {
+            if row["itemType"] != "login" || !same_site(&row["website"], site) {
+                continue;
+            }
+            let vault = row["vaultId"].as_str().ok_or("Invalid vault")?;
+            let item = row["itemId"].as_str().ok_or("Invalid item")?;
+            let summary = self.item_get(vault, item, None)?;
+            if summary["customFields"]
+                .as_array()
+                .is_some_and(|fields| fields.iter().any(|f| f["id"] == META))
+            {
+                continue;
+            }
+            targets.push(json!({"vaultId":vault,"itemId":item,"title":summary["title"],"username":summary["username"]}));
+        }
+        Ok(json!(targets))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn passkey_save_into(
+        &mut self,
+        vault: &str,
+        target: Option<&str>,
+        site: &str,
+        meta: &Value,
+        key: &str,
+    ) -> Result<Value, String> {
         validate(meta, site)?;
         bytes(&json!(key), 64, 512)?;
-        // Save only a new dedicated credential. No caller-provided item identity,
-        // arbitrary fields or password-manager edit operation is accepted.
+        // Attachment is limited to a matching login without an existing key.
         if self.passkey_list(site)?.as_array().is_some_and(|rows| {
             rows.iter()
                 .any(|r| r["metadata"]["credentialId"] == meta["credentialId"])
         }) {
             return Err("passkey already exists".to_owned());
         }
-        let saved = self.item_upsert(vault, None, &format!("{} · {}", meta["rpId"].as_str().unwrap_or("Passkey"), meta["username"].as_str().unwrap_or("")), site, meta["username"].as_str().unwrap_or(""), "", &[
+        let mut fields = vec![
             json!({"id":"__127vaults_item_type","label":"Item type","type":"metadata","value":"passkey"}),
             json!({"id":META,"label":"Passkey","type":"metadata","value":meta.to_string()}),
             json!({"id":KEY,"label":"Passkey private key","type":"password","value":key}),
-        ]);
+        ];
+        let mut title = meta["rpId"].as_str().unwrap_or("Passkey").to_owned();
+        let account = meta["username"].as_str().unwrap_or("");
+        if !account.is_empty() {
+            title.push_str(" · ");
+            title.push_str(account);
+        }
+        let mut website = site.to_owned();
+        let mut username = account.to_owned();
+        let mut password = zeroize::Zeroizing::new(String::new());
+        if let Some(item) = target {
+            let original = self.item_get(vault, item, None)?;
+            if original["itemType"] != "login" || !same_site(&original["website"], site) {
+                return Err("Choose a login for this website".to_owned());
+            }
+            let old = original["customFields"].as_array().ok_or("Invalid login")?;
+            if old.iter().any(|f| f["id"] == META || f["id"] == KEY) {
+                return Err("This login already has a passkey; choose another item".to_owned());
+            }
+            fields.remove(0);
+            let mut preserved = old.clone();
+            for field in &mut preserved {
+                if field["type"] == "password" {
+                    field["value"] = self.item_get(vault, item, field["id"].as_str())?;
+                }
+            }
+            fields.extend(preserved);
+            original["title"]
+                .as_str()
+                .unwrap_or("")
+                .clone_into(&mut title);
+            original["website"]
+                .as_str()
+                .unwrap_or(site)
+                .clone_into(&mut website);
+            original["username"]
+                .as_str()
+                .unwrap_or("")
+                .clone_into(&mut username);
+            self.item_get(vault, item, Some("password"))?
+                .as_str()
+                .unwrap_or("")
+                .clone_into(&mut password);
+        }
+        let saved = self.item_upsert(
+            vault, target, &title, &website, &username, &password, &fields,
+        );
         match saved {
             Ok(mut saved) => {
                 let item = saved["itemId"]
@@ -158,5 +243,12 @@ mod tests {
         let mut wrong = meta;
         wrong["credentialId"] = json!("AB");
         assert!(validate(&wrong, "https://login.example.test").is_err());
+    }
+    #[test]
+    fn a_login_can_hold_a_passkey_without_changing_its_type_or_url_path() {
+        let meta = json!({"version":1,"algorithm":-7,"signCount":0,"origin":"https://example.test","rpId":"example.test","credentialId":URL_SAFE_NO_PAD.encode([1;32]),"userHandle":"AQ","username":"alice","displayName":"Alice"});
+        let summary = json!({"itemType":"login","website":"https://example.test/account","customFields":[{"id":META,"type":"metadata","value":meta.to_string()}]});
+        assert_eq!(metadata(&summary, "https://example.test").unwrap(), meta);
+        assert!(metadata(&summary, "https://evil.test").is_err());
     }
 }

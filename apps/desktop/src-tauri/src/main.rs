@@ -575,15 +575,26 @@ fn item_save(
     with_session(&state, |session| {
         if let Some(item) = item_id.as_deref() {
             let original = session.item_get(&vault_id, item, None)?;
-            if original["itemType"] == "passkey" {
+            let remove_passkey = custom_fields
+                .iter()
+                .any(|f| f["id"] == "__127vaults_remove_passkey" && f["value"] == "true");
+            custom_fields.retain(|f| f["id"] != "__127vaults_remove_passkey");
+            if remove_passkey {
+                custom_fields.retain(|f| {
+                    f["id"] != "__127vaults_passkey" && f["id"] != "__127vaults_passkey_key"
+                });
+            }
+            if !remove_passkey
+                && original["customFields"]
+                    .as_array()
+                    .is_some_and(|fields| fields.iter().any(|f| f["id"] == "__127vaults_passkey"))
+            {
                 if website != original["website"].as_str().unwrap_or("") {
                     return Err("A passkey's website cannot be changed".to_owned());
                 }
                 let key = session.item_get(&vault_id, item, Some("__127vaults_passkey_key"))?;
                 custom_fields.retain(|field| {
-                    field["id"] != "__127vaults_passkey_key"
-                        && field["id"] != "__127vaults_passkey"
-                        && field["id"] != "__127vaults_item_type"
+                    field["id"] != "__127vaults_passkey_key" && field["id"] != "__127vaults_passkey"
                 });
                 for field in original["customFields"]
                     .as_array()
@@ -593,9 +604,7 @@ fn item_save(
                         let mut restored = field.clone();
                         restored["value"] = key.clone();
                         custom_fields.push(restored);
-                    } else if field["id"] == "__127vaults_passkey"
-                        || field["id"] == "__127vaults_item_type"
-                    {
+                    } else if field["id"] == "__127vaults_passkey" {
                         custom_fields.push(field.clone());
                     }
                 }

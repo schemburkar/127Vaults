@@ -5,6 +5,7 @@ import { originOf, permissionPattern } from './match.mjs';
 
 export function installPasskeyProvider(nativeRequest) {
   const queue = createPasskeyQueue();
+  const selectedPasskeys = new Map();
   async function current(row) {
     if (await windowsNativeOnly(chrome)) throw Error('Use the Windows passkey picker with 127Vaults Desktop.');
     if (queue.get(row.id) !== row) throw Error('Passkey request expired or cancelled.');
@@ -47,8 +48,12 @@ export function installPasskeyProvider(nativeRequest) {
         if (existing.some(entry => row.options.excludeCredentials?.some(c => c.id === entry.metadata.credentialId))) throw Error('A passkey excluded by this website already exists. Use the browser or the existing credential.');
         await current(row);
         secret = await createPasskey(row.options, row.origin, true);
-        if (selectedSource === 'web') saved = await web(row, 'passkeySave', [secret.metadata, secret.privateKey, row.origin, credentials.masterPassword, message.vaultId]);
-        else saved = await nativeRequest({ ...credentials, action: 'passkey.save', vaultId: message.vaultId, metadata: secret.metadata, privateKey: secret.privateKey });
+        if (message.itemId) {
+          const targets = selectedSource === 'web' ? await web(row, 'passkeyTargets', [row.origin]) : await nativeRequest({ action: 'passkey.targets', source: selectedSource, siteOrigin: row.origin });
+          if (!targets.some(item => item.itemId === message.itemId && item.vaultId === message.vaultId)) throw Error('Choose a matching login without a passkey.');
+        }
+        if (selectedSource === 'web') saved = await web(row, 'passkeySave', [secret.metadata, secret.privateKey, row.origin, credentials.masterPassword, message.vaultId, message.itemId]);
+        else saved = await nativeRequest({ ...credentials, action: 'passkey.save', vaultId: message.vaultId, itemId: message.itemId || '', metadata: secret.metadata, privateKey: secret.privateKey });
         if (!saved?.itemId) throw Error('Passkey persistence could not be confirmed.');
         response = secret.response;
       } else {
@@ -99,6 +104,11 @@ export function installPasskeyProvider(nativeRequest) {
         return undefined; // The pending ceremony holds the response channel.
       }
       if (message.kind === 'passkey.pending') return { requests: queue.list(message.tabId) };
+      if (message.kind === 'passkey.select') {
+        const tab = await chrome.tabs.get(message.tabId);
+        selectedPasskeys.set(message.tabId, { source: source(message.source), origin: originOf(tab.url), itemId: message.itemId, vaultId: message.vaultId });
+        return { ok: true };
+      }
       const row = queue.get(message.id);
       if (!row) throw Error('Passkey request expired. Start again on the website.');
       if (message.kind === 'passkey.cancel') {
@@ -111,7 +121,9 @@ export function installPasskeyProvider(nativeRequest) {
         const selectedSource = source(message.source), entries = await rows(row, selectedSource);
         const vaults = row.operation === 'create' ? selectedSource === 'web' ? await web(row, 'passkeyVaults') : await nativeRequest({ action: 'passkey.vaults', source: selectedSource }) : [];
         row.desktopVerificationSession = selectedSource === 'desktop' && row.operation === 'get' ? (await nativeRequest({ action: 'passkey.session', source: 'desktop' }).catch(() => null))?.verificationSession || '' : '';
-        return { reuseDesktopUnlock: !!row.desktopVerificationSession, entries: entries.filter(entry => row.operation === 'create' || matches(entry.metadata, row.options, row.origin)), vaults: vaults.filter(vault => !vault.retired) };
+        const targets = row.operation === 'create' ? selectedSource === 'web' ? await web(row, 'passkeyTargets', [row.origin]) : await nativeRequest({ action: 'passkey.targets', source: selectedSource, siteOrigin: row.origin }) : [];
+        const preferred = selectedPasskeys.get(row.tabId);
+        return { preferred: preferred?.source === selectedSource && preferred?.origin === row.origin ? preferred : null, targets, reuseDesktopUnlock: !!row.desktopVerificationSession, entries: entries.filter(entry => row.operation === 'create' || matches(entry.metadata, row.options, row.origin)), vaults: vaults.filter(vault => !vault.retired) };
       }
       if (message.kind === 'passkey.approve') {
         const result = await approve(row, message);
@@ -123,10 +135,10 @@ export function installPasskeyProvider(nativeRequest) {
     work().then(value => { if (value !== undefined) respond(value); }, error => respond({ error: String(error?.message || error) }));
     return true;
   });
-  chrome.tabs.onRemoved?.addListener(tabId => queue.cancelTab(tabId));
+  chrome.tabs.onRemoved?.addListener(tabId => { selectedPasskeys.delete(tabId); queue.cancelTab(tabId); });
   chrome.storage.onChanged?.addListener((changes, area) => {
-    if (area === 'local' && changes.passkeysAllSites?.newValue === false) queue.cancelAll();
+    if (area === 'local' && changes.passkeysAllSites?.newValue === false) { selectedPasskeys.clear(); queue.cancelAll(); }
   });
-  chrome.tabs.onUpdated?.addListener((tabId, change) => { if (change.url || change.status === 'loading') queue.cancelTab(tabId); });
+  chrome.tabs.onUpdated?.addListener((tabId, change) => { if (change.url || change.status === 'loading') { selectedPasskeys.delete(tabId); queue.cancelTab(tabId); } });
   return queue;
 }

@@ -8,14 +8,14 @@ let vaultOrigin = null;
 let targetTab = null;
 let vaultTab = null;
 let vaultId = null;
-let items = [];
+let items = [], savedPasskeyEntries = [];
 let pending = false;
 let selectedSource = null;
 let localSources = [];
 let sourceSignature = '';
 let refreshInProgress = false;
 let userSelectedSource = false;
-const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, getSources: () => localSources, status, listSavedPasskeys: async origin => {
+const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, getSources: () => localSources, status, onSavedPasskeys: entries => { savedPasskeyEntries = entries; renderItems(); }, listSavedPasskeys: async origin => {
   if (selectedSource !== 'web') return native({ action: 'passkey.list', source: selectedSource, siteOrigin: origin });
   if (!vaultTab?.id) return [];
   return (await script(vaultTab.id, site => window.__vaultsExtensionActions?.passkeyList(site), [origin], {}, 'MAIN'))[0]?.result || [];
@@ -65,7 +65,17 @@ function renderItems() {
     button.onclick = () => choose(item);
     $('items').append(button);
   }
-  status(matching.length ? '' : 'No login matches this site in the selected source.');
+  const matchingPasskeys = savedPasskeyEntries.filter(entry => `${entry.title} ${entry.metadata.username} ${entry.metadata.displayName} ${entry.metadata.rpId}`.toLowerCase().includes(query));
+  for (const entry of matchingPasskeys) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'item';
+    button.setAttribute('aria-label', `Select passkey for ${entry.metadata.displayName || entry.metadata.username || entry.metadata.rpId}`);
+    const heading = document.createElement('span'); heading.className = 'item-heading';
+    const title = document.createElement('span'); title.textContent = entry.metadata.displayName || entry.metadata.username || entry.metadata.rpId;
+    const action = document.createElement('span'); action.className = 'item-action'; action.textContent = 'Passkey'; heading.append(title, action);
+    const detail = document.createElement('small'); detail.textContent = [entry.metadata.rpId, entry.vaultName, entry.sync?.pending ? 'Waiting to sync' : entry.sync?.pending === false ? 'Synced' : ''].filter(Boolean).join(' · ');
+    button.append(heading, detail); button.onclick = () => passkeys.selectSaved(entry).catch(error => status(errorMessage(error), true)); $('items').append(button);
+  }
+  status(matching.length || matchingPasskeys.length ? '' : query ? 'No matching sign-ins.' : 'No sign-ins saved for this site.');
 }
 async function findVaultTab() {
   const tabs = await chrome.tabs.query({});
@@ -88,7 +98,7 @@ async function loadSelectedSource() {
   $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.'
     : `${sourceStatus(source)}${licenseNotice(license)}${source?.online === false && selectedSource !== 'desktop' ? ' Offline license status may be stale.' : ''}`;
   $('open-vault').hidden = selectedSource !== 'web' || !vaultOrigin;
-  items = [];
+  items = []; savedPasskeyEntries = [];
   if (selectedSource !== 'web') {
     try {
       const listed = await native({ action: 'list', source: selectedSource, siteOrigin: originOf(targetTab.url) });
@@ -272,7 +282,7 @@ $('lock-vault').onclick = async () => {
       if (!vaultTab?.id) return;
       await script(vaultTab.id, () => window.__vaultsExtensionActions?.lock(), [], {}, 'MAIN');
     } else await native({ action: 'lock', source: selectedSource });
-    items = [];
+    items = []; savedPasskeyEntries = [];
     $('results').hidden = true;
     $('lock-vault').hidden = true;
     status('Connector locked. Unlock the source before filling again.');

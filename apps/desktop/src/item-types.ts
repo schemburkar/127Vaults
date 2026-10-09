@@ -8,7 +8,7 @@ export const SECTION_PREFIX = "__127vaults_section:";
 export const SECTION_FIELD_PREFIX = "__127vaults_field:";
 export const ITEM_TYPES: Record<ItemType, { label: string; fields: Omit<ItemField, "value">[]; username?: boolean; password?: boolean; website?: boolean }> = {
   login: { label: "Login", username: true, password: true, website: true, fields: [] },
-  passkey: { label: "Passkey", username: true, website: true, fields: [] },
+  passkey: { label: "Passkey", website: true, fields: [] },
   bank: { label: "Bank account", username: true, password: true, website: true, fields: [
     { id: "bank_name", label: "Bank name", type: "text" },
     { id: "account_number", label: "Account number", type: "password" },
@@ -156,7 +156,7 @@ export function primaryFields(fields: ItemField[]): ItemField[] {
 
 export function ordinaryFields(fields: ItemField[]): ItemField[] {
   const primary = new Set(primaryFields(fields).map((field) => field.id));
-  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith("__127vaults_passkey") && !field.id.startsWith(SECTION_PREFIX) &&
+  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_remove_passkey" && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith("__127vaults_passkey") && !field.id.startsWith(SECTION_PREFIX) &&
     !field.id.startsWith(SECTION_FIELD_PREFIX) && !primary.has(field.id));
 }
 
@@ -166,7 +166,7 @@ export function itemType(fields: ItemField[]): ItemType {
 }
 
 export function visibleFields(fields: ItemField[]): ItemField[] {
-  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith("__127vaults_passkey") && !field.id.startsWith(SECTION_PREFIX));
+  return fields.filter((field) => field.id !== TYPE_FIELD_ID && field.id !== "__127vaults_remove_passkey" && field.id !== "__127vaults_favorite" && field.id !== "__127vaults_totp" && !field.id.startsWith("__127vaults_passkey") && !field.id.startsWith(SECTION_PREFIX));
 }
 
 export function setItemType(fields: ItemField[], type: ItemType): ItemField[] {

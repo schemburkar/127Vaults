@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
-import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
+import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
 
 import * as productFeatures from "../../../packages/ui/src/product-features.mjs";
@@ -95,20 +95,23 @@ type CustomField = {
 type ToastNotice = { id: string; title: string; detail: string; kind: "info" | "success" | "error" };
 
 const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound, passkey: KeyRound };
-const TYPE_DESCRIPTIONS: Record<ItemType, string> = { login: "Website or app sign-in", passkey: "Website passkey saved by the extension", bank: "Account and online banking", card: "Debit or credit card", wifi: "Wireless network access", router: "Network device and admin access", ssh: "Server or device access", password: "A standalone secret or code" };
+const TYPE_DESCRIPTIONS: Record<ItemType, string> = { login: "Website or app sign-in", passkey: "Passwordless website sign-in", bank: "Account and online banking", card: "Debit or credit card", wifi: "Wireless network access", router: "Network device and admin access", ssh: "Server or device access", password: "A standalone secret or code" };
 
 function ItemTypePicker() {
   const [type, setType] = useState<ItemType>("login");
+  const [hasPasskey, setHasPasskey] = useState(false);
   useEffect(() => {
-    const load = (event: Event) => setType(itemType((event as CustomEvent<ItemField[]>).detail));
+    const load = (event: Event) => { const fields = (event as CustomEvent<ItemField[]>).detail; setType(itemType(fields)); setHasPasskey(fields.some(field => field.id === "__127vaults_passkey")); };
+    const removed = () => setHasPasskey(false);
     const changed = (event: Event) => setType((event as CustomEvent<ItemType>).detail);
     window.addEventListener("vaults:set-editor-fields", load);
     window.addEventListener("vaults:item-type", changed);
-    return () => { window.removeEventListener("vaults:set-editor-fields", load); window.removeEventListener("vaults:item-type", changed); };
+    window.addEventListener("vaults:remove-editor-passkey", removed);
+    return () => { window.removeEventListener("vaults:set-editor-fields", load); window.removeEventListener("vaults:item-type", changed); window.removeEventListener("vaults:remove-editor-passkey", removed); };
   }, []);
   const select = (next: ItemType, target: HTMLButtonElement) => {
     target.closest("details")?.removeAttribute("open");
-    if (next === type || type === "passkey") return;
+    if (next === type || type === "passkey" || hasPasskey) return;
     const populated = ["url", "item-username", "item-password"].some((id) => (document.getElementById(id) as HTMLInputElement | null)?.value) || [...document.querySelectorAll<HTMLInputElement>("#custom-fields .typed-value")].some((input) => input.value) || !!document.querySelector("#custom-fields input[data-field-id^='__127vaults_section:']");
     if (populated && !window.confirm("Change the main type? Its current type fields and related details will be removed. Save a copy first if you need them.")) return;
     for (const id of ["url", "item-username", "item-password"]) { const input = document.getElementById(id) as HTMLInputElement | null; if (input) input.value = ""; }
@@ -202,8 +205,8 @@ function CustomFieldsEditor() {
   return (
     <div id="custom-fields" className="mt-3 grid gap-2">
       <label className="flex items-center gap-2 text-sm text-slate-400"><input type="checkbox" checked={isFavorite(fields)} onChange={e => setFields(current => setFavorite(current, e.target.checked))} />Favorite</label>
-      <PasskeyDetails fields={fields} />
-      <AuthenticatorEditor value={fields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setFields(current => setAuthenticator(current, value))} />
+      <PasskeyDetails fields={fields} onRemove={() => { const next = setItemType(fields.filter(f => f.id !== "__127vaults_passkey" && f.id !== "__127vaults_passkey_key"), itemType(fields) === "passkey" ? "login" : itemType(fields)); setFields(next); window.dispatchEvent(new Event("vaults:remove-editor-passkey")); window.dispatchEvent(new CustomEvent("vaults:item-type", { detail: itemType(next) })); }} />
+      {(itemType(fields) !== "passkey" || fields.some(f => f.id === TOTP_ID && f.value)) && <AuthenticatorEditor value={fields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setFields(current => setAuthenticator(current, value))} />}
       {fields.filter(f => f.id === TOTP_ID).map(f => <input key={f.id} type="hidden" className="item-metadata" data-field-id={f.id} data-field-label={f.label} data-field-type={f.type} value={f.value} />)}
       {fields.filter((field) => field.id === TYPE_FIELD_ID || field.id === FAVORITE_ID || field.id.startsWith(SECTION_PREFIX)).map((field) => <input key={field.id} type="hidden" className="item-metadata" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
       {primaryFields(fields).length > 0 && <h4 className="mt-4 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label} fields</h4>}
