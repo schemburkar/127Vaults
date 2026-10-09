@@ -43,7 +43,7 @@ pub fn connector_agent_active(config_dir: &std::path::Path) -> bool {
 #[must_use]
 pub fn connector_agent_native_capable(config_dir: &std::path::Path) -> bool {
     agent::call(config_dir, "status", serde_json::json!({}))
-        .is_ok_and(|status| status["nativePasskeyProtocol"] == 3)
+        .is_ok_and(|status| status["nativePasskeyProtocol"] == 4)
 }
 
 /// Locks a local agent started by this application.

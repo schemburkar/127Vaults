@@ -15,7 +15,7 @@ let localSources = [];
 let sourceSignature = '';
 let refreshInProgress = false;
 let userSelectedSource = false;
-const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, getSources: () => localSources, status, onSavedPasskeys: entries => { savedPasskeyEntries = entries; renderItems(); }, listSavedPasskeys: async origin => {
+const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, status, onSavedPasskeys: entries => { savedPasskeyEntries = entries; renderItems(); }, listSavedPasskeys: async origin => {
   if (selectedSource !== 'web') return native({ action: 'passkey.list', source: selectedSource, siteOrigin: origin });
   if (!vaultTab?.id) return [];
   return (await script(vaultTab.id, site => window.__vaultsExtensionActions?.passkeyList(site), [origin], {}, 'MAIN'))[0]?.result || [];
@@ -112,8 +112,7 @@ async function loadSelectedSource() {
         status(`Could not read ${selectedSource} logins: ${errorMessage(error)} Refresh or lock and unlock the client.`, true);
       } else {
         $('native-unlock').hidden = false;
-        $('native-username').value = source?.usernameHint || '';
-        status(`Unlock the ${selectedSource} encrypted replica to fill offline.`);
+        status(`Open and unlock the ${selectedSource} client to connect.`);
       }
     }
     return;
@@ -256,16 +255,6 @@ $('connect').onclick = async () => {
 $('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => passkeys.refresh(true)).catch(error => status(errorMessage(error), true)); };
 $('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
-$('unlock-native').onclick = async () => {
-  try {
-    await native({ action: 'unlock', source: selectedSource, username: $('native-username').value.trim(), accountSecret: $('native-secret').value, masterPassword: $('native-master').value });
-    localSources = (await native({ action: 'sources' })).sources || [];
-    $('native-secret').value = '';
-    $('native-master').value = '';
-    await loadSelectedSource();
-    await passkeys.refresh(true);
-  } catch (error) { $('native-secret').value = ''; $('native-master').value = ''; status(errorMessage(error), true); }
-};
 $('settings').onclick = () => {
   $('setup').hidden = false;
   $('vault-url').value = vaultOrigin || '';

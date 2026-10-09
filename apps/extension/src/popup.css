@@ -18,10 +18,10 @@ h2{font-size:15px;margin:18px 0 6px}
 #status.error{color:#ffb8b8}
 input,select{width:100%;border:1px solid #414b63;border-radius:8px;padding:10px;background:#1c253b;color:inherit}
 label{display:block;margin:8px 0 7px}
-button{border:1px solid #72634e;background:#e0bb95;color:#1b1b24;border-radius:8px;padding:9px 11px;font-weight:650;cursor:pointer}
-button:hover{background:#f2d3b2}
+button{border:1px solid #9f1b36;background:#9f1b36;color:#fff;border-radius:8px;padding:9px 11px;font-weight:650;cursor:pointer}
+button:hover{background:#bd2545}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #f2d3b2;outline-offset:2px}
-#connect,#unlock-native{margin-top:10px;width:100%}
+#connect{margin-top:10px;width:100%}
 .section-heading label{margin:8px 0}
 .text-button{border:0;background:transparent;color:#e0bb95;padding:6px;font-size:12px}
 .text-button:hover{background:#29334a}
@@ -47,3 +47,7 @@ footer button{background:transparent;color:#e0bb95;border-color:#414b63;font-siz
 footer button:hover{background:#29334a}
 #frames{margin-top:10px}
 #frames button{display:block;width:100%;margin:5px 0;text-align:left}
+
+button:disabled{opacity:.5;cursor:default}
+#disable-passkeys,#passkey-browser,#passkey-cancel{background:transparent;color:#b8c2d7;border-color:#414b63}
+#disable-passkeys:hover,#passkey-browser:hover,#passkey-cancel:hover{background:#29334a;border-color:#e0bb95}

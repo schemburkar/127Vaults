@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { once } from 'node:events';
 
-const executable = join(import.meta.dirname, '..', '..', '..', 'target', 'debug', process.platform === 'win32' ? '127vaults-extension-host.exe' : '127vaults-extension-host');
+const executable = process.env.VAULTS_NATIVE_HOST || join(import.meta.dirname, '..', '..', '..', 'target', 'debug', process.platform === 'win32' ? '127vaults-extension-host.exe' : '127vaults-extension-host');
 const child = spawn(executable, [], { stdio: ['pipe', 'pipe', 'pipe'] });
 const payload = Buffer.from(JSON.stringify({ id: 1, action: 'sources' }));
 const frame = Buffer.alloc(4 + payload.length);

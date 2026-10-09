@@ -172,7 +172,7 @@ fn dispatch(
     }
     let result = match request.action.as_str() {
         "status" => Ok(
-            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":3,"passkeyVerificationSession":passkey_session()}),
+            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":4,"passkeyVerificationSession":passkey_session()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),
@@ -341,8 +341,9 @@ fn dispatch(
         "native.perform" => {
             crate::native_passkeys::dispatch(session, &request.passkey_metadata, false)
         }
-        "passkey.save" => session.passkey_save(
+        "passkey.save" => session.passkey_save_into(
             request.vault.as_deref().ok_or("vault is required")?,
+            request.item.as_deref().filter(|item| !item.is_empty()),
             request
                 .website
                 .as_deref()

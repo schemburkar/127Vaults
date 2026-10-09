@@ -14,26 +14,16 @@ export function installPasskeyProvider(nativeRequest) {
     const settings = await chrome.storage.local.get(['passkeysAllSites', 'passkeyOrigins']);
     if (!passkeysEnabled(settings, row.origin) || !(await chrome.permissions.contains({ origins: [permissionPattern(row.origin)] }))) throw Error('The passkey provider is disabled or site access was revoked.');
   }
-  async function web(row, method, args = []) {
-    const { vaultOrigin } = await chrome.storage.local.get('vaultOrigin');
-    const origin = originOf(vaultOrigin);
-    if (!origin || !(await chrome.permissions.contains({ origins: [permissionPattern(origin)] }))) throw Error('Connect an unlocked web vault tab first.');
-    const tab = (await chrome.tabs.query({})).find(tab => tab.id !== row.tabId && originOf(tab.url) === origin);
-    if (!tab) throw Error('Open and unlock the web vault tab first.');
-    const result = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: async (method, args) => {
-      try {
-        const actions = window.__vaultsExtensionActions;
-        if (!actions || typeof actions[method] !== 'function') return { error: 'This web client does not support passkeys. Update it first.' };
-        return { value: await actions[method](...args) };
-      } catch (error) { return { error: String(error?.message || error) }; }
-    }, args: [method, args] });
-    if (!result[0]?.result || result[0].result.error) throw Error(result[0]?.result?.error || 'Web vault is unavailable.');
-    return result[0].result.value;
+  const unlockMessage = 'Unlock 127Vaults Desktop to continue. If it is already unlocked, restart the updated Desktop app.';
+  function source(value) { if (value !== 'desktop') throw Error('Select Desktop and unlock it to use passkeys.'); return value; }
+  async function desktopSession() {
+    const result = await nativeRequest({ action: 'passkey.session', source: 'desktop' }).catch(() => null);
+    if (!result?.verificationSession) throw Error(unlockMessage);
+    return result.verificationSession;
   }
-  function source(value) { if (!['desktop', 'cli', 'web'].includes(value)) throw Error('Choose a vault source.'); return value; }
   async function rows(row, selectedSource) {
     source(selectedSource); await current(row);
-    return selectedSource === 'web' ? web(row, 'passkeyList', [row.origin]) : nativeRequest({ action: 'passkey.list', source: selectedSource, siteOrigin: row.origin });
+    return nativeRequest({ action: 'passkey.list', source: selectedSource, siteOrigin: row.origin });
   }
   async function approve(row, message) {
     if (row.processing) throw Error('This passkey request is already being processed.');
@@ -41,27 +31,25 @@ export function installPasskeyProvider(nativeRequest) {
     let secret = null;
     try {
       const selectedSource = source(message.source), existing = await rows(row, selectedSource);
-      const credentials = { source: selectedSource, siteOrigin: row.origin, username: message.username || '', accountSecret: message.accountSecret || '', masterPassword: message.masterPassword || '', verificationSession: selectedSource === 'desktop' && row.operation === 'get' ? row.desktopVerificationSession || '' : '' };
-      if ((!credentials.masterPassword && !credentials.verificationSession) || credentials.masterPassword.length > 16384 || credentials.accountSecret.length > 256 || credentials.username.length > 256) throw Error('Verify your master password.');
+      if (message.masterPassword || message.accountSecret || !row.desktopVerificationSession) throw Error(unlockMessage);
+      const credentials = { source: selectedSource, siteOrigin: row.origin, verificationSession: row.desktopVerificationSession };
+      if (await desktopSession() !== credentials.verificationSession) throw Error('Desktop unlock session changed. Start again on the website.');
       let response, saved;
       if (row.operation === 'create') {
         if (existing.some(entry => row.options.excludeCredentials?.some(c => c.id === entry.metadata.credentialId))) throw Error('A passkey excluded by this website already exists. Use the browser or the existing credential.');
         await current(row);
         secret = await createPasskey(row.options, row.origin, true);
         if (message.itemId) {
-          const targets = selectedSource === 'web' ? await web(row, 'passkeyTargets', [row.origin]) : await nativeRequest({ action: 'passkey.targets', source: selectedSource, siteOrigin: row.origin });
+          const targets = await nativeRequest({ action: 'passkey.targets', source: selectedSource, siteOrigin: row.origin });
           if (!targets.some(item => item.itemId === message.itemId && item.vaultId === message.vaultId)) throw Error('Choose a matching login without a passkey.');
         }
-        if (selectedSource === 'web') saved = await web(row, 'passkeySave', [secret.metadata, secret.privateKey, row.origin, credentials.masterPassword, message.vaultId, message.itemId]);
-        else saved = await nativeRequest({ ...credentials, action: 'passkey.save', vaultId: message.vaultId, itemId: message.itemId || '', metadata: secret.metadata, privateKey: secret.privateKey });
+        saved = await nativeRequest({ ...credentials, action: 'passkey.save', vaultId: message.vaultId, itemId: message.itemId || '', metadata: secret.metadata, privateKey: secret.privateKey });
         if (!saved?.itemId) throw Error('Passkey persistence could not be confirmed.');
         response = secret.response;
       } else {
         const entry = existing.find(entry => entry.itemId === message.itemId && entry.vaultId === message.vaultId && matches(entry.metadata, row.options, row.origin));
         if (!entry) throw Error('Choose a matching passkey.');
-        secret = selectedSource === 'web'
-          ? await web(row, 'passkeyGet', [entry.itemId, entry.vaultId, row.origin, credentials.masterPassword])
-          : await nativeRequest({ ...credentials, action: 'passkey.get', itemId: entry.itemId, vaultId: entry.vaultId });
+        secret = await nativeRequest({ ...credentials, action: 'passkey.get', itemId: entry.itemId, vaultId: entry.vaultId });
         await current(row);
         response = await assertPasskey(secret.metadata, secret.privateKey, row.options, row.origin, true);
       }
@@ -83,7 +71,6 @@ export function installPasskeyProvider(nativeRequest) {
     } finally {
       if (secret) { secret.privateKey = ''; secret = null; }
       row.processing = false;
-      message.masterPassword = ''; message.accountSecret = '';
     }
   }
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -118,10 +105,14 @@ export function installPasskeyProvider(nativeRequest) {
         return { ok: true };
       }
       if (message.kind === 'passkey.choices') {
-        const selectedSource = source(message.source), entries = await rows(row, selectedSource);
-        const vaults = row.operation === 'create' ? selectedSource === 'web' ? await web(row, 'passkeyVaults') : await nativeRequest({ action: 'passkey.vaults', source: selectedSource }) : [];
-        row.desktopVerificationSession = selectedSource === 'desktop' && row.operation === 'get' ? (await nativeRequest({ action: 'passkey.session', source: 'desktop' }).catch(() => null))?.verificationSession || '' : '';
-        const targets = row.operation === 'create' ? selectedSource === 'web' ? await web(row, 'passkeyTargets', [row.origin]) : await nativeRequest({ action: 'passkey.targets', source: selectedSource, siteOrigin: row.origin }) : [];
+        const selectedSource = source(message.source);
+        row.desktopVerificationSession = '';
+        const session = await desktopSession();
+        const entries = await rows(row, selectedSource);
+        const vaults = row.operation === 'create' ? await nativeRequest({ action: 'passkey.vaults', source: selectedSource }) : [];
+        const targets = row.operation === 'create' ? await nativeRequest({ action: 'passkey.targets', source: selectedSource, siteOrigin: row.origin }) : [];
+        if (await desktopSession() !== session) throw Error(unlockMessage);
+        row.desktopVerificationSession = session;
         const preferred = selectedPasskeys.get(row.tabId);
         return { preferred: preferred?.source === selectedSource && preferred?.origin === row.origin ? preferred : null, targets, reuseDesktopUnlock: !!row.desktopVerificationSession, entries: entries.filter(entry => row.operation === 'create' || matches(entry.metadata, row.options, row.origin)), vaults: vaults.filter(vault => !vault.retired) };
       }

@@ -3,14 +3,13 @@ use std::{
     fs,
     io::{self, Read, Write},
     path::{Path, PathBuf},
-    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
-use crate::{agent, client};
+use crate::agent;
 
 const MAX_MESSAGE: usize = 1024 * 1024;
 
@@ -21,12 +20,6 @@ struct Request {
     action: String,
     #[serde(default)]
     source: String,
-    #[serde(default)]
-    username: String,
-    #[serde(default)]
-    account_secret: String,
-    #[serde(default)]
-    master_password: String,
     #[serde(default)]
     vault_id: String,
     #[serde(default)]
@@ -50,24 +43,7 @@ struct Response {
     value: Value,
 }
 
-struct LocalSession {
-    source: String,
-    session: client::Session,
-}
-
-struct Host {
-    local: Option<LocalSession>,
-    last_activity: Instant,
-}
-
-impl Default for Host {
-    fn default() -> Self {
-        Self {
-            local: None,
-            last_activity: Instant::now(),
-        }
-    }
-}
+struct Host;
 
 fn profile(source: &str) -> Result<PathBuf, String> {
     match source {
@@ -91,42 +67,6 @@ fn profile(source: &str) -> Result<PathBuf, String> {
 
 fn configured(path: &Path) -> bool {
     path.join("trust.conf").is_file() && path.join("device.conf").is_file()
-}
-
-fn cached_username(path: &Path) -> Option<String> {
-    let record: Value =
-        serde_json::from_slice(&fs::read(path.join("account-secret-cache.json")).ok()?).ok()?;
-    let username = record["username"].as_str()?;
-    let expiry = record["expiresAt"].as_u64()?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs();
-    (expiry > now).then(|| username.to_owned())
-}
-
-#[cfg(any(target_os = "windows", target_os = "linux"))]
-fn cached_secret(path: &Path, username: &str) -> Option<String> {
-    if cached_username(path)?.as_str() != username {
-        return None;
-    }
-    let read_field = |file: &str, field: &str| {
-        fs::read_to_string(path.join(file))
-            .ok()?
-            .lines()
-            .find_map(|line| line.strip_prefix(&format!("{field}=")).map(str::to_owned))
-    };
-    let server = read_field("trust.conf", "server_id")?;
-    let device = read_field("device.conf", "device_id")?;
-    let key = format!("{server}:{device}:{username}");
-    let entry = keyring::Entry::new("127Vaults account secret", &key).ok()?;
-    let secret = String::from_utf8(entry.get_secret().ok()?).ok()?;
-    (secret.len() == 64 && secret.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(secret)
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn cached_secret(_path: &Path, _username: &str) -> Option<String> {
-    None
 }
 
 fn valid_id(value: &str) -> bool {
@@ -259,30 +199,11 @@ fn list_entries(
     Ok(Value::Array(entries))
 }
 
-fn list(session: &mut client::Session) -> Result<Value, String> {
-    session.item_list_all()
-}
-
-fn credential(
-    session: &mut client::Session,
-    vault: &str,
-    item: &str,
-    site: &str,
-    entry_id: &str,
-) -> Result<Value, String> {
-    let summary = session.item_get(vault, item, None)?;
-    let (username, password_field) = entry_fields(&summary, entry_id, site)?;
-    let password = session.item_get(vault, item, Some(&password_field))?;
-    Ok(
-        json!({"itemId":item,"entryId":entry_id,"website":site,"username":username,"password":password}),
-    )
-}
-
 impl Host {
     #[allow(clippy::too_many_lines)]
-    fn dispatch(&mut self, request: &mut Request) -> Result<Value, String> {
-        if self.last_activity.elapsed() >= Duration::from_mins(30) {
-            self.local = None;
+    fn dispatch(request: &mut Request) -> Result<Value, String> {
+        if request.action == "unlock" {
+            return Err("Unlock your client directly. The extension does not accept account secrets or master passwords.".to_owned());
         }
         if request.action == "sources" {
             let sources = ["desktop", "cli"].iter().map(|source| {
@@ -291,21 +212,17 @@ impl Host {
                 let status = path.as_deref().and_then(|path| agent::call(path, "status", json!({})).ok());
                 let active = status.is_some();
                 let online = status.as_ref().and_then(|value| value["online"].as_bool());
-                let sync = if self.local.as_ref().is_some_and(|local| local.source == *source) {
-                    self.local.as_ref().and_then(|local| local.session.replica_status().ok())
-                } else if active {
+                let sync = if active {
                     path.as_deref().and_then(|path| agent::call(path, "replica.status", json!({})).ok())
                 } else { None };
                 let license = if active && online == Some(true) {
                     path.as_deref().and_then(|path| agent::call(path, "license.status", json!({})).ok())
                 } else { None };
-                let username_hint = if *source == "desktop" { path.as_deref().and_then(cached_username) } else { None };
-                json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":self.local.as_ref().is_some_and(|local|local.source == *source),"usernameHint":username_hint,"hasCachedSecret":username_hint.as_deref().is_some_and(|username| path.as_deref().and_then(|path| cached_secret(path, username)).is_some()),"sync":sync,"license":license})
+                json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":false,"sync":sync,"license":license})
             }).collect::<Vec<_>>();
             return Ok(json!({"version":1,"sources":sources}));
         }
         if request.action == "lock" {
-            self.local = None;
             if matches!(request.source.as_str(), "desktop" | "cli")
                 && let Ok(path) = profile(&request.source)
             {
@@ -319,17 +236,20 @@ impl Host {
             }
             let path = profile(&request.source)?;
             let status = agent::call(&path, "status", json!({}))?;
+            if status["nativePasskeyProtocol"] != 4
+                || status["unlocked"] != true
+                || status["passkeyVerificationSession"]
+                    .as_str()
+                    .is_none_or(str::is_empty)
+            {
+                return Err(
+                    "Unlock or restart the updated 127Vaults Desktop app to continue.".to_owned(),
+                );
+            }
             return Ok(json!({"verificationSession":status["passkeyVerificationSession"]}));
         }
         if request.action == "passkey.targets" {
             let path = profile(&request.source)?;
-            if let Some(local) = self
-                .local
-                .as_mut()
-                .filter(|local| local.source == request.source)
-            {
-                return local.session.passkey_targets(&request.site_origin);
-            }
             return agent::call(
                 &path,
                 "passkey.targets",
@@ -338,18 +258,11 @@ impl Host {
         }
         if request.action == "passkey.vaults" {
             let path = profile(&request.source)?;
-            if let Some(local) = self
-                .local
-                .as_mut()
-                .filter(|local| local.source == request.source)
-            {
-                return local.session.vault_list();
-            }
             return agent::call(&path, "vault.list", json!({}));
         }
         if !matches!(
             request.action.as_str(),
-            "unlock" | "list" | "get" | "passkey.list" | "passkey.get" | "passkey.save"
+            "list" | "get" | "passkey.list" | "passkey.get" | "passkey.save"
         ) {
             return Err("unsupported read-only connector action".to_owned());
         }
@@ -357,62 +270,13 @@ impl Host {
         if !configured(&path) {
             return Err("selected client is not enrolled".to_owned());
         }
-        if request.action == "unlock" {
-            let username = if request.username.trim().is_empty() && request.source == "desktop" {
-                cached_username(&path).unwrap_or_default()
-            } else {
-                request.username.clone()
-            };
-            if username.trim().is_empty() {
-                return Err("username is required".to_owned());
-            }
-            let secret = Zeroizing::new(
-                if request.account_secret.is_empty() && request.source == "desktop" {
-                    cached_secret(&path, &username).ok_or("account secret is required")?
-                } else {
-                    request.account_secret.clone()
-                },
-            );
-            let session = client::unlock_offline(
-                &path,
-                &username,
-                &secret,
-                request.master_password.as_bytes(),
-            )?;
-            self.local = Some(LocalSession {
-                source: request.source.clone(),
-                session,
-            });
-            self.last_activity = Instant::now();
-            return Ok(json!({"unlocked":true,"source":request.source,"online":false}));
-        }
         if request.action == "get" && (!valid_id(&request.vault_id) || !valid_id(&request.item_id))
         {
             return Err("invalid item identity".to_owned());
         }
         let site = site_origin(&request.site_origin)?;
         if request.action.starts_with("passkey.") {
-            return self.passkey_request(request, &path, &site);
-        }
-        if let Some(local) = self
-            .local
-            .as_mut()
-            .filter(|local| local.source == request.source)
-        {
-            self.last_activity = Instant::now();
-            return if request.action == "list" {
-                list_entries(&list(&mut local.session)?, &site, |vault, item| {
-                    local.session.item_get(vault, item, None)
-                })
-            } else {
-                credential(
-                    &mut local.session,
-                    &request.vault_id,
-                    &request.item_id,
-                    &site,
-                    &request.entry_id,
-                )
-            };
+            return Self::passkey_request(request, &path, &site);
         }
         if request.action == "list" {
             list_entries(
@@ -438,12 +302,7 @@ impl Host {
         }
     }
 
-    fn passkey_request(
-        &mut self,
-        request: &Request,
-        path: &Path,
-        site: &str,
-    ) -> Result<Value, String> {
+    fn passkey_request(request: &Request, path: &Path, site: &str) -> Result<Value, String> {
         #[cfg(windows)]
         if crate::native_passkeys::WINDOWS_NATIVE_PASSKEYS_ENABLED
             && matches!(request.action.as_str(), "passkey.get" | "passkey.save")
@@ -451,13 +310,6 @@ impl Host {
             return Err("Use the native Windows passkey provider; extension signing and creation are disabled on Windows".to_owned());
         }
         if request.action == "passkey.list" {
-            if let Some(local) = self
-                .local
-                .as_mut()
-                .filter(|local| local.source == request.source)
-            {
-                return local.session.passkey_list(site);
-            }
             return agent::call(path, "passkey.list", json!({"website":site}));
         }
         if !valid_id(&request.vault_id)
@@ -466,73 +318,19 @@ impl Host {
         {
             return Err("invalid passkey identity".to_owned());
         }
-        if request.source == "desktop"
-            && request.action == "passkey.get"
-            && !request.verification_session.is_empty()
-        {
-            return agent::call(
-                path,
-                "passkey.get",
-                json!({"vault":request.vault_id,"item":request.item_id,"website":site,"verification_session":request.verification_session}),
-            );
+        if request.source != "desktop" || request.verification_session.is_empty() {
+            return Err("Unlock 127Vaults Desktop to continue.".to_owned());
         }
-        // Other sources and registration still verify the password freshly;
-        // an already unlocked agent alone is not user verification.
-        let username = if request.username.trim().is_empty() && request.source == "desktop" {
-            cached_username(path).unwrap_or_default()
-        } else {
-            request.username.clone()
-        };
-        let secret = Zeroizing::new(
-            if request.account_secret.is_empty() && request.source == "desktop" {
-                cached_secret(path, &username).ok_or("account secret is required")?
-            } else {
-                request.account_secret.clone()
-            },
-        );
-        if username.trim().is_empty() || request.master_password.is_empty() {
-            return Err("verify your master password".to_owned());
+        let mut result = agent::call(
+            path,
+            &request.action,
+            json!({"vault":request.vault_id,"item":request.item_id,"website":site,"verification_session":request.verification_session,"passkey_metadata":request.metadata,"password":request.private_key}),
+        )?;
+        if request.action == "passkey.save" {
+            result["vaultId"] = json!(request.vault_id);
+            result["source"] = json!(request.source);
         }
-        let mut verified =
-            client::unlock_offline(path, &username, &secret, request.master_password.as_bytes())?;
-        let active = agent::call(path, "status", json!({})).is_ok();
-        self.last_activity = Instant::now();
-        if active && request.action == "passkey.get" {
-            agent::call(
-                path,
-                &request.action,
-                json!({"vault":request.vault_id,"item":request.item_id,"website":site,"passkey_metadata":request.metadata,"password":request.private_key}),
-            )
-        } else if request.action == "passkey.get" {
-            verified.passkey_get(&request.vault_id, &request.item_id, site)
-        } else {
-            // A connector agent may be offline even while Desktop is online.
-            // Creation uses a fresh authenticated session, not that agent.
-            verified = client::unlock_with_offline_fallback(
-                path,
-                &username,
-                &secret,
-                request.master_password.as_bytes(),
-            )?;
-            let sync_error = if verified.is_online() {
-                verified.sync_now().err()
-            } else {
-                verified.offline_reason().map(str::to_owned)
-            };
-            let mut saved = verified.passkey_save_into(
-                &request.vault_id,
-                (!request.item_id.is_empty()).then_some(request.item_id.as_str()),
-                site,
-                &request.metadata,
-                &request.private_key,
-            )?;
-            saved["vaultId"] = json!(request.vault_id);
-            saved["source"] = json!(request.source);
-            if saved["syncError"].is_null() {
-                saved["syncError"] = json!(sync_error);
-            }
-            Ok(saved)
-        }
+        Ok(result)
     }
 }
 
@@ -576,7 +374,6 @@ fn write_frame(writer: &mut impl Write, response: &Response) -> Result<(), Strin
 /// # Errors
 /// Returns a safe diagnostic if framing or output fails.
 pub fn run() -> Result<(), String> {
-    let mut host = Host::default();
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = stdin.lock();
@@ -585,9 +382,7 @@ pub fn run() -> Result<(), String> {
         let parsed = serde_json::from_slice::<Request>(&bytes);
         bytes.zeroize();
         let mut request = parsed.map_err(|_| "native request is invalid")?;
-        let outcome = host.dispatch(&mut request);
-        request.account_secret.zeroize();
-        request.master_password.zeroize();
+        let outcome = Host::dispatch(&mut request);
         request.private_key.zeroize();
         let response = match outcome {
             Ok(value) => Response {
@@ -627,10 +422,25 @@ mod tests {
 
     #[test]
     fn rejects_mutation_actions() {
-        let mut host = Host::default();
         let mut request: Request =
             serde_json::from_value(json!({"id":1,"action":"item.edit","source":"cli"})).unwrap();
-        assert!(host.dispatch(&mut request).is_err());
+        assert!(Host::dispatch(&mut request).is_err());
+    }
+
+    #[test]
+    fn refuses_extension_unlock_and_credential_fields() {
+        let mut unlock: Request =
+            serde_json::from_value(json!({"id":1,"action":"unlock","source":"desktop"})).unwrap();
+        assert!(
+            Host::dispatch(&mut unlock)
+                .unwrap_err()
+                .contains("Unlock your client directly")
+        );
+        for field in ["username", "accountSecret", "masterPassword"] {
+            let mut request = json!({"id":1,"action":"passkey.get","source":"desktop"});
+            request[field] = json!("synthetic-secret");
+            assert!(serde_json::from_value::<Request>(request).is_err());
+        }
     }
 
     #[test]

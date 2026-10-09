@@ -25,7 +25,9 @@ test('approved registration persists before success; assertions never disclose k
       if (rotateDuringGet) verificationSession = 'unlock-2';
       return { ...stored };
     }
-    if (request.masterPassword !== 'correct-password') throw Error('Master password verification failed.');
+    assert.equal(request.masterPassword, undefined);
+    assert.equal(request.accountSecret, undefined);
+    assert.equal(request.verificationSession, verificationSession);
     if (request.action === 'passkey.save') {
       events.push('save-start');
       if (delaySave) await new Promise(resolve => { allowSave = resolve; });
@@ -45,7 +47,8 @@ test('approved registration persists before success; assertions never disclose k
   await tick();
   const pending = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
   assert(pending);
-  const approval = send({ kind: 'passkey.approve', id: pending.id, source: 'desktop', vaultId, masterPassword: 'correct-password' });
+  await send({ kind: 'passkey.choices', id: pending.id, source: 'desktop' });
+  const approval = send({ kind: 'passkey.approve', id: pending.id, source: 'desktop', vaultId });
   while (!allowSave) await tick();
   assert.equal(replied, false); allowSave();
   assert.equal((await approval).queued, true);
@@ -57,7 +60,7 @@ test('approved registration persists before success; assertions never disclose k
   const attachRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
   assert.equal((await send({ kind: 'passkey.choices', id: attachRow.id, source: 'desktop' })).targets[0].itemId, 'existing-login');
   delaySave = false;
-  assert.equal((await send({ kind: 'passkey.approve', id: attachRow.id, source: 'desktop', vaultId, itemId: 'existing-login', masterPassword: 'correct-password' })).itemId, 'existing-login');
+  assert.equal((await send({ kind: 'passkey.approve', id: attachRow.id, source: 'desktop', vaultId, itemId: 'existing-login' })).itemId, 'existing-login');
   assert((await attach).value.response.attestationObject);
   assert.equal(JSON.stringify(made).includes(stored.privateKey), false);
   const assertion = send({ ...request, id: 'page-get', operation: 'get', options: { challenge: request.options.challenge, rpId: 'example.test', userVerification: 'required' } }, page);
@@ -65,7 +68,8 @@ test('approved registration persists before success; assertions never disclose k
   const row = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
   assert((await send({ kind: 'passkey.approve', id: row.id, source: 'desktop', vaultId, itemId, masterPassword: 'wrong' })).error);
   assert(queue.get(row.id)); // failed verification may be retried for an assertion
-  await send({ kind: 'passkey.approve', id: row.id, source: 'desktop', vaultId, itemId, masterPassword: 'correct-password' });
+  await send({ kind: 'passkey.choices', id: row.id, source: 'desktop' });
+  await send({ kind: 'passkey.approve', id: row.id, source: 'desktop', vaultId, itemId });
   const got = await assertion; assert(got.value.response.signature); assert.equal(JSON.stringify(got).includes(stored.privateKey), false);
   const cached = send({ ...request, id: 'cached-get', operation: 'get', options: { challenge: request.options.challenge, rpId: 'example.test', userVerification: 'required' } }, page);
   await tick();
@@ -82,10 +86,22 @@ test('approved registration persists before success; assertions never disclose k
   rotateDuringGet = false;
   await send({ kind: 'passkey.cancel', id: changedRow.id });
   assert((await changed).error);
+  const unavailable = send({ ...request, id: 'unavailable-get', operation: 'get', options: { challenge: request.options.challenge, rpId: 'example.test' } }, page);
+  await tick();
+  const unavailableRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
+  const rememberedSession = verificationSession;
+  verificationSession = '';
+  assert.match((await send({ kind: 'passkey.choices', id: unavailableRow.id, source: 'desktop' })).error, /Unlock 127Vaults Desktop/);
+  assert.match((await send({ kind: 'passkey.approve', id: unavailableRow.id, source: 'desktop', vaultId, itemId })).error, /Unlock 127Vaults Desktop/);
+  assert.match((await send({ kind: 'passkey.choices', id: unavailableRow.id, source: 'web' })).error, /Select Desktop/);
+  verificationSession = rememberedSession;
+  await send({ kind: 'passkey.cancel', id: unavailableRow.id });
+  assert((await unavailable).error);
   const excluded = send({ ...request, id: 'excluded', options: { ...request.options, excludeCredentials: [{ type: 'public-key', id: stored.metadata.credentialId }] } }, page);
   await tick();
   const excludedRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
-  const failed = await send({ kind: 'passkey.approve', id: excludedRow.id, source: 'desktop', vaultId, masterPassword: 'correct-password' });
+  await send({ kind: 'passkey.choices', id: excludedRow.id, source: 'desktop' });
+  const failed = await send({ kind: 'passkey.approve', id: excludedRow.id, source: 'desktop', vaultId });
   assert.match(failed.error, /already exists/); assert((await excluded).error);
   const navigated = send({ ...request, id: 'navigation' }, page); await tick(); updated(1, { status: 'loading' }); assert((await navigated).error);
   const closed = send({ ...request, id: 'closed' }, page); await tick(); removed(1); assert((await closed).error);
