@@ -65,6 +65,33 @@ test('source fingerprints follow product inputs and plans do not create output',
     await assert.rejects(createPlan({ ...item, product: 'extension', cacheRoot: item.outputRoot }), /separate/);
   } finally { await cleanup(item.directory); }
 });
+test('shared dependency changes invalidate the products that consume them', async () => {
+  const item = await fixture();
+  try {
+    const products = ['desktop', 'cli', 'extension', 'server'];
+    const fingerprints = async () => {
+      const revision = await git(item.repository, ['rev-parse', 'HEAD']);
+      return Object.fromEntries(await Promise.all(products.map(async product => [product,
+        (await inputFingerprint(item.repository, revision, product)).fingerprint])));
+    };
+    for (const [path, affected] of [
+      ['crates/crypto/src/lib.rs', ['desktop', 'cli', 'server']],
+      ['apps/extension/src/passkeys.mjs', ['desktop', 'extension', 'server']],
+      ['apps/extension/popup.html', ['extension']],
+      ['apps/web/src/app.tsx', ['server']],
+      ['LICENSE-POLICY.md', products],
+    ]) {
+      const before = await fingerprints();
+      await mkdir(join(item.repository, path, '..'), { recursive: true });
+      await writeFile(join(item.repository, path), `changed ${path}\n`);
+      await git(item.repository, ['add', path]);
+      await git(item.repository, ['commit', '-qm', `change ${path}`]);
+      const after = await fingerprints();
+      for (const product of products) assert.equal(before[product] !== after[product], affected.includes(product), `${path}: ${product}`);
+    }
+  } finally { await cleanup(item.directory); }
+});
+
 test('real extension release freezes committed source, reuses unchanged inputs and rejects corruption', async () => {
   const item = await fixture();
   try {
@@ -134,4 +161,6 @@ test('cache locks prevent overlapping compilers and release after completion', a
 test('Windows pnpm bridge forwards command arguments without shell interpolation', async () => {
   if (process.platform !== 'win32') return;
   assert.match(await pnpm(['--version'], { capture: true, quiet: true }), /^\d+\.\d+\.\d+$/);
+  const listing = JSON.parse(await pnpm(['list', '--depth', '0', '--json'], { capture: true, quiet: true }));
+  assert.ok(Array.isArray(listing));
 });
