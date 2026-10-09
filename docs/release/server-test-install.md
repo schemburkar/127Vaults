@@ -26,6 +26,40 @@ explicit `--compose-provider` path. `verify` checks the bundle without engine
 access; `bootstrap`, `status`, `start` and `stop` use the same launcher. Existing
 identities are preserved. The detailed operator commands below remain available.
 
+`doctor` reports bundle integrity, Node version, existing installation identity,
+engine availability, engine connectivity, and Compose separately. It reports all
+independent failures with next steps and exits nonzero when prerequisites are not
+ready. Each external prerequisite probe has a 15-second deadline; a stopped
+engine or stalled Compose provider cannot leave the check waiting indefinitely.
+It does not start containers, load images, generate keys, or change configuration.
+For a machine-readable, redacted report, run:
+
+```powershell
+./install.ps1 doctor --json
+```
+
+On Linux use `bash install.sh doctor --json`. The JSON has `format`, `ready`,
+`engine`, and `checks` with `id`, `status` (`pass`, `fail`, or `skip`), `message`,
+and failure `nextStep`. It excludes engine output, configuration values, private
+paths, and key contents. JSON is supported only for `doctor`.
+
+`setup` and `start` use the same preflight. They refuse malformed options,
+non-private or invalid IPv4 endpoints, a private directory inside the bundle,
+and incomplete existing identity files before loading images or starting the
+server. An existing `.env` must identify exactly one project, endpoint and
+absolute private directory. Explicit endpoint/private-directory options must
+match that installation. Preserve a damaged configuration and recover its
+matching identity. When omitted on setup/start, the private-directory option is
+resolved from the validated existing configuration, so a custom identity path
+does not silently fall back to the default. Removing `.env` to regenerate keys
+can strand existing data.
+
+`stop` and `status` remain available when identity files are damaged, provided
+bundle, Node, engine and Compose checks pass. Identity checks inspect file
+presence and nonempty regular files; they do not validate certificates, key
+formats, permissions, or a running database's identity. A passing doctor is
+prerequisite evidence, not HTTPS, backup, clean-host or release acceptance.
+
 - Windows 11 with Podman machine and a Compose provider, or Linux with Podman plus a Compose provider. Docker Engine with Docker Compose is an alternate **unverified** path until the Docker matrix is run.
 - Node.js 24 for the operator scripts. The client machine does not need Rust, wasm-bindgen, pnpm or source files.
 - A private IPv4 or loopback endpoint, adequate disk for both image archives and a persistent PostgreSQL volume, and a separate location for backup keys and encrypted backups.

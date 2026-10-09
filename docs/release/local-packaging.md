@@ -84,6 +84,13 @@ Windows Podman automatically discovers `podman-compose.exe` on PATH, or pass
 to each command. On Linux use `bash install.sh` in place of `.\install.ps1`.
 `setup` preserves an existing identity and starts the stack. `verify` checks files
 without contacting the engine; `doctor` checks prerequisites before setup.
+`doctor --json` emits a redacted report suitable for operator handoff. The check
+distinguishes a missing engine from a stopped/unreachable engine and a missing
+or stalled Compose provider; external probes time out after 15 seconds each.
+It also inspects an existing identity without reading key contents or modifying
+files. Setup/start refuse incomplete identity files and conflicting endpoint or
+private-directory options. See the server test-install runbook for recovery
+guidance and the checks that still require target-host acceptance.
 Use `status`, `start`, `stop` and `bootstrap` through the same launcher. The
 server runs under the container engine and restarts with it; this does not install
 a second OS service. See server-test-install.md in the repository (README.md in
