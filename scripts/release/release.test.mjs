@@ -163,4 +163,5 @@ test('Windows pnpm bridge forwards command arguments without shell interpolation
   assert.match(await pnpm(['--version'], { capture: true, quiet: true }), /^\d+\.\d+\.\d+$/);
   const listing = JSON.parse(await pnpm(['list', '--depth', '0', '--json'], { capture: true, quiet: true }));
   assert.ok(Array.isArray(listing));
+  assert.equal(await pnpm(['exec', 'node', '-p', 'process.argv[1]', 'snow 雪 space'], { capture: true, quiet: true }), 'snow 雪 space');
 });

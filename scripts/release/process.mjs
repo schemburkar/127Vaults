@@ -30,6 +30,6 @@ export async function execute(command, args, options = {}) {
 export async function pnpm(args, options = {}) {
   if (process.platform !== 'win32') return execute('pnpm', args, options);
   // Fixed PowerShell code; argument values cross stdin as JSON, including spaces/Unicode.
-  const script = '$request = [Console]::In.ReadToEnd() | ConvertFrom-Json; $releaseArguments = @($request.args); & pnpm @releaseArguments; exit $LASTEXITCODE';
+  const script = '[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding; $request = [Console]::In.ReadToEnd() | ConvertFrom-Json; $releaseArguments = @($request.args); & pnpm @releaseArguments; exit $LASTEXITCODE';
   return execute('powershell.exe', ['-NoProfile', '-Command', script], { ...options, input: JSON.stringify({ args }) });
 }
