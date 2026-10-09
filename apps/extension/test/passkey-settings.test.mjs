@@ -55,16 +55,19 @@ test('restores enabled provider after reload without prompting for permission', 
   assert.equal(installs, 1);
 });
 
-test('Windows never registers page providers and removes legacy enabled grants', async () => {
-  let removed, settings, requested = false;
+test('Windows enables and restores the extension provider while native rollout is disabled', async () => {
+  let scripts = [], settings = {}, requested = false;
   const api = { runtime: { async getPlatformInfo() { return { os: 'win' }; } },
-    permissions: { async request() { requested = true; return true; } },
-    storage: { local: { async set(value) { settings = value; } } },
-    scripting: { async getRegisteredContentScripts() { return [{ id: 'passkey-page-all' }, { id: 'unrelated' }]; }, async unregisterContentScripts(value) { removed = value.ids; } },
+    permissions: { async request() { requested = true; return true; }, async contains() { return true; } },
+    storage: { local: { async set(value) { settings = value; }, async get() { return settings; } } },
+    scripting: { async getRegisteredContentScripts() { return scripts; }, async unregisterContentScripts() { scripts = []; }, async registerContentScripts(value) { scripts = value; } },
   };
-  await assert.rejects(enableAllPasskeys(api), /Windows picker/);
-  assert.equal(requested, false);
-  assert.equal(await restorePasskeyScripts(api), false);
-  assert.deepEqual(removed, ['passkey-page-all']);
-  assert.deepEqual(settings, { passkeysAllSites: false, passkeyOrigins: [] });
+  await enableAllPasskeys(api);
+  assert.equal(requested, true);
+  assert.equal(settings.passkeysAllSites, true);
+  assert.equal(scripts.length, 2);
+  scripts = [];
+  assert.equal(await restorePasskeyScripts(api), true);
+  assert.equal(scripts.length, 2);
+  assert.equal(settings.passkeysAllSites, true);
 });

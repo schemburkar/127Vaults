@@ -26,6 +26,16 @@ async fn native_passkey_provider(action: String) -> Result<Value, String> {
     if !cfg!(target_os = "windows") {
         return Ok(json!({"available":false,"windows":false}));
     }
+    if !vaults_cli::native_passkeys::WINDOWS_NATIVE_PASSKEYS_ENABLED {
+        return if action == "status" {
+            Ok(json!({"available":false,"windows":true,"disabled":true}))
+        } else {
+            Err(
+                "Native Windows passkeys are disabled; use the 127Vaults browser extension"
+                    .to_owned(),
+            )
+        };
+    }
     let argument = match action.as_str() {
         "status" => "--status",
         "register" => "--register",

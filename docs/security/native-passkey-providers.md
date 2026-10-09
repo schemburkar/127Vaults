@@ -1,3 +1,5 @@
+**Current default:** native Windows support is retained behind disabled guards. Browser extension passkeys are enabled on Windows; no package installation or signing is required for this browser path.
+
 # Native passkey provider direction
 
 Researched 2026-10-09. An experimental Windows implementation is built; installed-package activation and real website ceremonies remain unverified. See [build and installation instructions](../../apps/desktop/native/windows/README.md).

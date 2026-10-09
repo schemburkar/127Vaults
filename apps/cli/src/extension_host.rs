@@ -420,7 +420,9 @@ impl Host {
         site: &str,
     ) -> Result<Value, String> {
         #[cfg(windows)]
-        if matches!(request.action.as_str(), "passkey.get" | "passkey.save") {
+        if crate::native_passkeys::WINDOWS_NATIVE_PASSKEYS_ENABLED
+            && matches!(request.action.as_str(), "passkey.get" | "passkey.save")
+        {
             return Err("Use the native Windows passkey provider; extension signing and creation are disabled on Windows".to_owned());
         }
         if request.action == "passkey.list" {

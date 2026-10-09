@@ -1,5 +1,7 @@
+// Native Windows integration is retained but disabled until deployment is ready.
+export const WINDOWS_NATIVE_PASSKEYS_ENABLED = false;
 export async function windowsNativeOnly(api) {
-  return (await api.runtime?.getPlatformInfo?.())?.os === 'win';
+  return WINDOWS_NATIVE_PASSKEYS_ENABLED && (await api.runtime?.getPlatformInfo?.())?.os === 'win';
 }
 export const PASSKEY_MATCH = 'https://*/*';
 const IDS = ['passkey-bridge-all', 'passkey-page-all'];

@@ -1,4 +1,6 @@
 //! Native CTAP2 operations. Private credentials remain inside the vault process.
+/// Native provider rollout is disabled; browser passkeys remain supported.
+pub const WINDOWS_NATIVE_PASSKEYS_ENABLED: bool = false;
 use crate::{agent, client::Session};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ciborium::value::Value as Cbor;
@@ -126,6 +128,9 @@ pub(crate) fn dispatch(
     envelope: &Value,
     preview: bool,
 ) -> Result<Value, String> {
+    if !WINDOWS_NATIVE_PASSKEYS_ENABLED {
+        return Err("Native Windows passkeys are disabled; use the browser extension".to_owned());
+    }
     let (request, rp, origin) = request(envelope)?;
     let create = envelope["operation"] == "create";
     let entries = session.passkey_list(&origin)?;
@@ -324,6 +329,9 @@ fn verify_os(envelope: &Value) -> Result<(), String> {
 /// # Errors
 /// Returns a diagnostic if the desktop is locked or the request is invalid.
 pub fn run_host() -> Result<(), String> {
+    if !WINDOWS_NATIVE_PASSKEYS_ENABLED {
+        return Err("Native Windows passkeys are disabled; use the browser extension".to_owned());
+    }
     let mut input = String::new();
     std::io::stdin()
         .take(262_145)
@@ -362,6 +370,11 @@ pub fn run_host() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn disabled_native_host_refuses_before_reading_requests() {
+        assert!(super::run_host().unwrap_err().contains("disabled"));
+    }
+
     use super::*;
     use p256::ecdsa::signature::Verifier;
     #[test]

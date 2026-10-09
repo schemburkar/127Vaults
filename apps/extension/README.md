@@ -125,6 +125,6 @@ Native OS-provider support is a separate proposed integration; see
 [the native provider direction](../../docs/security/native-passkey-providers.md).
 
 
-### Windows native provider default
+### Windows browser provider default
 
-On Windows the extension disables WebAuthn interception, removes legacy passkey scripts, and refuses passkey creation or signing through the browser connector. Password filling and passkey metadata remain available. Native save/sign is supplied by the experimental packaged desktop provider; see [build and installation instructions](../desktop/native/windows/README.md). The unsigned package is built, but live Windows picker, Hello, registration and assertion testing awaits installation. Desktop must be open and unlocked.
+The extension saves and uses website passkeys on Windows, including platform attachment requests. Enable passkeys once for all HTTPS sites in the popup, then reload existing website tabs. Native Windows integration remains in the desktop source behind disabled guards; no MSIX package, signing certificate or Developer Mode is needed for browser passkeys. The native connector still requires installation and a configured vault profile. Each ceremony verifies the master password; Desktop can supply its remembered account secret. Saved passkeys appear separately from fillable logins with their vault and per-item sync state.

@@ -151,7 +151,10 @@ void register_provider(){
   WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS options{L"127Vaults",PROVIDER,L"127vaults.local",nullptr,nullptr,static_cast<DWORD>(info.size()),info.data(),0,nullptr};PWEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_RESPONSE response=nullptr;
   check(API(WebAuthNPluginAddAuthenticator)(&options,&response));API(WebAuthNPluginFreeAddAuthenticatorResponse)(response);
 }
+// Retain the implementation, but disable all entry points until native rollout.
+constexpr bool WINDOWS_NATIVE_PASSKEYS_ENABLED = false;
 int wmain(int argc,wchar_t** argv){
+ if(!WINDOWS_NATIVE_PASSKEYS_ENABLED){std::cout<<"{\"available\":false,\"disabled\":true,\"error\":\"Use the 127Vaults browser extension\"}";return argc>1 && std::wstring(argv[1])==L"--status"?0:2;}
  try{
   webauthn=LoadLibraryExW(L"webauthn.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);if(!webauthn)throw HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
   check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));

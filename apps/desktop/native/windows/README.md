@@ -1,5 +1,7 @@
 # Windows native passkeys — experimental local build
 
+**Rollout disabled:** all native entry points are guarded off. The browser extension is the active passkey provider on Windows. The instructions below describe the retained implementation, not a supported enabled build. Re-enabling requires coordinated Rust, C++ and extension guards plus installed-package testing.
+
 Implemented and compiled, but live Windows-picker registration, Hello verification,
 website registration/assertion and installed-package activation remain unverified
 until installation is allowed. Do not treat this as a production-ready provider.

@@ -8,7 +8,7 @@ test('approved registration persists before success; assertions never disclose k
   const events = [];
   const origin = 'https://example.test', vaultId = '11111111-1111-4111-8111-111111111111', itemId = '22222222-2222-4222-8222-222222222222';
   globalThis.chrome = {
-    runtime: { id: 'extension', onMessage: { addListener(fn) { listener = fn; } } },
+    runtime: { id: 'extension', async getPlatformInfo() { return { os: 'win' }; }, onMessage: { addListener(fn) { listener = fn; } } },
     storage: { local: { async get() { return { passkeysAllSites: true, passkeyOrigins: [] }; } } },
     permissions: { async contains() { return true; } },
     tabs: { async get() { return { id: 1, url: `${origin}/login` }; }, onUpdated: { addListener(fn) { updated = fn; } }, onRemoved: { addListener(fn) { removed = fn; } } },

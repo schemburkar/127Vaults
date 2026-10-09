@@ -62,6 +62,9 @@ impl Session {
         let rows = self.item_list_all()?;
         let mut output = Vec::new();
         for row in rows.as_array().ok_or("invalid item list")? {
+            if row["itemType"] != "passkey" || row["website"] != site {
+                continue;
+            }
             let vault = row["vaultId"].as_str().ok_or("invalid vault identity")?;
             let item = row["itemId"].as_str().ok_or("invalid item identity")?;
             let summary = self.item_get(vault, item, None)?;
@@ -110,7 +113,16 @@ impl Session {
             json!({"id":KEY,"label":"Passkey private key","type":"password","value":key}),
         ]);
         match saved {
-            Ok(saved) => Ok(saved),
+            Ok(mut saved) => {
+                let item = saved["itemId"]
+                    .as_str()
+                    .ok_or("Saved passkey identity is unavailable")?;
+                let sync = self.item_sync_status(vault, item)?;
+                saved["queued"] = sync["pending"].clone();
+                saved["sync"] = sync;
+                saved["vaultId"] = json!(vault);
+                Ok(saved)
+            }
             Err(error) if !error.contains("409") => {
                 // A failed delivery can still leave a durable encrypted item.
                 // Return offline success only after finding that exact key ID
