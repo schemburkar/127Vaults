@@ -47,10 +47,13 @@ export function setupPasskeyPopup({ getTab, getSource, getSources, status, listS
       if (version !== revision) return;
       choicesKey = key;
       entries = choices.entries || [];
+      $('passkey-master').hidden = choices.reuseDesktopUnlock === true;
+      document.querySelector('label[for=\"passkey-master\"]')?.toggleAttribute('hidden', choices.reuseDesktopUnlock === true);
+      if (choices.reuseDesktopUnlock) { $('passkey-master').value = ''; $('passkey-native-fields').hidden = true; }
       if (request.operation === 'get') for (const [index, entry] of entries.entries()) $('passkey-choice').append(option(String(index), `${entry.metadata.displayName || entry.metadata.username} · ${entry.title}`));
       else for (const vault of choices.vaults || []) $('passkey-choice').append(option(vault.vaultId, vault.name || vault.code || vault.vaultId));
       $('passkey-approve').disabled = !$('passkey-choice').options.length || request.processing;
-      $('passkey-hint').textContent = request.operation === 'create' ? 'A new encrypted passkey item will be saved before this website receives success. 127Vaults will try to sync it to your server.' : entries.length ? 'Your master password is checked for this request. The website receives a signature, never the private key.' : 'No matching passkey in this source. Select another source or use the browser.';
+      $('passkey-hint').textContent = request.operation === 'create' ? 'A new encrypted passkey item will be saved before this website receives success. 127Vaults will try to sync it to your server.' : entries.length ? choices.reuseDesktopUnlock ? 'Your unlocked Desktop verifies this request. Click Use passkey to approve sign-in.' : 'Your master password is checked for this request. The website receives a signature, never the private key.' : 'No matching passkey in this source. Select another source or use the browser.';
     } catch (error) { $('passkey-hint').textContent = String(error?.message || error); }
   }
   $('enable-passkeys').onclick = async () => {

@@ -15,6 +15,11 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::client::{self, Session};
 
+static PASSKEY_SESSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+fn passkey_session() -> &'static str {
+    PASSKEY_SESSION.get_or_init(|| uuid::Uuid::new_v4().to_string())
+}
+
 const IDLE_TTL: Duration = Duration::from_mins(30);
 const CAPABILITY_SERVICE: &str = "127Vaults CLI unlock lease";
 
@@ -72,6 +77,8 @@ struct Request {
     custom_fields: Vec<Value>,
     #[serde(default)]
     passkey_metadata: Value,
+    #[serde(default)]
+    verification_session: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -131,6 +138,13 @@ fn dispatch(
     request: &mut Request,
     read_only: bool,
 ) -> Result<Value, String> {
+    if request
+        .verification_session
+        .as_deref()
+        .is_some_and(|value| value != passkey_session())
+    {
+        return Err("Desktop unlock session changed; start sign-in again".to_owned());
+    }
     if read_only
         && !matches!(
             request.action.as_str(),
@@ -157,7 +171,7 @@ fn dispatch(
     }
     let result = match request.action.as_str() {
         "status" => Ok(
-            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":1}),
+            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":2,"passkeyVerificationSession":passkey_session()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "vault.list" => session.vault_list(),

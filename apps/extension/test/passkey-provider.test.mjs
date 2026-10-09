@@ -5,6 +5,7 @@ import { encode } from '../src/passkeys.mjs';
 
 test('approved registration persists before success; assertions never disclose keys to the page', async () => {
   let listener, updated, removed, locked = false, stored = null, delaySave, allowSave;
+  let verificationSession = 'unlock-1', rotateDuringGet = false;
   const events = [];
   const origin = 'https://example.test', vaultId = '11111111-1111-4111-8111-111111111111', itemId = '22222222-2222-4222-8222-222222222222';
   globalThis.chrome = {
@@ -17,6 +18,12 @@ test('approved registration persists before success; assertions never disclose k
   const queue = installPasskeyProvider(async request => {
     if (request.action === 'passkey.list') { if (locked) throw Error('Vault locked.'); return stored ? [{ vaultId, itemId, metadata: stored.metadata, title: 'Alice' }] : []; }
     if (request.action === 'passkey.vaults') return [{ vaultId, name: 'Private' }];
+    if (request.action === 'passkey.session') { if (locked) throw Error('Vault locked.'); return { verificationSession }; }
+    if (request.action === 'passkey.get' && request.verificationSession) {
+      if (request.verificationSession !== verificationSession || locked) throw Error('Desktop session changed.');
+      if (rotateDuringGet) verificationSession = 'unlock-2';
+      return { ...stored };
+    }
     if (request.masterPassword !== 'correct-password') throw Error('Master password verification failed.');
     if (request.action === 'passkey.save') {
       events.push('save-start');
@@ -52,6 +59,21 @@ test('approved registration persists before success; assertions never disclose k
   assert(queue.get(row.id)); // failed verification may be retried for an assertion
   await send({ kind: 'passkey.approve', id: row.id, source: 'desktop', vaultId, itemId, masterPassword: 'correct-password' });
   const got = await assertion; assert(got.value.response.signature); assert.equal(JSON.stringify(got).includes(stored.privateKey), false);
+  const cached = send({ ...request, id: 'cached-get', operation: 'get', options: { challenge: request.options.challenge, rpId: 'example.test', userVerification: 'required' } }, page);
+  await tick();
+  const cachedRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
+  assert.equal((await send({ kind: 'passkey.choices', id: cachedRow.id, source: 'desktop' })).reuseDesktopUnlock, true);
+  assert.equal((await send({ kind: 'passkey.approve', id: cachedRow.id, source: 'desktop', vaultId, itemId })).ok, true);
+  assert((await cached).value.response.signature);
+  const changed = send({ ...request, id: 'changed-get', operation: 'get', options: { challenge: request.options.challenge, rpId: 'example.test', userVerification: 'required' } }, page);
+  await tick();
+  const changedRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];
+  await send({ kind: 'passkey.choices', id: changedRow.id, source: 'desktop' });
+  rotateDuringGet = true;
+  assert.match((await send({ kind: 'passkey.approve', id: changedRow.id, source: 'desktop', vaultId, itemId })).error, /session changed/);
+  rotateDuringGet = false;
+  await send({ kind: 'passkey.cancel', id: changedRow.id });
+  assert((await changed).error);
   const excluded = send({ ...request, id: 'excluded', options: { ...request.options, excludeCredentials: [{ type: 'public-key', id: stored.metadata.credentialId }] } }, page);
   await tick();
   const excludedRow = (await send({ kind: 'passkey.pending', tabId: 1 })).requests[0];

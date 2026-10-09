@@ -39,6 +39,8 @@ struct Request {
     metadata: Value,
     #[serde(default)]
     private_key: String,
+    #[serde(default)]
+    verification_session: String,
 }
 
 #[derive(Serialize)]
@@ -311,6 +313,14 @@ impl Host {
             }
             return Ok(json!({"locked":true}));
         }
+        if request.action == "passkey.session" {
+            if request.source != "desktop" {
+                return Err("Desktop source required".to_owned());
+            }
+            let path = profile(&request.source)?;
+            let status = agent::call(&path, "status", json!({}))?;
+            return Ok(json!({"verificationSession":status["passkeyVerificationSession"]}));
+        }
         if request.action == "passkey.vaults" {
             let path = profile(&request.source)?;
             if let Some(local) = self
@@ -440,7 +450,17 @@ impl Host {
         {
             return Err("invalid passkey identity".to_owned());
         }
-        // Fresh decryption verifies the password for every assertion/registration;
+        if request.source == "desktop"
+            && request.action == "passkey.get"
+            && !request.verification_session.is_empty()
+        {
+            return agent::call(
+                path,
+                "passkey.get",
+                json!({"vault":request.vault_id,"item":request.item_id,"website":site,"verification_session":request.verification_session}),
+            );
+        }
+        // Other sources and registration still verify the password freshly;
         // an already unlocked agent alone is not user verification.
         let username = if request.username.trim().is_empty() && request.source == "desktop" {
             cached_username(path).unwrap_or_default()

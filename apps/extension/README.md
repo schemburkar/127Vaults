@@ -128,3 +128,7 @@ Native OS-provider support is a separate proposed integration; see
 ### Windows browser provider default
 
 The extension saves and uses website passkeys on Windows, including platform attachment requests. Enable passkeys once for all HTTPS sites in the popup, then reload existing website tabs. Native Windows integration remains in the desktop source behind disabled guards; no MSIX package, signing certificate or Developer Mode is needed for browser passkeys. The native connector still requires installation and a configured vault profile. Each ceremony verifies the master password; Desktop can supply its remembered account secret. Saved passkeys appear separately from fillable logins with their vault and per-item sync state.
+
+### Sign-in with an unlocked Desktop
+
+Passkey sign-in can reuse the Desktop agent's verified unlock session after an explicit Use passkey click. The native host obtains the session identifier from the authenticated local agent; the page cannot supply it. The agent validates it when retrieving the selected key, and the worker checks it again before replying. Desktop lock, exit, agent expiry and Windows lock invalidate access. Unlocking again creates a different session, so pending requests from the old session fail. No master password is cached in the extension. Creating a new credential and using CLI/web sources still require fresh password verification. Older agents fall back to the password prompt; restart the updated Desktop and reload the extension to enable this flow.

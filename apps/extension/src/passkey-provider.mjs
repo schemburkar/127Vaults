@@ -40,8 +40,8 @@ export function installPasskeyProvider(nativeRequest) {
     let secret = null;
     try {
       const selectedSource = source(message.source), existing = await rows(row, selectedSource);
-      const credentials = { source: selectedSource, siteOrigin: row.origin, username: message.username || '', accountSecret: message.accountSecret || '', masterPassword: message.masterPassword || '' };
-      if (!credentials.masterPassword || credentials.masterPassword.length > 16384 || credentials.accountSecret.length > 256 || credentials.username.length > 256) throw Error('Verify your master password.');
+      const credentials = { source: selectedSource, siteOrigin: row.origin, username: message.username || '', accountSecret: message.accountSecret || '', masterPassword: message.masterPassword || '', verificationSession: selectedSource === 'desktop' && row.operation === 'get' ? row.desktopVerificationSession || '' : '' };
+      if ((!credentials.masterPassword && !credentials.verificationSession) || credentials.masterPassword.length > 16384 || credentials.accountSecret.length > 256 || credentials.username.length > 256) throw Error('Verify your master password.');
       let response, saved;
       if (row.operation === 'create') {
         if (existing.some(entry => row.options.excludeCredentials?.some(c => c.id === entry.metadata.credentialId))) throw Error('A passkey excluded by this website already exists. Use the browser or the existing credential.');
@@ -63,6 +63,10 @@ export function installPasskeyProvider(nativeRequest) {
       await current(row);
       // Withhold success if the source was manually locked during this operation.
       await rows(row, selectedSource);
+      if (credentials.verificationSession) {
+        const live = await nativeRequest({ action: 'passkey.session', source: 'desktop' });
+        if (live?.verificationSession !== credentials.verificationSession) throw Error('Desktop unlock session changed. Start sign-in again.');
+      }
       await current(row);
       queue.finish(row.id, { value: response });
       return { ok: true, queued: saved?.queued === true, itemId: saved?.itemId, vaultId: saved?.vaultId || message.vaultId, source: selectedSource, syncError: saved?.syncError || null };
@@ -106,7 +110,8 @@ export function installPasskeyProvider(nativeRequest) {
       if (message.kind === 'passkey.choices') {
         const selectedSource = source(message.source), entries = await rows(row, selectedSource);
         const vaults = row.operation === 'create' ? selectedSource === 'web' ? await web(row, 'passkeyVaults') : await nativeRequest({ action: 'passkey.vaults', source: selectedSource }) : [];
-        return { entries: entries.filter(entry => row.operation === 'create' || matches(entry.metadata, row.options, row.origin)), vaults: vaults.filter(vault => !vault.retired) };
+        row.desktopVerificationSession = selectedSource === 'desktop' && row.operation === 'get' ? (await nativeRequest({ action: 'passkey.session', source: 'desktop' }).catch(() => null))?.verificationSession || '' : '';
+        return { reuseDesktopUnlock: !!row.desktopVerificationSession, entries: entries.filter(entry => row.operation === 'create' || matches(entry.metadata, row.options, row.origin)), vaults: vaults.filter(vault => !vault.retired) };
       }
       if (message.kind === 'passkey.approve') {
         const result = await approve(row, message);
