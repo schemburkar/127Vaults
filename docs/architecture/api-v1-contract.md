@@ -121,6 +121,10 @@ CLI naming describes user intent; it does not mirror every HTTP path literally.
 | `127vaults login USERNAME` | `POST /api/v1/auth/`, then password and device-proof steps | V1 transport and encrypted replica hydration verified. |
 | `127vaults logout` | `DELETE /api/v1/session` | V1 transport migrated. |
 | `127vaults device enroll` | Device-enrollment creation and approval | V1 transport migrated. |
+| `127vaults device list` | `GET /api/v1/devices` | Online authenticated device metadata, including current-device identity. |
+| `127vaults device inspect CODE` | `POST /api/v1/device-enrollment/inspect` | Read-only review with public signing-key fingerprint. |
+| `127vaults device approve CODE --device-id UUID --fingerprint SHA256` | Inspection followed by `POST /api/v1/device-enrollment/{id}/approval` | Explicit confirmation; reinspection binds the signed approval to the reviewed request and key. |
+| `127vaults device revoke UUID` | `POST /api/v1/devices/revoke` | Explicit confirmation; normalized self-revocation guard; server-session invalidation and audit. |
 | `127vaults vault list` | `GET /api/v1/vaults` | V1 transport and verified local read implemented. |
 | `127vaults vault create` | `POST /api/v1/vaults` | Online bootstrap transport implemented; offline vault creation is outside the item synchronization flow. |
 | `127vaults vault info` | Vault and item reads | V1 transport and verified local read implemented. |

@@ -79,6 +79,14 @@ struct Request {
     passkey_metadata: Value,
     #[serde(default)]
     verification_session: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+    #[serde(default)]
+    device_id: Option<String>,
+    #[serde(default)]
+    enrollment_id: Option<String>,
+    #[serde(default)]
+    fingerprint: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -178,6 +186,37 @@ fn dispatch(
         "vault.list" => session.vault_list(),
         "replica.status" => session.replica_status(),
         "license.status" => session.license_status(),
+        "device.list" => session.device_list(),
+        "device.inspect" => session.inspect_device_code(
+            request
+                .code
+                .as_deref()
+                .ok_or("enrollment code is required")?,
+        ),
+        "device.approve" => session.approve_reviewed_device(
+            request
+                .code
+                .as_deref()
+                .ok_or("enrollment code is required")?,
+            request
+                .enrollment_id
+                .as_deref()
+                .ok_or("reviewed enrollment ID is required")?,
+            request
+                .device_id
+                .as_deref()
+                .ok_or("reviewed device ID is required")?,
+            request
+                .fingerprint
+                .as_deref()
+                .ok_or("reviewed fingerprint is required")?,
+        ),
+        "device.revoke" => session.device_revoke(
+            request
+                .device_id
+                .as_deref()
+                .ok_or("device ID is required")?,
+        ),
         "sync" => session.sync_now(),
         "conflict.list" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
@@ -600,5 +639,31 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
             .as_str()
             .unwrap_or("agent command failed")
             .to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connector_agent_denies_all_device_management_before_dispatch() {
+        let mut session = crate::client::device_transport_tests::session("http://127.0.0.1:1");
+        for action in [
+            "device.list",
+            "device.inspect",
+            "device.approve",
+            "device.revoke",
+        ] {
+            let mut request: Request = serde_json::from_value(
+                json!({"capability":"fixture","action":action,"password":"synthetic-secret"}),
+            )
+            .unwrap();
+            assert_eq!(
+                dispatch(&mut session, &mut request, true).unwrap_err(),
+                "read-only agent command denied"
+            );
+            assert!(request.password.unwrap().bytes().all(|byte| byte == 0));
+        }
     }
 }

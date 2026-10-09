@@ -425,6 +425,16 @@ mod tests {
         let mut request: Request =
             serde_json::from_value(json!({"id":1,"action":"item.edit","source":"cli"})).unwrap();
         assert!(Host::dispatch(&mut request).is_err());
+        for action in [
+            "device.list",
+            "device.inspect",
+            "device.approve",
+            "device.revoke",
+        ] {
+            let mut request: Request =
+                serde_json::from_value(json!({"id":1,"action":action,"source":"cli"})).unwrap();
+            assert!(Host::dispatch(&mut request).is_err());
+        }
     }
 
     #[test]

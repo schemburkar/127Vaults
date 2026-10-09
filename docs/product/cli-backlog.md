@@ -1,6 +1,6 @@
 # CLI backlog
 
-Updated 2026-10-06. The [CLI MVP guide](cli-mvp.md) remains usage documentation; this file owns pending work. The [public Product page](../../public-website/product.html#cli) shows the current JSON response style.
+Updated 2026-10-09. The [CLI MVP guide](cli-mvp.md) remains usage documentation; this file owns pending work. The [public Product page](../../public-website/product.html#cli) shows the current JSON response style.
 
 | ID | State | Priority | Outcome and acceptance |
 | --- | --- | --- | --- |
@@ -9,7 +9,7 @@ Updated 2026-10-06. The [CLI MVP guide](cli-mvp.md) remains usage documentation;
 | CLI-003 | Partial | P1 | Signed sync transport and encrypted local replica exist; verify a live second-device conflict, restart, offline queue replay and checkpoint rollback path before claiming full offline parity. |
 | CLI-004 | Partial | P1 | Explicit `sync` and conflict list/show/resolve commands are wired to the existing engine. Sync reports remaining pending edits, and conflict resolution requires an explicit server/local choice. Live two-device replay and losslessness evidence remain pending. |
 | CLI-005 | Done | Baseline | Create/edit accept all desktop item types, first-party field IDs and section markers while retaining unmarked login compatibility. Get reports type and redacts password-class fields; list includes all types through the lightweight encrypted index without decrypting bodies. CLI unit tests cover typed and section input. |
-| CLI-006 | Open | P1 | Add CLI device list/revoke and credential rotation only after the server ceremony and safety contract are complete. |
+| CLI-006 | Device management implemented; rotation open | P1 | CLI list, enrollment inspect, reviewed approval and revoke use the existing server ceremonies through the online unlock agent. Trust changes require confirmation; approval binds the reviewed enrollment, device UUID and SHA-256 signing-key fingerprint. The shared client normalizes UUIDs before refusing self-revocation. Node/Windows/Linux tests and a disposable PostgreSQL plus Rust pinned-CA HTTPS ceremony passed ([evidence](../release/cli-device-management-evidence-2026-10-09.md)). Complete a real two-agent terminal/keyring walkthrough, stale-session and supported-host acceptance; add credential rotation only after the server ceremony and recovery contract are complete. Offline replicas are not remotely erased. |
 | CLI-007 | Open | P2 | Define import/export and recovery commands after formats, key custody and release scope are approved. |
 | CLI-008 | Open; Linux unit build passed | P1 | The CLI's 36 Rust unit tests passed on Ubuntu 20.04 WSL2 ([evidence](../release/linux-wsl-check-2026-10-06.md)). Run Windows and Linux packaging, live secret-store, terminal/pipe disclosure and clean-machine verification before a first release. |
 | CLI-009 | Partial | P1 | Multiple private vaults, all-vault item listing, encrypted synchronized names and collections, collection item listing, and a synchronized default view are implemented. Vault settings queue encrypted changes offline and require explicit review on a divergent server version. `vault default` still manages the older local preference. Verify two-device settings replay, restart, and default-view behavior before closing. |

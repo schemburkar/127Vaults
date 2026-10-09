@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 mod agent;
+mod devices;
+pub use devices::DeviceCommand;
 mod generator;
 pub mod native_passkeys;
 mod passkeys;
@@ -92,7 +94,7 @@ pub enum Command {
         #[command(subcommand)]
         command: ServerCommand,
     },
-    /// Enroll this CLI as a separate trusted device.
+    /// Enroll this CLI and manage this account's trusted devices.
     Device {
         #[command(subcommand)]
         command: DeviceCommand,
@@ -203,15 +205,6 @@ pub struct TrustArgs {
     pub config_dir: PathBuf,
 }
 
-#[derive(Debug, Subcommand)]
-pub enum DeviceCommand {
-    Enroll {
-        #[arg(long)]
-        username: String,
-        #[arg(long, default_value = ".127vaults")]
-        config_dir: PathBuf,
-    },
-}
 #[derive(Debug, Subcommand)]
 pub enum VaultCommand {
     List {
@@ -880,6 +873,15 @@ pub fn enroll_device_with_status(
     username: &str,
     on_code: impl FnOnce(&str),
 ) -> Result<String, String> {
+    enroll_device_with_identity(config_dir, username, |code, _, _| on_code(code))
+}
+
+#[allow(clippy::too_many_lines)]
+fn enroll_device_with_identity(
+    config_dir: &std::path::Path,
+    username: &str,
+    on_code: impl FnOnce(&str, &str, &str),
+) -> Result<String, String> {
     if !configured(config_dir) {
         return Err("run server trust before enrollment".to_owned());
     }
@@ -926,14 +928,37 @@ pub fn enroll_device_with_status(
     let enrollment_id = started["enrollmentId"]
         .as_str()
         .ok_or("invalid enrollment response")?;
+    if devices::device_id(enrollment_id)? != enrollment_id {
+        return Err("invalid enrollment response".to_owned());
+    }
     let poll_token = started["pollToken"]
         .as_str()
         .ok_or("invalid enrollment response")?;
     let code = started["code"]
         .as_str()
         .ok_or("invalid enrollment response")?;
-    on_code(code);
+    devices::normalize_code(code)?;
+    if URL_SAFE_NO_PAD
+        .decode(poll_token)
+        .map_err(|_| "invalid enrollment response")?
+        .len()
+        != 32
+    {
+        return Err("invalid enrollment response".to_owned());
+    }
+    let expires_at = started["expiresAt"]
+        .as_str()
+        .ok_or("invalid enrollment response")?;
+    on_code(
+        code,
+        &device_id,
+        &devices::key_fingerprint(&signing.verifying_key().to_bytes()),
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_mins(10);
     let approved = loop {
+        if std::time::Instant::now() >= deadline {
+            return Err("enrollment expired; request a new code".to_owned());
+        }
         std::thread::sleep(std::time::Duration::from_secs(2));
         let value = enrollment_post(
             &client,
@@ -941,12 +966,20 @@ pub fn enroll_device_with_status(
             "poll",
             &serde_json::json!({"enrollmentId":enrollment_id,"pollToken":poll_token}),
         )?;
-        if value["status"] == "approved" {
-            break value;
+        match value["status"].as_str() {
+            Some("approved") => break value,
+            Some("pending") => {}
+            _ => return Err("invalid enrollment polling response".to_owned()),
         }
     };
     let binding = approved["binding"].clone();
-    if binding["newDeviceId"] != device_id || binding["newDevicePublicKey"] != public_key {
+    let inspected = devices::EnrollmentInspection::parse(binding.clone())?;
+    inspected.matches(
+        enrollment_id,
+        &device_id,
+        &devices::key_fingerprint(&signing.verifying_key().to_bytes()),
+    )?;
+    if binding["newDevicePublicKey"] != public_key || binding["expiresAt"] != expires_at {
         return Err("server approval does not match this CLI device".to_owned());
     }
     let approver_key: [u8; 32] = URL_SAFE_NO_PAD
@@ -972,7 +1005,7 @@ pub fn enroll_device_with_status(
             &Signature::from_slice(&approval_signature)
                 .map_err(|_| "invalid approval signature")?,
         )
-        .map_err(|_| "browser approval signature was invalid".to_owned())?;
+        .map_err(|_| "trusted-device approval signature was invalid".to_owned())?;
     let mut possession = binding.as_object().cloned().ok_or("invalid approval")?;
     possession.insert(
         "purpose".to_owned(),
@@ -1005,9 +1038,9 @@ pub fn enroll_device_with_status(
 }
 
 fn enroll_device(config_dir: &std::path::Path, username: &str) -> Result<String, String> {
-    enroll_device_with_status(config_dir, username, |code| {
-        println!(
-            "Enrollment code: {code}\nEnter this code in Trusted devices in the web app. Waiting for approval…"
+    enroll_device_with_identity(config_dir, username, |code, device_id, fingerprint| {
+        eprintln!(
+            "Enrollment code: {code}\nDevice ID: {device_id}\nSigning-key fingerprint (SHA-256): {fingerprint}\nCompare these on an already trusted web, desktop, or CLI device before approving. Waiting for approval…"
         );
     })
 }
@@ -1449,13 +1482,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                 if active { "yes" } else { "no" }
             ))
         }
-        Command::Device {
-            command:
-                DeviceCommand::Enroll {
-                    config_dir,
-                    username,
-                },
-        } => enroll_device(&config_dir, &username),
+        Command::Device { command } => devices::run(command),
         Command::Login {
             username,
             enroll,
@@ -1813,6 +1840,34 @@ mod tests {
             ])
             .is_err()
         );
+    }
+
+    #[test]
+    fn device_management_commands_require_explicit_identity_and_support_confirmation_flags() {
+        assert!(Cli::try_parse_from(["127vaults", "device", "list"]).is_ok());
+        assert!(Cli::try_parse_from(["127vaults", "device", "inspect", "ABCDEFGH"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["127vaults", "device", "approve", "ABCDEFGH", "--yes"]).is_err()
+        );
+        let id = "11111111-1111-4111-8111-111111111111";
+        let fingerprint = "0".repeat(64);
+        assert!(
+            Cli::try_parse_from([
+                "127vaults",
+                "device",
+                "approve",
+                "ABCDEFGH",
+                "--device-id",
+                id,
+                "--fingerprint",
+                &fingerprint,
+                "--yes"
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["127vaults", "device", "revoke", id, "--yes"]).is_ok());
+        assert!(Cli::try_parse_from(["127vaults", "device", "revoke"]).is_err());
+        assert!(Cli::try_parse_from(["127vaults", "device", "rotate-password"]).is_err());
     }
 
     #[test]

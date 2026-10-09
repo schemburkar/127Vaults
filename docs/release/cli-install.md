@@ -9,6 +9,16 @@ Enrol against the server's HTTPS address after verifying the server CA. Use
 fictitious credentials for these experimental builds. An enrolled and synced
 profile keeps an encrypted local replica for offline access.
 
+After online login, `127vaults device list` lists this account's trusted devices.
+`device inspect CODE` reviews a pending enrollment. An enrolled CLI can approve
+another client's request with `device approve CODE --device-id UUID --fingerprint
+SHA256` after comparing its full UUID and signing-key fingerprint directly with
+the requesting client. Approve and `device revoke UUID` require confirmation;
+`--yes` is the explicit automation option. They return JSON and use the selected
+CLI profile (`--config-dir PATH` when needed). The current device cannot revoke
+itself. Revocation affects online trust and sessions; it does not remotely erase
+an offline replica. These commands require an online unlocked CLI agent.
+
 For the separately downloaded Chrome/Edge extension, load its extracted folder
 unpacked, copy its ID from the extensions page, and register this archive's host:
 

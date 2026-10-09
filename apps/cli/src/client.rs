@@ -818,10 +818,7 @@ impl Session {
         if !self.online {
             return Err("device management is unavailable while offline".to_owned());
         }
-        let id = uuid::Uuid::parse_str(device_id).map_err(|_| "device ID is invalid")?;
-        if device_id == self.device_id {
-            return Err("the current device cannot be revoked here".to_owned());
-        }
+        let id = crate::devices::revoke_target(device_id, &self.device_id)?;
         self.post_auth(
             "/api/v1/devices/revoke",
             reqwest::Method::POST,
@@ -1548,29 +1545,56 @@ impl Session {
     }
     /// Approves a new device using this authenticated trusted device.
     pub fn approve_device_code(&self, code: &str) -> Result<(), String> {
+        let inspected = self.device_enrollment(code)?;
+        self.sign_device_approval(&inspected)?;
+        Ok(())
+    }
+
+    fn device_enrollment(
+        &self,
+        code: &str,
+    ) -> Result<crate::devices::EnrollmentInspection, String> {
         if !self.online {
             return Err("device approval requires an online session".to_owned());
         }
+        let code = crate::devices::normalize_code(code)?;
         let inspected = self.post_auth(
             "/api/v1/device-enrollment/inspect",
             reqwest::Method::POST,
             &json!({"code":code}),
         )?;
-        let enrollment_id = inspected["enrollmentId"]
-            .as_str()
-            .ok_or("invalid enrollment inspection")?;
-        let binding = json!({
-            "accountId":inspected["accountId"],
-            "enrollmentId":enrollment_id,
-            "newDeviceId":inspected["newDeviceId"],
-            "newDevicePublicKey":inspected["newDevicePublicKey"],
-            "expiresAt":inspected["expiresAt"]
-        });
-        let bytes =
-            vaults_protocol::signed_sync::canonical_bytes(&binding).map_err(str::to_owned)?;
+        crate::devices::EnrollmentInspection::parse(inspected)
+    }
+
+    pub fn inspect_device_code(&self, code: &str) -> Result<Value, String> {
+        self.device_enrollment(code)?.review()
+    }
+
+    pub fn approve_reviewed_device(
+        &self,
+        code: &str,
+        enrollment_id: &str,
+        device_id: &str,
+        fingerprint: &str,
+    ) -> Result<Value, String> {
+        let inspected = self.device_enrollment(code)?;
+        inspected.matches(enrollment_id, device_id, fingerprint)?;
+        self.sign_device_approval(&inspected)?;
+        Ok(json!({"approved":true,"deviceId":inspected.new_device_id,
+            "enrollmentId":inspected.enrollment_id,"enrollmentComplete":false}))
+    }
+
+    fn sign_device_approval(
+        &self,
+        inspected: &crate::devices::EnrollmentInspection,
+    ) -> Result<(), String> {
+        let bytes = inspected.signing_bytes()?;
         let signature = URL_SAFE_NO_PAD.encode(self.signing.sign(&bytes).to_bytes());
         self.post_auth(
-            &format!("/api/v1/device-enrollment/{enrollment_id}/approval"),
+            &format!(
+                "/api/v1/device-enrollment/{}/approval",
+                inspected.enrollment_id
+            ),
             reqwest::Method::POST,
             &json!({"approvalSignature":signature}),
         )?;
@@ -3015,6 +3039,10 @@ impl Drop for Session {
         self.core.lock();
     }
 }
+
+#[cfg(test)]
+#[path = "device_transport_tests.rs"]
+pub(crate) mod device_transport_tests;
 
 #[cfg(test)]
 mod tests {

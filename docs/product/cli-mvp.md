@@ -29,6 +29,11 @@ During enrollment:
 4. The CLI stores its device key only after it receives and validates the
    server's success receipt. No enrollment JSON is copied between clients.
 
+An already enrolled CLI can also approve the new client; see trusted-device
+management below. The requesting CLI prints its code, full device UUID and
+SHA-256 signing-key fingerprint to stderr while it waits. The existing desktop
+enrollment callback remains compatible with its code-based UI.
+
 `login --enroll` continues into login after enrollment. For later login checks use:
 
 ```powershell
@@ -45,6 +50,84 @@ cargo run -p vaults-cli -- vault default V-0123456789
 cargo run -p vaults-cli -- sync
 cargo run -p vaults-cli -- conflict list
 ```
+
+## Trusted-device management
+
+These commands use the selected CLI profile's unlocked, online agent. Log in
+first; an offline unlock cannot read server device state, approve an enrollment,
+or revoke trust. They use the same pinned HTTPS, session cookie, Origin and CSRF
+boundary as the other authenticated commands.
+
+```powershell
+127vaults device list
+127vaults device inspect ABCDEFGH
+127vaults device approve ABCDEFGH --device-id <full-new-device-UUID> --fingerprint <full-SHA256-fingerprint>
+127vaults device revoke <full-other-device-UUID>
+```
+
+Add `--config-dir PATH` to select an explicit profile. List returns the account's
+device metadata and `currentDeviceId`; inspect returns the proposed device UUID,
+enrollment UUID, signing-key fingerprint and expiry without approving anything.
+Inspection does not print the raw public key, account ID, poll token, signing
+key or session credentials.
+
+To enroll a second CLI without a browser:
+
+1. Log in with the already enrolled Client A.
+2. Configure trusted endpoint/CA material in a **new** Client B profile, then run
+   `127vaults device enroll --username USERNAME --config-dir CLIENT_B` there.
+3. On Client A, inspect the displayed code. Compare the proposed UUID and complete
+   fingerprint directly against Client B's output.
+4. Approve on Client A with that code, `--device-id` and `--fingerprint`. Type
+   `yes` at the confirmation prompt. Client A re-inspects the request and binds
+   its signature to the reviewed enrollment, device and signing key.
+5. Client B verifies the approval, proves possession, receives a success receipt
+   and stores its device identity. Log in on Client B to start its own agent.
+
+Approval's JSON result includes `enrollmentComplete: false`: approval is one step;
+the requesting client still has to finish possession proof and enrollment. A
+changed enrollment, device or key is refused before signing. Invalid polling
+responses fail rather than looping, and polling has a monotonic ten-minute
+deadline in addition to server expiry and the HTTP request timeout.
+
+Approve and revoke require interactive confirmation. For deliberate automation,
+append `--yes`; approval still requires the expected device UUID and full
+fingerprint and still performs the review checks. Prompts/review are written to
+stderr so successful list/inspect/approve/revoke stdout remains JSON. Redirected
+input without `--yes` is refused before any approval or revocation request.
+Cancellation leaves trust unchanged.
+
+Revocation only accepts an active device listed for the account and refuses the
+current device, including alternative UUID capitalization. Successful revocation
+invalidates that other device's server sessions and records an audit event. It
+does not erase an offline encrypted replica or guarantee immediate offline lock.
+Credential rotation and lost-device recovery remain separate release work; no
+CLI rotation command is exposed. The browser native host and read-only connector
+agent cannot dispatch these device-management commands.
+
+### Repeat the device-management checks
+
+```powershell
+pnpm test:device-management
+pnpm test:device-management --rust
+```
+
+The first command needs a working Podman engine and the locally available
+`docker.io/library/postgres:17-bookworm` image. It creates a new loopback-only,
+in-memory PostgreSQL fixture, installs the current schema, verifies enrollment,
+approval, replay, account isolation, sessions and revocation audit, then removes
+the container. It never reads `.env`, uses a live database, or pulls an image.
+
+`--rust` also needs Cargo and the local `docker.io/alpine/openssl:3.5.4` image.
+It compiles the CLI library test binary and creates an ephemeral CA and server
+certificate, then runs the Rust client against the production device handlers
+and the real PostgreSQL store over pinned-CA HTTPS. This fixture supplies a
+preauthenticated account context; it does not verify OPAQUE login, OS keyring
+storage, a full two-agent terminal walkthrough or clean-machine installation.
+The fixture's certificates and keys are removed afterward. `--docker` selects
+Docker as an unverified alternate engine until its host matrix is run.
+
+## Vault and item workflow
 
 A successful login remembers its profile path, so later commands can omit
 `--config-dir`. Supplying a non-default path still selects that profile explicitly.
