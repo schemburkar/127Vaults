@@ -234,14 +234,14 @@ function wslArgs(request) {
 }
 async function linuxWorker(request, plan) {
   const args = wslArgs(request);
-  const toLinux = path => execute('wsl.exe', [...args, '--', 'wslpath', '-a', '-u', path], { capture: true, quiet: true });
+  const toLinux = path => execute('wsl.exe', [...args, '--exec', 'wslpath', '-a', '-u', path.replaceAll('\\', '/')], { capture: true, quiet: true });
   const repository = await toLinux(plan.repository);
   const script = await toLinux(join(import.meta.dirname, 'release.mjs'));
   const outputRoot = await toLinux(plan.outputRoot);
   const childRequest = { ...request, repository, outputRoot, cacheRoot: request.linuxCacheRoot || null,
     platform: 'linux', ref: plan.revision, label: plan.label, version: plan.packageVersion, worker: true };
   // bash only loads the user's toolchain PATH; positional arguments are forwarded literally.
-  await execute('wsl.exe', [...args, '--', 'bash', '-lc', 'exec "$@"', 'vaults-release', 'node', script, '--request'],
+  await execute('wsl.exe', [...args, '--exec', 'bash', '-lc', 'exec "$@"', 'vaults-release', 'node', script, '--request'],
     { input: JSON.stringify(childRequest) });
 }
 export async function runRelease(request) {
