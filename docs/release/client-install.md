@@ -5,16 +5,19 @@ OS/architecture. Use fictitious data for supervised testing. Binaries are unsign
 check the sender's SHA256SUMS. LICENSE-POLICY.md is the intended licensing policy,
 not a public release license. No automatic updater is enabled.
 
-Windows: install the accompanying setup EXE. Alternatively extract this
-portable ZIP to a stable, user-owned directory and run `vaults-desktop-poc.exe`.
+Windows: install the accompanying setup EXE. If your handoff also includes a
+legacy portable client ZIP, extract it to a stable, user-owned directory and run `vaults-desktop-poc.exe`.
 Install Microsoft WebView2 if it is absent; the setup EXE can download it.
 `127vaults.exe --help` lists CLI commands.
 
 Ubuntu 24.04 x64: install the accompanying Debian package with
-`sudo apt install ./127vaults-desktop-0.1.0-linux-x64.deb`, or run the AppImage.
-For this portable TAR.GZ, install WebKitGTK 4.1, libsecret and a desktop Secret
+`sudo apt install ./127vaults-desktop-<version>-linux-x64.deb` (substitute the supplied
+filename), or run the AppImage. For an optional legacy portable client TAR.GZ,
+install WebKitGTK 4.1, libsecret and a desktop Secret
 Service, then execute `./vaults-desktop-poc`. Run `./127vaults --help` for CLI use.
-Keep all three executables together so desktop can start its connector agent.
+Keep the portable executables together so desktop can start its connector agent.
+The independent desktop release contains installers; obtain the separate CLI
+release for standalone CLI use or a native host outside the AppImage mount.
 
 Desktop enrollment needs your server's HTTPS address and verified CA trust.
 The desktop/CLI keep an encrypted local replica after enrollment and sync.
@@ -33,7 +36,7 @@ bash install-native-host.sh /absolute/path/127vaults-extension-host <ID>
 ```
 
 For Debian installations the host is `/usr/bin/127vaults-extension-host`.
-For AppImage use the portable client host in a stable extracted directory for
+For AppImage use the separately downloaded CLI package's host in a stable extracted directory for
 native registration; the browser cannot launch an executable inside a transient
 AppImage mount. The desktop's own connector sidecar is still embedded.
 Registration is current-user only. Rerun after moving the host or changing IDs.
