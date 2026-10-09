@@ -79,6 +79,12 @@ README, current license-policy document, `SHA256SUMS`, `release.json`, and a
 standalone `verify-release.mjs`. Build config, test sources, source archives,
 dependency folders and compiler output directories stay in the cache.
 
+Rust client executables and cryptographic WASM are compiled. Desktop/web frontend
+assets are bundled, while extension JavaScript and server Node modules remain
+readable runtime code. Images and bundling do not conceal that code. Server Compose
+YAML, installer scripts and user instructions are required distribution files;
+development workflow YAML, tests and the full source checkout are excluded.
+
 Example default output layout:
 
 ```text
