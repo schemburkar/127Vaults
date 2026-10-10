@@ -10,7 +10,8 @@
     "schema": "node src/entry.mjs schema",
     "test": "node --test",
     "check:admin": "node --check src/admin/directory.mjs && node --check admin/directory.js && node --check scripts/admin-browser-smoke.mjs",
-    "test:admin:browser": "node scripts/admin-browser-smoke.mjs"
+    "test:admin:browser": "node scripts/admin-browser-smoke.mjs",
+    "test:admin:database": "node ../../scripts/admin-directory-smoke.mjs"
   },
   "dependencies": {
     "pg": "8.16.3"

@@ -39,4 +39,6 @@ Navigation supports section links such as `/admin/#users`, keyboard focus and a 
 
 Run `pnpm --filter @127vaults/server test:admin:browser` with Playwright installed, or set `VAULTS_PLAYWRIGHT_MODULE` to a local Playwright module path. It launches headless Edge by default; `VAULTS_BROWSER_CHANNEL` can select another installed Chromium channel. Set `VAULTS_ADMIN_SCREENSHOTS` to an output directory for screenshots. The script bridges synthetic HTTPS browser requests to the real handler with disposable operator credentials and 137 synthetic accounts/devices; it never reads `.env`, operator files, or a live database.
 
+Run `pnpm --filter @127vaults/server test:admin:database` for the actual PostgreSQL queries. It uses the cached PostgreSQL 17 image in a new, loopback-only container with in-memory storage and removes it afterward. Pass `--docker` to use Docker instead of Podman. The test covers every page, tied creation timestamps, literal wildcard text, case-insensitive search, status/role/protection filters, account-scoped devices and stale-page clamping.
+
 In hot-reload development, port `12781` is the internal backend transport, not a separate admin site. Direct browser requests to that port fail the configured Host check with `forbidden`. Use `https://127.0.0.1:12780/admin/` through the same proxy as the vault app.
