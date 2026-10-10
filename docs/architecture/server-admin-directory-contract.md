@@ -11,6 +11,9 @@ The experimental `/api/admin/` routes use the separate local operator session de
 | `q` | All | Trimmed, case-insensitive literal substring, up to 120 characters. SQL wildcard characters have no special meaning. Embedded control characters are rejected. |
 | `page` | All | Positive integer up to 1,000,000; default 1. A page beyond the last page is clamped to the last page. |
 | `pageSize` | All | Positive integer up to 100; default 25. |
+| `sort` | Users | `newest` (default), `oldest` or `username` (ascending). |
+| `sort` | Devices | `newest` (default), `oldest` or `account` (ascending username). |
+| `sort` | Invitations | `newest` (default), `oldest`, `expires` (soonest first) or `email` (ascending). |
 | `status` | Users | `pending` or `active`. |
 | `role` | Users | `owner`, `user` or `admin`; current vault-account schema supports owner/user only. |
 | `status` | Devices | `pending`, `active`, `revoked` or `replaced`. |
@@ -20,7 +23,7 @@ The experimental `/api/admin/` routes use the separate local operator session de
 
 Blank text/enum filters mean all records. Searches cover account display name, username, email and ID for users; device ID and account display name/username for devices; recipient email, inviter username and invitation record ID for invitations. Every search/filter value is bound as a PostgreSQL parameter.
 
-Each response contains its named array (`users`, `devices` or `invitations`) and `total`, `page`, `pageSize`, `pageCount`, `hasPrevious` and `hasNext`. An empty result has `total: 0`, `page: 1`, `pageCount: 1` and no previous/next page. Lists order by descending creation time and stable identity tie-breakers. Counts and page rows are separate read-only statements; concurrent enrollment can change results between refreshes.
+Each response contains its named array (`users`, `devices` or `invitations`) and `total`, `page`, `pageSize`, `pageCount`, `hasPrevious` and `hasNext`. An empty result has `total: 0`, `page: 1`, `pageCount: 1` and no previous/next page. Sorting uses allowlisted SQL fragments with stable identity tie-breakers. Counts and page rows are separate read-only statements; concurrent enrollment can change results between refreshes.
 
 ## Returned metadata
 

@@ -43,6 +43,16 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     }
     assert.equal(new Set(seen).size, 137, 'Equal timestamps must not repeat or omit records between pages');
     assert.deepEqual(seen, [...seen].sort());
+    await pool.query("UPDATE vaults.accounts SET created_at='2025-01-01 00:00:00+00' WHERE id=$1", [seen[136]]);
+    const oldestAccount = await readDirectory(pool, 'users', input('users', { sort: 'oldest' }));
+    assert.equal(oldestAccount.users[0].id, seen[136]);
+    const byUsername = await readDirectory(pool, 'users', input('users', { sort: 'username' }));
+    assert.equal(byUsername.users[0].username, 'user000');
+    await pool.query("UPDATE vaults.devices SET created_at='2025-01-01 00:00:00+00' WHERE account_id=$1", [seen[136]]);
+    const oldestDevice = await readDirectory(pool, 'devices', input('devices', { sort: 'oldest' }));
+    assert.equal(oldestDevice.devices[0].username, 'user136');
+    const byAccount = await readDirectory(pool, 'devices', input('devices', { sort: 'account' }));
+    assert.equal(byAccount.devices[0].username, 'user000');
     const literal = await readDirectory(pool, 'users', input('users', { q: '%_' }));
     assert.equal(literal.total, 1, 'SQL wildcard characters are literal search text');
     assert.equal(literal.users[0].username, 'user136');
@@ -93,5 +103,9 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     assert.equal(target.total, 1);
     assert.equal(target.invitations[0].id, invitationId);
     assert.doesNotMatch(JSON.stringify(invitations), /token_digest|verification_code/);
+    const soonest = await readDirectory(pool, 'invitations', input('invitations', { sort: 'expires' }));
+    assert.equal(soonest.invitations[0].email, 'expired@example.invalid');
+    const byEmail = await readDirectory(pool, 'invitations', input('invitations', { sort: 'email' }));
+    assert.equal(byEmail.invitations[0].email, 'completed@example.invalid');
   } finally { await pool.end(); }
 });

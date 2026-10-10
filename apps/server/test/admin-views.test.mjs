@@ -7,7 +7,7 @@ test('directory requests carry only the active directory filters', () => {
   directory.page = 3;
   directory.filters = { q: 'Alice & Bob', status: 'active', role: 'user', protection: 'software', accountId: 'account', pageSize: 50 };
   const users = new URLSearchParams(directoryQuery('users', directory));
-  assert.deepEqual(Object.fromEntries(users), { page: '3', pageSize: '50', q: 'Alice & Bob', status: 'active', role: 'user' });
+  assert.deepEqual(Object.fromEntries(users), { page: '3', pageSize: '50', sort: 'newest', q: 'Alice & Bob', status: 'active', role: 'user' });
   const devices = new URLSearchParams(directoryQuery('devices', directory));
   assert.equal(devices.get('accountId'), 'account');
   assert.equal(devices.has('role'), false);

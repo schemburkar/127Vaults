@@ -784,3 +784,36 @@ dialog::backdrop {
     outline-offset: 6px;
   }
 }
+.pagination-top {
+  padding: 0 0 16px;
+  border-top: 0;
+  border-bottom: 1px solid #25304a;
+  margin-bottom: 4px;
+}
+.page-jump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.page-jump label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9aa8c2;
+}
+.page-jump input {
+  width: 64px;
+  min-height: 36px;
+  padding: 6px 8px;
+  background: #0b1226;
+  border: 1px solid #3c4c6b;
+  border-radius: 8px;
+  color: #e9edf7;
+}
+.pagination-top .button {
+  min-width: 36px;
+}
+.pagination-top > div {
+  gap: 6px;
+}

@@ -32,7 +32,9 @@ The file format allows multiple operators with `owner` or `admin` roles. Additio
 
 Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. All admin endpoints are read-only except sign-in and sign-out. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
 
-Pages load on demand. **Refresh** checks the current section; failed refreshes label retained results as out of date and offer **Try again**. An expired session clears displayed account/device data and returns to sign-in with an explanation. A failed sign-out leaves the console visible and says sign-out was not confirmed. The header shows session time remaining and the server address is visible in the console and sign-in screen.
+Pages load on demand. Sort accounts by creation time or username, devices by creation time or account, and invitations by creation time, expiration or recipient email. Search applies the selected filters and order together. Clearing filters preserves your sort order and page size. Top controls can jump directly to a page; previous/next navigation is also available below the results.
+
+**Refresh** checks the current section; failed refreshes label retained results as out of date and offer **Try again**. An expired session clears displayed directory data and returns to sign-in with an explanation. A failed sign-out leaves the console visible and says sign-out was not confirmed. The header shows session time remaining and the server address is visible in the console and sign-in screen.
 
 Navigation supports section links such as `/admin/#users`, keyboard focus and a skip-to-content link. Narrow screens display labeled account/device cards. Details use a native modal dialog with Escape, restored keyboard focus and an ID copy action with a manual-copy fallback.
 

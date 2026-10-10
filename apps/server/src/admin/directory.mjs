@@ -3,11 +3,16 @@ const filters = {
   devices: { status: ['pending', 'active', 'revoked', 'replaced'], protection: ['unknown', 'software', 'platform', 'hardware'] },
   invitations: { status: ['pending', 'expired', 'revoked', 'redeemed'] },
 };
+const sorts = {
+  users: { newest: 'a.created_at DESC,a.id,a.tenant_id', oldest: 'a.created_at ASC,a.id,a.tenant_id', username: 'a.username_key,a.id,a.tenant_id' },
+  devices: { newest: 'd.created_at DESC,d.id,d.tenant_id', oldest: 'd.created_at ASC,d.id,d.tenant_id', account: 'a.username_key,d.created_at DESC,d.id,d.tenant_id' },
+  invitations: { newest: 'r.created_at DESC,r.id,e.email,r.tenant_id', oldest: 'r.created_at ASC,r.id,e.email,r.tenant_id', expires: 'r.expires_at ASC,r.id,e.email,r.tenant_id', email: 'lower(e.email) COLLATE "C",r.created_at DESC,r.id,e.email,r.tenant_id' },
+};
 
 export class DirectoryInputError extends Error {}
 
 export function directoryInput(params, kind) {
-  const allowed = ['q', 'page', 'pageSize', ...Object.keys(filters[kind]), ...(kind === 'devices' ? ['accountId'] : [])];
+  const allowed = ['q', 'page', 'pageSize', 'sort', ...Object.keys(filters[kind]), ...(kind === 'devices' ? ['accountId'] : [])];
   for (const key of params.keys()) {
     if (!allowed.includes(key) || params.getAll(key).length !== 1) throw new DirectoryInputError('Invalid directory filter.');
   }
@@ -19,7 +24,9 @@ export function directoryInput(params, kind) {
   };
   const q = (params.get('q') ?? '').trim();
   if (q.length > 120 || /[\u0000-\u001f\u007f]/.test(q)) throw new DirectoryInputError('Invalid search.');
-  const input = { q, page: integer('page', 1, 1_000_000), pageSize: integer('pageSize', 25, 100) };
+  const sort = params.get('sort') ?? 'newest';
+  if (!Object.hasOwn(sorts[kind], sort)) throw new DirectoryInputError('Invalid sort.');
+  const input = { q, page: integer('page', 1, 1_000_000), pageSize: integer('pageSize', 25, 100), sort };
   for (const [key, values] of Object.entries(filters[kind])) {
     const value = params.get(key) ?? '';
     if (value && !values.includes(value)) throw new DirectoryInputError(`Invalid ${key}.`);
@@ -62,7 +69,7 @@ export async function readDirectory(pool, kind, input) {
       (SELECT count(*)::int FROM vaults.devices d WHERE d.tenant_id=a.tenant_id AND d.account_id=a.id AND d.lifecycle_status='active') AS device_count`
     : kind === 'devices' ? 'd.id,d.account_id,a.username,a.display_name,d.lifecycle_status,d.protection_class,d.credential_state,d.created_at,d.revoked_at'
     : `r.id,e.email,a.username AS created_by,r.created_at,r.expires_at,r.revoked_at,e.redeemed_at,${invitationStatus} AS status`;
-  const order = kind === 'users' ? 'a.created_at DESC,a.id,a.tenant_id' : kind === 'devices' ? 'd.created_at DESC,d.id,d.tenant_id' : 'r.created_at DESC,r.id,e.email,r.tenant_id';
+  const order = sorts[kind][input.sort];
   const rows = await pool.query(`SELECT ${fields} FROM ${from}${where} ORDER BY ${order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, input.pageSize, offset]);
   const items = rows.rows.map(r => kind === 'users'
     ? { id: r.id, username: r.username, displayName: r.display_name, email: r.email, role: r.server_role, status: r.enrollment_state, emailVerified: r.email_verified, createdAt: r.created_at, deviceCount: r.device_count }

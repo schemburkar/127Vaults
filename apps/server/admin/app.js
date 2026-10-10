@@ -188,12 +188,12 @@ function bindDirectory(kind) {
     const q = String(fields.get('q') ?? '').trim();
     const status = String(fields.get('status') ?? '');
     const filter = kind === 'users' ? 'role' : kind === 'devices' ? 'protection' : null;
-    entry.filters = { ...entry.filters, q, status, ...(filter ? { [filter]: String(fields.get(filter) ?? '') } : {}) };
+    entry.filters = { ...entry.filters, q, status, sort: String(fields.get('sort') ?? 'newest'), ...(filter ? { [filter]: String(fields.get(filter) ?? '') } : {}) };
     entry.page = 1; entry.data = null;
     void loadSection(true, 'directory-search');
   });
   document.querySelector('#clear-filters').addEventListener('click', () => {
-    entry.filters = { ...newDirectory().filters, pageSize: entry.filters.pageSize };
+    entry.filters = { ...newDirectory().filters, pageSize: entry.filters.pageSize, sort: entry.filters.sort };
     entry.accountName = ''; entry.page = 1; entry.data = null;
     void loadSection(true, 'directory-search');
   });
@@ -205,9 +205,9 @@ function bindDirectory(kind) {
     entry.filters.pageSize = Number(event.target.value); entry.page = 1; entry.data = null;
     void loadSection(true, 'page-size');
   });
-  for (const [id, change] of [['previous-page', -1], ['next-page', 1]]) {
-    document.getElementById(id)?.addEventListener('click', () => { entry.page = entry.data.page + change; entry.data = null; void loadSection(true, 'directory-summary'); });
-  }
+  const changePage = page => { entry.page = page; entry.data = null; void loadSection(true, 'directory-summary'); };
+  document.querySelectorAll('[data-page-change]').forEach(button => button.addEventListener('click', () => changePage(entry.data.page + Number(button.dataset.pageChange))));
+  document.querySelector('#page-jump')?.addEventListener('submit', event => { event.preventDefault(); changePage(Number(new FormData(event.currentTarget).get('page'))); });
   document.querySelectorAll('[data-details]').forEach(button => button.addEventListener('click', () => showDetails(kind, entry.data[kind][Number(button.dataset.details)], button)));
   document.querySelectorAll('[data-account]').forEach(button => button.addEventListener('click', () => accountDevices(entry.data.users[Number(button.dataset.account)])));
 }

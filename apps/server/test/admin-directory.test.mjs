@@ -3,13 +3,25 @@ import { test } from 'node:test';
 import { directoryInput, DirectoryInputError, readDirectory } from '../src/admin/directory.mjs';
 
 test('directory queries have bounded pagination and allowlisted filters', () => {
-  assert.deepEqual(directoryInput(new URLSearchParams(), 'users'), { q: '', page: 1, pageSize: 25, status: '', role: '' });
+  assert.deepEqual(directoryInput(new URLSearchParams(), 'users'), { q: '', page: 1, pageSize: 25, sort: 'newest', status: '', role: '' });
   assert.equal(directoryInput(new URLSearchParams('q=%20Alice%20&page=3&pageSize=50&status=active&role=user'), 'users').q, 'Alice');
   for (const query of ['page=0', 'page=-1', 'page=1.5', 'page=1e2', 'page=1000001', 'pageSize=101', 'pageSize=', 'page=1&page=2', 'sort=email', 'status=suspended', 'role=root', `q=${'x'.repeat(121)}`, 'q=%00']) {
     assert.throws(() => directoryInput(new URLSearchParams(query), 'users'), DirectoryInputError, query);
   }
   for (const query of ['role=owner', 'protection=trusted', 'accountId=hello%27', 'status=deleted']) {
     assert.throws(() => directoryInput(new URLSearchParams(query), 'devices'), DirectoryInputError, query);
+  }
+});
+
+test('directory ordering comes from a kind-specific allowlist', async () => {
+  for (const [kind, sort, pattern] of [['users', 'username', /ORDER BY a.username_key,a.id/], ['devices', 'oldest', /ORDER BY d.created_at ASC,d.id/], ['invitations', 'expires', /ORDER BY r.expires_at ASC,r.id/]]) {
+    const queries = [];
+    const pool = { async query(sql) { queries.push(sql); return sql.startsWith('SELECT count') ? { rows: [{ total: 1 }] } : { rows: [] }; } };
+    await readDirectory(pool, kind, directoryInput(new URLSearchParams({ sort }), kind));
+    assert.match(queries[1], pattern);
+  }
+  for (const [kind, sort] of [['users', 'expires'], ['devices', 'username'], ['invitations', 'newest; DROP TABLE vaults.accounts'], ['users', 'toString']]) {
+    assert.throws(() => directoryInput(new URLSearchParams({ sort }), kind), DirectoryInputError);
   }
 });
 

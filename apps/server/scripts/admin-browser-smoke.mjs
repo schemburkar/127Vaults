@@ -51,6 +51,8 @@ const pool = { async query(sql, values = []) {
   if (sql.includes('d.protection_class=$')) { const protection = values[index++]; rows = rows.filter(row => row.protection_class === protection); }
   if (sql.includes('d.account_id::text=$')) { const account = values[index++]; rows = rows.filter(row => row.account_id === account); }
   if (sql.startsWith('SELECT count')) return { rows: [{ total: rows.length }] };
+  if (/ORDER BY [adr]\.created_at ASC/.test(sql)) rows.reverse();
+  if (sql.includes('ORDER BY r.expires_at ASC')) rows.sort((a, b) => new Date(a.expires_at) - new Date(b.expires_at) || a.email.localeCompare(b.email));
   return { rows: rows.slice(values[index + 1], values[index + 1] + values[index]) };
 } };
 const handler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 6, now: () => now });
@@ -96,6 +98,12 @@ try {
   assert.equal(await page.locator('tbody tr').count(), 25);
   assert.equal(await page.locator('tbody img').count(), 0);
   await screenshot('users-desktop');
+  await page.getByRole('spinbutton', { name: 'Page number', exact: true }).fill('6');
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 126–137 of 137 users');
+  await page.getByRole('spinbutton', { name: 'Page number', exact: true }).fill('1');
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 1–25 of 137 users');
   for (let index = 0; index < 5; index++) {
     await page.getByRole('button', { name: 'Next', exact: true }).click();
     await waitText('.pagination', `Page ${index + 2} of 6`);
@@ -107,6 +115,13 @@ try {
   await waitText('#directory-summary', 'Showing 1–2 of 2 users');
   countLimit = accounts.length;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 1–25 of 137 users');
+  await page.getByLabel('Sort by', { exact: true }).selectOption('oldest');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 1–25 of 137 users');
+  assert.match(await page.locator('tbody tr').first().textContent(), /user136/);
+  await page.getByLabel('Sort by', { exact: true }).selectOption('newest');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   await waitText('#directory-summary', 'Showing 1–25 of 137 users');
   await page.getByRole('searchbox', { name: 'Search users', exact: true }).fill('user136');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
