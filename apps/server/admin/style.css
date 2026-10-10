@@ -834,3 +834,75 @@ dialog::backdrop {
 .login #login-wait:empty {
   display: none;
 }
+.review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.review-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 0;
+  border-top: 1px solid #25304a;
+}
+.review-list li:first-child {
+  border-top: 0;
+  padding-top: 8px;
+}
+.review-list h3 {
+  font-size: 14px;
+  margin: 0 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.review-list p {
+  font-size: 12px;
+  margin: 0;
+  max-width: 720px;
+}
+.review-list .button {
+  flex-shrink: 0;
+}
+@media (max-width: 680px) {
+  .review-list li {
+    align-items: start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .review-list .button {
+    width: 100%;
+  }
+  .review-list h3 {
+    align-items: start;
+    line-height: 1.5;
+  }
+}
+.top-actions {
+  min-width: 0;
+}
+.top-actions > div {
+  min-width: 0;
+}
+.operator {
+  overflow-wrap: anywhere;
+}
+.top-actions #signout {
+  flex-shrink: 0;
+}
+.columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.panel {
+  min-width: 0;
+}
+.panel p {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 950px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

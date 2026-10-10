@@ -1,6 +1,6 @@
 const filters = {
   users: { status: ['pending', 'active'], role: ['owner', 'admin', 'user'] },
-  devices: { status: ['pending', 'active', 'revoked', 'replaced'], protection: ['unknown', 'software', 'platform', 'hardware'] },
+  devices: { status: ['pending', 'active', 'revoked', 'replaced'], protection: ['unknown', 'software', 'platform', 'hardware'], credential: ['current', 'rotation_required', 'stale'] },
   invitations: { status: ['pending', 'expired', 'revoked', 'redeemed'] },
 };
 const sorts = {
@@ -40,6 +40,20 @@ export function directoryInput(params, kind) {
 }
 
 export async function readDirectory(pool, kind, input) {
+  const client = await pool.connect();
+  let discard = false;
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const result = await readDirectoryRows(client, kind, input);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch { discard = true; }
+    throw error;
+  } finally { client.release(discard); }
+}
+
+async function readDirectoryRows(client, kind, input) {
   const values = [];
   const conditions = [];
   const add = (expression, value) => {
@@ -57,9 +71,10 @@ export async function readDirectory(pool, kind, input) {
   if (input.status) add(kind === 'users' ? 'a.enrollment_state=?' : kind === 'devices' ? 'd.lifecycle_status=?' : `${invitationStatus}=?`, input.status);
   if (input.role) add('a.server_role=?', input.role);
   if (input.protection) add('d.protection_class=?', input.protection);
+  if (input.credential) add('d.credential_state=?', input.credential);
   if (input.accountId) add('d.account_id::text=?', input.accountId);
   const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
-  const count = await pool.query(`SELECT count(*)::int AS total FROM ${from}${where}`, values);
+  const count = await client.query(`SELECT count(*)::int AS total FROM ${from}${where}`, values);
   const total = count.rows[0].total;
   const pageCount = Math.max(1, Math.ceil(total / input.pageSize));
   const page = Math.min(input.page, pageCount);
@@ -70,7 +85,7 @@ export async function readDirectory(pool, kind, input) {
     : kind === 'devices' ? 'd.id,d.account_id,a.username,a.display_name,d.lifecycle_status,d.protection_class,d.credential_state,d.created_at,d.revoked_at'
     : `r.id,e.email,a.username AS created_by,r.created_at,r.expires_at,r.revoked_at,e.redeemed_at,${invitationStatus} AS status`;
   const order = sorts[kind][input.sort];
-  const rows = await pool.query(`SELECT ${fields} FROM ${from}${where} ORDER BY ${order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, input.pageSize, offset]);
+  const rows = await client.query(`SELECT ${fields} FROM ${from}${where} ORDER BY ${order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, input.pageSize, offset]);
   const items = rows.rows.map(r => kind === 'users'
     ? { id: r.id, username: r.username, displayName: r.display_name, email: r.email, role: r.server_role, status: r.enrollment_state, emailVerified: r.email_verified, createdAt: r.created_at, deviceCount: r.device_count }
     : kind === 'devices' ? { id: r.id, accountId: r.account_id, username: r.username, displayName: r.display_name, status: r.lifecycle_status, protection: r.protection_class, credentialState: r.credential_state, createdAt: r.created_at, revokedAt: r.revoked_at }

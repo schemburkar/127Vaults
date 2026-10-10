@@ -18,6 +18,8 @@ export function validResponse(path, method, value) {
   if (kind === 'overview') {
     return text(value.status) && timestamp(value.checkedAt) && integer(value.schemaVersion) && integer(value.expectedSchemaVersion)
       && object(value.users) && integer(value.users.users) && integer(value.users.active_users) && integer(value.activeDevices)
+      && (value.devices === undefined || object(value.devices) && ['rotationRequired', 'stale', 'unknownProtection'].every(key => integer(value.devices[key])))
+      && (value.invitations === undefined || object(value.invitations) && integer(value.invitations.pending) && integer(value.invitations.expired))
       && (!value.backup || object(value.backup) && text(value.backup.state) && (value.backup.detail === undefined || text(value.backup.detail)));
   }
   if (!['users', 'devices', 'invitations'].includes(kind)) return false;

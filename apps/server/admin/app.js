@@ -1,4 +1,4 @@
-import { escapeHtml, date, badge, newDirectory, directoryQuery, directoryView, detailsView } from './directory.js';
+import { escapeHtml, date, badge, newDirectory, directoryQuery, directoryView, detailsView, reviewQueue } from './directory.js';
 import { requestAdmin as api, errorMessage as message } from './api.js';
 
 const root = document.querySelector('#app');
@@ -105,7 +105,7 @@ function overview() {
   if (!o) return state.overview.loading ? '<section class="panel empty-state" role="status"><h2>Checking your server…</h2><p>Loading API, database and account status.</p></section>' : '<section class="panel empty-state"><h2>Server status is unavailable</h2><p>Retry the check to see current health.</p></section>';
   const backup = o.backup ?? { state: 'unknown' };
   const mismatch = o.schemaVersion !== o.expectedSchemaVersion;
-  return `<p class="muted">Local server health and account activity. Checked ${escapeHtml(date(o.checkedAt))}.</p>${mismatch ? '<div class="notice error" role="alert"><strong>Database schema needs attention.</strong><p>The installed schema differs from the expected version. Follow the migration runbook before using the server.</p></div>' : ''}<div class="grid"><div class="card"><span class="label">API & database</span><span class="value">${escapeHtml(o.status)}</span>${badge(mismatch ? 'schema mismatch' : 'online')}</div><div class="card"><span class="label">Accounts</span><span class="value">${escapeHtml(o.users?.users ?? '—')}</span><span class="detail">${escapeHtml(o.users?.active_users ?? '—')} active</span><button class="text-button card-link" data-section="users" type="button">View accounts →</button></div><div class="card"><span class="label">Active devices</span><span class="value">${escapeHtml(o.activeDevices)}</span><span class="detail">Across all accounts</span><button class="text-button card-link" data-section="devices" type="button">View devices →</button></div><div class="card"><span class="label">Backup</span><span class="value">${escapeHtml(backup.state)}</span><span class="detail">${escapeHtml(backup.detail ?? 'No recent status available')}</span><button class="text-button card-link" data-section="backups" type="button">Review backup status →</button></div></div><div class="columns"><section class="panel"><h2>Server details</h2><dl class="details-list"><div><dt>Server address</dt><dd>${escapeHtml(location.host)}</dd></div><div><dt>Installed schema</dt><dd>${escapeHtml(o.schemaVersion)}</dd></div><div><dt>Expected schema</dt><dd>${escapeHtml(o.expectedSchemaVersion)}</dd></div></dl><p class="muted">Health reflects the live API and database check. Unknown backup status does not confirm a recent backup.</p></section><section class="panel"><h2>Operator access</h2><p class="muted">Signed in as ${escapeHtml(state.session.username)} (${escapeHtml(state.session.role)}). Session expires ${escapeHtml(date(state.session.expiresAt))}.</p><p class="muted">This admin session has no vault unlock state or vault keys.</p></section></div>`;
+  return `<p class="muted">Local server health and account activity. Checked ${escapeHtml(date(o.checkedAt))}.</p>${mismatch ? '<div class="notice error" role="alert"><strong>Database schema needs attention.</strong><p>The installed schema differs from the expected version. Follow the migration runbook before using the server.</p></div>' : ''}<div class="grid"><div class="card"><span class="label">API & database</span><span class="value">${escapeHtml(o.status)}</span>${badge(mismatch ? 'schema mismatch' : 'online')}</div><div class="card"><span class="label">Accounts</span><span class="value">${escapeHtml(o.users?.users ?? '—')}</span><span class="detail">${escapeHtml(o.users?.active_users ?? '—')} active</span><button class="text-button card-link" data-inspect="users" type="button">View accounts →</button></div><div class="card"><span class="label">Active devices</span><span class="value">${escapeHtml(o.activeDevices)}</span><span class="detail">Across all accounts</span><button class="text-button card-link" data-inspect="devices" type="button">View devices →</button></div><div class="card"><span class="label">Backup</span><span class="value">${escapeHtml(backup.state)}</span><span class="detail">${escapeHtml(backup.detail ?? 'No recent status available')}</span><button class="text-button card-link" data-section="backups" type="button">Review backup status →</button></div></div>${reviewQueue(o)}<div class="columns"><section class="panel"><h2>Server details</h2><dl class="details-list"><div><dt>Server address</dt><dd>${escapeHtml(location.host)}</dd></div><div><dt>Installed schema</dt><dd>${escapeHtml(o.schemaVersion)}</dd></div><div><dt>Expected schema</dt><dd>${escapeHtml(o.expectedSchemaVersion)}</dd></div></dl><p class="muted">Health reflects the live API and database check. Unknown backup status does not confirm a recent backup.</p></section><section class="panel"><h2>Operator access</h2><p class="muted">Signed in as ${escapeHtml(state.session.username)} (${escapeHtml(state.session.role)}). Session expires ${escapeHtml(date(state.session.expiresAt))}.</p><p class="muted">This admin session has no vault unlock state or vault keys.</p></section></div>`;
 }
 function roles() {
   return `<p class="muted">Server roles are separate from vault membership and access.</p><div class="columns"><section class="panel"><h2>Owner</h2><p class="muted">Controls ownership, licensing, destructive server operations and root settings. Also has admin capabilities.</p><ul class="list"><li>Can initiate owner grants and transfers when implemented.</li><li>Cannot remove the last active owner.</li><li>Does not automatically receive vault keys or content access.</li></ul></section><section class="panel"><h2>Server admin</h2><p class="muted">Handles delegated control-plane operations such as users, invitations, authentication locks and routine settings.</p><ul class="list"><li>Cannot add, remove or demote owners.</li><li>Has no automatic access to private or shared vaults.</li><li>Exact write permissions will be finalized before controls are enabled.</li></ul></section></div><div class="notice">Role and ownership changes are not available in this version. The current database supports one provisional vault-account owner. Operator roles apply to this separate read-only console.</div>`;
@@ -127,6 +127,11 @@ function render({ focus = '' } = {}) {
   const directory = ['users', 'devices', 'invitations'].includes(state.section);
   root.innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark" aria-hidden="true">◇</span><span>127Vaults<small>Server administration</small></span></div><nav class="nav" aria-label="Admin sections">${Object.entries(titles).map(([key, text]) => `<button type="button" data-section="${key}" class="${state.section === key ? 'active' : ''}" ${state.section === key ? 'aria-current="page"' : ''}>${text}</button>`).join('')}</nav><div class="sidebar-foot"><span class="server-origin">${escapeHtml(location.host)}</span><br>Local operator console<br>Experimental server</div></aside><main class="main" id="main-content" tabindex="-1"><header class="top"><div><p class="eyebrow">Control plane</p><h1 id="page-title" tabindex="-1">${titles[state.section]}</h1></div><div class="top-actions"><div><span class="operator">${escapeHtml(state.session.username)} · ${escapeHtml(state.session.role)}</span><span id="session-status" class="sub" role="status">${escapeHtml(sessionStatus())}</span></div><button class="button" id="signout" ${state.signingOut ? 'disabled' : ''}>${state.signingOut ? 'Signing out…' : 'Sign out'}</button></div></header>${state.error ? `<p class="notice error" role="alert">${escapeHtml(state.error)}</p>` : ''}${data ? `<div class="refresh-bar"><p class="muted" role="status">${data.loading ? 'Refreshing server data…' : data.checkedAt ? 'Last loaded ' + escapeHtml(date(data.checkedAt)) : 'Ready to check server data'}</p><button class="button" id="refresh-data" type="button" ${data.loading ? 'disabled' : ''}>${data.loading ? 'Refreshing…' : 'Refresh'}</button></div>` : ''}${!directory && data?.error ? `<div class="notice error" role="alert"><p>${escapeHtml(data.error)}</p>${data.data ? '<p>Showing the last loaded data. Current server health is unconfirmed.</p>' : ''}<button class="button" id="retry-data" type="button">Try again</button></div>` : ''}${views[state.section]()}</main></div>`;
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.section)));
+  document.querySelectorAll('[data-inspect]').forEach(button => button.addEventListener('click', () => {
+    const filters = {};
+    for (const key of ['status', 'credential', 'protection']) if (button.dataset[key]) filters[key] = button.dataset[key];
+    inspectDirectory(button.dataset.inspect, filters);
+  }));
   document.querySelector('.skip-link').addEventListener('click', event => { event.preventDefault(); document.querySelector('#main-content').focus(); });
   document.querySelector('#signout').addEventListener('click', signOut);
   document.querySelector('#refresh-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
@@ -183,7 +188,7 @@ function bindDirectory(kind) {
     const q = String(fields.get('q') ?? '').trim();
     const status = String(fields.get('status') ?? '');
     const filter = kind === 'users' ? 'role' : kind === 'devices' ? 'protection' : null;
-    entry.filters = { ...entry.filters, q, status, sort: String(fields.get('sort') ?? 'newest'), ...(filter ? { [filter]: String(fields.get(filter) ?? '') } : {}) };
+    entry.filters = { ...entry.filters, q, status, sort: String(fields.get('sort') ?? 'newest'), ...(kind === 'devices' ? { credential: String(fields.get('credential') ?? '') } : {}), ...(filter ? { [filter]: String(fields.get(filter) ?? '') } : {}) };
     entry.page = 1; entry.data = null;
     void loadSection(true, 'directory-search');
   });
@@ -207,11 +212,20 @@ function bindDirectory(kind) {
   document.querySelectorAll('[data-account]').forEach(button => button.addEventListener('click', () => accountDevices(entry.data.users[Number(button.dataset.account)])));
 }
 function accountDevices(account) {
+  state.devices.request += 1;
   state.devices.controller?.abort();
   state.devices = newDirectory();
   state.devices.filters.accountId = account.id;
   state.devices.accountName = account.displayName || account.username;
   navigate('devices');
+}
+function inspectDirectory(kind, filters = {}) {
+  if (!['users', 'devices', 'invitations'].includes(kind)) return;
+  state[kind].request += 1;
+  state[kind].controller?.abort();
+  state[kind] = newDirectory();
+  state[kind].filters = { ...state[kind].filters, ...filters };
+  navigate(kind);
 }
 function showDetails(kind, item, trigger) {
   const wrapper = document.createElement('div');

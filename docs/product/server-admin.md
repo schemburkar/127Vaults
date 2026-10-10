@@ -22,11 +22,11 @@ The file format allows multiple operators with `owner` or `admin` roles. Additio
 
 ## Current pages and limits
 
-- **Overview:** Live API/database and schema checks, account and active-device counts. Backup status explicitly says `unknown` until an operator-safe backup status source is connected.
+- **Overview:** Live API/database and schema checks, account and active-device counts. A review queue links directly to pending/expired invitation recipients, active devices with rotation/stale credentials, unclassified device protection and backup visibility. Backup status explicitly says `unknown` until an operator-safe backup status source is connected.
 - **Users:** Search all enrolled accounts by name, username, email or account ID; filter by role and enrollment status. Results have 25, 50 or 100 rows per page, total counts and previous/next navigation. Account details show the full ID, email verification and creation time; open an account's device inventory directly. Read only.
-- **Invitations:** Search recipients by email, inviter username or invitation record ID; filter pending, expired, revoked or redeemed recipients. One record can have multiple recipients. Redemption takes precedence over subsequent expiry/revocation. Details show only internal IDs and timestamps; activation links, bearer tokens and verification codes are excluded. Creation, resend and revocation remain in the owner onboarding workflow.
+- **Invitations:** Search recipients by email, inviter username or invitation record ID; filter pending, expired, revoked or redeemed recipients. One record can have multiple recipients. Redemption takes precedence over subsequent expiry/revocation. Details show only internal IDs and timestamps; activation links, bearer tokens and verification codes are excluded. Creation uses the existing owner onboarding workflow. Resend and revocation controls remain unimplemented in this console.
 - **Roles & ownership:** Explains proposed owner/admin permissions and current limits. Read only.
-- **Devices:** Search all devices by device ID, username or account name; filter by lifecycle status and protection. Inspect full device/account IDs, credential state, creation and revocation/replacement timestamps. An account-specific inventory can be cleared with **All accounts**. Revocation and reports are not implemented here.
+- **Devices:** Search all devices by device ID, username or account name; filter by lifecycle status, protection and credential state. Inspect full device/account IDs, credential state, creation and revocation/replacement timestamps. An account-specific inventory can be cleared with **All accounts**. Revocation and reports are not implemented here.
 - **Backups:** Shows the available status. Backup and restore still use the existing operator runbook.
 - **Settings and audit:** Placeholders.
 

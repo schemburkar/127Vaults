@@ -75,6 +75,9 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     assert.equal(scoped.devices[0].username, 'user136');
     const deviceSearch = await readDirectory(pool, 'devices', input('devices', { q: scoped.devices[0].id }));
     assert.equal(deviceSearch.total, 1);
+    const rotation = await readDirectory(pool, 'devices', input('devices', { status: 'active', credential: 'rotation_required', pageSize: '100' }));
+    assert.equal(rotation.total, 12);
+    assert.ok(rotation.devices.every(device => device.status === 'active' && device.credentialState === 'rotation_required'));
     const clamped = await readDirectory(pool, 'devices', input('devices', { accountId: seen[136], page: '1000' }));
     assert.equal(clamped.page, 1);
     const before = await pool.query('SELECT count(*)::int AS total FROM vaults.accounts');
@@ -107,5 +110,28 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     assert.equal(soonest.invitations[0].email, 'expired@example.invalid');
     const byEmail = await readDirectory(pool, 'invitations', input('invitations', { sort: 'email' }));
     assert.equal(byEmail.invitations[0].email, 'completed@example.invalid');
+    // Revoke one device between the count and row reads using another
+    // connection. A response must see one consistent snapshot, then a fresh
+    // request must see the revocation without blocking the lifecycle write.
+    let changed = false;
+    const concurrentPool = { async connect() {
+      const client = await pool.connect();
+      return { async query(sql, values) {
+        const result = await client.query(sql, values);
+        if (!changed && sql.startsWith('SELECT count') && sql.includes('FROM vaults.devices')) {
+          changed = true;
+          await pool.query("UPDATE vaults.devices SET lifecycle_status='revoked',revoked_at=now() WHERE account_id=$1", [seen[136]]);
+        }
+        return result;
+      }, release(discard) { client.release(discard); } };
+    } };
+    const snapshot = await readDirectory(concurrentPool, 'devices', input('devices', { status: 'active', pageSize: '100' }));
+    assert.equal(snapshot.total, 35);
+    assert.equal(snapshot.devices.length, 35);
+    assert.equal(snapshot.devices.find(device => device.username === 'user136').status, 'active');
+    const fresh = await readDirectory(pool, 'devices', input('devices', { status: 'active', pageSize: '100' }));
+    assert.equal(fresh.total, 34);
+    assert.equal(fresh.devices.length, 34);
+    assert.equal(fresh.devices.some(device => device.username === 'user136'), false);
   } finally { await pool.end(); }
 });

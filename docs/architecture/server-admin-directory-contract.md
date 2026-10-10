@@ -18,12 +18,13 @@ The experimental `/api/admin/` routes use the separate local operator session de
 | `role` | Users | `owner`, `user` or `admin`; current vault-account schema supports owner/user only. |
 | `status` | Devices | `pending`, `active`, `revoked` or `replaced`. |
 | `protection` | Devices | `unknown`, `software`, `platform` or `hardware`. |
+| `credential` | Devices | `current`, `rotation_required` or `stale`. |
 | `accountId` | Devices | Account ID to scope the inventory; bounded to 128 ASCII alphanumeric/hyphen characters. |
 | `status` | Invitations | `pending`, `expired`, `revoked` or `redeemed`. |
 
 Blank text/enum filters mean all records. Searches cover account display name, username, email and ID for users; device ID and account display name/username for devices; recipient email, inviter username and invitation record ID for invitations. Every search/filter value is bound as a PostgreSQL parameter.
 
-Each response contains its named array (`users`, `devices` or `invitations`) and `total`, `page`, `pageSize`, `pageCount`, `hasPrevious` and `hasNext`. An empty result has `total: 0`, `page: 1`, `pageCount: 1` and no previous/next page. Sorting uses allowlisted SQL fragments with stable identity tie-breakers. Counts and page rows are separate read-only statements; concurrent enrollment can change results between refreshes.
+Each response contains its named array (`users`, `devices` or `invitations`) and `total`, `page`, `pageSize`, `pageCount`, `hasPrevious` and `hasNext`. An empty result has `total: 0`, `page: 1`, `pageCount: 1` and no previous/next page. Sorting uses allowlisted SQL fragments with stable identity tie-breakers. Counts and rows share one read-only repeatable-read transaction, so concurrent lifecycle changes or invitation expiry cannot produce contradictory counts within a response. New requests may see newer data. A failed rollback discards the connection before it can return to the pool.
 
 ## Returned metadata
 
@@ -36,3 +37,5 @@ No response selects or serializes invitation token digests, activation links, em
 Database failures return `503 admin_data_unavailable` without internal details. Non-GET directory requests return `405 read_only`. Existing sign-in Origin checks, Secure/HttpOnly/SameSite cookies, session expiry and CSRF-protected sign-out apply unchanged.
 
 Failed sign-in responses include `Retry-After` seconds for the current source cooldown, as do rate-limited attempts. The console honors bounded delays of up to 60 seconds. Observed expired operator sessions are removed from memory; subsequent successful sign-in also prunes expired sessions. The console validates response shape before rendering and requires `signedOut: true` before treating an HTTP-success sign-out response as confirmed.
+
+`GET /api/admin/overview` additionally reports `devices.rotationRequired`, `devices.stale` and `devices.unknownProtection` for active devices only, plus `invitations.pending` and `invitations.expired` for unredeemed, unrevoked recipients. These counts drive read-only review links with matching directory filters. They are not license-seat totals, device attestations, or SMTP-delivery reports.

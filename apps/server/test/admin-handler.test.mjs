@@ -14,11 +14,13 @@ const pool = { async query(sql) {
   if (sql.startsWith('SELECT count(*)::int AS total')) return { rows: [{ total: sql.includes('invitation_records') ? 2 : sql.includes('FROM vaults.accounts') ? 1 : 0 }] };
   if (sql.includes('schema_version')) return { rows: [{ version: 6 }] };
   if (sql.includes('active_users')) return { rows: [{ users: 2, active_users: 2 }] };
-  if (sql.includes('AS devices')) return { rows: [{ devices: 1 }] };
+  if (sql.includes('AS devices')) return { rows: [{ devices: 1, rotation_required: 1, stale: 0, unknown_protection: 1 }] };
+  if (sql.includes('AS pending_invitations')) return { rows: [{ pending_invitations: 1, expired_invitations: 1 }] };
   if (sql.includes('FROM vaults.accounts a')) return { rows: [{ id: 'account', username: 'alice', display_name: 'Alice', email: 'alice@example.invalid', server_role: 'user', enrollment_state: 'active', email_verified: true, created_at: new Date(), device_count: 1 }], rowCount: 1 };
   if (sql.includes('FROM vaults.invitation_records')) return { rows: [{ id: 'invitation', email: 'invitee@example.invalid', created_by: 'alice', status: 'pending' }, { id: 'invitation', email: 'other@example.invalid', created_by: 'alice', status: 'redeemed' }] };
   return { rows: [], rowCount: 0 };
 } };
+pool.connect = async () => ({ query: (sql, values) => sql.startsWith('SELECT') ? pool.query(sql, values) : Promise.resolve({}), release() {} });
 let origin;
 const server = createServer(async (req, res) => {
   await createHandler()(req, res);
@@ -43,6 +45,10 @@ test('admin sign-in is separate, read-only, and CSRF protected', async () => {
   const cookie = login.headers.get('set-cookie').split(';')[0];
   const { csrf, role } = await login.json();
   assert.equal(role, 'owner');
+  const overview = await fetch(`${base}/api/admin/overview`, { headers: { Cookie: cookie } });
+  const health = await overview.json();
+  assert.equal(health.devices.rotationRequired, 1);
+  assert.equal(health.invitations.pending, 1);
   const users = await fetch(`${base}/api/admin/users`, { headers: { Cookie: cookie } });
   assert.equal(users.status, 200);
   assert.equal((await users.json()).users[0].username, 'alice');

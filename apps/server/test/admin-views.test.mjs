@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { newDirectory, directoryQuery, directoryView, detailsView, date } from '../admin/directory.js';
+import { newDirectory, directoryQuery, directoryView, detailsView, date, reviewQueue } from '../admin/directory.js';
 
 test('directory requests carry only the active directory filters', () => {
   const directory = newDirectory();
@@ -11,6 +11,17 @@ test('directory requests carry only the active directory filters', () => {
   const devices = new URLSearchParams(directoryQuery('devices', directory));
   assert.equal(devices.get('accountId'), 'account');
   assert.equal(devices.has('role'), false);
+});
+
+test('review queue links to specific recipient and active device states, with unknown counts explicit', () => {
+  const view = reviewQueue({ invitations: { pending: 2, expired: 3 }, devices: { rotationRequired: 4, stale: 1, unknownProtection: 5 }, backup: { state: 'unknown' } });
+  assert.match(view, /data-inspect="invitations" data-status="expired"/);
+  assert.match(view, /data-inspect="devices" data-status="active" data-credential="rotation_required"/);
+  assert.match(view, /data-protection="unknown"/);
+  assert.match(view, /Backup freshness/);
+  assert.match(reviewQueue({}), /Review counts unavailable/);
+  const none = reviewQueue({ invitations: { pending: 0, expired: 0 }, devices: { rotationRequired: 0, stale: 0, unknownProtection: 0 }, backup: { state: 'current' } });
+  assert.match(none, /No invitation or device follow-ups/);
 });
 
 test('directory and detail templates escape search, account and device metadata', () => {
@@ -59,7 +70,7 @@ test('invitations show recipient states and safe full record IDs', () => {
   const item = { id: 'record-id', email: '\"><img src=x>', createdBy: '<owner>', status: 'expired' };
   directory.data = { invitations: [item], total: 1, page: 1, pageSize: 25, pageCount: 1 };
   const view = directoryView('invitations', directory);
-  assert.match(view, /1 invitation recipients/);
+  assert.match(view, /1 invitation recipient/);
   assert.match(view, /Expired/);
   assert.match(view, /an invitation may cover several recipients/);
   assert.doesNotMatch(view, /<img|<owner>/);

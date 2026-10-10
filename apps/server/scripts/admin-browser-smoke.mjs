@@ -15,6 +15,7 @@ const origin = 'https://admin.example.test';
 const password = 'disposable-admin-browser-fixture-password';
 const hashed = hashPassword(password);
 const operator = { username: 'localowner', role: 'owner', salt: Buffer.from(hashed.salt, 'base64url'), hash: Buffer.from(hashed.hash, 'base64url') };
+const longOperator = { ...operator, username: 'a'.repeat(64), role: 'admin' };
 const uuid = (prefix, index) => `${prefix}000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 const accounts = Array.from({ length: 137 }, (_, index) => ({
   id: uuid('a1', index), tenant_id: uuid('a0', 1), username: `user${String(index).padStart(3, '0')}`,
@@ -36,7 +37,11 @@ const pool = { async query(sql, values = []) {
   if (!available) throw Error('Synthetic database outage');
   if (sql.includes('schema_version')) return { rows: [{ version: 6 }] };
   if (sql.includes('AS active_users')) return { rows: [{ users: accounts.length, active_users: accounts.filter(a => a.enrollment_state === 'active').length }] };
-  if (sql.includes('AS devices')) return { rows: [{ devices: devices.filter(d => d.lifecycle_status === 'active').length }] };
+  if (sql.includes('AS devices')) {
+    const active = devices.filter(d => d.lifecycle_status === 'active');
+    return { rows: [{ devices: active.length, rotation_required: active.filter(d => d.credential_state === 'rotation_required').length, stale: active.filter(d => d.credential_state === 'stale').length, unknown_protection: active.filter(d => d.protection_class === 'unknown').length }] };
+  }
+  if (sql.includes('AS pending_invitations')) return { rows: [{ pending_invitations: invitations.filter(i => i.status === 'pending').length, expired_invitations: invitations.filter(i => i.status === 'expired').length }] };
   const isUsers = sql.includes('FROM vaults.accounts a');
   const isInvitations = sql.includes('FROM vaults.invitation_records r');
   let rows = (isUsers ? accounts : isInvitations ? invitations : devices).slice(0, countLimit);
@@ -49,13 +54,15 @@ const pool = { async query(sql, values = []) {
   if (isInvitations && sql.includes('END=$')) { const status = values[index++]; rows = rows.filter(row => row.status === status); }
   if (sql.includes('a.server_role=$')) { const role = values[index++]; rows = rows.filter(row => row.server_role === role); }
   if (sql.includes('d.protection_class=$')) { const protection = values[index++]; rows = rows.filter(row => row.protection_class === protection); }
+  if (sql.includes('d.credential_state=$')) { const credential = values[index++]; rows = rows.filter(row => row.credential_state === credential); }
   if (sql.includes('d.account_id::text=$')) { const account = values[index++]; rows = rows.filter(row => row.account_id === account); }
   if (sql.startsWith('SELECT count')) return { rows: [{ total: rows.length }] };
   if (/ORDER BY [adr]\.created_at ASC/.test(sql)) rows.reverse();
   if (sql.includes('ORDER BY r.expires_at ASC')) rows.sort((a, b) => new Date(a.expires_at) - new Date(b.expires_at) || a.email.localeCompare(b.email));
   return { rows: rows.slice(values[index + 1], values[index + 1] + values[index]) };
 } };
-const handler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 6, now: () => now });
+pool.connect = async () => ({ query: (sql, values) => sql.startsWith('SELECT') ? pool.query(sql, values) : Promise.resolve({}), release() {} });
+const handler = createAdminHandler({ pool, operators: [operator, longOperator], origin, schemaVersion: 6, now: () => now });
 const server = createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
 server.listen(0, '127.0.0.1');
 await once(server, 'listening');
@@ -63,6 +70,11 @@ const base = `http://127.0.0.1:${server.address().port}`;
 let browser;
 const outputDir = process.env.VAULTS_ADMIN_SCREENSHOTS ? resolve(process.env.VAULTS_ADMIN_SCREENSHOTS) : null;
 const errors = [];
+async function bounded(promise, label) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`${label} did not start within 10 seconds`)), 10_000); })]); }
+  finally { clearTimeout(timer); }
+}
 try {
   browser = await chromium.launch({ channel: process.env.VAULTS_BROWSER_CHANNEL || 'msedge', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -97,6 +109,16 @@ try {
   await waitText('.card', '137');
   assert.match(await page.locator('#session-status').textContent(), /30 minutes/);
   await screenshot('overview-desktop');
+  await page.getByRole('button', { name: 'Review rotation', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 1–12 of 12 matching devices');
+  assert.equal(await page.getByLabel('Credentials', { exact: true }).inputValue(), 'rotation_required');
+  assert.equal(await page.getByLabel('Status', { exact: true }).inputValue(), 'active');
+  await section('Overview');
+  await page.getByRole('button', { name: 'Review expired', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 1–25 of 34 matching invitation recipients');
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await waitText('#directory-summary', 'Showing 1–25 of 137 invitation recipients');
+  await section('Overview');
   await section('Users');
   await waitText('#directory-summary', 'Showing 1–25 of 137 users');
   assert.equal(await page.locator('tbody tr').count(), 25);
@@ -129,7 +151,7 @@ try {
   await waitText('#directory-summary', 'Showing 1–25 of 137 users');
   await page.getByRole('searchbox', { name: 'Search users', exact: true }).fill('user136');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await waitText('#directory-summary', 'Showing 1–1 of 1 matching users');
+  await waitText('#directory-summary', 'Showing 1–1 of 1 matching user');
   assert.match(await page.locator('tbody').textContent(), /user136/);
   await page.getByRole('button', { name: 'Clear', exact: true }).click();
   await waitText('#directory-summary', 'Showing 1–25 of 137 users');
@@ -149,7 +171,7 @@ try {
   assert.equal(await page.getByLabel('View account details for user000', { exact: true }).evaluate(el => el === document.activeElement), true);
   await page.getByLabel('View devices for user000', { exact: true }).click();
   await waitText('.account-scope', 'Alice & Co');
-  await waitText('#directory-summary', 'Showing 1–1 of 1 matching devices');
+  await waitText('#directory-summary', 'Showing 1–1 of 1 matching device');
   await page.getByLabel(`View device details for ${devices[0].id}`, { exact: true }).click();
   await page.getByRole('dialog').waitFor();
   assert.equal(await page.getByLabel('Full device ID').inputValue(), devices[0].id);
@@ -218,7 +240,7 @@ try {
   holdUsers = new Promise(done => { releaseUsers = done; });
   const usersRequested = new Promise(done => { userStarted = done; });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await usersRequested;
+  await bounded(usersRequested, 'Users refresh');
   await section('Roles & ownership');
   releaseUsers(); holdUsers = null;
   await waitText('h1', 'Roles & ownership');
@@ -230,7 +252,7 @@ try {
   const overviewRequested = new Promise(done => { overviewStarted = done; });
   await section('Overview');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await overviewRequested;
+  await bounded(overviewRequested, 'Overview refresh');
   await section('Backups');
   releaseOverview(); holdOverview = null;
   await waitText('h2', 'Current backup status');
@@ -252,7 +274,7 @@ try {
   await screenshot('invitations-desktop');
   await page.getByRole('searchbox', { name: 'Search invitations', exact: true }).fill('invite136');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await waitText('#directory-summary', 'Showing 1–1 of 1 matching invitation recipients');
+  await waitText('#directory-summary', 'Showing 1–1 of 1 matching invitation recipient');
   await page.getByLabel('View invitation details for invite136@example.invalid', { exact: true }).click();
   await page.getByRole('dialog').waitFor();
   assert.equal(await page.getByLabel('Full invitation ID').inputValue(), invitations[136].id);
@@ -282,7 +304,7 @@ try {
   holdUsers = new Promise(done => { releaseOldUsers = done; });
   const oldUsersRequested = new Promise(done => { userStarted = done; });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await oldUsersRequested;
+  await bounded(oldUsersRequested, 'Old-session users refresh');
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.locator('#login-form').waitFor();
   await page.getByLabel('Password', { exact: true }).fill(password);
@@ -327,8 +349,51 @@ try {
   await loginPage.locator('.card').filter({ hasText: '137' }).waitFor();
   assert.equal(await loginPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await loginContext.close();
+  // Exercise the real request deadline; a hung request must release the UI
+  // and a later retry must work without reloading or losing the session.
+  now = Date.now();
+  let releaseHungUsers;
+  holdUsers = new Promise(done => { releaseHungUsers = done; });
+  const hungUsersRequested = new Promise(done => { userStarted = done; });
+  const timeoutContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await timeoutContext.route(`${origin}/**`, intercept);
+  await timeoutContext.addCookies(await context.cookies());
+  const timeoutPage = await timeoutContext.newPage();
+  timeoutPage.on('pageerror', error => errors.push(error.message));
+  await timeoutPage.goto(origin + '/admin/#users');
+  await bounded(hungUsersRequested, 'Timeout fixture users request');
+  assert.equal(await timeoutPage.locator('#refresh-data').isDisabled(), true);
+  await timeoutPage.locator('[role="alert"]').filter({ hasText: 'took too long' }).waitFor({ timeout: 20_000 });
+  assert.equal(await timeoutPage.locator('#refresh-data').isDisabled(), false);
+  holdUsers = null; releaseHungUsers();
+  await timeoutPage.getByRole('button', { name: 'Try again', exact: true }).click();
+  await timeoutPage.locator('#directory-summary').filter({ hasText: 'Showing 1–25 of 137 users' }).waitFor();
+  await timeoutContext.close();
+  const narrowContext = await browser.newContext({ viewport: { width: 320, height: 740 } });
+  await narrowContext.route(`${origin}/**`, intercept);
+  const narrowPage = await narrowContext.newPage();
+  narrowPage.on('pageerror', error => errors.push(error.message));
+  await narrowPage.goto(origin + '/admin/');
+  await narrowPage.getByLabel('Operator name').fill(longOperator.username);
+  await narrowPage.getByLabel('Password', { exact: true }).fill(password);
+  await narrowPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await narrowPage.locator('.card').filter({ hasText: '137' }).waitFor();
+  const narrowFits = await narrowPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+  if (!narrowFits) {
+    if (outputDir) await narrowPage.screenshot({ path: resolve(outputDir, 'narrow-overflow.png'), fullPage: true });
+    console.log(JSON.stringify(await narrowPage.evaluate(() => [...document.querySelectorAll('main *')].filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, class: el.className, right: Math.round(el.getBoundingClientRect().right), width: Math.round(el.getBoundingClientRect().width) })))));
+  }
+  assert.equal(narrowFits, true, 'Long operator names must fit at 320px');
+  await narrowPage.getByRole('navigation', { name: 'Admin sections' }).getByRole('button', { name: 'Users', exact: true }).click();
+  await narrowPage.locator('#directory-summary').filter({ hasText: 'Showing 1–25 of 137 users' }).waitFor();
+  assert.equal(await narrowPage.getByRole('table').count(), 1, 'Responsive records retain table semantics');
+  assert.equal(await narrowPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await narrowPage.getByLabel('View account details for user000', { exact: true }).click();
+  await narrowPage.getByRole('dialog').waitFor();
+  assert.equal(await narrowPage.getByRole('dialog').evaluate(el => el.getBoundingClientRect().width <= innerWidth), true);
+  await narrowContext.close();
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, accounts: 137, pagination: true, search: true, filters: true, details: true, accountDevices: true, outageRetry: true, signoutFailure: true, expiry: true, mobile: true, screenshots: outputDir }));
+  console.log(JSON.stringify({ ok: true, accounts: 137, pagination: true, pageJump: true, sorting: true, search: true, filters: true, details: true, accountDevices: true, invitations: true, reviewQueue: true, outageRetry: true, timeoutRetry: true, signoutFailure: true, expiry: true, staleRequestIsolation: true, clipboardFallback: true, cooldown: true, operatorRoles: ['owner', 'admin'], mobile: true, viewports: [1440, 390, 320], screenshots: outputDir }));
 } finally {
   await browser?.close();
   await new Promise(done => server.close(done));

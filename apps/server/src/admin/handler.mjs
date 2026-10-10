@@ -85,8 +85,19 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       if (path === '/api/admin/overview') {
         const version = await pool.query('SELECT version FROM vaults.schema_version WHERE singleton=true');
         const counts = await pool.query("SELECT count(*)::int AS users, count(*) FILTER (WHERE enrollment_state='active')::int AS active_users FROM vaults.accounts");
-        const devices = await pool.query("SELECT count(*)::int AS devices FROM vaults.devices WHERE lifecycle_status='active'");
-        json(res, 200, { status: 'online', checkedAt: new Date(now()).toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: devices.rows[0]?.devices ?? 0, backup: backupStatus() }); return true;
+        const devices = await pool.query(`SELECT count(*)::int AS devices,
+          count(*) FILTER (WHERE credential_state='rotation_required')::int AS rotation_required,
+          count(*) FILTER (WHERE credential_state='stale')::int AS stale,
+          count(*) FILTER (WHERE protection_class='unknown')::int AS unknown_protection
+          FROM vaults.devices WHERE lifecycle_status='active'`);
+        const invitations = await pool.query(`SELECT count(*) FILTER (WHERE r.expires_at>now())::int AS pending_invitations,
+          count(*) FILTER (WHERE r.expires_at<=now())::int AS expired_invitations
+          FROM vaults.invitation_records r JOIN vaults.invitation_emails e ON e.tenant_id=r.tenant_id AND e.id=r.id
+          WHERE r.revoked_at IS NULL AND e.redeemed_at IS NULL`);
+        const deviceCounts = devices.rows[0];
+        json(res, 200, { status: 'online', checkedAt: new Date(now()).toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: deviceCounts?.devices ?? 0,
+          devices: { rotationRequired: deviceCounts?.rotation_required ?? 0, stale: deviceCounts?.stale ?? 0, unknownProtection: deviceCounts?.unknown_protection ?? 0 },
+          invitations: { pending: invitations.rows[0]?.pending_invitations ?? 0, expired: invitations.rows[0]?.expired_invitations ?? 0 }, backup: backupStatus() }); return true;
       }
       if (['/api/admin/users', '/api/admin/devices', '/api/admin/invitations'].includes(path)) {
         const kind = path.split('/').at(-1);
