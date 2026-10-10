@@ -9,6 +9,7 @@ const assets = new Map([
   ['/admin/', ['../../admin/index.html', 'text/html; charset=utf-8']],
   ['/admin/app.js', ['../../admin/app.js', 'text/javascript; charset=utf-8']],
   ['/admin/style.css', ['../../admin/style.css', 'text/css; charset=utf-8']],
+  ['/admin/directory.js', ['../../admin/directory.js', 'text/javascript; charset=utf-8']],
 ]);
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');

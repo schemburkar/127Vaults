@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { newDirectory, directoryQuery, directoryView, detailsView, date } from '../admin/directory.js';
+
+test('directory requests carry only the active directory filters', () => {
+  const directory = newDirectory();
+  directory.page = 3;
+  directory.filters = { q: 'Alice & Bob', status: 'active', role: 'user', protection: 'software', accountId: 'account', pageSize: 50 };
+  const users = new URLSearchParams(directoryQuery('users', directory));
+  assert.deepEqual(Object.fromEntries(users), { page: '3', pageSize: '50', q: 'Alice & Bob', status: 'active', role: 'user' });
+  const devices = new URLSearchParams(directoryQuery('devices', directory));
+  assert.equal(devices.get('accountId'), 'account');
+  assert.equal(devices.has('role'), false);
+});
+
+test('directory and detail templates escape search, account and device metadata', () => {
+  const hostile = '\"><img src=x onerror=alert(1)> & <script>alert(1)</script>';
+  const directory = newDirectory();
+  directory.filters.q = hostile;
+  directory.error = hostile;
+  directory.data = { users: [{ id: hostile, username: hostile, displayName: hostile, email: hostile, status: hostile, role: hostile, deviceCount: 0 }], total: 1, page: 1, pageSize: 25, pageCount: 1 };
+  const html = directoryView('users', directory);
+  assert.doesNotMatch(html, /<img|<script|aria-label="View account details for "><|value=""><img/);
+  assert.match(html, /&lt;img/);
+  assert.match(html, /Email unverified/);
+  const details = detailsView('devices', { id: hostile, accountId: hostile, username: hostile, displayName: hostile, status: hostile, protection: hostile });
+  assert.doesNotMatch(details, /<img|<script/);
+  assert.match(details, /&lt;img/);
+});
+
+test('empty, loading, outage and unfiltered directories have distinct guidance', () => {
+  const directory = newDirectory();
+  directory.loading = true;
+  assert.match(directoryView('users', directory), /Loading users…/);
+  directory.loading = false;
+  directory.data = { users: [], total: 0, page: 1, pageSize: 25, pageCount: 1 };
+  assert.match(directoryView('users', directory), /No accounts yet/);
+  directory.filters.q = 'none';
+  assert.match(directoryView('users', directory), /No matching users/);
+  directory.error = 'Cannot reach the server.';
+  assert.match(directoryView('users', directory), /last loaded results/);
+  directory.data = null;
+  assert.match(directoryView('users', directory), /Results are unavailable/);
+});
+
+test('details expose full identifiers and revocation metadata without invalid dates', () => {
+  assert.equal(date('not-a-date'), 'Not available');
+  assert.equal(date(null), 'Not available');
+  const html = detailsView('devices', { id: 'full-device-id', accountId: 'full-account-id', username: 'alice', status: 'revoked', protection: 'unknown', credentialState: 'rotation_required', revokedAt: '2026-10-10T00:00:00Z' });
+  assert.match(html, /value="full-device-id"/);
+  assert.match(html, /full-account-id/);
+  assert.match(html, /Rotation required/);
+  assert.match(html, /Revoked \/ replaced/);
+  assert.match(html, /unknown means it has not been classified/);
+});

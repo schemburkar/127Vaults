@@ -23,12 +23,20 @@ The file format allows multiple operators with `owner` or `admin` roles. Additio
 ## Current pages and limits
 
 - **Overview:** Live API/database and schema checks, account and active-device counts. Backup status explicitly says `unknown` until an operator-safe backup status source is connected.
-- **Users:** Latest 100 accounts with status, server role and active-device count. Read only.
+- **Users:** Search all enrolled accounts by name, username, email or account ID; filter by role and enrollment status. Results have 25, 50 or 100 rows per page, total counts and previous/next navigation. Account details show the full ID, email verification and creation time; open an account's device inventory directly. Read only.
 - **Roles & ownership:** Explains proposed owner/admin permissions and current limits. Read only.
-- **Devices:** Latest 100 devices with lifecycle and protection metadata. The report action is a placeholder; nothing is submitted.
+- **Devices:** Search all devices by device ID, username or account name; filter by lifecycle status and protection. Inspect full device/account IDs, credential state, creation and revocation/replacement timestamps. An account-specific inventory can be cleared with **All accounts**. Revocation and reports are not implemented here.
 - **Backups:** Shows the available status. Backup and restore still use the existing operator runbook.
 - **Settings and audit:** Placeholders.
 
 Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. All admin endpoints are read-only except sign-in and sign-out. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
+
+Pages load on demand. **Refresh** checks the current section; failed refreshes label retained results as out of date and offer **Try again**. An expired session clears displayed account/device data and returns to sign-in with an explanation. A failed sign-out leaves the console visible and says sign-out was not confirmed. The header shows session time remaining and the server address is visible in the console and sign-in screen.
+
+Navigation supports section links such as `/admin/#users`, keyboard focus and a skip-to-content link. Narrow screens display labeled account/device cards. Details use a native modal dialog with Escape, restored keyboard focus and an ID copy action with a manual-copy fallback.
+
+### Local browser regression
+
+Run `pnpm --filter @127vaults/server test:admin:browser` with Playwright installed, or set `VAULTS_PLAYWRIGHT_MODULE` to a local Playwright module path. It launches headless Edge by default; `VAULTS_BROWSER_CHANNEL` can select another installed Chromium channel. Set `VAULTS_ADMIN_SCREENSHOTS` to an output directory for screenshots. The script bridges synthetic HTTPS browser requests to the real handler with disposable operator credentials and 137 synthetic accounts/devices; it never reads `.env`, operator files, or a live database.
 
 In hot-reload development, port `12781` is the internal backend transport, not a separate admin site. Direct browser requests to that port fail the configured Host check with `forbidden`. Use `https://127.0.0.1:12780/admin/` through the same proxy as the vault app.
