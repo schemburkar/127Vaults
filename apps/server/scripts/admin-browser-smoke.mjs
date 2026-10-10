@@ -66,12 +66,15 @@ const errors = [];
 try {
   browser = await chromium.launch({ channel: process.env.VAULTS_BROWSER_CHANNEL || 'msedge', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  let signoutFailure = false, holdUsers, holdOverview, userStarted, overviewStarted;
-  await context.route(`${origin}/**`, async route => {
+  let signoutFailure = false, malformedUsers = false, holdUsers, holdOverview, userStarted, overviewStarted;
+  const intercept = async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/api/admin/session' && request.method() === 'DELETE' && signoutFailure) {
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'admin_data_unavailable' }) }); return;
+    }
+    if (path === '/api/admin/users' && malformedUsers) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ users: [{ id: null }] }) }); return;
     }
     if (path === '/api/admin/users' && holdUsers) { userStarted?.(); await holdUsers; }
     if (path === '/api/admin/overview' && holdOverview) { overviewStarted?.(); await holdOverview; }
@@ -79,7 +82,8 @@ try {
     if (request.method() !== 'GET') headers.origin = origin;
     const response = await fetch(base + new URL(request.url()).pathname + new URL(request.url()).search, { method: request.method(), headers, body: request.postData() ?? undefined });
     await route.fulfill({ status: response.status, headers: Object.fromEntries(response.headers), body: Buffer.from(await response.arrayBuffer()) });
-  });
+  };
+  await context.route(`${origin}/**`, intercept);
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   const waitText = (selector, text) => page.locator(selector).filter({ hasText: text }).waitFor();
@@ -132,6 +136,14 @@ try {
   await page.getByLabel('View account details for user000', { exact: true }).click();
   await page.getByRole('dialog').waitFor();
   assert.equal(await page.getByLabel('Full account ID').inputValue(), accounts[0].id);
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { async writeText(value) { window.fixtureCopiedId = value; } } }));
+  await page.getByRole('button', { name: 'Copy ID', exact: true }).click();
+  await waitText('#copy-status', 'ID copied.');
+  assert.equal(await page.evaluate(() => window.fixtureCopiedId), accounts[0].id);
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { async writeText() { throw Error('Clipboard unavailable in fixture'); } } }));
+  await page.getByRole('button', { name: 'Copy ID', exact: true }).click();
+  await waitText('#copy-status', 'copy it manually');
+  assert.equal(await page.getByLabel('Full account ID').evaluate(el => el === document.activeElement && el.selectionStart === 0 && el.selectionEnd === el.value.length), true);
   await screenshot('account-details');
   await page.keyboard.press('Escape');
   assert.equal(await page.getByLabel('View account details for user000', { exact: true }).evaluate(el => el === document.activeElement), true);
@@ -255,6 +267,66 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await screenshot('invitations-mobile');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await section('Users');
+  await waitText('#directory-summary', 'Showing 1–25 of 137 users');
+  malformedUsers = true;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await waitText('[role="alert"]', 'console and server versions match');
+  assert.equal(await page.locator('tbody tr').count(), 25);
+  malformedUsers = false;
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('#refresh-data').disabled);
+  // An old request may finish after sign-out and a new sign-in. Its 401 must
+  // never dismiss the new operator session or restore the old directory.
+  let releaseOldUsers;
+  holdUsers = new Promise(done => { releaseOldUsers = done; });
+  const oldUsersRequested = new Promise(done => { userStarted = done; });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await oldUsersRequested;
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.locator('#login-form').waitFor();
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await waitText('h1', 'Users');
+  holdUsers = null; releaseOldUsers();
+  await waitText('#directory-summary', 'Showing 1–25 of 137 users');
+  assert.equal(await page.locator('#login-form').count(), 0);
+  assert.equal(await page.locator('[role="alert"]').count(), 0);
+  // Check the local expiry timer independently of a failed API request.
+  await page.clock.install({ time: Date.now() });
+  await page.clock.fastForward(31 * 60_000);
+  await waitText('[role="alert"]', 'operator session expired');
+  assert.equal(await page.locator('tbody').count(), 0);
+  // Sign-in errors preserve the operator name, clear the password and honor
+  // the server's cooldown without repeatedly submitting blocked requests.
+  now = Date.now();
+  const loginContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await loginContext.route(`${origin}/**`, intercept);
+  const loginPage = await loginContext.newPage();
+  loginPage.on('pageerror', error => errors.push(error.message));
+  await loginPage.clock.install({ time: Date.now() });
+  await loginPage.goto(origin + '/admin/');
+  await loginPage.getByLabel('Operator name').fill('localowner');
+  await loginPage.getByLabel('Password', { exact: true }).fill('incorrect-fixture-password');
+  await loginPage.getByRole('button', { name: 'Show password', exact: true }).click();
+  assert.equal(await loginPage.getByLabel('Password', { exact: true }).getAttribute('type'), 'text');
+  await loginPage.getByRole('button', { name: 'Hide password', exact: true }).click();
+  await loginPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await loginPage.locator('[role="alert"]').filter({ hasText: 'Check your operator name and password' }).waitFor();
+  assert.equal(await loginPage.getByLabel('Operator name').inputValue(), 'localowner');
+  assert.equal(await loginPage.getByLabel('Password', { exact: true }).inputValue(), '');
+  assert.equal(await loginPage.locator('#login-submit').isDisabled(), true);
+  assert.match(await loginPage.locator('#login-submit').textContent(), /Try again in/);
+  if (outputDir) await loginPage.screenshot({ path: resolve(outputDir, 'login-cooldown-mobile.png'), fullPage: true });
+  now += 6000;
+  await loginPage.clock.fastForward(6000);
+  assert.equal(await loginPage.locator('#login-submit').isDisabled(), false);
+  await loginPage.getByLabel('Password', { exact: true }).fill(password);
+  await loginPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await loginPage.locator('h1').filter({ hasText: 'Overview' }).waitFor();
+  await loginPage.locator('.card').filter({ hasText: '137' }).waitFor();
+  assert.equal(await loginPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await loginContext.close();
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ ok: true, accounts: 137, pagination: true, search: true, filters: true, details: true, accountDevices: true, outageRetry: true, signoutFailure: true, expiry: true, mobile: true, screenshots: outputDir }));
 } finally {

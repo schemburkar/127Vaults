@@ -34,3 +34,5 @@ Each response contains its named array (`users`, `devices` or `invitations`) and
 No response selects or serializes invitation token digests, activation links, email verification codes, onboarding candidates, device signing keys, authentication records, vault metadata or ciphertext. The invitation directory reports persisted reservation/enrollment state; it does not report SMTP delivery or whether a recipient has started an uncommitted onboarding attempt.
 
 Database failures return `503 admin_data_unavailable` without internal details. Non-GET directory requests return `405 read_only`. Existing sign-in Origin checks, Secure/HttpOnly/SameSite cookies, session expiry and CSRF-protected sign-out apply unchanged.
+
+Failed sign-in responses include `Retry-After` seconds for the current source cooldown, as do rate-limited attempts. The console honors bounded delays of up to 60 seconds. Observed expired operator sessions are removed from memory; subsequent successful sign-in also prunes expired sessions. The console validates response shape before rendering and requires `signedOut: true` before treating an HTTP-success sign-out response as confirmed.

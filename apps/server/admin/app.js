@@ -1,44 +1,14 @@
 import { escapeHtml, date, badge, newDirectory, directoryQuery, directoryView, detailsView } from './directory.js';
+import { requestAdmin as api, errorMessage as message } from './api.js';
 
 const root = document.querySelector('#app');
 const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
 const resource = () => ({ data: null, loading: false, error: '', checkedAt: null, request: 0, controller: null });
-const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), error: '', loginName: '', signingOut: false, generation: 0 };
+const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), error: '', loginName: '', retryUntil: 0, signingOut: false, generation: 0 };
 let sessionTimer;
+let loginTimer;
 
 function sectionFromHash() { return Object.hasOwn(titles, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
-class ApiError extends Error {
-  constructor(code, status = 0) { super(code); this.code = code; this.status = status; }
-}
-async function api(path, options = {}) {
-  const timeout = AbortSignal.timeout(15_000);
-  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
-  let response;
-  try { response = await fetch(`/api/admin/${path}`, { credentials: 'same-origin', cache: 'no-store', ...options, signal }); }
-  catch (error) {
-    if (options.signal?.aborted) throw error;
-    throw new ApiError(timeout.aborted ? 'request_timeout' : 'network_unavailable');
-  }
-  let result;
-  try { result = await response.json(); }
-  catch { throw new ApiError('server_unavailable', response.status); }
-  if (!response.ok) throw new ApiError(result.error || 'request_failed', response.status);
-  return result;
-}
-function message(error) {
-  return ({
-    invalid_credentials: 'Check your operator name and password.',
-    rate_limited: 'Too many sign-in attempts. Wait a minute, then try again.',
-    admin_not_configured: 'Operator access is not configured. Create the local operator file and restart the server using the administration runbook.',
-    local_only: 'Server administration is available only on a loopback deployment. Open the console on the local server.',
-    forbidden: 'The server refused this request. Reload the page to obtain a fresh session and try again.',
-    admin_data_unavailable: 'The server could not read its administration data. Check the API and database, then try again.',
-    network_unavailable: 'Cannot reach the server. Check your connection and that the server is running, then try again.',
-    request_timeout: 'The server took too long to respond. Check the server, then try again.',
-    server_unavailable: 'The server returned an unavailable or unexpected response. Check the server, then try again.',
-    invalid_directory_query: 'These filters could not be applied. Clear the filters and try again.',
-  })[error.code] ?? 'The request could not be completed. Try again.';
-}
 function cancelRequests() {
   for (const key of ['overview', 'users', 'devices', 'invitations']) {
     state[key].controller?.abort();
@@ -59,6 +29,8 @@ function clearSession(error = '') {
   login();
 }
 function setSession(session) {
+  clearInterval(loginTimer);
+  state.retryUntil = 0;
   state.session = session;
   state.section = sectionFromHash();
   state.generation += 1;
@@ -84,25 +56,48 @@ function updateSessionStatus() {
   }
   const element = document.querySelector('#session-status');
   if (element) {
-    element.textContent = sessionStatus();
+    const text = sessionStatus();
+    if (element.textContent !== text) element.textContent = text;
     element.classList.toggle('session-warning', new Date(state.session.expiresAt).getTime() - Date.now() <= 5 * 60_000);
   }
 }
 function login() {
-  root.innerHTML = `<main class="login-wrap"><form class="login" id="login-form"><div class="brand"><span class="brand-mark" aria-hidden="true">◇</span><span>127Vaults<small>Server administration</small></span></div><h1>Sign in to your server</h1><p class="server-origin">${escapeHtml(location.host)}</p><p class="muted">Use your local operator credentials. This session is separate from your vault.</p>${state.error ? `<p class="notice error" role="alert">${escapeHtml(state.error)}</p>` : ''}<label class="field">Operator name<input name="username" autocomplete="username" required value="${escapeHtml(state.loginName)}"></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label><button class="button primary" type="submit">Sign in</button><p class="footnote">Local administration · experimental server<br>Sessions expire after 30 minutes.</p></form></main>`;
+  clearInterval(loginTimer);
+  root.innerHTML = `<main class="login-wrap"><form class="login" id="login-form"><div class="brand"><span class="brand-mark" aria-hidden="true">◇</span><span>127Vaults<small>Server administration</small></span></div><h1>Sign in to your server</h1><p class="server-origin">${escapeHtml(location.host)}</p><p class="muted">Use your local operator credentials. This session is separate from your vault.</p>${state.error ? `<p class="notice error" role="alert">${escapeHtml(state.error)}</p>` : ''}<label class="field">Operator name<input name="username" autocomplete="username" required value="${escapeHtml(state.loginName)}"></label><label class="field">Password<div class="password-control"><input name="password" aria-label="Password" type="password" autocomplete="current-password" required><button class="button" type="button" id="show-password" aria-label="Show password" aria-pressed="false">Show</button></div></label><p id="caps-lock" class="footnote session-warning" role="status" hidden>Caps Lock is on.</p><button class="button primary" type="submit" id="login-submit">Sign in</button><p id="login-wait" class="footnote" role="status"></p><p class="footnote">Local administration · experimental server<br>Sessions expire after 30 minutes.</p></form></main>`;
   const form = document.querySelector('#login-form');
+  const password = form.elements.password;
+  const showPassword = document.querySelector('#show-password');
+  showPassword.addEventListener('click', () => {
+    const show = password.type === 'password'; password.type = show ? 'text' : 'password';
+    showPassword.textContent = show ? 'Hide' : 'Show'; showPassword.setAttribute('aria-pressed', String(show));
+    showPassword.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  });
+  for (const event of ['keydown', 'keyup']) password.addEventListener(event, event => { document.querySelector('#caps-lock').hidden = !event.getModifierState('CapsLock'); });
+  const updateWait = () => {
+    const seconds = Math.max(0, Math.ceil((state.retryUntil - Date.now()) / 1000));
+    const button = document.querySelector('#login-submit');
+    if (!button) { clearInterval(loginTimer); return; }
+    button.disabled = seconds > 0;
+    button.textContent = seconds ? `Try again in ${seconds}s` : 'Sign in';
+    document.querySelector('#login-wait').textContent = seconds ? 'The server requires a short wait before another sign-in attempt.' : '';
+    if (!seconds) clearInterval(loginTimer);
+  };
+  updateWait();
+  if (state.retryUntil > Date.now()) loginTimer = setInterval(updateWait, 1000);
   form.elements[state.loginName ? 'password' : 'username'].focus();
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const button = form.querySelector('button');
-    button.disabled = true; button.textContent = 'Signing in…';
+    const button = form.querySelector('[type="submit"]');
+    if (button.disabled) return;
     const fields = new FormData(form);
+    form.querySelectorAll('input,button').forEach(element => { element.disabled = true; });
+    button.textContent = 'Signing in…';
     state.loginName = String(fields.get('username'));
     try {
       const session = await api('session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: state.loginName, password: fields.get('password') }) });
       form.reset();
       setSession(session);
-    } catch (error) { state.error = message(error); login(); }
+    } catch (error) { state.error = message(error); state.retryUntil = Date.now() + (error.retryAfter || 0) * 1000; login(); }
   });
 }
 function overview() {

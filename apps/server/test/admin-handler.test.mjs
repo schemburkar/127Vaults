@@ -76,3 +76,33 @@ test('private-LAN mode blocks the admin surface', async () => {
   assert.equal(response.status, 403);
   await new Promise(resolve => blocked.close(resolve));
 });
+
+test('operator cooldowns report retry timing and an observed expired cookie cannot revive', async () => {
+  let time = Date.now();
+  const isolatedHandler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 6, now: () => time });
+  const isolated = createServer((req, res) => isolatedHandler(req, res));
+  isolated.listen(0, '127.0.0.1');
+  await once(isolated, 'listening');
+  const target = `http://127.0.0.1:${isolated.address().port}`;
+  const signIn = value => fetch(`${target}/api/admin/session`, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'localowner', password: value }) });
+  try {
+    const wrong = await signIn('incorrect-disposable-password');
+    assert.equal(wrong.status, 401);
+    assert.equal(wrong.headers.get('retry-after'), '5');
+    const blocked = await signIn(password);
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.headers.get('retry-after'), '5');
+    time += 4999;
+    assert.equal((await signIn(password)).headers.get('retry-after'), '1');
+    time += 1;
+    const login = await signIn(password);
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    time += 30 * 60_000 - 1;
+    assert.equal((await fetch(`${target}/api/admin/session`, { headers: { Cookie: cookie } })).status, 200);
+    time += 1;
+    assert.equal((await fetch(`${target}/api/admin/session`, { headers: { Cookie: cookie } })).status, 401);
+    time -= 60_000;
+    assert.equal((await fetch(`${target}/api/admin/session`, { headers: { Cookie: cookie } })).status, 401);
+  } finally { await new Promise(done => isolated.close(done)); }
+});

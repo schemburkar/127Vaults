@@ -817,3 +817,20 @@ dialog::backdrop {
 .pagination-top > div {
   gap: 6px;
 }
+.password-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.login .password-control .button {
+  width: auto;
+  margin: 0;
+  min-width: 64px;
+  padding: 8px;
+}
+.password-control input {
+  min-width: 0;
+}
+.login #login-wait:empty {
+  display: none;
+}

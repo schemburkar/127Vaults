@@ -10,6 +10,7 @@ const assets = new Map([
   ['/admin/app.js', ['../../admin/app.js', 'text/javascript; charset=utf-8']],
   ['/admin/style.css', ['../../admin/style.css', 'text/css; charset=utf-8']],
   ['/admin/directory.js', ['../../admin/directory.js', 'text/javascript; charset=utf-8']],
+  ['/admin/api.js', ['../../admin/api.js', 'text/javascript; charset=utf-8']],
 ]);
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -24,7 +25,8 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
     const token = matches[0].slice(cookieName.length + 1);
     if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
     const item = sessions.get(digest(token));
-    if (!item || item.expires <= now()) return null;
+    if (!item) return null;
+    if (item.expires <= now()) { sessions.delete(digest(token)); return null; }
     return item;
   }
   return async function handle(req, res) {
@@ -47,7 +49,7 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       if (req.headers.origin !== origin || req.headers['content-type']?.split(';')[0] !== 'application/json') { json(res, 403, { error: 'forbidden' }); return true; }
       const source = req.socket.remoteAddress;
       const record = attempts.get(source) ?? { count: 0, until: 0 };
-      if (record.until > now()) { json(res, 429, { error: 'rate_limited' }); return true; }
+      if (record.until > now()) { json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(Math.ceil((record.until - now()) / 1000)) }); return true; }
       let body = '';
       for await (const chunk of req) { body += chunk; if (body.length > 2048) { json(res, 413, { error: 'too_large' }); return true; } }
       let input;
@@ -57,9 +59,10 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
         record.count += 1;
         record.until = now() + Math.min(60_000, record.count * 5_000);
         attempts.set(source, record);
-        json(res, 401, { error: 'invalid_credentials' }); return true;
+        json(res, 401, { error: 'invalid_credentials' }, { 'Retry-After': String(Math.ceil((record.until - now()) / 1000)) }); return true;
       }
       attempts.delete(source);
+      for (const [key, value] of sessions) if (value.expires <= now()) sessions.delete(key);
       const token = randomBytes(32).toString('base64url');
       const csrf = randomBytes(32).toString('base64url');
       sessions.set(digest(token), { username: operator.username, role: operator.role, csrf, expires: now() + 30 * 60_000 });

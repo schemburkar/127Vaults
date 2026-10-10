@@ -32,6 +32,8 @@ The file format allows multiple operators with `owner` or `admin` roles. Additio
 
 Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. All admin endpoints are read-only except sign-in and sign-out. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
 
+Sign-in preserves the operator name after a failed attempt and clears the password. The password visibility button and Caps Lock hint help correct entry mistakes. When the server supplies a retry delay, the sign-in button shows a countdown and becomes available when that delay ends. A request is bounded to 15 seconds; unreachable servers and incompatible responses receive clear recovery guidance.
+
 Pages load on demand. Sort accounts by creation time or username, devices by creation time or account, and invitations by creation time, expiration or recipient email. Search applies the selected filters and order together. Clearing filters preserves your sort order and page size. Top controls can jump directly to a page; previous/next navigation is also available below the results.
 
 **Refresh** checks the current section; failed refreshes label retained results as out of date and offer **Try again**. An expired session clears displayed directory data and returns to sign-in with an explanation. A failed sign-out leaves the console visible and says sign-out was not confirmed. The header shows session time remaining and the server address is visible in the console and sign-in screen.
