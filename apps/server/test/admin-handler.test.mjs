@@ -11,6 +11,7 @@ const operator = { username: 'localowner', role: 'owner', salt: Buffer.from(hash
 const queries = [];
 const pool = { async query(sql) {
   queries.push(sql);
+  if (sql.startsWith('SELECT count(*)::int AS total')) return { rows: [{ total: 1 }] };
   if (sql.includes('schema_version')) return { rows: [{ version: 6 }] };
   if (sql.includes('active_users')) return { rows: [{ users: 2, active_users: 2 }] };
   if (sql.includes('AS devices')) return { rows: [{ devices: 1 }] };
@@ -43,6 +44,12 @@ test('admin sign-in is separate, read-only, and CSRF protected', async () => {
   const users = await fetch(`${base}/api/admin/users`, { headers: { Cookie: cookie } });
   assert.equal(users.status, 200);
   assert.equal((await users.json()).users[0].username, 'alice');
+  assert.equal(users.headers.get('cache-control'), 'no-store');
+  const filtered = await fetch(`${base}/api/admin/users?page=2&q=alice&status=active`, { headers: { Cookie: cookie } });
+  assert.equal(filtered.status, 200);
+  assert.equal((await filtered.json()).page, 1);
+  const invalid = await fetch(`${base}/api/admin/users?pageSize=1000`, { headers: { Cookie: cookie } });
+  assert.equal(invalid.status, 400);
   const denied = await fetch(`${base}/api/admin/users`, { method: 'POST', headers: { Cookie: cookie, Origin: origin } });
   assert.equal(denied.status, 405);
   const noCsrf = await fetch(`${base}/api/admin/session`, { method: 'DELETE', headers: { Cookie: cookie, Origin: origin } });

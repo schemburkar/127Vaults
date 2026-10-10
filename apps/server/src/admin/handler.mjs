@@ -2,6 +2,7 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { verifyPassword } from './credentials.mjs';
+import { directoryInput, DirectoryInputError, readDirectory } from './directory.mjs';
 
 const assets = new Map([
   ['/admin', ['../../admin/index.html', 'text/html; charset=utf-8']],
@@ -11,7 +12,7 @@ const assets = new Map([
 ]);
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
-const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify(value)); };
+const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
 export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
   const attempts = new Map();
@@ -26,7 +27,8 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
     return item;
   }
   return async function handle(req, res) {
-    const path = new URL(req.url, origin).pathname;
+    const url = new URL(req.url, origin);
+    const path = url.pathname;
     if (!path.startsWith('/admin') && !path.startsWith('/api/admin/')) return false;
     if (!localOnly) { json(res, 403, { error: 'local_only' }); return true; }
     if (assets.has(path)) {
@@ -82,19 +84,12 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
         const devices = await pool.query("SELECT count(*)::int AS devices FROM vaults.devices WHERE lifecycle_status='active'");
         json(res, 200, { status: 'online', checkedAt: new Date(now()).toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: devices.rows[0]?.devices ?? 0, backup: backupStatus() }); return true;
       }
-      if (path === '/api/admin/users') {
-        const rows = await pool.query(`SELECT a.id,a.username,a.display_name,a.email,a.server_role,a.enrollment_state,a.email_verified,a.created_at,
-          count(d.id)::int AS device_count FROM vaults.accounts a LEFT JOIN vaults.devices d ON d.tenant_id=a.tenant_id AND d.account_id=a.id AND d.lifecycle_status='active'
-          GROUP BY a.tenant_id,a.id ORDER BY a.created_at DESC,a.id LIMIT 100`);
-        json(res, 200, { users: rows.rows.map(r => ({ id: r.id, username: r.username, displayName: r.display_name, email: r.email, role: r.server_role, status: r.enrollment_state, emailVerified: r.email_verified, createdAt: r.created_at, deviceCount: r.device_count })), limited: rows.rowCount === 100 }); return true;
-      }
-      if (path === '/api/admin/devices') {
-        const rows = await pool.query(`SELECT d.id,d.account_id,a.username,d.lifecycle_status,d.protection_class,d.credential_state,d.created_at,d.revoked_at
-          FROM vaults.devices d JOIN vaults.accounts a ON a.tenant_id=d.tenant_id AND a.id=d.account_id ORDER BY d.created_at DESC,d.id LIMIT 100`);
-        json(res, 200, { devices: rows.rows.map(r => ({ id: r.id, accountId: r.account_id, username: r.username, status: r.lifecycle_status, protection: r.protection_class, credentialState: r.credential_state, createdAt: r.created_at, revokedAt: r.revoked_at })), limited: rows.rowCount === 100 }); return true;
+      if (path === '/api/admin/users' || path === '/api/admin/devices') {
+        const kind = path.endsWith('/users') ? 'users' : 'devices';
+        json(res, 200, await readDirectory(pool, kind, directoryInput(url.searchParams, kind))); return true;
       }
       json(res, 404, { error: 'not_found' });
-    } catch { json(res, 503, { error: 'admin_data_unavailable' }); }
+    } catch (error) { json(res, error instanceof DirectoryInputError ? 400 : 503, { error: error instanceof DirectoryInputError ? 'invalid_directory_query' : 'admin_data_unavailable' }); }
     return true;
   };
 }
