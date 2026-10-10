@@ -55,8 +55,8 @@ button:disabled {
   width: 35px;
   height: 35px;
   border-radius: 11px;
-  background: linear-gradient(145deg, #72d8c0, #176b61);
-  color: #090d1e;
+  background: linear-gradient(145deg, #b72c49, #9f1b36);
+  color: #e0bb95;
   font-size: 22px;
 }
 .brand small {
@@ -87,7 +87,7 @@ button:disabled {
   color: #fff;
 }
 .nav button.active {
-  box-shadow: inset 3px 0 #48b59d;
+  box-shadow: inset 3px 0 #e0bb95;
 }
 .sidebar-foot {
   margin-top: auto;
@@ -111,7 +111,7 @@ button:disabled {
   margin-bottom: 32px;
 }
 .eyebrow {
-  color: #6bd1b9;
+  color: #e0bb95;
   letter-spacing: 0.17em;
   text-transform: uppercase;
   font-size: 11px;
@@ -156,13 +156,14 @@ p {
   background: #293354;
 }
 .button.primary {
-  background: #50c5aa;
-  border-color: #50c5aa;
-  color: #080c1d;
+  background: #9f1b36;
+  border-color: #9f1b36;
+  color: #fff;
   font-weight: 750;
 }
 .button.primary:hover {
-  background: #78ddc4;
+  background: #b72c49;
+  border-color: #b72c49;
 }
 .grid {
   display: grid;
@@ -215,9 +216,9 @@ p {
   color: #c7d4eb;
 }
 .pill.good {
-  border-color: #286956;
-  background: #123c34;
-  color: #8fe0bd;
+  border-color: #6a584c;
+  background: #30271f;
+  color: #e0bb95;
 }
 .pill.warn {
   border-color: #736039;
@@ -316,7 +317,7 @@ tbody tr:last-child td {
   padding: 12px;
 }
 .field input:focus {
-  outline: 2px solid #48b59d;
+  outline: 2px solid #e0bb95;
   outline-offset: 1px;
 }
 .login .button {
@@ -399,7 +400,7 @@ a:focus-visible,
 select:focus-visible,
 input:focus-visible,
 .table-wrap:focus-visible {
-  outline: 2px solid #78ddc4;
+  outline: 2px solid #e0bb95;
   outline-offset: 3px;
 }
 h1:focus,
@@ -423,7 +424,7 @@ h1:focus,
   top: -80px;
   z-index: 20;
   padding: 12px 18px;
-  background: #78ddc4;
+  background: #e0bb95;
   color: #080c1d;
   border-radius: 8px;
 }
@@ -502,14 +503,14 @@ h1:focus,
   border: 0;
   background: transparent;
   padding: 8px 0;
-  color: #8fe0bd;
+  color: #e0bb95;
   font-size: 13px;
   text-align: left;
   min-height: 36px;
 }
 .text-button:hover {
   text-decoration: underline;
-  color: #b2f3dd;
+  color: #f2d7bb;
 }
 .card-link {
   display: block;
@@ -541,8 +542,8 @@ h1:focus,
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  background: #162c3b;
-  border: 1px solid #2e6266;
+  background: #30212d;
+  border: 1px solid #70424b;
   border-radius: 10px;
   padding: 10px 14px;
   margin-bottom: 18px;
