@@ -56,3 +56,22 @@ test('an empty directory has one navigable page and no fabricated rows', async (
   const data = await readDirectory(pool, 'users', directoryInput(new URLSearchParams('page=3'), 'users'));
   assert.deepEqual(data, { users: [], total: 0, page: 1, pageSize: 25, pageCount: 1, hasPrevious: false, hasNext: false });
 });
+
+test('invitation directory exposes recipient state without invitation or verification secrets', async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    return sql.startsWith('SELECT count') ? { rows: [{ total: 1 }] } : { rows: [{ id: 'invitation', email: 'invitee@example.invalid', created_by: 'owner', status: 'pending', expires_at: '2026-10-11', token_digest: 'must-never-leave-store', verification_code: 'must-never-leave-store' }] };
+  } };
+  const input = directoryInput(new URLSearchParams('q=invitee&status=pending'), 'invitations');
+  const data = await readDirectory(pool, 'invitations', input);
+  assert.equal(data.invitations[0].createdBy, 'owner');
+  assert.equal(data.invitations[0].status, 'pending');
+  assert.doesNotMatch(JSON.stringify(data), /token|verification|must-never/);
+  assert.doesNotMatch(calls[1].sql, /token_digest|verification_code|SELECT \*/);
+  assert.match(calls[0].sql, /e.tenant_id=r.tenant_id/);
+  assert.match(calls[0].sql, /e.redeemed_at IS NOT NULL THEN 'redeemed'.*r.revoked_at IS NOT NULL THEN 'revoked'/);
+  assert.deepEqual(calls[0].values, ['invitee', 'pending']);
+  assert.throws(() => directoryInput(new URLSearchParams('status=active'), 'invitations'), DirectoryInputError);
+  assert.throws(() => directoryInput(new URLSearchParams('accountId=account'), 'invitations'), DirectoryInputError);
+});

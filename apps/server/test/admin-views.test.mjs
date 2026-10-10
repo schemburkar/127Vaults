@@ -53,3 +53,18 @@ test('details expose full identifiers and revocation metadata without invalid da
   assert.match(html, /Revoked \/ replaced/);
   assert.match(html, /unknown means it has not been classified/);
 });
+
+test('invitations show recipient states and safe full record IDs', () => {
+  const directory = newDirectory();
+  const item = { id: 'record-id', email: '\"><img src=x>', createdBy: '<owner>', status: 'expired' };
+  directory.data = { invitations: [item], total: 1, page: 1, pageSize: 25, pageCount: 1 };
+  const view = directoryView('invitations', directory);
+  assert.match(view, /1 invitation recipients/);
+  assert.match(view, /Expired/);
+  assert.match(view, /an invitation may cover several recipients/);
+  assert.doesNotMatch(view, /<img|<owner>/);
+  const details = detailsView('invitations', item);
+  assert.match(details, /Full invitation ID/);
+  assert.match(details, /value="record-id"/);
+  assert.doesNotMatch(details, /<img|<owner>|details-devices/);
+});

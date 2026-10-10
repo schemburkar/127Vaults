@@ -11,11 +11,12 @@ const operator = { username: 'localowner', role: 'owner', salt: Buffer.from(hash
 const queries = [];
 const pool = { async query(sql) {
   queries.push(sql);
-  if (sql.startsWith('SELECT count(*)::int AS total')) return { rows: [{ total: 1 }] };
+  if (sql.startsWith('SELECT count(*)::int AS total')) return { rows: [{ total: sql.includes('invitation_records') ? 2 : sql.includes('FROM vaults.accounts') ? 1 : 0 }] };
   if (sql.includes('schema_version')) return { rows: [{ version: 6 }] };
   if (sql.includes('active_users')) return { rows: [{ users: 2, active_users: 2 }] };
   if (sql.includes('AS devices')) return { rows: [{ devices: 1 }] };
   if (sql.includes('FROM vaults.accounts a')) return { rows: [{ id: 'account', username: 'alice', display_name: 'Alice', email: 'alice@example.invalid', server_role: 'user', enrollment_state: 'active', email_verified: true, created_at: new Date(), device_count: 1 }], rowCount: 1 };
+  if (sql.includes('FROM vaults.invitation_records')) return { rows: [{ id: 'invitation', email: 'invitee@example.invalid', created_by: 'alice', status: 'pending' }, { id: 'invitation', email: 'other@example.invalid', created_by: 'alice', status: 'redeemed' }] };
   return { rows: [], rowCount: 0 };
 } };
 let origin;
@@ -34,6 +35,7 @@ after(() => server.close());
 test('admin sign-in is separate, read-only, and CSRF protected', async () => {
   const before = await fetch(`${base}/api/admin/users`);
   assert.equal(before.status, 401);
+  assert.equal((await fetch(`${base}/api/admin/invitations`)).status, 401);
   const wrongOrigin = await fetch(`${base}/api/admin/session`, { method: 'POST', headers: { Origin: 'https://evil.invalid', 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'localowner', password }) });
   assert.equal(wrongOrigin.status, 403);
   const login = await fetch(`${base}/api/admin/session`, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'localowner', password }) });
@@ -50,6 +52,11 @@ test('admin sign-in is separate, read-only, and CSRF protected', async () => {
   assert.equal((await filtered.json()).page, 1);
   const invalid = await fetch(`${base}/api/admin/users?pageSize=1000`, { headers: { Cookie: cookie } });
   assert.equal(invalid.status, 400);
+  const invitations = await fetch(`${base}/api/admin/invitations`, { headers: { Cookie: cookie } });
+  assert.equal(invitations.status, 200);
+  assert.equal((await invitations.json()).total, 2);
+  const inviteWrite = await fetch(`${base}/api/admin/invitations`, { method: 'POST', headers: { Cookie: cookie, Origin: origin } });
+  assert.equal(inviteWrite.status, 405);
   const denied = await fetch(`${base}/api/admin/users`, { method: 'POST', headers: { Cookie: cookie, Origin: origin } });
   assert.equal(denied.status, 405);
   const noCsrf = await fetch(`${base}/api/admin/session`, { method: 'DELETE', headers: { Cookie: cookie, Origin: origin } });

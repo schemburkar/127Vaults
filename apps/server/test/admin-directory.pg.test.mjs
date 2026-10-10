@@ -69,5 +69,29 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     assert.equal(clamped.page, 1);
     const before = await pool.query('SELECT count(*)::int AS total FROM vaults.accounts');
     assert.equal(before.rows[0].total, 137, 'Directory reads must preserve all account rows');
+    // One record may invite several recipients. Status belongs to each recipient.
+    const invitationId = randomUUID(), expiredId = randomUUID(), revokedId = randomUUID();
+    for (const [id, expired, revokedFlag] of [[invitationId, false, false], [expiredId, true, false], [revokedId, false, true]]) {
+      await pool.query(`INSERT INTO vaults.invitation_records(tenant_id,id,token_digest,created_by,created_at,expires_at,revoked_at)
+        VALUES($1,$2,$3,$4,now()-interval '2 days',now()+$5::interval,CASE WHEN $6 THEN now() ELSE NULL END)`,
+      [tenant, id, Buffer.alloc(32, id === invitationId ? 1 : id === expiredId ? 2 : 3), seen[0], expired ? '-1 day' : '1 day', revokedFlag]);
+    }
+    for (const [id, email, redeemed] of [[invitationId, 'pending@example.invalid', false], [invitationId, 'redeemed@example.invalid', true], [expiredId, 'expired@example.invalid', false], [revokedId, 'revoked@example.invalid', false], [revokedId, 'completed@example.invalid', true]]) {
+      await pool.query(`INSERT INTO vaults.invitation_emails(tenant_id,id,email,redeemed_at,account_id) VALUES($1,$2,$3,CASE WHEN $4 THEN now() ELSE NULL END,CASE WHEN $4 THEN $5::uuid ELSE NULL END)`, [tenant, id, email, redeemed, seen[1]]);
+    }
+    const invitations = await readDirectory(pool, 'invitations', input('invitations'));
+    assert.equal(invitations.total, 5);
+    assert.equal(new Set(invitations.invitations.map(row => row.email)).size, 5);
+    for (const [status, total] of [['pending', 1], ['redeemed', 2], ['expired', 1], ['revoked', 1]]) {
+      const matches = await readDirectory(pool, 'invitations', input('invitations', { status }));
+      assert.equal(matches.total, total, status);
+      assert.ok(matches.invitations.every(row => row.status === status));
+    }
+    const inviter = await readDirectory(pool, 'invitations', input('invitations', { q: 'USER000' }));
+    assert.equal(inviter.total, 5);
+    const target = await readDirectory(pool, 'invitations', input('invitations', { q: 'pending@example.invalid' }));
+    assert.equal(target.total, 1);
+    assert.equal(target.invitations[0].id, invitationId);
+    assert.doesNotMatch(JSON.stringify(invitations), /token_digest|verification_code/);
   } finally { await pool.end(); }
 });

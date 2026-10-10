@@ -1,9 +1,9 @@
 import { escapeHtml, date, badge, newDirectory, directoryQuery, directoryView, detailsView } from './directory.js';
 
 const root = document.querySelector('#app');
-const titles = { overview: 'Overview', users: 'Users', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
+const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
 const resource = () => ({ data: null, loading: false, error: '', checkedAt: null, request: 0, controller: null });
-const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), error: '', loginName: '', signingOut: false, generation: 0 };
+const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), error: '', loginName: '', signingOut: false, generation: 0 };
 let sessionTimer;
 
 function sectionFromHash() { return Object.hasOwn(titles, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
@@ -40,7 +40,7 @@ function message(error) {
   })[error.code] ?? 'The request could not be completed. Try again.';
 }
 function cancelRequests() {
-  for (const key of ['overview', 'users', 'devices']) {
+  for (const key of ['overview', 'users', 'devices', 'invitations']) {
     state[key].controller?.abort();
     state[key].loading = false;
     state[key].request += 1;
@@ -53,12 +53,14 @@ function clearSession(error = '') {
   state.loginName = state.session?.username ?? state.loginName;
   state.session = null;
   state.overview = resource(); state.users = newDirectory(); state.devices = newDirectory();
+  state.invitations = newDirectory();
   state.error = error;
   state.signingOut = false;
   login();
 }
 function setSession(session) {
   state.session = session;
+  state.section = sectionFromHash();
   state.generation += 1;
   state.error = '';
   clearInterval(sessionTimer);
@@ -119,12 +121,15 @@ function backups() {
   return `<p class="muted">Backup visibility for this server. Checked ${escapeHtml(date(state.overview.data.checkedAt))}.</p><section class="panel"><h2>Current backup status</h2><p>${badge(backup.state)}</p><p class="muted">${escapeHtml(backup.detail)}</p>${backup.state === 'unknown' ? '<div class="notice">Backup freshness is unknown. Check the operator backup logs and your last restore rehearsal before relying on this server.</div>' : ''}<p class="footnote">Backup creation and restore remain in the operator runbook. This page does not initiate either action.</p></section>`;
 }
 function placeholder(name) { return `<section class="panel empty-state"><h2>${escapeHtml(name)} is coming later</h2><p>This area is reserved for a reviewed administration workflow.</p></section>`; }
-const views = { overview, users: () => directoryView('users', state.users), roles, devices: () => directoryView('devices', state.devices), backups, settings: () => placeholder('Settings'), audit: () => placeholder('Audit') };
-function currentResource() { return ['overview', 'backups'].includes(state.section) ? state.overview : ['users', 'devices'].includes(state.section) ? state[state.section] : null; }
+const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles, devices: () => directoryView('devices', state.devices), backups, settings: () => placeholder('Settings'), audit: () => placeholder('Audit') };
+function currentResource() { return ['overview', 'backups'].includes(state.section) ? state.overview : ['users', 'devices', 'invitations'].includes(state.section) ? state[state.section] : null; }
 function render({ focus = '' } = {}) {
   if (!state.session) return;
+  const active = document.activeElement;
+  const previousFocus = active?.id || '';
+  const navFocus = active?.dataset.section;
   const data = currentResource();
-  const directory = ['users', 'devices'].includes(state.section);
+  const directory = ['users', 'devices', 'invitations'].includes(state.section);
   root.innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark" aria-hidden="true">◇</span><span>127Vaults<small>Server administration</small></span></div><nav class="nav" aria-label="Admin sections">${Object.entries(titles).map(([key, text]) => `<button type="button" data-section="${key}" class="${state.section === key ? 'active' : ''}" ${state.section === key ? 'aria-current="page"' : ''}>${text}</button>`).join('')}</nav><div class="sidebar-foot"><span class="server-origin">${escapeHtml(location.host)}</span><br>Local operator console<br>Experimental server</div></aside><main class="main" id="main-content" tabindex="-1"><header class="top"><div><p class="eyebrow">Control plane</p><h1 id="page-title" tabindex="-1">${titles[state.section]}</h1></div><div class="top-actions"><div><span class="operator">${escapeHtml(state.session.username)} · ${escapeHtml(state.session.role)}</span><span id="session-status" class="sub" role="status">${escapeHtml(sessionStatus())}</span></div><button class="button" id="signout" ${state.signingOut ? 'disabled' : ''}>${state.signingOut ? 'Signing out…' : 'Sign out'}</button></div></header>${state.error ? `<p class="notice error" role="alert">${escapeHtml(state.error)}</p>` : ''}${data ? `<div class="refresh-bar"><p class="muted" role="status">${data.loading ? 'Refreshing server data…' : data.checkedAt ? 'Last loaded ' + escapeHtml(date(data.checkedAt)) : 'Ready to check server data'}</p><button class="button" id="refresh-data" type="button" ${data.loading ? 'disabled' : ''}>${data.loading ? 'Refreshing…' : 'Refresh'}</button></div>` : ''}${!directory && data?.error ? `<div class="notice error" role="alert"><p>${escapeHtml(data.error)}</p>${data.data ? '<p>Showing the last loaded data. Current server health is unconfirmed.</p>' : ''}<button class="button" id="retry-data" type="button">Try again</button></div>` : ''}${views[state.section]()}</main></div>`;
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.section)));
   document.querySelector('.skip-link').addEventListener('click', event => { event.preventDefault(); document.querySelector('#main-content').focus(); });
@@ -133,7 +138,9 @@ function render({ focus = '' } = {}) {
   document.querySelector('#retry-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
   if (directory) bindDirectory(state.section);
   updateSessionStatus();
-  if (focus) document.getElementById(focus)?.focus();
+  const target = focus || previousFocus;
+  const element = target ? document.getElementById(target) : navFocus ? document.querySelector(`.nav [data-section="${navFocus}"]`) : null;
+  if (element && !element.disabled) element.focus({ preventScroll: !focus });
 }
 function navigate(section) {
   if (!Object.hasOwn(titles, section) || !state.session) return;
@@ -146,7 +153,7 @@ window.addEventListener('hashchange', () => navigate(sectionFromHash()));
 async function loadSection(force = false, focus = '') {
   const section = state.section;
   const key = section === 'backups' ? 'overview' : section;
-  if (!['overview', 'users', 'devices'].includes(key) || !state.session) return;
+  if (!['overview', 'users', 'devices', 'invitations'].includes(key) || !state.session) return;
   const entry = state[key];
   if (!force && (entry.data || entry.loading)) return;
   entry.controller?.abort();
@@ -180,8 +187,8 @@ function bindDirectory(kind) {
     const fields = new FormData(form);
     const q = String(fields.get('q') ?? '').trim();
     const status = String(fields.get('status') ?? '');
-    const filter = kind === 'users' ? 'role' : 'protection';
-    entry.filters = { ...entry.filters, q, status, [filter]: String(fields.get(filter) ?? '') };
+    const filter = kind === 'users' ? 'role' : kind === 'devices' ? 'protection' : null;
+    entry.filters = { ...entry.filters, q, status, ...(filter ? { [filter]: String(fields.get(filter) ?? '') } : {}) };
     entry.page = 1; entry.data = null;
     void loadSection(true, 'directory-search');
   });

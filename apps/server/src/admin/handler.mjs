@@ -85,8 +85,8 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
         const devices = await pool.query("SELECT count(*)::int AS devices FROM vaults.devices WHERE lifecycle_status='active'");
         json(res, 200, { status: 'online', checkedAt: new Date(now()).toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: devices.rows[0]?.devices ?? 0, backup: backupStatus() }); return true;
       }
-      if (path === '/api/admin/users' || path === '/api/admin/devices') {
-        const kind = path.endsWith('/users') ? 'users' : 'devices';
+      if (['/api/admin/users', '/api/admin/devices', '/api/admin/invitations'].includes(path)) {
+        const kind = path.split('/').at(-1);
         json(res, 200, await readDirectory(pool, kind, directoryInput(url.searchParams, kind))); return true;
       }
       json(res, 404, { error: 'not_found' });
