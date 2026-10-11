@@ -6,6 +6,12 @@ hydrate a replica, later unlocks can authenticate and decrypt it offline, edits
 are encrypted and durably queued before delivery, and explicit sync retries the
 queue. The React renderer receives only the currently requested plaintext item.
 
+The sidebar can collapse to a 72-pixel icon rail independently of the item list/grid preference. Hover an icon to see its navigation label. Use **Keep in tab** on an item to retain it in the detail pane, then switch among retained items; tabs keep their source vault and respect unsaved-edit confirmation. Tabs last for the unlocked session.
+
+**Open in window** opens a separate native detail window with reveal/copy controls. Reopening the same item focuses its existing window. Edit items in the main window; separate windows refresh from the replica and clear when the vault locks or the main window closes.
+
+Run `node scripts/item-workspace-desktop-smoke.mjs` with a local desktop Vite server and Playwright to exercise these interactions using synthetic IPC responses. `VAULTS_PLAYWRIGHT_MODULE` and `VAULTS_BROWSER_EXECUTABLE` can select an installed runtime/browser.
+
 Website passkeys registered through the extension appear as dedicated encrypted
 items and sync through the same replica. Their private keys are excluded from
 generic item summaries and renderer field hydration; saving an existing passkey

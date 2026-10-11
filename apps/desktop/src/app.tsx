@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
@@ -205,6 +207,24 @@ export function App() {
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [resolvingOperationId, setResolvingOperationId] = useState<string | null>(null);
   const [footerMenu, setFooterMenu] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem("127vaults:sidebar-collapsed") === "true"; } catch { return false; } });
+  const [itemTabs, setItemTabs] = useState<Summary[]>([]);
+  const openRequest = useRef(0);
+  const pinItem = () => {
+    if (!selected?.itemId) return;
+    const tab = { itemId: selected.itemId, title: selected.title, website: selected.website, vaultId: itemVaultId, code: "" };
+    setItemTabs(current => current.some(row => row.itemId === tab.itemId && row.vaultId === tab.vaultId) ? current : [...current, tab]);
+  };
+  const popOutItem = async () => {
+    if (!selected?.itemId) return;
+    const label = `item-${itemVaultId}-${selected.itemId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    try {
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) { await existing.setFocus(); return; }
+      const child = new WebviewWindow(label, { url: `index.html?detail=${encodeURIComponent(selected.itemId)}&vault=${encodeURIComponent(itemVaultId)}`, title: "127Vaults · Item details", width: 620, height: 760, minWidth: 380, minHeight: 400 });
+      void child.once("tauri://error", event => notify("error", "Could not open item window", String(event.payload)));
+    } catch (error) { notify("error", "Could not open item window", String(error)); }
+  };
   const [compactNavOpen, setCompactNavOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [nativePasskeys, setNativePasskeys] = useState<{ available?: boolean; disabled?: boolean; windows?: boolean; installed?: boolean; packaged?: boolean; registered?: boolean; enabled?: boolean } | null>(null);
@@ -269,6 +289,9 @@ export function App() {
 
   const lock = async (reason = "Locked") => {
     window.dispatchEvent(new Event("vaults:clear-generator"));
+    openRequest.current++;
+    setItemTabs([]);
+    await emit("vaults-locked").catch(() => {});
     await invoke("lock").catch(() => undefined);
     setHealthOpen(false);
     setPendingChanges(null);
@@ -336,7 +359,10 @@ export function App() {
     if (!confirmDiscard()) return;
     try {
       const ownerVault = summary.vaultId ?? vault;
-      setSelected(await loadItem(summary, ownerVault));
+      const request = ++openRequest.current;
+      const item = await loadItem(summary, ownerVault);
+      if (request !== openRequest.current) return;
+      setSelected(item);
       setVaultId(ownerVault);
       setItemVaultId(ownerVault);
       setRevealed(new Set());
@@ -917,7 +943,7 @@ export function App() {
     let disposed = false, removeClose: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(event => {
       if (dirtyRef.current && !window.confirm("Discard your unsaved changes and close 127Vaults?")) event.preventDefault();
-      else dirtyRef.current = false;
+      else { dirtyRef.current = false; void emit("vaults-locked"); }
     }).then(unlisten => { if (disposed) unlisten(); else removeClose = unlisten; }).catch(() => {});
     return () => { disposed = true; removeClose?.(); window.removeEventListener("beforeunload", beforeUnload); };
   }, []);
@@ -1347,7 +1373,7 @@ export function App() {
       </main>
     );
   return (
-    <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
+    <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
           <span className="grid size-9 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
@@ -1364,7 +1390,8 @@ export function App() {
 
         </div>
         <Button variant="ghost" className="desktop-menu-toggle" aria-expanded={compactNavOpen} aria-label="Toggle navigation" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
-        <nav className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
+        <Button variant="ghost" className="desktop-collapse-toggle" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!sidebarCollapsed} onClick={() => { const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><Menu size={18} /><span>Collapse sidebar</span></Button>
+        <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
         <Button variant="ghost" className={cn("justify-start", viewMode === "all" && !favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />
           <span>All items</span>
@@ -1489,7 +1516,9 @@ export function App() {
           </div>)}
         </div>
       </section>
-      <main className={cn("desktop-detail overflow-auto p-7", selected && "detail-selected")}>
+      <main className={cn("desktop-detail overflow-auto p-7", (selected || itemTabs.length > 0) && "detail-selected")}>
+        {itemTabs.length > 0 && <div className="item-tabs" role="tablist" aria-label="Open items">{itemTabs.map(tab => <div key={`${tab.vaultId}:${tab.itemId}`} className="item-tab"><button role="tab" aria-selected={selected?.itemId === tab.itemId && itemVaultId === tab.vaultId} onClick={() => void openItem(tab)}>{tab.title || "Untitled"}</button><button aria-label={`Close tab ${tab.title}`} onClick={() => { if (!confirmDiscard()) return; setItemTabs(current => current.filter(row => row !== tab)); if (selected?.itemId === tab.itemId && itemVaultId === tab.vaultId) { setSelected(null); setEditing(false); } }}><X size={14} /></button></div>)}</div>}
+        {selected?.itemId && !editing && <div className="item-workspace-actions"><Button variant="ghost" onClick={pinItem}>Keep in tab</Button><Button variant="ghost" onClick={() => void popOutItem()}>Open in window</Button></div>}
         {healthOpen && <PasswordHealth scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
         {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {selected ? (
