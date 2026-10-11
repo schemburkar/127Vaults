@@ -201,7 +201,18 @@ try {
   await page.locator('#secret').fill(secretHex);await page.locator('#master').fill(master);await page.locator('#login').click();await page.locator('#vault').waitFor({state:'visible',timeout:20000});
   await page.waitForFunction(async()=>{const registration=await navigator.serviceWorker.getRegistration();return !!registration?.active});
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date'));
+  if (process.env.VAULTS_TEST_ITEM_WORKSPACE === '1') {
+    const { exerciseItemWorkspace } = await import('./item-workspace-web-smoke.mjs');
+    await exerciseItemWorkspace(page, { firstItem, firstVault, secondVault, master });
+  }
   console.log('Verified device enrollment, authenticated unlock and offline shell preparation.');
+  await page.evaluate(async()=>{
+    const name=(await caches.keys()).find(name=>name.startsWith('127vaults-shell-')),cache=await caches.open(name);
+    await cache.delete('/wasm/vaults_browser_fixture_bg.wasm');
+    const registration=await navigator.serviceWorker.ready,channel=new MessageChannel();
+    const ready=await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('shell repair timed out')),15000);channel.port1.onmessage=event=>{clearTimeout(timeout);channel.port1.close();resolve(event.data.ready)};registration.active.postMessage({type:'127vaults-check-shell'},[channel.port2])});
+    if(!ready||!await cache.match('/wasm/vaults_browser_fixture_bg.wasm'))throw Error('partial shell was not repaired');
+  });
   await page.evaluate(async()=>{
     const {IndexedReplicaStore}=await import('/app/pwa-replica.mjs'),store=new IndexedReplicaStore(),scope='isolated-cas-acceptance';
     await store.write(scope,{storageRevision:0});

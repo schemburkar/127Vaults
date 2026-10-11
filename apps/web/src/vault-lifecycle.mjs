@@ -14,7 +14,7 @@ export function settingsAfterRemoval(settings,source,destination=null) {
 // Removal has the same online requirement as the desktop client. A durable,
 // encrypted journal makes copies and finalization resumable after lost replies.
 export class VaultLifecycleClient {
-  constructor({core,root,send,readJournal,writeJournal,signItem,check=()=>{}}) {Object.assign(this,{core,root,send,readJournal,writeJournal,signItem,check});}
+  constructor({core,root,send,readJournal,writeJournal,signItem,verifyCopy=async()=>{},check=()=>{}}) {Object.assign(this,{core,root,send,readJournal,writeJournal,signItem,verifyCopy,check});}
   async remove(source,choice,destination=null) {
     if(!['archive','move'].includes(choice)||choice==='move'&&(!destination||destination===source))throw Error('INVALID_REMOVAL');
     let journal=await this.readJournal();
@@ -38,13 +38,18 @@ export class VaultLifecycleClient {
           this.check();if(journal.mappings.some(row=>row.sourceItemId===item.itemId))continue;
           if(!journal.pendingCopy) {
             const target=await this.send(listPath(destination)),body=await this.send(`${listPath(source)}/${item.itemId}?catalogueRevision=${journal.sourceRevision}`);
-            const indexBytes=this.core.decrypt_private_part(sourceVault,un(listed.catalogue),ids(item.itemId),un(item.envelope),4),bodyBytes=this.core.decrypt_private_part(sourceVault,un(listed.catalogue),ids(item.itemId),un(body.envelope),3);
-            const made=this.core.upsert_private_item(destinationVault,un(target.catalogue),undefined,indexBytes,bodyBytes),itemId=uuid(made.item());
-            const payload={requestId:crypto.randomUUID(),baseCatalogueRevision:revision(target.catalogue),catalogue:b64(made.catalogue()),index:b64(made.index()),body:b64(made.body()),itemId,
-              signedOperation:await this.signItem(destination,itemId,made.catalogue(),made.index(),made.body())};
-            indexBytes.fill(0);bodyBytes.fill(0);
-            journal.pendingCopy={sourceItemId:item.itemId,destinationItemId:itemId,payload};made.free?.();await this.writeJournal(journal);
+            let indexBytes,bodyBytes,made;
+            try {
+              indexBytes=this.core.decrypt_private_part(sourceVault,un(listed.catalogue),ids(item.itemId),un(item.envelope),4);
+              bodyBytes=this.core.decrypt_private_part(sourceVault,un(listed.catalogue),ids(item.itemId),un(body.envelope),3);
+              made=this.core.upsert_private_item(destinationVault,un(target.catalogue),undefined,indexBytes,bodyBytes);const itemId=uuid(made.item());
+              const payload={requestId:crypto.randomUUID(),baseCatalogueRevision:revision(target.catalogue),catalogue:b64(made.catalogue()),index:b64(made.index()),body:b64(made.body()),itemId,
+                signedOperation:await this.signItem(destination,itemId,made.catalogue(),made.index(),made.body())};
+              journal.pendingCopy={sourceItemId:item.itemId,destinationItemId:itemId,payload};
+            } finally {indexBytes?.fill(0);bodyBytes?.fill(0);made?.free?.();}
+            await this.writeJournal(journal);
           }
+          await this.verifyCopy(journal.pendingCopy.payload,destination);this.check();
           await this.send(listPath(destination),{method:'POST',body:journal.pendingCopy.payload});this.check();
           journal.mappings.push({sourceItemId:journal.pendingCopy.sourceItemId,destinationItemId:journal.pendingCopy.destinationItemId});journal.pendingCopy=null;await this.writeJournal(journal);
         }

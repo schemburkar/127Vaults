@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { createSignedOperation, createSignedCheckpoint, checkpointHash, nextOperationHead } from '../../../packages/sync/src/index.mjs';
-import { verifySyncHistory, verifyLatestPayload, verifyCheckpoints } from '../src/signed-sync.mjs';
+import { verifySyncHistory, verifyLatestPayload, verifyCheckpoints, verifyQueuedOperation } from '../src/signed-sync.mjs';
 
 const tenantId = randomUUID(), vaultId = randomUUID(), deviceId = randomUUID();
 const key = generateKeyPairSync('ed25519');
@@ -41,6 +41,11 @@ test('the newest signed payload binds the downloaded catalogue, index and body',
   const framed=Buffer.concat(parts.flatMap(part=>{const length=Buffer.alloc(4);length.writeUInt32BE(part.length);return[length,part]}));
   const records=history([signed({payloadHash:createHash('sha256').update(framed).digest('hex')})]);
   await verifyLatestPayload(records,...parts.map(part=>part.toString('base64url')));
+  const operation=records.operations[0].operation,privateKey=await crypto.subtle.importKey('pkcs8',key.privateKey.export({format:'der',type:'pkcs8'}),'Ed25519',false,['sign']);
+  const entry={path:`/api/v1/vaults/${vaultId}/items`,method:'POST',body:{itemId:operation.itemId,signedOperation:operation,catalogue:parts[0].toString('base64url'),index:parts[1].toString('base64url'),body:parts[2].toString('base64url')}};
+  const options={tenantId,deviceId,privateKey};await verifyQueuedOperation(entry,options);
+  await assert.rejects(verifyQueuedOperation({...entry,path:'/admin/'},options),/INVALID_SYNC_HISTORY/);
+  await assert.rejects(verifyQueuedOperation({...entry,body:{...entry.body,body:Buffer.from('modified').toString('base64url')}},options),/SYNC_PAYLOAD_MISMATCH/);
   await assert.rejects(verifyLatestPayload(records,parts[0].toString('base64url'),parts[1].toString('base64url'),Buffer.from('different').toString('base64url')),/SYNC_PAYLOAD_MISMATCH/);
 });
 test('checkpoint verification handles multiple missed checkpoints and authenticates their operation heads',async()=>{

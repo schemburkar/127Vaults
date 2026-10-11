@@ -339,7 +339,8 @@ async function manageVault(source, choice, destination = null) {
   try {
     const client = new VaultLifecycleClient({ core, root: activeRoot, send: remoteCall, check,
       readJournal: () => loadIdentity(journalKey), writeJournal: async value => { check(); await saveIdentity(value, journalKey); },
-      signItem: async (targetVault, itemId, catalogueBytes, indexBytes, bodyBytes) => signedMutation('item.create', itemId, catalogueBytes, indexBytes, bodyBytes, { targetVault, history: await operationHistory(targetVault) }) });
+      signItem: async (targetVault, itemId, catalogueBytes, indexBytes, bodyBytes) => signedMutation('item.create', itemId, catalogueBytes, indexBytes, bodyBytes, { targetVault, history: await operationHistory(targetVault) }),
+      verifyCopy: (body, targetVault) => verifyPendingEntry({ path: `/api/v1/vaults/${targetVault}/items`, method: 'POST', body }) });
     if (choice === 'restore') await client.restore(source); else await client.remove(source, choice, destination);
     check(); clearItem(); browseView = null; await reload();
     toast(choice === 'restore' ? 'Vault restored' : choice === 'move' ? 'Vault moved' : 'Vault archived', 'Your encrypted vault data remains recoverable.', 'success');

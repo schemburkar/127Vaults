@@ -22,3 +22,10 @@ test('lost restore replies replay the same request without regenerating a revisi
   const client=new VaultLifecycleClient({readJournal:async()=>journal,writeJournal:async value=>{journal=value},send:async(path,options)=>{assert.equal(path,'/api/v1/vaults/source/restore');assert.deepEqual(options.body,journal.request);return{restored:true}}});
   assert.deepEqual(await client.restore('source'),{restored:true});assert.equal(journal,null);
 });
+test('an interrupted move verifies its saved copy before sending and preserves a rejected journal',async()=>{
+  const source='10000000-0000-4000-8000-000000000001',destination='20000000-0000-4000-8000-000000000001',item='30000000-0000-4000-8000-000000000001';
+  const catalogue=Buffer.alloc(80).toString('base64url'),journal={source,choice:'move',destination,sourceRevision:'00000000-0000-0000-0000-000000000000',mappings:[],pendingCopy:{sourceItemId:item,payload:{tampered:true}}};
+  const handle={free(){}},core={open_private_vault:()=>handle,release_vault(){}};
+  const client=new VaultLifecycleClient({core,root:{},readJournal:async()=>journal,writeJournal:async()=>assert.fail('discarded journal'),verifyCopy:async payload=>{assert.equal(payload.tampered,true);throw Error('INVALID_SYNC_HISTORY')},send:async(path,options)=>{assert.equal(options,undefined);return path==='/api/v1/vaults'?{directory:catalogue,vaultEnvelopes:[{vaultId:source,envelope:catalogue},{vaultId:destination,envelope:catalogue}]}:{catalogue,indices:[{itemId:item}]}}});
+  await assert.rejects(client.remove(source,'move',destination),/INVALID_SYNC_HISTORY/);assert.ok(journal.pendingCopy);
+});
