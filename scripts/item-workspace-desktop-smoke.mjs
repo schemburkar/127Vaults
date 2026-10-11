@@ -38,7 +38,12 @@ try {
   assert.equal(await page.getByRole('tab').count(), 2);
   await page.getByRole('tab', { name: 'Alpha' }).click();
   await page.locator('.desktop-detail h2').filter({ hasText: 'Alpha' }).waitFor();
+  const sidebarRows = () => page.locator('.desktop-nav-content button:not(.desktop-row-menu button)').evaluateAll(nodes => nodes.map(node => ({ y: node.getBoundingClientRect().y, height: node.getBoundingClientRect().height })));
+  const expandedRows = await sidebarRows();
   await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
+  await page.waitForFunction(() => Math.round(document.querySelector('.desktop-sidebar').getBoundingClientRect().width) === 72);
+  assert.deepEqual(await sidebarRows(), expandedRows, 'Sidebar rows must retain vertical positions and heights');
+  assert.equal(await page.locator('.desktop-nav-content').evaluate(node => getComputedStyle(node).overflowX), 'hidden');
   assert.equal(await page.locator('.desktop-sidebar').evaluate(node => Math.round(node.getBoundingClientRect().width)), 72);
   await page.getByRole('button', { name: 'Grid view', exact: true }).click();
   assert.equal(await page.locator('.desktop-sidebar').evaluate(node => Math.round(node.getBoundingClientRect().width)), 72);

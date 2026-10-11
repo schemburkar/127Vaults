@@ -1378,10 +1378,10 @@ export function App() {
     <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
-          <span className="grid size-9 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
+          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!sidebarCollapsed} onClick={() => { const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
             127
           </span>
-          <strong>127Vaults</strong>
+          <strong>127Vaults</strong></button>
           {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
             ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
             : licenseStatus.mode === "revoked"
@@ -1392,7 +1392,6 @@ export function App() {
 
         </div>
         <Button variant="ghost" className="desktop-menu-toggle" aria-expanded={compactNavOpen} aria-label="Toggle navigation" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
-        <Button variant="ghost" className="desktop-collapse-toggle" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!sidebarCollapsed} onClick={() => { const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><Menu size={18} /><span>Collapse sidebar</span></Button>
         <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
         <Button variant="ghost" className={cn("justify-start", viewMode === "all" && !favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />
@@ -1410,7 +1409,7 @@ export function App() {
         {collections.map((collection) => <div className="desktop-nav-row" key={collection.id}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
           <LayoutList size={17} /><span className="truncate">{collection.name}</span>
         </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${collection.name}`} title={`Actions for ${collection.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setSelectedCollectionId(collection.id); setCollectionNameDraft(collection.name); setCollectionVaultDraft(collection.vault_ids); setCollectionDialog("edit"); }}>Edit collection</button><button onClick={() => void removeCollection(collection.id)}>Remove collection</button></div></details></div>)}
-        <Button variant="ghost" className="justify-start text-xs" onClick={() => { setCollectionNameDraft(""); setCollectionVaultDraft([]); setCollectionDialog("create"); }}>Add collection</Button>
+        <Button variant="ghost" className="justify-start text-xs" onClick={() => { setCollectionNameDraft(""); setCollectionVaultDraft([]); setCollectionDialog("create"); }}><Plus size={17} /><span>Add collection</span></Button>
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         {removalPlan?.pending && <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/8 p-3 text-xs text-amber-100" role="status"><strong>Vault operation needs attention</strong><p className="mt-1">{removalPlan.choice === "move" ? "Move" : removalPlan.choice === "restore" ? "Restore" : "Archive"} · {removalPlan.stage === "copying" ? "copying items" : "finalizing request"} · {removalPlan.itemMappings?.length ?? 0} mapped item(s)</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
         <div className="mt-auto grid gap-1">
