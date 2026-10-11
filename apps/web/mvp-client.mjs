@@ -1672,6 +1672,7 @@ function setPasswordVisibilityButton(button, revealed) {
 function displayItem(item, button) {
   editorBaseline = null;
   currentItem = item;
+  window.dispatchEvent(new CustomEvent("vaults:detail-item", { detail: { ...item, vaultId } }));
   const favorite = features.isFavorite(item.body.customFields);
   $("favorite-item").setAttribute('aria-pressed', String(favorite));
   $("favorite-item").setAttribute('aria-label', favorite ? 'Remove from favorites' : 'Add to favorites');
@@ -1706,17 +1707,17 @@ function displayItem(item, button) {
 }
 async function openItem(itemId, index, button) {
   if (!confirmDiscard()) return;
-  const requestedItem = itemId;
+  const requestedItem = itemId, generation = sessionGeneration, ownerVault = vaultId;
   $("items").setAttribute("aria-busy", "true");
   try {
     let item = await fetchItem(itemId, index);
-    if ($("items").dataset.requestedItem === requestedItem)
+    if (generation === sessionGeneration && ownerVault === vaultId && $("items").dataset.requestedItem === requestedItem)
       displayItem(item, button);
   } catch (e) {
-    if ($("items").dataset.requestedItem === requestedItem)
+    if (generation === sessionGeneration && ownerVault === vaultId && $("items").dataset.requestedItem === requestedItem)
       toast("Item could not be opened", `${safeError(e)} Try syncing and select the item again.`, "error");
   } finally {
-    if ($("items").dataset.requestedItem === requestedItem)
+    if (generation === sessionGeneration && ownerVault === vaultId && $("items").dataset.requestedItem === requestedItem)
       $("items").removeAttribute("aria-busy");
   }
 }
@@ -2151,6 +2152,7 @@ function confirmAction(title, detail) {
 }
 function showEmpty() {
   currentItem = null;
+  window.dispatchEvent(new CustomEvent("vaults:detail-item", { detail: null }));
   $("item-empty").hidden = false;
   $("item-view").hidden = true;
   $("item-form").hidden = true;
@@ -2378,7 +2380,17 @@ function setBusy(v) {
       (b.id === "new-item" && !vault) ||
       (b.id === "lock" && !root);
 }
+window.addEventListener("vaults:workspace-activity", () => { if (root) arm(); });
 window.__vaultsActions = {
+  copyField,
+  closeWorkspaceItem: () => { if (!confirmDiscard()) return false; clearItem(); renderItems(loadedItems); return true; },
+  openWorkspaceItem: async (tab) => {
+    if (!confirmDiscard()) return;
+    if (tab.vaultId !== vaultId) await selectVault(tab.vaultId, true);
+    if (!root || tab.vaultId !== vaultId) throw Error("Item vault is unavailable");
+    $("items").dataset.requestedItem = tab.itemId;
+    await openItem(tab.itemId, tab.index);
+  },
   openCreateVaultDialog,
   openRenameVaultDialog,
   selectVault,

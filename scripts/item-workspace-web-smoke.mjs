@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+
+// Used by the isolated PWA fixture after its authenticated unlock.
+export async function exerciseItemWorkspace(page, { firstItem, firstVault, secondVault, master }) {
+  const output = resolve('.tools/item-workspace-preview');
+  await mkdir(output, { recursive: true });
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await page.evaluate(async ({ firstItem, firstVault }) => {
+    await window.__vaultsActions.selectVault(firstVault);
+    await window.__vaultsActions.openWorkspaceItem({ itemId: firstItem, vaultId: firstVault, index: { title: 'Offline fixture login', website: 'https://example.invalid' } });
+  }, { firstItem, firstVault });
+  await page.getByRole('button', { name: 'Keep in tab' }).click();
+  await page.evaluate(id => window.__vaultsActions.selectVault(id), secondVault);
+  await page.locator('[data-item-id]').first().click();
+  await page.getByRole('button', { name: 'Keep in tab' }).click();
+  assert.equal(await page.getByRole('tab').count(), 2);
+  await page.getByRole('tab', { name: 'Offline fixture login', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#view-title').textContent === 'Offline fixture login');
+  await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
+  assert.equal(await page.locator('.sidebar').evaluate(node => Math.round(node.getBoundingClientRect().width)), 72);
+  await page.getByRole('button', { name: 'Grid view', exact: true }).click();
+  assert.equal(await page.locator('.sidebar').evaluate(node => Math.round(node.getBoundingClientRect().width)), 72);
+  await page.getByRole('button', { name: 'List view', exact: true }).click();
+  await page.locator('#edit-item').click();
+  await page.locator('#title').fill('Unsaved workspace fixture');
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('tab', { name: 'Second vault fixture', exact: true }).click();
+  assert.equal(await page.locator('#title').inputValue(), 'Unsaved workspace fixture');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#cancel-edit').click();
+  const popupEvent = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Open in window' }).click();
+  const child = await popupEvent;
+  await child.getByRole('heading', { name: 'Offline fixture login', exact: true }).waitFor();
+  await child.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await child.getByText('synthetic-original-password', { exact: true }).waitFor();
+  await page.evaluate(() => { Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async value => { window.__workspaceCopied = value; } }); });
+  await child.getByRole('button', { name: 'Copy', exact: true }).nth(2).click();
+  await page.waitForFunction(() => window.__workspaceCopied === 'synthetic-original-password');
+  await page.screenshot({ path: resolve(output, 'updated-desktop-fixture.png') });
+  await child.screenshot({ path: resolve(output, 'updated-popout-fixture.png') });
+  const closing = child.waitForEvent('close');
+  await page.evaluate(() => window.__vaultsActions.runAction('lock'));
+  await closing;
+  await page.locator('#master').waitFor({ state: 'visible' });
+  assert.equal(await page.getByRole('tab').count(), 0);
+  await page.locator('#master').fill(master);
+  await page.locator('#login').click();
+  await page.locator('#vault').waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(id => window.__vaultsActions.selectVault(id), firstVault);
+  await page.locator(`[data-item-id="${firstItem}"]`).click();
+  const bounds = await page.locator('.item-detail').boundingBox();
+  assert.equal(bounds.x, 0); assert.equal(bounds.y, 0); assert.equal(bounds.width, 390); assert.equal(bounds.height, 844);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: resolve(output, 'updated-mobile-fixture.png') });
+  await page.locator('#close-item-detail').click();
+  await page.getByLabel('Toggle navigation').click();
+  assert.equal(await page.locator('.sidebar-links').isVisible(), true);
+  await page.locator('#nav-all-items').click();
+  assert.equal(await page.locator('.sidebar-links').isVisible(), false);
+  await page.evaluate(id => window.__vaultsActions.selectVault(id), firstVault);
+  console.log('Web workspace passed: vault-aware tabs, edit guards, independent collapse/grid, popout copy/reveal/lock, full mobile detail and navigation.');
+}

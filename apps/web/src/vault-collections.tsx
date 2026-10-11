@@ -1,3 +1,4 @@
+import { LayoutList } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, Input } from '@127vaults/ui';
 
@@ -20,7 +21,7 @@ export function useVaultSettings() {
 export function CollectionLinks({ className }: { className: string }) {
   const { settings, view } = useVaultSettings();
   if (!settings.collections.length) return null;
-  return <div className="mt-4 grid gap-1"><p className="px-3 text-[10px] font-bold tracking-[.16em] text-slate-500">COLLECTIONS</p>{settings.collections.map(row => <Button key={row.id} variant="ghost" className={`${className} ${view?.kind === 'collection' && view.id === row.id ? 'active !bg-[#E0BB95]/12 !text-[#E0BB95]' : ''}`} onClick={() => void run(() => actions().selectBrowseView({ kind: 'collection', id: row.id }))}><span className="truncate">{row.name}</span></Button>)}</div>;
+  return <div className="mt-4 grid gap-1"><p className="px-3 text-[10px] font-bold tracking-[.16em] text-slate-500">COLLECTIONS</p>{settings.collections.map(row => <Button key={row.id} variant="ghost" className={`${className} ${view?.kind === 'collection' && view.id === row.id ? 'active !bg-[#E0BB95]/12 !text-[#E0BB95]' : ''}`} onClick={() => void run(() => actions().selectBrowseView({ kind: 'collection', id: row.id }))}><LayoutList size={16} aria-hidden="true" /><span className="truncate">{row.name}</span></Button>)}</div>;
 }
 export function CollectionsSettings({ vaults }: { vaults: Vault[] }) {
   const { settings } = useVaultSettings(), view = settings.default_view;

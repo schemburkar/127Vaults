@@ -27,7 +27,7 @@ const master = 'disposable-pwa-browser-master-password', secretHex = '03'.repeat
 const tenantId=randomUUID(),accountId=randomUUID(),core=new ExperimentalEcf1Core(),encoder=new TextEncoder();
 const template=new Uint8Array(77);template[0]=1;template.set(ids(tenantId),1);template.set(ids(accountId),17);template.set([0,0,0,1],65);template[76]=1;
 const root=core.create_root(template,encoder.encode(master),un(b64(Buffer.alloc(32,3))));
-let privateDirectory=b64(core.create_empty_directory(root)),settings={revision:null,envelope:null},rejectAuth=false,dropNextWrite=false;
+let privateDirectory=b64(core.create_empty_directory(root)),settings={revision:null,envelope:null},rejectAuth=false,dropNextWrite=false,lostRepliesFor=null;
 const vaults=new Map(),receipts=new Map(),devices=new Map(),attempts=new Map(),sessions=new Map(),enrollments=new Map();
 const checkpoints=new Map();
 const checkpointHistory=new Map(),checkpointKeys=generateKeyPairSync('ed25519'),checkpointPublicKey=checkpointKeys.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('base64url');
@@ -116,8 +116,8 @@ const server=createServer(async(req,res)=>{
     }
     if(path==='/api/v1/vaults'&&req.method==='GET')return send(200,{directory:privateDirectory,vaultEnvelopes:[...vaults.values()].map(row=>({vaultId:row.vaultId,envelope:row.envelope,retired:!!row.retired,retirementChoice:row.retirementChoice||null,retirementDestination:row.retirementDestination||null}))});
     const requestKey=body.requestId,fingerprint=JSON.stringify({path,method:req.method,body});
-    if(requestKey&&receipts.has(requestKey)){assert.equal(receipts.get(requestKey).fingerprint,fingerprint);return send(200,receipts.get(requestKey).value)}
-    const accept=value=>{receipts.set(requestKey,{fingerprint,value});if(dropNextWrite){dropNextWrite=false;res.destroy();return}send(200,value)};
+    if(requestKey&&receipts.has(requestKey)){assert.equal(receipts.get(requestKey).fingerprint,fingerprint);if(lostRepliesFor===requestKey){res.destroy();return}return send(200,receipts.get(requestKey).value)}
+    const accept=value=>{receipts.set(requestKey,{fingerprint,value});if(dropNextWrite){dropNextWrite=false;lostRepliesFor=requestKey}if(lostRepliesFor===requestKey){res.destroy();return}send(200,value)};
     const lifecycle=path.match(/^\/api\/v1\/vaults\/([^/]+)\/(checkpoint|removal|restore)$/);
     if(lifecycle) {
       const row=vaults.get(lifecycle[1]);assert.ok(row);
@@ -226,7 +226,7 @@ try {
   await context.setOffline(true);
   await row().click();await page.locator('#edit-item').click();await page.locator('#item-password').fill('synthetic-offline-update');await page.locator('#save').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
-  await page.getByLabel('Toggle navigation').click();await page.locator('#lock-app').click();await page.locator('#master').waitFor({state:'visible'});
+  if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.getByLabel('Toggle navigation').click();await page.locator('#lock-app').click();await page.locator('#master').waitFor({state:'visible'});
   await page.reload();await page.locator('#master').waitFor({state:'visible'});assert.equal(await page.locator('#legacy-secret-field').isVisible(),false);
   await page.locator('#master').fill('incorrect-disposable-password');await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));
   assert.equal(await page.locator('#vault').isVisible(),false);
@@ -244,7 +244,7 @@ try {
   await page.locator('#master').fill(master);await page.locator('#login').click();await page.locator('#vault').waitFor({state:'visible'});
   console.log('Verified offline restart, wrong-password rejection and password-only unlock.');
   await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);await row().click();
-  await page.locator('#new-item').click();await page.locator('#title').fill('Created offline fixture');await page.locator('#item-password').fill('synthetic-created-offline');await page.locator('#save').click();
+  if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.locator('#new-item').click();await page.locator('#title').fill('Created offline fixture');await page.locator('#item-password').fill('synthetic-created-offline');await page.locator('#save').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('2 pending changes'));
   await page.evaluate(()=>window.__vaultsActions.openCollectionDialog());
   await page.locator('#web-collection-name').fill('Offline collection fixture');
@@ -271,17 +271,18 @@ try {
   assert.ok(JSON.parse(new TextDecoder().decode(core.decrypt_account_settings(root,un(settings.envelope)))).names);
   // Lost response after acceptance leaves the request queued; replay is idempotent.
   await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);await row().click();await page.locator('#edit-item').click();await page.locator('#item-password').fill('synthetic-lost-response-update');
-  // Abort the delivered response after accepting the write. Keep interception
-  // active until local acknowledgement, including any browser transport retry.
-  const lostReply=async route=>{if(route.request().method()==='PUT'){await route.fetch();await route.abort('failed')}else await route.continue()};
-  const lostPath=`**/api/v1/vaults/${firstVault}/items/${firstItem}`;await page.route(lostPath,lostReply);
+  // Drop all responses for this request until local acknowledgement, including
+  // automatic browser transport retries, then allow the exact durable replay.
+  dropNextWrite=true;
   const before=receipts.size;await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
-  await page.unroute(lostPath,lostReply);
+  await page.waitForFunction(()=>!document.querySelector('#reload').disabled);
+  lostRepliesFor=null;
   await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.waitForFunction(()=>!document.querySelector('#session-dates').textContent.includes('pending')&&document.querySelector('#session-dates').textContent.includes('Up to date'),{timeout:20000});
   assert.equal(receipts.size,before+1);
   assert.equal(JSON.parse(new TextDecoder().decode(core.decrypt_account_settings(root,un(settings.envelope)))).collections[0].name,'Offline collection fixture');
   // Lock while connected, then verify the saved collection opens automatically.
-  await page.getByLabel('Toggle navigation').click();await page.locator('#lock-app').click();await page.locator('#master').fill(master);await page.locator('#login').click();await page.locator('#vault').waitFor({state:'visible'});
+  if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.getByLabel('Toggle navigation').click();await page.locator('#lock-app').click();await page.locator('#master').fill(master);await page.locator('#login').click();await page.locator('#vault').waitFor({state:'visible'});
+  await page.waitForFunction(()=>document.querySelector('#vault-title').textContent==='Offline collection fixture');
   assert.equal(await page.locator('#vault-title').textContent(),'Offline collection fixture');
   await page.evaluate(()=>window.__vaultsActions.openCollectionDialog());await page.locator('#web-collection-cancel').click();
   // Archive/restore and move are online and retain the source encrypted items.
@@ -296,7 +297,7 @@ try {
   // Recover durable edits when a different device removes their source vault.
   const recoverySource=[...vaults.values()].find(row=>!row.retired&&row.vaultId!==firstVault&&row.vaultId!==secondVault).vaultId;
   await context.setOffline(true);await page.evaluate(id=>window.__vaultsActions.selectVault(id),recoverySource);
-  await page.locator('#new-item').click();await page.locator('#title').fill('Retired-vault recovery fixture');await page.locator('#item-password').fill('synthetic-recovery-password');await page.locator('#save').click();
+  if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.locator('#new-item').click();await page.locator('#title').fill('Retired-vault recovery fixture');await page.locator('#item-password').fill('synthetic-recovery-password');await page.locator('#save').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
   vaults.get(recoverySource).retired=true;vaults.get(recoverySource).retirementChoice='archive';
   await context.setOffline(false);await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'));

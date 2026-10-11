@@ -32,6 +32,7 @@ import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, 
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
 
 import * as productFeatures from "../../../packages/ui/src/product-features.mjs";
+import { ItemWorkspace } from "./item-workspace";
 import { PwaControls, PwaLifecycle } from './pwa-controls';
 import { CollectionLinks, CollectionsSettings, CollectionDialog, VaultLifecycleSettings, useVaultSettings } from './vault-collections';
 (window as any).__vaultsFeatures = productFeatures;
@@ -680,7 +681,7 @@ function Authentication() {
   );
 }
 
-function Sidebar() {
+function Sidebar({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: () => void }) {
   const { view: browseView } = useVaultSettings();
   const [menuOpen, setMenuOpen] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -695,8 +696,9 @@ function Sidebar() {
   return (
     <aside className={`sidebar row-span-2 flex flex-col p-3 text-white ${menuOpen ? "menu-open" : ""}`}>
       <Brand />
+      <Button variant="ghost" className="web-collapse-toggle" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={onCollapse}><Menu size={18} /><span>Collapse sidebar</span></Button>
       <Button variant="ghost" className="mobile-menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
-      <nav className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
+      <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
       <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly && browseView?.kind === 'all'} className={`${nav} ${!favoritesOnly && browseView?.kind === 'all' ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
@@ -727,6 +729,7 @@ function ItemDetail() {
   return (
     <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:left-0 max-[560px]:max-h-[84dvh] max-[560px]:px-4 max-[560px]:py-5`}>
       <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex" aria-label="Close item details"><X size={17} aria-hidden="true" /> Close</Button>
+      <ItemWorkspace />
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">
           <KeyRound aria-hidden="true" />
@@ -853,6 +856,8 @@ function ItemDetail() {
 }
 
 function Vault() {
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("127vaults:sidebar-collapsed") === "true"; } catch { return false; } });
+  const collapseSidebar = () => { const next = !collapsed; setCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} };
   const [layout, setLayout] = useState<"list" | "grid">(() => {
     try { return localStorage.getItem("127vaults:item-layout") === "grid" ? "grid" : "list"; }
     catch { return "list"; }
@@ -862,8 +867,8 @@ function Vault() {
     try { localStorage.setItem("127vaults:item-layout", next); } catch { /* Storage may be disabled. */ }
   };
   return (
-    <div id="vault" className={`grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:grid-cols-1 max-[560px]:grid-rows-[3.75rem_minmax(0,1fr)] ${layout === "grid" ? "vault-grid" : ""}`} hidden>
-      <Sidebar />
+    <div id="vault" className={`grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:grid-cols-1 max-[560px]:grid-rows-[3.75rem_minmax(0,1fr)] ${layout === "grid" ? "vault-grid" : ""} ${collapsed ? "sidebar-collapsed" : ""}`} hidden>
+      <Sidebar collapsed={collapsed} onCollapse={collapseSidebar} />
       <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[560px]:col-start-1 max-[560px]:row-start-2 max-[560px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
         <header className="flex items-center justify-between gap-5 border-b border-white/5 px-5 backdrop-blur max-[560px]:px-3">
           <div className="vault-search flex h-12 w-full max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,.03)] transition focus-within:border-[#E0BB95]/60 focus-within:bg-white/8 focus-within:ring-4 focus-within:ring-[#E0BB95]/10 max-[560px]:max-w-none">
