@@ -4,6 +4,16 @@ import init, {
   generate_secret,
 } from "/wasm/vaults_browser_fixture.js";
 import { PASSKEY_META, PASSKEY_KEY, readMetadata, passkeyFields } from '/app/passkeys.mjs';
+import { PwaReplica, isInstalledApp, networkUnavailable, replicaRead, recordRevision, collapseQueue } from '/app/pwa-replica.mjs';
+import { requestBrowserEnrollment, finishBrowserEnrollment } from '/app/browser-enrollment.mjs';
+import { VaultLifecycleClient } from '/app/vault-lifecycle.mjs';
+const installedApp = isInstalledApp();
+let replica = null, reconnectCredentials = null, serverAuthenticated = false, snapshotBusy = false;
+let sessionGeneration = 0, lockDeadline = 0;
+const replicaChanged = () => {
+  window.dispatchEvent(new CustomEvent('vaults:pwa-status', { detail: { ready: !!replica?.state.snapshotAt, at: replica?.state.snapshotAt } }));
+  if (root) updateSessionDates();
+};
 let passkeyVerifier = null, editorPasskeyFields = [];
 window.addEventListener('vaults:remove-editor-passkey', () => { editorPasskeyFields = []; });
 async function passwordCheckBytes(password, salt) {
@@ -83,6 +93,7 @@ let core,
   lastLocalChange = null;
 const features = window.__vaultsFeatures;
 let favoritesOnly = false, favoriteItems = [], editorBaseline = null, syncState = 'idle', syncFailure = '';
+let browseView = null, browseItems = [], applyDefaultView = false;
 function editorSnapshot() {
   if ($("item-form").hidden) return null;
   try { return JSON.stringify({ values: ["item-id", "title", "url", "item-username", "item-password"].map(id => $(id).value), fields: collectCustomFields() }); }
@@ -101,8 +112,9 @@ const updateSessionDates = () => {
   let node = $("session-dates");
   if (!node) return;
   let time = (value) => value ? value.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
-  node.textContent = `${syncState === 'syncing' ? 'Syncing…' : syncState === 'error' ? 'Sync failed · retry Sync' : hasUnsavedChanges() ? 'Unsaved changes' : lastSynced ? 'Up to date' : 'Not synced'} · ${hasUnsavedChanges() ? 'Unsaved edit · ' : ''}Server sync ${time(lastSynced)}`;
-  node.title = syncFailure || 'Web saves directly to the server. Unsaved edits have not been synced.';
+  const localStatus = replica?.local ? 'Offline · saved on this device' : '';
+  node.textContent = `${syncState === 'syncing' ? 'Syncing…' : syncState === 'error' ? 'Sync needs attention' : localStatus || (hasUnsavedChanges() ? 'Unsaved changes' : lastSynced ? 'Up to date' : 'Not synced')}${replica?.pending ? ` · ${replica.pending} pending change${replica.pending === 1 ? '' : 's'}` : ''} · ${hasUnsavedChanges() ? 'Unsaved edit · ' : ''}Server sync ${time(lastSynced)}`;
+  node.title = syncFailure || (installedApp ? 'Encrypted changes are saved on this device and synced while the app is open and connected.' : 'Web saves directly to the server. Unsaved edits have not been synced.');
 };
 const toast = (title, detail = "", type = "info") => {
   window.dispatchEvent(new CustomEvent("vaults:toast", { detail: { title, detail, kind: type } }));
@@ -131,7 +143,8 @@ function equal(a, b) {
   for (let i = 0; i < a.length; i++) v |= a[i] ^ b[i];
   return v === 0;
 }
-async function call(path, { method = "GET", body, token = csrf } = {}) {
+async function remoteCall(path, { method = "GET", body, token = csrf } = {}) {
+  if (installedApp && navigator.onLine === false) throw Error('SERVER_UNREACHABLE');
   let h = {};
   if (body !== undefined) {
     h["Content-Type"] = "application/json";
@@ -157,11 +170,43 @@ async function call(path, { method = "GET", body, token = csrf } = {}) {
   } catch {
     throw Error("INVALID_SERVER_RESPONSE");
   }
-  if (!r.ok) throw Error(v.error ?? `HTTP_${r.status}`);
+  if (!r.ok) { const error = Error(v.error ?? `HTTP_${r.status}`); error.status = r.status; throw error; }
   return v;
 }
+async function call(path, options = {}) {
+  const method = options.method || 'GET';
+  if (!installedApp || !replica || !root) return remoteCall(path, options);
+  if (method === 'GET' && replicaRead(path)) {
+    if (replica.state.snapshotAt || replica.local || replica.pending) return replica.read(path);
+    try { return await remoteCall(path, options); }
+    catch (error) {
+      if (!networkUnavailable(error) || !replica.state.snapshotAt) throw error;
+      replica.local = true; updateSessionDates(); return replica.read(path);
+    }
+  }
+  const writable = (path === '/api/v1/vault-settings' && method === 'PUT') || (path === '/api/v1/vaults' && method === 'POST') || (/^\/api\/v1\/vaults\/[0-9a-f-]+\/items(?:\/[0-9a-f-]+)?$/.test(path) && ['POST', 'PUT'].includes(method));
+  if (writable) {
+    if (!replica.state.snapshotAt) {
+      if (replica.local) throw Error('OFFLINE_DATA_UNAVAILABLE');
+      return remoteCall(path, options);
+    }
+    const wasLocal = replica.local;
+    const result = await replica.enqueue(path, method, options.body);
+    if (!wasLocal && serverAuthenticated) {
+      try { await replica.flush(remoteCall); }
+      catch (error) {
+        // Keep the durable local change even after a rejected/ambiguous send.
+        syncFailure = networkUnavailable(error) ? '' : safeError(error);
+        syncState = networkUnavailable(error) ? 'idle' : 'error';
+      }
+    }
+    updateSessionDates(); return result;
+  }
+  if (replica.local) throw Error('ONLINE_REQUIRED');
+  return remoteCall(path, options);
+}
 function reusableSecret(identityRecord) {
-  return Boolean(identityRecord && (identityRecord.secretExpiresAt === undefined || identityRecord.secretExpiresAt > Date.now()) && (identityRecord.secretEnvelope || identityRecord.accountSecret));
+  return Boolean(identityRecord && (installedApp || identityRecord.secretExpiresAt === undefined || identityRecord.secretExpiresAt > Date.now()) && (identityRecord.secretEnvelope || identityRecord.accountSecret));
 }
 function credentials() {
   let secret = $("secret").value || (reusableSecret(identity) ? identity?.accountSecret : ""),
@@ -188,7 +233,7 @@ function credentials() {
     password: te.encode(master),
   };
 }
-const safeError = (e) =>
+const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storage is full. Free storage and retry before closing the app.' : e.name === 'SecurityError' ? 'Device storage is unavailable. Use a regular browser profile with website storage enabled.' :
   ({
     INVALID_ACCOUNT_SECRET:
       "Account secret must be exactly 64 hexadecimal characters.",
@@ -199,6 +244,21 @@ const safeError = (e) =>
     SERVER_UNREACHABLE:
       "The server could not be reached. Check that the MVP stack is running.",
     INVALID_SERVER_RESPONSE: "The server returned an invalid response.",
+    OFFLINE_DATA_UNAVAILABLE: "This device has no complete offline copy yet. Connect and sync first.",
+    ONLINE_REQUIRED: "Connect to the server to perform this action.",
+    LOCAL_STORAGE_FAILED: "Device storage could not save this change. Free space and retry before closing the app.",
+    authentication_required: "Unlock with your master password to reconnect and sync. Local changes are preserved.",
+    ENROLLMENT_EXPIRED: "This registration code expired. Close this dialog and register again.",
+    ENROLLMENT_INVALID: "Device approval could not be verified. Start a new registration.",
+    INVALID_USERNAME: "Enter your username (5–64 letters, digits, dots, hyphens, or underscores).",
+    SYNC_REVIEW_PENDING: "Your offline changes are preserved. Choose Sync to finish reviewing the conflict.",
+    LOCAL_QUEUE_CHANGED: "Another app window saved a change. Sync again to include it.",
+    VAULT_RETIRED: "This vault was removed on another device. Your offline changes are preserved for review.",
+    SERVER_IDENTITY_CHANGED: "The server identity changed. Your local copy and pending changes are preserved; verify the server before registering again.",
+    PENDING_REMOVAL: "Resume or cancel the pending vault removal before starting another.",
+    REMOVAL_SOURCE_CHANGED: "The source vault changed. It remains available; cancel the pending move and start again after syncing.",
+    SYNC_ROLLBACK: "The server returned an older sync history. Your verified local copy is preserved.",
+    SYNC_FORK: "The server sync history differs from this device’s verified copy. Your local changes are preserved.",
     onboarding_failed:
       "Setup was rejected. The code may be invalid, expired, or already used.",
     authentication_failed:
@@ -243,6 +303,48 @@ async function loadVaultSettings() {
     ? JSON.parse(td.decode(core.decrypt_account_settings(root, un(response.envelope))))
     : { version: 1, names: {}, collections: [], default_view: null, removal_preference: null };
   if (vaultSettings.version !== 1 || typeof vaultSettings.names !== "object" || !vaultSettings.names) throw Error("INVALID_VAULT_SETTINGS");
+  vaultSettings.collections ||= [];
+  if (!Array.isArray(vaultSettings.collections) || vaultSettings.collections.some(row => typeof row.id !== 'string' || typeof row.name !== 'string' || !Array.isArray(row.vault_ids))) throw Error('INVALID_VAULT_SETTINGS');
+  publishSettings();
+}
+function publishSettings() {
+  window.__vaultsSettings = { settings: vaultSettings, view: browseView };
+  window.dispatchEvent(new CustomEvent('vaults:settings', { detail: window.__vaultsSettings }));
+}
+async function publishVaultLifecycle(data) {
+  const retired = data.vaultEnvelopes.filter(row => row.retired).map(row => ({ ...row, name: vaultSettings.names[row.vaultId] || 'Archived vault' }));
+  const pending = identity && await loadIdentity(`vault-removal:${identity.deviceId}`);
+  window.__vaultsLifecycle = { retired, pending };
+  window.dispatchEvent(new CustomEvent('vaults:lifecycle', { detail: window.__vaultsLifecycle }));
+}
+async function manageVault(source, choice, destination = null) {
+  if (!root || busy || !confirmDiscard()) return;
+  if (replica?.local || navigator.onLine === false) { toast('Connection required', 'Vault removal and restoration require an online session, as in the desktop app.'); return; }
+  const journalKey = `vault-removal:${identity.deviceId}`, pending = await loadIdentity(journalKey);
+  if (!pending && choice !== 'restore' && !await confirmAction(choice === 'move' ? 'Move this vault’s items?' : 'Archive this vault?', choice === 'move' ? 'Items will be copied to the destination before the source vault is retired. The source remains recoverable.' : 'This hides the vault from active views and keeps its encrypted items recoverable.')) return;
+  if (installedApp) { await syncInstalled(); if (!root || replica?.local || replica?.pending) return; }
+  else await reload();
+  setBusy(true);
+  const generation = sessionGeneration, activeRoot = root;
+  const check = () => { if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED'); };
+  try {
+    const client = new VaultLifecycleClient({ core, root: activeRoot, send: remoteCall, check,
+      readJournal: () => loadIdentity(journalKey), writeJournal: async value => { check(); await saveIdentity(value, journalKey); },
+      signItem: async (targetVault, itemId, catalogueBytes, indexBytes, bodyBytes) => signedMutation('item.create', itemId, catalogueBytes, indexBytes, bodyBytes, { targetVault, history: await operationHistory(targetVault) }) });
+    if (choice === 'restore') await client.restore(source); else await client.remove(source, choice, destination);
+    check(); clearItem(); browseView = null; await reload();
+    toast(choice === 'restore' ? 'Vault restored' : choice === 'move' ? 'Vault moved' : 'Vault archived', 'Your encrypted vault data remains recoverable.', 'success');
+  } catch (error) { if (generation === sessionGeneration) toast('Vault action needs attention', `${safeError(error)} Any pending operation can be resumed in Settings → Vaults.`, 'error'); }
+  finally { if (generation === sessionGeneration) { try { await publishVaultLifecycle(await call('/api/v1/vaults')); } catch {} setBusy(false); } }
+}
+async function cancelVaultRemoval() {
+  if (!root || busy || !await confirmAction('Cancel pending removal?', 'This stops retries. Copies already made and actions accepted by the server remain in place.')) return;
+  await saveIdentity(null, `vault-removal:${identity.deviceId}`); await publishVaultLifecycle(await call('/api/v1/vaults'));
+}
+async function saveVaultSettings(next) {
+  const encrypted = core.encrypt_account_settings(root, te.encode(JSON.stringify(next))), revision = uuid(encrypted.slice(76,92));
+  await call('/api/v1/vault-settings', { method: 'PUT', body: { baseRevision: settingsRevision, revision, envelope: b64(encrypted) } });
+  settingsRevision = revision; vaultSettings = next; publishSettings();
 }
 function publishVaults(rows) {
   window.__vaultsSnapshot = rows;
@@ -250,11 +352,7 @@ function publishVaults(rows) {
 }
 async function saveVaultName(vaultId, name) {
   const next = { ...vaultSettings, names: { ...vaultSettings.names, [vaultId]: name } };
-  const encrypted = core.encrypt_account_settings(root, te.encode(JSON.stringify(next)));
-  const revision = uuid(encrypted.slice(76, 92));
-  await call("/api/v1/vault-settings", { method: "PUT", body: { baseRevision: settingsRevision, revision, envelope: b64(encrypted) } });
-  settingsRevision = revision;
-  vaultSettings = next;
+  await saveVaultSettings(next);
 }
 async function db(mode = "readonly") {
   let d = await new Promise((ok, no) => {
@@ -265,21 +363,55 @@ async function db(mode = "readonly") {
   });
   return d.transaction("identity", mode).objectStore("identity");
 }
-async function loadIdentity() {
+async function loadIdentity(key = "active") {
   let s = await db();
   return new Promise((ok, no) => {
-    let q = s.get("active");
+    let q = s.get(key);
     q.onsuccess = () => ok(q.result);
     q.onerror = () => no(q.error);
+    s.transaction.oncomplete = () => s.transaction.db.close();
   });
 }
-async function saveIdentity(v) {
+async function saveIdentity(v, key = "active") {
   let s = await db("readwrite");
   return new Promise((ok, no) => {
-    let q = s.put(v, "active");
-    q.onsuccess = () => ok();
-    q.onerror = () => no(q.error);
+    if (v === null) s.delete(key); else s.put(v, key);
+    s.transaction.oncomplete = () => { s.transaction.db.close(); ok(); };
+    s.transaction.onabort = s.transaction.onerror = () => { s.transaction.db.close(); no(s.transaction.error || Error('LOCAL_STORAGE_FAILED')); };
   });
+}
+let pendingBrowserEnrollment = null;
+async function registerBrowserDevice() {
+  if (busy || identity) return;
+  setBusy(true);
+  try {
+    const username = $("username").value.trim();
+    const saved = await loadIdentity('enrollment');
+    pendingBrowserEnrollment = saved?.username === username && (saved.approval || Date.parse(saved.expiresAt) > Date.now())
+      ? saved : await requestBrowserEnrollment(username, remoteCall);
+    await saveIdentity(pendingBrowserEnrollment, 'enrollment');
+    $("browser-enrollment-code").textContent = pendingBrowserEnrollment.code;
+    $("browser-enrollment-status").textContent = 'Waiting for approval on your registered device. This code expires in 10 minutes.';
+    $("browser-enrollment-dialog").showModal();
+  } catch (error) { status('login-status', safeError(error), 'error'); }
+  finally { setBusy(false); }
+}
+async function checkBrowserApproval() {
+  if (busy) return;
+  setBusy(true);
+  try {
+    const approved = await finishBrowserEnrollment(pendingBrowserEnrollment, remoteCall, async value => { await saveIdentity(value, 'enrollment'); pendingBrowserEnrollment = value; });
+    if (!approved) { $("browser-enrollment-status").textContent = 'Still waiting. Approve the code on your registered device, then check again.'; return; }
+    await saveIdentity(approved);
+    await saveIdentity(null, 'enrollment');
+    pendingBrowserEnrollment = null; identity = approved;
+    $("browser-enrollment-dialog").close();
+    $("register-browser-device").hidden = true;
+    $("username").value = identity.username; $("device").value = identity.deviceId;
+    showLoginPassword();
+    status('login-status', 'Device registered. Enter your account secret and master password once to prepare this device.');
+  } catch (error) { $("browser-enrollment-status").textContent = safeError(error); }
+  finally { setBusy(false); }
 }
 async function protectAccountSecret(secret, password) {
   let salt = crypto.getRandomValues(new Uint8Array(16)),
@@ -292,7 +424,7 @@ async function protectAccountSecret(secret, password) {
       ["deriveKey"],
     ),
     key = await crypto.subtle.deriveKey(
-      { name: "PBKDF2", hash: "SHA-256", salt, iterations: 310000 },
+      { name: "PBKDF2", hash: "SHA-256", salt, iterations: 600000 },
       material,
       { name: "AES-GCM", length: 256 },
       false,
@@ -305,10 +437,11 @@ async function protectAccountSecret(secret, password) {
         te.encode(secret),
       ),
     );
-  return { salt: b64(salt), iv: b64(iv), ciphertext: b64(ciphertext) };
+  return { version: 1, iterations: 600000, salt: b64(salt), iv: b64(iv), ciphertext: b64(ciphertext) };
 }
 async function recoverAccountSecret(envelope, password) {
   try {
+    if (![310000, 600000].includes(envelope.iterations ?? 310000)) throw Error('authentication_failed');
     let material = await crypto.subtle.importKey(
         "raw",
         te.encode(password),
@@ -321,7 +454,7 @@ async function recoverAccountSecret(envelope, password) {
           name: "PBKDF2",
           hash: "SHA-256",
           salt: un(envelope.salt),
-          iterations: 310000,
+          iterations: envelope.iterations ?? 310000,
         },
         material,
         { name: "AES-GCM", length: 256 },
@@ -457,7 +590,7 @@ async function setup() {
       username: candidate.username,
       privateKey: generated.keys.privateKey,
       secretEnvelope,
-      secretExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      secretExpiresAt: installedApp ? undefined : Date.now() + 30 * 24 * 60 * 60 * 1000,
     });
     identity = await loadIdentity();
     $("device").value = deviceId;
@@ -548,7 +681,89 @@ async function verifyRootTag(
   authContext = { tenantId: p.installation, epoch: p.epoch };
   return { p, contextHash, deviceTranscript };
 }
+async function authenticateOnline(secret, password) {
+    const generation = sessionGeneration;
+    let start, finish, nextRoot, delivered = false;
+    try {
+    start = ExperimentalOpaqueBridge.client_login_start(secret, password);
+    let
+      request = start.message(),
+      begun = await remoteCall("/api/v1/auth/", {
+        method: "POST",
+        body: {
+          username: identity.username,
+          deviceId: identity.deviceId,
+          request: b64(request),
+        },
+      });
+    if (generation !== sessionGeneration) throw Error("LOCKED");
+    csrf = begun.csrf;
+    let binding = un(begun.binding),
+      challenge = un(begun.challenge),
+      finishStep = ExperimentalOpaqueBridge.client_login_finish(
+        start.state(),
+        secret,
+        password,
+        challenge,
+        binding,
+      ),
+      finalization = finishStep.message();
+    finish = finishStep;
+    let wrapped = await remoteCall(`/api/v1/auth/${begun.attemptId}/password`, {
+        method: "POST",
+        body: { finalization: b64(finalization) },
+      }),
+      descriptor = un(wrapped.descriptor),
+      envelope = un(wrapped.envelope);
+    if (generation !== sessionGeneration) throw Error("LOCKED");
+    const sessionKey = finish.session_key();
+    let verified;
+    try { verified = await verifyRootTag(
+        sessionKey,
+        binding,
+        request,
+        challenge,
+        finalization,
+        descriptor,
+        envelope,
+        un(wrapped.tag),
+      ); } finally { sessionKey.fill(0); }
+    if (generation !== sessionGeneration) throw Error("LOCKED");
+    if (verified.p.origin !== location.origin || verified.p.device !== identity.deviceId || verified.p.account !== identity.accountId
+      || (identity.installationId && identity.installationId !== verified.p.installation)
+      || (identity.serverPublicKey && identity.serverPublicKey !== b64(verified.p.serverPublicKey))) throw Error('SERVER_IDENTITY_CHANGED');
+    nextRoot = core.unwrap_root(envelope, descriptor, password, secret);
+    let rootHash = await hash(cat(descriptor, envelope)),
+      proof = cat(
+        te.encode("127Vaults/device-proof/1\0"),
+        verified.contextHash,
+        verified.deviceTranscript,
+        id(verified.p.installation),
+        id(verified.p.account),
+        id(verified.p.device),
+        be(verified.p.epoch, 8),
+        rootHash,
+      ),
+      signature = new Uint8Array(
+        await crypto.subtle.sign("Ed25519", identity.privateKey, proof),
+      );
+    let logged = await remoteCall(`/api/v1/auth/${begun.attemptId}/device-proof`, {
+      method: "POST",
+      body: { signature: b64(signature) },
+    });
+    if (generation !== sessionGeneration) throw Error("LOCKED");
+    csrf = logged.csrf;
+    serverAuthenticated = true;
+    identity = { ...identity, installationId: verified.p.installation, serverPublicKey: b64(verified.p.serverPublicKey) };
+    delivered = true;
+    return { root: nextRoot, unlock: { descriptor: wrapped.descriptor, envelope: wrapped.envelope, authContext, origin: location.origin, deviceId: identity.deviceId, accountId: identity.accountId } };
+    } finally {
+      start?.free?.(); finish?.free?.();
+      if (nextRoot && !delivered) { if (generation === sessionGeneration) core.release_root(nextRoot); nextRoot.free?.(); }
+    }
+}
 async function login() {
+  const generation = ++sessionGeneration;
   let stage = "checking this browser";
   setBusy(true);
   status("login-status", "Checking enrolled device…");
@@ -570,71 +785,37 @@ async function login() {
     let { secret, password } = credentials();
     stage = "verifying account credentials";
     status("login-status", "Verifying credentials…");
-    let start = ExperimentalOpaqueBridge.client_login_start(secret, password),
-      request = start.message(),
-      begun = await call("/api/v1/auth/", {
-        method: "POST",
-        body: {
-          username: identity.username,
-          deviceId: identity.deviceId,
-          request: b64(request),
-        },
-      });
-    csrf = begun.csrf;
-    let binding = un(begun.binding),
-      challenge = un(begun.challenge),
-      finish = ExperimentalOpaqueBridge.client_login_finish(
-        start.state(),
-        secret,
-        password,
-        challenge,
-        binding,
-      ),
-      finalization = finish.message();
-    stage = "verifying encrypted root";
-    let wrapped = await call(`/api/v1/auth/${begun.attemptId}/password`, {
-        method: "POST",
-        body: { finalization: b64(finalization) },
-      }),
-      descriptor = un(wrapped.descriptor),
-      envelope = un(wrapped.envelope),
-      verified = await verifyRootTag(
-        finish.session_key(),
-        binding,
-        request,
-        challenge,
-        finalization,
-        descriptor,
-        envelope,
-        un(wrapped.tag),
-      );
-    root = core.unwrap_root(envelope, descriptor, password, secret);
-    let rootHash = await hash(cat(descriptor, envelope)),
-      proof = cat(
-        te.encode("127Vaults/device-proof/1\0"),
-        verified.contextHash,
-        verified.deviceTranscript,
-        id(verified.p.installation),
-        id(verified.p.account),
-        id(verified.p.device),
-        be(verified.p.epoch, 8),
-        rootHash,
-      ),
-      signature = new Uint8Array(
-        await crypto.subtle.sign("Ed25519", identity.privateKey, proof),
-      );
-    stage = "opening private vault";
-    let logged = await call(`/api/v1/auth/${begun.attemptId}/device-proof`, {
-      method: "POST",
-      body: { signature: b64(signature) },
-    });
-    csrf = logged.csrf;
+    if (installedApp) {
+      replica = await new PwaReplica({ scope: identity.deviceId, changed: replicaChanged }).load();
+      replicaChanged();
+      reconnectCredentials = { secret: secret.slice(), password: password.slice() };
+    }
+    try {
+      const authenticated = await authenticateOnline(secret, password);
+      if (generation !== sessionGeneration) throw Error('LOCKED');
+      root = authenticated.root;
+      if (replica) {
+        await replica.saveUnlock(authenticated.unlock);
+        if (replica.pending) {
+          try { await replica.flush(remoteCall); }
+          catch (error) { replica.local = true; syncState = 'error'; syncFailure = safeError(error); }
+        }
+      }
+    } catch (error) {
+      if (!replica || !networkUnavailable(error) || !replica.state.unlock || !replica.state.snapshotAt) throw error;
+      if (replica.state.unlock.origin !== location.origin || replica.state.unlock.deviceId !== identity.deviceId || replica.state.unlock.accountId !== identity.accountId) throw Error('SERVER_IDENTITY_CHANGED');
+      root = core.unwrap_root(un(replica.state.unlock.envelope), un(replica.state.unlock.descriptor), password, secret);
+      authContext = replica.state.unlock.authContext;
+      replica.local = true; serverAuthenticated = false;
+      lastSynced = new Date(replica.state.snapshotAt);
+    }
+    secret.fill(0); password.fill(0);
     const verificationSalt = crypto.getRandomValues(new Uint8Array(32));
     passkeyVerifier = { salt: verificationSalt, value: await passwordCheckBytes($("master").value, verificationSalt) };
     await reload();
-    if (!identity.secretExpiresAt || !reusableSecret(identity) || identity.accountSecret) {
+    if (installedApp || !identity.secretExpiresAt || !reusableSecret(identity) || identity.accountSecret) {
       try {
-        const nextIdentity = { ...identity, secretEnvelope: await protectAccountSecret($("secret").value || identity.accountSecret, $("master").value), secretExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 };
+        const nextIdentity = { ...identity, secretEnvelope: await protectAccountSecret($("secret").value || identity.accountSecret, $("master").value), secretExpiresAt: installedApp ? undefined : Date.now() + 30 * 24 * 60 * 60 * 1000 };
         delete nextIdentity.accountSecret;
         await saveIdentity(nextIdentity);
         identity = nextIdentity;
@@ -656,10 +837,15 @@ async function login() {
       }
     }).catch(() => { /* Older servers may not expose license status. */ });
     arm();
-    await reloadDevices();
+    applyDefaultView = true;
+    if (vaultSettings.default_view?.kind === 'all') await selectBrowseView({ kind: 'all' });
+    else if (vaultSettings.default_view?.kind === 'collection') await selectBrowseView({ kind: 'collection', id: vaultSettings.default_view.id });
+    else if (vaultSettings.default_view?.kind === 'vault') await selectVault(vaultSettings.default_view.id);
+    applyDefaultView = false;
+    if (!replica?.local) await reloadDevices();
     queueMicrotask(openPendingDesktopEnrollment);
   } catch (e) {
-    lock(false);
+    await lock(false);
     let detail =
       e.message.startsWith("This device ") ||
       e.message.startsWith("The username ")
@@ -671,12 +857,223 @@ async function login() {
     setBusy(false);
   }
 }
+async function operationHistory(targetVault, send = remoteCall) {
+  let cursor = 0, operations = [], devicePublicKeys = {};
+  for (;;) {
+    const page = await send(`/api/v1/vaults/${targetVault}/operations?cursor=${cursor}&limit=500`);
+    operations.push(...page.operations);
+    Object.assign(devicePublicKeys, page.devicePublicKeys || {});
+    if (!page.hasMore) return { cursor: page.cursor, operations, devicePublicKeys, hasMore: false };
+    if (page.cursor <= cursor) throw Error('INVALID_SERVER_RESPONSE');
+    cursor = page.cursor;
+  }
+}
+async function downloadReplica() {
+  const activeRoot = root, generation = sessionGeneration;
+  const records = {};
+  records['/api/v1/vault-settings'] = await remoteCall('/api/v1/vault-settings');
+  if (records['/api/v1/vault-settings'].envelope) core.decrypt_account_settings(activeRoot, un(records['/api/v1/vault-settings'].envelope));
+  const data = await remoteCall('/api/v1/vaults');
+  records['/api/v1/vaults'] = data;
+  for (const row of data.vaultEnvelopes) {
+    if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED');
+    const localVault = core.open_private_vault(activeRoot, un(data.directory), id(row.vaultId), un(row.envelope));
+    try {
+      const listPath = `/api/v1/vaults/${row.vaultId}/items`, listed = await remoteCall(listPath);
+      records[listPath] = listed;
+      const localCatalogue = un(listed.catalogue), revision = recordRevision(listed.catalogue, 44);
+      for (const summary of listed.indices) {
+        core.decrypt_private_part(localVault, localCatalogue, id(summary.itemId), un(summary.envelope), 4);
+        const body = await remoteCall(`${listPath}/${summary.itemId}?catalogueRevision=${revision}`);
+        core.decrypt_private_part(localVault, localCatalogue, id(summary.itemId), un(body.envelope), 3);
+        records[`${listPath}/${summary.itemId}`] = body;
+      }
+      const operations = await operationHistory(row.vaultId);
+      // Fetch after bodies/history to reject a torn catalogue snapshot.
+      if ((await remoteCall(listPath)).catalogue !== listed.catalogue) throw Error('BASE_CHANGED');
+      records[`/api/v1/vaults/${row.vaultId}/operations`] = operations;
+    } finally { if (generation === sessionGeneration) core.release_vault(localVault); localVault.free?.(); }
+  }
+  if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED');
+  if (JSON.stringify(await remoteCall('/api/v1/vaults')) !== JSON.stringify(data)) throw Error('BASE_CHANGED');
+  if ((await remoteCall('/api/v1/vault-settings')).revision !== records['/api/v1/vault-settings'].revision) throw Error('BASE_CHANGED');
+  return records;
+}
+async function refreshReplica() {
+  if (!replica || replica.local || replica.pending || snapshotBusy) return;
+  snapshotBusy = true;
+  const activeReplica = replica;
+  try {
+    let records;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { records = await downloadReplica(); break; }
+      catch (error) { if (error.message !== 'BASE_CHANGED' || attempt === 2) throw error; }
+    }
+    if (replica !== activeReplica || !root) throw Error('LOCKED');
+    await activeReplica.snapshot(records);
+    window.dispatchEvent(new CustomEvent('vaults:pwa-status', { detail: { ready: true, at: activeReplica.state.snapshotAt } }));
+  } catch (error) {
+    if (error.message === 'LOCKED') return;
+    if (activeReplica.state.snapshotAt && networkUnavailable(error)) { activeReplica.local = true; updateSessionDates(); return; }
+    toast('Offline copy needs attention', `${safeError(error)} Your previous copy and pending changes are preserved.`, 'error');
+    throw error;
+  } finally { snapshotBusy = false; }
+}
+const stable = value => JSON.stringify(value, function (_key, entry) {
+  return entry && typeof entry === 'object' && !Array.isArray(entry)
+    ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry;
+});
+function chooseSyncVersion(title, detail) {
+  return new Promise(resolve => {
+    const dialog = $('sync-review-dialog');
+    $('sync-review-title').textContent = title; $('sync-review-detail').textContent = detail;
+    const onLock = () => finish('cancel');
+    const finish = choice => { window.removeEventListener('vaults:locked', onLock); dialog.close(); resolve(choice); };
+    window.addEventListener('vaults:locked', onLock, { once: true });
+    $('sync-review-mine').onclick = () => finish('mine');
+    $('sync-review-server').onclick = () => finish('server');
+    $('sync-review-later').onclick = () => finish('cancel');
+    dialog.oncancel = event => { event.preventDefault(); finish('cancel'); };
+    dialog.showModal();
+  });
+}
+async function rebasePendingChanges(interactive) {
+  const activeReplica = replica, activeRoot = root, generation = sessionGeneration;
+  const oldState = structuredClone(activeReplica.state), expected = oldState.queue;
+  const records = await downloadReplica(), fresh = structuredClone(records), planned = [];
+  const check = () => { if (root !== activeRoot || replica !== activeReplica || generation !== sessionGeneration) throw Error('LOCKED'); };
+  const decodeSettings = value => value?.envelope ? JSON.parse(td.decode(core.decrypt_account_settings(activeRoot, un(value.envelope)))) : { version: 1, names: {}, collections: [], default_view: null, removal_preference: null };
+  for (const entry of collapseQueue(expected)) {
+    check();
+    let next = { ...entry, id: crypto.randomUUID(), body: structuredClone(entry.body) };
+    if (entry.path === '/api/v1/vaults') {
+      const addedId = uuid(un(entry.body.vaultEnvelope).slice(44, 60));
+      const existing = fresh[entry.path].vaultEnvelopes.find(row => row.vaultId === addedId);
+      if (existing && !existing.retired && existing.envelope === entry.body.vaultEnvelope) continue;
+      if (existing) throw Error('VAULT_RETIRED');
+      next.body.requestId = crypto.randomUUID();
+      next.body.baseDirectoryRevision = recordRevision(fresh[entry.path].directory, 36);
+      next.body.directory = b64(core.rebase_private_vault(activeRoot, un(fresh[entry.path].directory), un(entry.body.vaultEnvelope)));
+    } else if (entry.path === '/api/v1/vault-settings') {
+      const base = decodeSettings(entry.baseline), local = decodeSettings(entry.body), server = decodeSettings(fresh[entry.path]);
+      const merged = structuredClone(server);
+      merged.names = { ...server.names };
+      for (const name of new Set([...Object.keys(base.names || {}), ...Object.keys(local.names || {})])) {
+        if (base.names?.[name] === local.names?.[name]) continue;
+        let useMine = true;
+        if (server.names?.[name] !== base.names?.[name] && server.names?.[name] !== local.names?.[name]) {
+          if (!interactive) throw Error('SYNC_REVIEW_PENDING');
+          const choice = await chooseSyncVersion('Vault name changed', `Your offline name is “${local.names?.[name] || 'Unnamed'}”. The server name is “${server.names?.[name] || 'Unnamed'}”.`);
+          check(); if (choice === 'cancel') throw Error('SYNC_REVIEW_PENDING'); useMine = choice === 'mine';
+        }
+        if (useMine) { if (name in (local.names || {})) merged.names[name] = local.names[name]; else delete merged.names[name]; }
+      }
+      for (const key of ['collections', 'default_view', 'removal_preference']) {
+        if (stable(base[key]) === stable(local[key])) continue;
+        if (stable(server[key]) !== stable(base[key]) && stable(server[key]) !== stable(local[key])) {
+          if (!interactive) throw Error('SYNC_REVIEW_PENDING');
+          const choice = await chooseSyncVersion('Vault preferences changed', 'Your offline preferences and the server preferences both changed. Choose which to keep.');
+          check(); if (choice === 'cancel') throw Error('SYNC_REVIEW_PENDING'); if (choice === 'server') continue;
+        }
+        merged[key] = local[key];
+      }
+      if (stable(merged) === stable(server)) continue;
+      const envelope = core.encrypt_account_settings(activeRoot, te.encode(JSON.stringify(merged)));
+      next.body = { baseRevision: fresh[entry.path].revision, revision: uuid(envelope.slice(76,92)), envelope: b64(envelope) };
+      next.baseline = structuredClone(fresh[entry.path]);
+    } else {
+      const targetVault = entry.body.signedOperation.vaultId, itemId = entry.body.signedOperation.itemId;
+      const listPath = `/api/v1/vaults/${targetVault}/items`;
+      const sourceRow = oldState.records['/api/v1/vaults'].vaultEnvelopes.find(row => row.vaultId === targetVault);
+      const targetRow = fresh['/api/v1/vaults'].vaultEnvelopes.find(row => row.vaultId === targetVault && !row.retired);
+      if (!sourceRow || !targetRow) throw Error('VAULT_RETIRED');
+      const sourceVault = core.open_private_vault(activeRoot, un(oldState.records['/api/v1/vaults'].directory), id(targetVault), un(sourceRow.envelope));
+      const targetHandle = core.open_private_vault(activeRoot, un(fresh['/api/v1/vaults'].directory), id(targetVault), un(targetRow.envelope));
+      try {
+        const decode = (handle, catalogue, indexEnvelope, bodyEnvelope) => ({ itemId,
+          index: JSON.parse(td.decode(core.decrypt_private_part(handle, un(catalogue), id(itemId), un(indexEnvelope), 4))),
+          body: JSON.parse(td.decode(core.decrypt_private_part(handle, un(catalogue), id(itemId), un(bodyEnvelope), 3))) });
+        let local = decode(sourceVault, entry.body.catalogue, entry.body.index, entry.body.body);
+        const base = entry.baseline?.index && entry.baseline?.body ? decode(sourceVault, entry.baseline.catalogue, entry.baseline.index, entry.baseline.body) : null;
+        const listed = fresh[listPath], summary = listed.indices.find(row => row.itemId === itemId);
+        const server = summary ? decode(targetHandle, listed.catalogue, summary.envelope, fresh[`${listPath}/${itemId}`].envelope) : null;
+        if (stable(local) === stable(server)) continue;
+        if (stable(base) !== stable(server)) {
+          if (!interactive) throw Error('SYNC_REVIEW_PENDING');
+          const choice = await resolveConflict(local, server);
+          check();
+          if (choice === 'server') continue;
+          if (choice?.kind === 'merge') local = choice.item;
+          else if (choice !== 'mine') throw Error('SYNC_REVIEW_PENDING');
+        }
+        const made = !server && !base
+          ? core.create_private_item_at_id(targetHandle, un(listed.catalogue), id(itemId), te.encode(JSON.stringify(local.index)), te.encode(JSON.stringify(local.body)))
+          : core.upsert_private_item(targetHandle, un(listed.catalogue), server ? id(itemId) : undefined, te.encode(JSON.stringify(local.index)), te.encode(JSON.stringify(local.body)));
+        const newId = uuid(made.item());
+        const signedOperation = await signedMutation(server ? 'item.update' : 'item.create', newId, made.catalogue(), made.index(), made.body(), { targetVault, history: fresh[`/api/v1/vaults/${targetVault}/operations`] });
+        check();
+        next.path = `${listPath}${server ? `/${itemId}` : ''}`; next.method = server ? 'PUT' : 'POST';
+        next.baseline = { catalogue: listed.catalogue, index: summary?.envelope || null, body: server ? fresh[`${listPath}/${itemId}`].envelope : null };
+        next.body = { requestId: crypto.randomUUID(), baseCatalogueRevision: recordRevision(listed.catalogue, 44), catalogue: b64(made.catalogue()), index: b64(made.index()), body: b64(made.body()), ...(server ? {} : { itemId: newId }), signedOperation };
+        made.free?.();
+      } finally {
+        if (generation === sessionGeneration) { core.release_vault(sourceVault); core.release_vault(targetHandle); }
+        sourceVault.free?.(); targetHandle.free?.();
+      }
+    }
+    activeReplica.project(fresh, next); planned.push(next);
+  }
+  check();
+  await activeReplica.replaceQueue(records, planned, expected);
+}
+async function syncInstalled({ interactive = true } = {}) {
+  if (!installedApp) { await reload(); return; }
+  if (!root || busy || hasUnsavedChanges()) {
+    if (interactive && hasUnsavedChanges()) toast('Finish editing before syncing', 'Save or cancel your edit, then Sync.');
+    return;
+  }
+  const generation = sessionGeneration, activeReplica = replica;
+  setBusy(true); syncState = 'syncing'; syncFailure = ''; updateSessionDates();
+  try {
+    const credentials = reconnectCredentials;
+    if (!credentials) throw Error('authentication_required');
+    const authenticated = await authenticateOnline(credentials.secret, credentials.password);
+    if (generation !== sessionGeneration || replica !== activeReplica) throw Error('LOCKED');
+    if (vault) { core.release_vault(vault); vault.free?.(); vault = null; }
+    core.release_root(root); root.free?.(); root = authenticated.root;
+    await activeReplica.saveUnlock(authenticated.unlock);
+    try { await activeReplica.flush(remoteCall); }
+    catch (error) {
+      if (error.status !== 409 || !['BASE_CHANGED', 'sync_conflict'].includes(error.message)) throw error;
+      await rebasePendingChanges(interactive);
+      await activeReplica.flush(remoteCall);
+    }
+    if (generation !== sessionGeneration) throw Error('LOCKED');
+    activeReplica.local = false;
+    await reload({ preserveDraft: true });
+    if (activeReplica.local) throw Error('SERVER_UNREACHABLE');
+    if (currentItem) { const summary = loadedItems.find(row => row.row.itemId === currentItem.itemId); if (summary) displayItem(await fetchItem(summary.row.itemId, summary.index)); else clearItem(); }
+    if (interactive) toast('Sync complete', 'Your saved changes and latest server data are synced.', 'success');
+  } catch (error) {
+    if (generation !== sessionGeneration) return;
+    if (activeReplica) activeReplica.local = true;
+    syncState = networkUnavailable(error) ? 'idle' : 'error'; syncFailure = networkUnavailable(error) ? '' : safeError(error);
+    if (interactive) toast(networkUnavailable(error) ? 'Offline' : 'Sync needs attention', networkUnavailable(error) ? 'Your encrypted copy and saved changes remain on this device.' : safeError(error), networkUnavailable(error) ? 'info' : 'error');
+  } finally { if (generation === sessionGeneration) { setBusy(false); updateSessionDates(); } }
+}
+window.addEventListener('online', () => { if (installedApp && root) void syncInstalled({ interactive: false }); });
+// Background Sync is not universally available on iOS. Foreground retries cover
+// reconnects, missed online events, and expired server sessions without storing
+// the master password or account secret on disk.
+setInterval(() => { if (installedApp && root && !busy && navigator.onLine && (replica?.pending || replica?.local)) void syncInstalled({ interactive: false }); }, 60000);
 async function reload({ preserveDraft = false } = {}) {
   if (!preserveDraft && !confirmDiscard()) return;
-  syncState = 'syncing'; syncFailure = ''; updateSessionDates();
+  syncState = 'syncing'; if (!replica?.pending) syncFailure = ''; updateSessionDates();
   try {
+  await refreshReplica();
   await loadVaultSettings();
   let data = await call("/api/v1/vaults");
+  await publishVaultLifecycle(data);
   updateSessionDates();
   if (!data.directory || !data.vaultEnvelopes.some((row) => !row.retired)) {
     availableVaults = [];
@@ -693,14 +1090,15 @@ async function reload({ preserveDraft = false } = {}) {
     $("create-vault").disabled = false;
     $("new-item").disabled = true;
     $("save").disabled = true;
-    lastSynced = new Date(); syncState = "idle"; updateSessionDates();
+    if (!replica?.local && !replica?.pending) lastSynced = new Date();
+    syncState = "idle"; updateSessionDates();
     return;
   }
   let directory = un(data.directory),
     chosen = data.vaultEnvelopes.find((row) => row.vaultId === vaultId && !row.retired) || data.vaultEnvelopes.find((row) => !row.retired),
     activeRows = data.vaultEnvelopes.filter((row) => !row.retired);
   if (!chosen) throw Error("NO_ACTIVE_VAULT");
-  availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: vaultSettings.names[row.vaultId] || (index === 0 ? "Private" : `Vault ${index + 1}`), selected: row.vaultId === chosen.vaultId }));
+  availableVaults = activeRows.map((row, index) => ({ vaultId: row.vaultId, name: vaultSettings.names[row.vaultId] || (index === 0 ? "Private" : `Vault ${index + 1}`), selected: !browseView && !favoritesOnly && row.vaultId === chosen.vaultId }));
   $("vault-title").textContent = availableVaults.find((row) => row.selected)?.name || "Private";
   publishVaults(availableVaults);
   let
@@ -742,9 +1140,11 @@ async function reload({ preserveDraft = false } = {}) {
       }) || (a.index.website || "").localeCompare(b.index.website || ""),
   );
   vaultId = nextVaultId;
+  if (vault) { core.release_vault(vault); vault.free?.(); }
   vault = nextVault;
   catalogue = nextCatalogue;
   loadedItems = items;
+  if (browseView) browseItems = await loadBrowseItems(browseView.kind === 'collection' ? vaultSettings.collections.find(row => row.id === browseView.id)?.vault_ids || [] : null);
   if (favoritesOnly) favoriteItems = await loadFavorites();
   renderItems(items);
   $("vault-state").textContent =
@@ -754,31 +1154,85 @@ async function reload({ preserveDraft = false } = {}) {
   $("new-item").disabled = false;
   $("save").disabled = false;
   if (favoritesOnly) { $("vault-title").textContent = "Favorites"; $("vault-state").textContent = "All active vaults"; }
-  lastSynced = new Date(); syncState = 'idle'; updateSessionDates();
+  if (browseView && !favoritesOnly) { $('vault-title').textContent = browseView.kind === 'all' ? 'All items' : vaultSettings.collections.find(row => row.id === browseView.id)?.name || 'Collection'; $('vault-state').textContent = `${browseItems.length} items across vaults`; $('nav-count').textContent = String(browseItems.length); }
+  if (!replica?.local && !replica?.pending) lastSynced = new Date();
+  syncState = syncFailure ? 'error' : 'idle'; updateSessionDates();
   } catch (error) { syncState = 'error'; syncFailure = safeError(error); updateSessionDates(); throw error; }
 }
-async function loadFavorites() {
+async function loadBrowseItems(vaultIds = null, onlyFavorites = false) {
   const sessionRoot = root;
   const data = await call('/api/v1/vaults');
   const result = [];
   for (const row of data.vaultEnvelopes.filter(row => !row.retired)) {
+    if (vaultIds && !vaultIds.includes(row.vaultId)) continue;
     if (!sessionRoot || root !== sessionRoot) throw Error('LOCKED');
     const localVault = core.open_private_vault(sessionRoot, un(data.directory), id(row.vaultId), un(row.envelope));
+    try {
     const listed = await call(`/api/v1/vaults/${row.vaultId}/items`);
     const localCatalogue = un(listed.catalogue);
     for (const summary of listed.indices) {
       if (root !== sessionRoot) throw Error('LOCKED');
       const index = JSON.parse(td.decode(core.decrypt_private_part(localVault, localCatalogue, id(summary.itemId), un(summary.envelope), 4)));
-      if (!index.favorite) continue;
+      if (onlyFavorites && !index.favorite) continue;
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(summary.itemId)));
       const code = 'I-' + Array.from(digest.slice(0,5), byte => byte.toString(16).padStart(2,'0')).join('').toUpperCase();
       result.push({ row: { ...summary, vaultId: row.vaultId, code }, index });
     }
+    } finally { if (root === sessionRoot) core.release_vault(localVault); localVault.free?.(); }
   }
   return result.sort((a,b) => (a.index.title || '').localeCompare(b.index.title || ''));
 }
+const loadFavorites = () => loadBrowseItems(null, true);
+async function selectBrowseView(view) {
+  if ((!applyDefaultView && busy) || !root || !confirmDiscard()) return;
+  if (view.kind === 'collection' && !vaultSettings.collections.some(row => row.id === view.id)) return;
+  browseView = view; favoritesOnly = false; clearItem(); publishSettings();
+  await reload();
+}
+function openCollectionDialog(collectionId = null) {
+  if (!root || busy || !confirmDiscard()) return;
+  const collection = vaultSettings.collections.find(row => row.id === collectionId);
+  window.dispatchEvent(new CustomEvent('vaults:edit-collection', { detail: collection || { id: null, name: '', vault_ids: [] } }));
+  $('web-collection-dialog').showModal();
+}
+async function saveCollection(event) {
+  event.preventDefault(); if (busy || !root) return;
+  const collectionId = $('web-collection-id').value || crypto.randomUUID(), name = $('web-collection-name').value.trim();
+  const vault_ids = [...document.querySelectorAll('#web-collection-vaults input:checked')].map(input => input.value).sort();
+  if (!name || [...name].length > 80 || !vault_ids.length) { $('web-collection-status').textContent = 'Enter a name and select at least one vault.'; return; }
+  setBusy(true);
+  try {
+    const rows = vaultSettings.collections.filter(row => row.id !== collectionId);
+    if (rows.length >= 64) throw Error('COLLECTION_LIMIT');
+    await saveVaultSettings({ ...vaultSettings, collections: [...rows, { id: collectionId, name, vault_ids }] });
+    $('web-collection-dialog').close(); await reload(); toast('Collection saved', name, 'success');
+  } catch (error) { $('web-collection-status').textContent = safeError(error); }
+  finally { setBusy(false); }
+}
+async function removeCollection(collectionId) {
+  if (!root || busy || !await confirmAction('Remove collection?', 'The vaults and their items will remain available.')) return;
+  setBusy(true);
+  try {
+    await saveVaultSettings({ ...vaultSettings, collections: vaultSettings.collections.filter(row => row.id !== collectionId), default_view: vaultSettings.default_view?.kind === 'collection' && vaultSettings.default_view.id === collectionId ? null : vaultSettings.default_view });
+    if (browseView?.id === collectionId) browseView = { kind: 'all' };
+    publishSettings(); await reload();
+  } catch (error) { toast('Collection could not be removed', safeError(error), 'error'); }
+  finally { setBusy(false); }
+}
+async function setDefaultView(value) {
+  if (!root || busy) return;
+  setBusy(true);
+  try {
+    const [kind, selected] = value.split(':');
+    const default_view = kind === 'all' ? { kind: 'all' } : ['vault', 'collection'].includes(kind) ? { kind, id: selected } : null;
+    await saveVaultSettings({ ...vaultSettings, default_view });
+    toast('Default view saved', 'This view will open after unlocking.', 'success');
+  } catch (error) { toast('Default view could not be saved', safeError(error), 'error'); }
+  finally { setBusy(false); }
+}
 function renderItems(items) {
   if (favoritesOnly) items = favoriteItems;
+  else if (browseView) items = browseItems;
   let query = $("search").value.trim().toLowerCase();
   let filtered = items.filter((x) => (!favoritesOnly || x.index.favorite) &&
     `${x.index.title ?? ""} ${x.index.website ?? ""}`
@@ -941,10 +1395,9 @@ async function signedMutation(
   catalogueBytes,
   indexBytes,
   bodyBytes,
+  { targetVault = vaultId, history = null } = {},
 ) {
-  let sync = await call(
-      `/api/v1/vaults/${vaultId}/operations?cursor=0&limit=500`,
-    ),
+  let sync = history || await operationHistory(targetVault, call),
     previous =
       [...(sync.operations ?? [])]
         .reverse()
@@ -961,9 +1414,9 @@ async function signedMutation(
     body = {
       protocolVersion: 1,
       tenantId: authContext.tenantId,
-      vaultId,
+      vaultId: targetVault,
       deviceId: identity.deviceId,
-      epoch: authContext.epoch,
+      epoch: Number(new DataView(catalogueBytes.buffer, catalogueBytes.byteOffset + 36, 8).getBigUint64(0)),
       causalBase: sync.cursor ?? 0,
       previousDeviceOpId: previous,
       kind,
@@ -1325,12 +1778,17 @@ async function createVault(event) {
     let data = await call("/api/v1/vaults"),
       client = new (
         await import("/app/private-vault-client.mjs")
-      ).PrivateVaultClient({ core, root, csrf }),
+      ).PrivateVaultClient({ core, root, csrf, fetcher: async (path, options) => {
+        const value = await call(path, { method: options.method, body: JSON.parse(options.body) });
+        return { ok: true, json: async () => value };
+      } }),
       newId = await client.create(un(data.directory));
     accepted = true;
     syncState = "idle"; syncFailure = "";
     editorBaseline = null;
     vaultId = newId;
+    browseView = null; browseItems = []; publishSettings(); clearItem();
+    if (vault) { core.release_vault(vault); vault.free?.(); }
     vault = client.vault;
     catalogue = client.catalogue;
     await saveVaultName(newId, name);
@@ -1347,8 +1805,9 @@ async function createVault(event) {
   }
 }
 async function selectVault(nextVaultId, preserveFavorites = false) {
+  if (busy && !applyDefaultView) return;
   if (!confirmDiscard()) return;
-  if (!preserveFavorites) favoritesOnly = false;
+  if (!preserveFavorites) { favoritesOnly = false; browseView = null; browseItems = []; publishSettings(); }
   if (!availableVaults.some((row) => row.vaultId === nextVaultId)) return;
   vaultId = nextVaultId;
   clearItem();
@@ -1419,7 +1878,7 @@ async function save(event, retry = false) {
     let acceptedRevision = uuid(made.catalogue().slice(44, 60));
     catalogue = made.catalogue();
     lastLocalChange = new Date();
-    lastSynced = new Date();
+    if (!replica?.local && !replica?.pending) lastSynced = new Date();
     updateSessionDates();
     clearItem();
     await reload();
@@ -1427,7 +1886,7 @@ async function save(event, retry = false) {
     let summary = loadedItems.find((row) => row.row.itemId === newId);
     if (!summary) throw Error("SAVED_ITEM_MISSING");
     displayItem(await fetchItem(newId, summary.index));
-    toast(itemId ? "Item updated" : "Item created", "Your encrypted change was saved successfully.", "success");
+    toast(replica?.pending ? "Saved on this device" : itemId ? "Item updated" : "Item created", replica?.pending ? "Your encrypted change is saved locally and will sync when connected." : "Your encrypted change was saved successfully.", "success");
   } catch (e) {
     if (accepted) {
       toast("Item saved; refresh needs attention", "The server accepted the encrypted change, but the fresh replica could not be verified. Sync before editing again.", "error");
@@ -1474,7 +1933,11 @@ async function save(event, retry = false) {
 }
 function resolveConflict(local, server) {
   return new Promise((resolve) => {
-    let dialog = $("conflict-dialog"), finish = (choice) => { dialog.close(); resolve(choice); };
+    let dialog = $("conflict-dialog"), finished = false;
+    const onLock = () => finish('cancel');
+    const finish = choice => { if (finished) return; finished = true; window.removeEventListener('vaults:locked', onLock); dialog.close(); $('merge-fields').replaceChildren(); resolve(choice); };
+    window.addEventListener('vaults:locked', onLock, { once: true });
+    dialog.oncancel = event => { event.preventDefault(); finish('cancel'); };
     $("conflict-detail").textContent = local && !server
       ? "This item was deleted on another device while you were editing it. Save your version as a new item, accept the deletion, or keep editing."
       : "This item changed on another device while you were editing it. Choose which values to save.";
@@ -1537,7 +2000,8 @@ function resolveConflict(local, server) {
         if (picked) custom.set(field.id, picked);
         else custom.delete(field.id);
       }
-      finish({ kind: "merge", item: { itemId: local.itemId, index: { title: selected.get("title") === "server" ? server.index.title : local.index.title, website: selected.get("website") === "server" ? server.index.website : local.index.website }, body: { username: selected.get("username") === "server" ? server.body.username : local.body.username, password: selected.get("password") === "server" ? server.body.password : local.body.password, customFields: [...custom.values()] } } });
+      const customFields = [...custom.values()];
+      finish({ kind: "merge", item: { itemId: local.itemId, index: { ...local.index, title: selected.get("title") === "server" ? server.index.title : local.index.title, website: selected.get("website") === "server" ? server.index.website : local.index.website, itemType: itemKind(customFields), favorite: features.isFavorite(customFields) }, body: { username: selected.get("username") === "server" ? server.body.username : local.body.username, password: selected.get("password") === "server" ? server.body.password : local.body.password, customFields } } });
     };
     $("conflict-keep").onclick = () => finish("mine");
     $("conflict-server").onclick = () => finish("server");
@@ -1547,7 +2011,10 @@ function resolveConflict(local, server) {
 }
 function confirmAction(title, detail) {
   return new Promise((resolve) => {
-    let dialog = $("confirm-dialog"), finish = (answer) => { dialog.close(); resolve(answer); };
+    const dialog = $("confirm-dialog"), onLock = () => finish(false);
+    const finish = (answer) => { window.removeEventListener('vaults:locked', onLock); dialog.close(); resolve(answer); };
+    window.addEventListener('vaults:locked', onLock, { once: true });
+    dialog.oncancel = event => { event.preventDefault(); finish(false); };
     $("confirm-title").textContent = title;
     $("confirm-detail").textContent = detail;
     $("confirm-cancel").onclick = () => finish(false);
@@ -1600,17 +2067,26 @@ function clearItem() {
     new CustomEvent("vaults:set-editor-fields", { detail: [] }),
   );
   renderCustomFields([], "");
+  for (const name of ['view-title', 'view-username', 'view-url']) $(name).textContent = '';
+  $('view-url').removeAttribute('href'); $('view-password').textContent = '••••••••••••';
   $("save").textContent = "Save";
   showEmpty();
 }
 function wipeInputs(all = true) {
   $("master").value = "";
   $("secret").value = "";
+  if (all) {
+    $('registration-master').value = ''; $('registration-master-confirm').value = '';
+    generatedAccountSecret = ''; $('account-secret-display').textContent = '';
+  }
   if (all) clearItem();
 }
 function arm() {
   clearTimeout(sessionTimer);
-  const minutes = Number(localStorage.getItem("127vaults:lock-minutes") || 30);
+  const requested = Number(localStorage.getItem("127vaults:lock-minutes") || 30);
+  const minutes = [5, 15, 30, 60].includes(requested) ? requested : 30;
+  if (root && lockDeadline && Date.now() >= lockDeadline) { void lock(); return; }
+  lockDeadline = Date.now() + minutes * 60 * 1000;
   sessionTimer = setTimeout(
     () => {
       lock();
@@ -1620,6 +2096,10 @@ function arm() {
   );
 }
 async function lock(logout = true) {
+  const logoutToken = csrf;
+  ++sessionGeneration;
+  reconnectCredentials?.password.fill(0); reconnectCredentials?.secret.fill(0);
+  reconnectCredentials = null; serverAuthenticated = false; lockDeadline = 0;
   passkeyVerifier?.value.fill(0);
   passkeyVerifier = null;
   editorPasskeyFields = [];
@@ -1627,16 +2107,19 @@ async function lock(logout = true) {
   window.dispatchEvent(new Event('vaults:locked'));
   window.dispatchEvent(new Event("vaults:clear-generator"));
   clearTimeout(sessionTimer);
-  try {
-    if (logout && csrf) await call("/api/v1/session", { method: "DELETE" });
-  } catch {}
   core?.lock();
   root = vault = catalogue = null;
   vaultId = csrf = authContext = null;
+  replica = null; loadedItems = []; availableVaults = []; vaultSettings = { version: 1, names: {}, collections: [], default_view: null, removal_preference: null }; settingsRevision = null;
+  browseView = null; browseItems = []; publishSettings(); applyDefaultView = false;
+  window.__vaultsLifecycle = { retired: [], pending: null }; window.dispatchEvent(new CustomEvent('vaults:lifecycle', { detail: window.__vaultsLifecycle }));
+  publishVaults([]); renderItems([]);
   wipeInputs();
   $("vault").hidden = true;
   $("entry-shell").hidden = false;
   if ($("settings").open) $("settings").close();
+  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+  setBusy(false);
   window.dispatchEvent(
     new CustomEvent("vaults:devices", {
       detail: { devices: [], currentDeviceId: null },
@@ -1647,6 +2130,8 @@ async function lock(logout = true) {
   if (ownerSetupRequired)
     showRegistration();
   else showLogin();
+  // Clear decrypted state synchronously, before any slow/offline logout request.
+  if (logout && logoutToken) void remoteCall('/api/v1/session', { method: 'DELETE', token: logoutToken }).catch(() => {});
 }
 function showLogin() {
   $("registration-flow").hidden = true;
@@ -1655,6 +2140,7 @@ function showLogin() {
   $("login-username-step").hidden = false;
   $("access-step").textContent = "";
   $("username").value = identity?.username || $("username").value;
+  if (installedApp && identity) { showLoginPassword(); return; }
   $("username").focus();
 }
 function showLoginPassword() {
@@ -1666,7 +2152,7 @@ function showLoginPassword() {
   if (!identity) {
     status(
       "login-status",
-      "This device is not registered. Use the registration link below.",
+      "Register this device below, then unlock with your account secret and master password once.",
       "error",
     );
     return;
@@ -1757,7 +2243,7 @@ function setBusy(v) {
   busy = v;
   document.body.setAttribute("aria-busy", String(v));
   for (let b of document.querySelectorAll(
-    "#save,#new-item,#create-vault,#web-create-vault-submit,#login,#setup,#begin-enrollment,#complete-enrollment,#mobile-sync",
+    "#save,#new-item,#create-vault,#web-create-vault-submit,#login,#setup,#begin-enrollment,#complete-enrollment,#mobile-sync,#register-browser-device,#browser-enrollment-check",
   ))
     b.disabled =
       v ||
@@ -1781,11 +2267,13 @@ window.__vaultsActions = {
     if (id === "new-item") beginEdit(null);
     else if (id === "edit-item" && currentItem) beginEdit();
     else if (id === "create-vault") openCreateVaultDialog();
-    else if (id === "reload") reload().catch(() => msg("Vault refresh failed.", "error"));
+    else if (id === "reload") syncInstalled().catch(() => msg("Vault refresh failed.", "error"));
     else if (id === "settings") $("settings-toggle").click();
     else if (id === "lock" && confirmDiscard()) lock();
   },
   revokeDevice,
+  selectBrowseView, openCollectionDialog, removeCollection, setDefaultView,
+  manageVault, cancelVaultRemoval,
   healthItems: async () => {
     const sessionRoot = root;
     const data = await call('/api/v1/vaults');
@@ -1793,6 +2281,7 @@ window.__vaultsActions = {
     for (const row of data.vaultEnvelopes.filter(row => !row.retired)) {
       if (!sessionRoot || root !== sessionRoot) throw Error('LOCKED');
       const healthVault = core.open_private_vault(sessionRoot, un(data.directory), id(row.vaultId), un(row.envelope));
+      try {
       const listed = await call(`/api/v1/vaults/${row.vaultId}/items`);
       const healthCatalogue = un(listed.catalogue);
       const revision = uuid(healthCatalogue.slice(44, 60));
@@ -1804,6 +2293,7 @@ window.__vaultsActions = {
         const body = JSON.parse(td.decode(core.decrypt_private_part(healthVault, healthCatalogue, id(summary.itemId), un(got.envelope), 3)));
         result.push({ itemId: summary.itemId, vaultId: row.vaultId, title: index.title, password: body.password, customFields: body.customFields || [] });
       }
+      } finally { if (root === sessionRoot) core.release_vault(healthVault); healthVault.free?.(); }
     }
     return result;
   },
@@ -1856,7 +2346,7 @@ $("password-health").onclick = () => { if (root) window.dispatchEvent(new Event(
 $("nav-favorites").onclick = async () => {
   if (busy || !confirmDiscard()) return;
   setBusy(true);
-  try { favoriteItems = await loadFavorites(); clearItem(); favoritesOnly = true; renderItems(loadedItems); $("vault-title").textContent = 'Favorites'; $("vault-state").textContent = 'All active vaults'; }
+  try { browseView = null; publishSettings(); favoriteItems = await loadFavorites(); clearItem(); favoritesOnly = true; renderItems(loadedItems); $("vault-title").textContent = 'Favorites'; $("vault-state").textContent = 'All active vaults'; }
   catch (error) { toast('Favorites unavailable', safeError(error), 'error'); }
   finally { setBusy(false); }
 };
@@ -1872,15 +2362,15 @@ $("cancel-edit").onclick = () => {
     : clearItem();
 };
 $("close-item-detail").onclick = () => { if (!confirmDiscard()) return; clearItem(); renderItems(loadedItems); };
-$("nav-all-items").onclick = () => { if (!confirmDiscard()) return; favoritesOnly = false; $("vault-title").textContent = availableVaults.find(row => row.selected)?.name || "Items"; clearItem(); renderItems(loadedItems); };
-$("reload").onclick = () => reload().catch(error => toast("Sync failed", safeError(error), "error"));
+$("nav-all-items").onclick = () => selectBrowseView({ kind: 'all' }).catch(error => toast('All items could not be opened', safeError(error), 'error'));
+$("reload").onclick = () => syncInstalled().catch(error => toast("Sync failed", safeError(error), "error"));
 for (const [id, key, fallback] of [["preference-lock-minutes", "127vaults:lock-minutes", "30"], ["preference-clipboard-seconds", "127vaults:clipboard-seconds", "30"]]) {
   const control = $(id);
   control.value = localStorage.getItem(key) || fallback;
   control.onchange = () => { localStorage.setItem(key, control.value); if (id === "preference-lock-minutes" && root) arm(); };
 }
 $("mobile-sync").onclick = async () => {
-  try { await reload(); toast("Sync complete", "The latest server version is loaded.", "success"); }
+  try { await syncInstalled(); if (!installedApp) toast("Sync complete", "The latest server version is loaded.", "success"); }
   catch (error) { toast("Sync failed", safeError(error), "error"); }
 };
 $("session-footer").oncontextmenu = (event) => {
@@ -1890,7 +2380,7 @@ $("session-footer").oncontextmenu = (event) => {
 $("session-menu").onmouseleave = () => $("session-menu").classList.add("hidden");
 $("footer-sync").onclick = async () => {
   $("session-menu").classList.add("hidden");
-  try { await reload(); toast("Sync complete", "The latest server version is loaded.", "success"); }
+  try { await syncInstalled(); if (!installedApp) toast("Sync complete", "The latest server version is loaded.", "success"); }
   catch (error) { toast("Sync failed", safeError(error), "error"); }
 };
 $("footer-use-server").onclick = async () => {
@@ -1906,7 +2396,7 @@ $("complete-enrollment").onclick = completeEnrollment;
 $("settings-toggle").onclick = () => {
   $("profile-username").textContent = identity?.username || "";
   $("profile-device").textContent = identity?.deviceId || "Unavailable";
-  $("profile-secret-status").textContent = reusableSecret(identity) ? `Remembered in this browser until ${new Date(identity.secretExpiresAt || Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}` : "Required at next unlock";
+  $("profile-secret-status").textContent = installedApp && reusableSecret(identity) ? "Remembered on this registered device" : reusableSecret(identity) ? `Remembered in this browser until ${new Date(identity.secretExpiresAt || Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}` : "Required at next unlock";
   showSettingsView("profile");
   $("settings").showModal();
 };
@@ -1972,10 +2462,19 @@ for (let n of ["pointerdown", "keydown"])
     if (e.isTrusted && root) arm();
   });
 window.addEventListener("pagehide", () => {
-  window.dispatchEvent(new Event("vaults:clear-generator"));
-  core?.lock();
-  wipeInputs();
+  void lock(false);
 });
+window.addEventListener('pageshow', () => { if (root && Date.now() >= lockDeadline) void lock(); });
+window.addEventListener('focus', () => { if (root && Date.now() >= lockDeadline) void lock(); });
+if ($('register-browser-device')) {
+  $('register-browser-device').onclick = registerBrowserDevice;
+  $('browser-enrollment-check').onclick = checkBrowserApproval;
+  $('browser-enrollment-cancel').onclick = () => $('browser-enrollment-dialog').close();
+}
+if ($('web-collection-form')) {
+  $('web-collection-form').onsubmit = saveCollection;
+  $('web-collection-cancel').onclick = () => $('web-collection-dialog').close();
+}
 try {
   await init();
   window.addEventListener("vaults:generate-secret", (event) => {
@@ -1990,9 +2489,15 @@ try {
     $("username").value = identity.username;
     $("device").value = identity.deviceId;
   }
-  const setupState = await call("/api/v1/setup");
+  let setupState;
+  try { setupState = await call("/api/v1/setup"); }
+  catch (error) {
+    if (!installedApp || !identity || !networkUnavailable(error)) throw error;
+    setupState = { ownerRequired: false };
+  }
   ownerSetupRequired = setupState.ownerRequired === true;
   $("show-registration").hidden = !ownerSetupRequired;
+  if ($('register-browser-device')) $('register-browser-device').hidden = ownerSetupRequired || !!identity;
   $("registration-exit").hidden = ownerSetupRequired;
   $("setup-guidance").textContent = setupState.licenseMode === "active"
     ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."

@@ -17,6 +17,7 @@ treat it as public-beta or stable-format approval.
 Current work and release documents:
 
 - [Four component backlogs and active waves](docs/product/README.md)
+- [Installed PWA, offline use, and mobile validation](docs/product/pwa.md)
 - [API v1 protocol and CLI naming](docs/architecture/api-v1-contract.md)
 - [Beta-readiness gates](docs/release/beta-readiness.md)
 - [Experimental development runbook](docs/release/experimental-development.md)

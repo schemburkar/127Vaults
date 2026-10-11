@@ -329,6 +329,19 @@ impl ExperimentalEcf1Core {
             envelope: made.envelope,
         })
     }
+    /// Rebases an offline vault creation without changing its ID or wrapped key.
+    /// # Errors
+    /// Rejects an invalid envelope, authenticated directory, or vault limit.
+    pub fn rebase_private_vault(
+        &mut self,
+        root: &ExperimentalRoot,
+        directory: &[u8],
+        envelope: &[u8],
+    ) -> Result<Vec<u8>, JsError> {
+        self.core
+            .rebase_private_vault(root.handle, directory, envelope)
+            .map_err(ecf1_error)
+    }
     /// # Errors
     /// Rejects invalid state, scope, plaintext, or create/update mode.
     pub fn upsert_private_item(
@@ -368,6 +381,29 @@ impl ExperimentalEcf1Core {
             .decrypt_private_part(vault.handle, catalogue, id, envelope, purpose)
             .map(|x| x.to_vec())
             .map_err(ecf1_error)
+    }
+    /// Keeps an offline-created item ID when rebasing onto a newer catalogue.
+    /// # Errors
+    /// Rejects an invalid ID, existing create ID, or unauthenticated catalogue.
+    pub fn create_private_item_at_id(
+        &mut self,
+        vault: &ExperimentalVault,
+        catalogue: &[u8],
+        item: &[u8],
+        index: &[u8],
+        body: &[u8],
+    ) -> Result<ExperimentalPrivateItem, JsError> {
+        let id = item.try_into().map_err(|_| JsError::new("INVALID_INPUT"))?;
+        let made = self
+            .core
+            .upsert_private_item_at_id(vault.handle, catalogue, id, false, index, body)
+            .map_err(ecf1_error)?;
+        Ok(ExperimentalPrivateItem {
+            item: made.item.to_vec(),
+            catalogue: made.catalogue,
+            index: made.index,
+            body: made.body,
+        })
     }
     /// # Errors
     /// Returns one fixed ECF1 code; password and key failures are indistinguishable.
@@ -455,6 +491,18 @@ impl ExperimentalEcf1Core {
     }
     pub fn lock(&mut self) {
         self.core.lock();
+    }
+    /// Releases a temporary vault key after snapshot verification or replacement.
+    /// # Errors
+    /// Rejects a handle that was already released or invalidated by locking.
+    pub fn release_vault(&mut self, vault: &ExperimentalVault) -> Result<(), JsError> {
+        self.core.release(vault.handle).map_err(ecf1_error)
+    }
+    /// Releases the old root after an authenticated reconnect replaces it.
+    /// # Errors
+    /// Rejects a handle that was already released or invalidated by locking.
+    pub fn release_root(&mut self, root: &ExperimentalRoot) -> Result<(), JsError> {
+        self.core.release(root.handle).map_err(ecf1_error)
     }
     #[must_use]
     pub fn experimental(&self) -> bool {

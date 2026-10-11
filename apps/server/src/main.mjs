@@ -113,11 +113,19 @@ const licenseWriteGuard=createLicenseWriteGuard({pool,authenticate,origin:transp
   revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const webFiles=new Map([
   ['/', ['../../web/dist/index.html','text/html; charset=utf-8']],
+  ['/sw.js',['../../web/dist/sw.js','text/javascript; charset=utf-8']],
+  ['/manifest.webmanifest',['../../web/dist/manifest.webmanifest','application/manifest+json']],
+  ['/icons/icon-192.png',['../../web/dist/icons/icon-192.png','image/png']],
+  ['/icons/icon-512.png',['../../web/dist/icons/icon-512.png','image/png']],
+  ['/icons/apple-touch-icon.png',['../../web/dist/icons/apple-touch-icon.png','image/png']],
   ['/app/react-client.js',['../../web/dist/app/react-client.js','text/javascript; charset=utf-8']],
   ['/app/react-style.css',['../../web/dist/app/react-style.css','text/css; charset=utf-8']],
   ['/legacy',['../../web/mvp.html','text/html; charset=utf-8']],
   ['/app/style.css',['../../web/style.css','text/css; charset=utf-8']],
   ['/app/mvp-client.mjs',['../../web/mvp-client.mjs','text/javascript; charset=utf-8']],
+  ['/app/pwa-replica.mjs',['../../web/src/pwa-replica.mjs','text/javascript; charset=utf-8']],
+  ['/app/browser-enrollment.mjs',['../../web/src/browser-enrollment.mjs','text/javascript; charset=utf-8']],
+  ['/app/vault-lifecycle.mjs',['../../web/src/vault-lifecycle.mjs','text/javascript; charset=utf-8']],
   ['/app/passkeys.mjs',['../../extension/src/passkeys.mjs','text/javascript; charset=utf-8']],
   ['/app/private-vault-client.mjs',['../../web/src/private-vault-client.mjs','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture.js',['../../web/wasm/vaults_browser_fixture.js','text/javascript; charset=utf-8']],
@@ -139,12 +147,13 @@ const server = createServer(tls, async (req, res) => {
   if (stopping) { reply(503, { status: 'unavailable' }); return; }
   if(await adminHandler(req,res))return;
   if(await setupHandler(req,res))return;
-  const asset=webFiles.get(req.url);
+  const webUrl = new URL(req.url, transport.origin);
+  const asset=webFiles.get(webUrl.pathname === '/' ? '/' : req.url);
   if(asset&&['GET','HEAD'].includes(req.method)){
     try{const bytes=await readFile(new URL(asset[0],import.meta.url));res.writeHead(200,{
       'Content-Type':asset[1],
       'Cache-Control':'no-store',
-      'Content-Security-Policy':"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+      'Content-Security-Policy':"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; manifest-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
       'Referrer-Policy':'no-referrer','Permissions-Policy':'camera=(), microphone=(), geolocation=()'
     });res.end(req.method==='HEAD'?undefined:bytes)}catch{reply(503,{error:'web_assets_unavailable'})}return;
   }

@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+// @ts-expect-error Release plugin executes in Node and is not browser code.
+import { pwaBuild } from './pwa-build.mjs';
 
 export default defineConfig(({ command, mode }) => {
   const webRoot = fileURLToPath(new URL('.', import.meta.url));
@@ -39,6 +41,10 @@ export default defineConfig(({ command, mode }) => {
   const localClientAssets = new Map([
     ['/app/mvp-client.mjs', join(webRoot, 'mvp-client.mjs')],
     ['/app/private-vault-client.mjs', join(webRoot, 'src', 'private-vault-client.mjs')],
+    ['/app/pwa-replica.mjs', join(webRoot, 'src', 'pwa-replica.mjs')],
+    ['/app/browser-enrollment.mjs', join(webRoot, 'src', 'browser-enrollment.mjs')],
+    ['/app/vault-lifecycle.mjs', join(webRoot, 'src', 'vault-lifecycle.mjs')],
+    ['/app/passkeys.mjs', join(webRoot, '..', 'extension', 'src', 'passkeys.mjs')],
     ['/wasm/vaults_browser_fixture.js', join(webRoot, 'wasm', 'vaults_browser_fixture.js')],
     ['/wasm/vaults_browser_fixture_bg.wasm', join(webRoot, 'wasm', 'vaults_browser_fixture_bg.wasm')],
   ]);
@@ -61,7 +67,7 @@ export default defineConfig(({ command, mode }) => {
           if ([...localClientAssets.values()].includes(path)) server.ws.send({ type: 'full-reload' });
         });
       },
-    }, react(), tailwindcss()],
+    }, react(), tailwindcss(), pwaBuild()],
     server: {
       host: '127.0.0.1',
       port: 12780,

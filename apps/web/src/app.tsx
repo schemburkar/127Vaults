@@ -32,6 +32,8 @@ import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, 
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
 
 import * as productFeatures from "../../../packages/ui/src/product-features.mjs";
+import { PwaControls, PwaLifecycle } from './pwa-controls';
+import { CollectionLinks, CollectionsSettings, CollectionDialog, VaultLifecycleSettings, useVaultSettings } from './vault-collections';
 (window as any).__vaultsFeatures = productFeatures;
 
 const generateSecret = (options: GeneratorOptions) => new Promise<string>((resolve, reject) => {
@@ -133,7 +135,9 @@ function ToastRegion() {
     const add = (event: Event) => {
       const notice = (event as CustomEvent<Omit<ToastNotice, "id">>).detail;
       const id = crypto.randomUUID();
-      setNotices((current) => [...current, { ...notice, id }]);
+      // Keep rapid offline saves and reconnect notices from covering the
+      // editor on a phone-sized screen.
+      setNotices((current) => [...current.slice(-1), { ...notice, id }]);
       window.setTimeout(() => setNotices((current) => current.filter((row) => row.id !== id)), notice.kind === "error" ? 8000 : 4500);
     };
     window.addEventListener("vaults:toast", add);
@@ -631,7 +635,7 @@ function Authentication() {
             </Button>
             <p className="mb-1 font-bold" id="login-account-name" />
             <label id="legacy-secret-field" className={fieldLabel} hidden>
-              Account secret (one-time device upgrade)
+              Account secret (first unlock on this device)
               <Input
                 id="secret"
                 type="password"
@@ -664,6 +668,8 @@ function Authentication() {
           >
             Create first owner
           </Button>
+          <Button id="register-browser-device" variant="ghost" className="mx-auto mt-3 flex w-fit text-[#E0BB95]" hidden>Register this device</Button>
+          <PwaControls compact />
           <Button id="lock" hidden disabled>
             Lock
           </Button>
@@ -675,6 +681,7 @@ function Authentication() {
 }
 
 function Sidebar() {
+  const { view: browseView } = useVaultSettings();
   const [menuOpen, setMenuOpen] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   useEffect(() => {
@@ -690,7 +697,7 @@ function Sidebar() {
       <Brand />
       <Button variant="ghost" className="mobile-menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
       <nav className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
-      <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly} className={`${nav} ${!favoritesOnly ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}>
+      <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly && browseView?.kind === 'all'} className={`${nav} ${!favoritesOnly && browseView?.kind === 'all' ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
       </Button>
@@ -698,6 +705,7 @@ function Sidebar() {
       <Button id="password-health" variant="ghost" className={nav}><ShieldCheck aria-hidden="true" /><span>Password health</span></Button>
       <div className="vault-nav-heading mt-6 mb-2 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500 max-[800px]:hidden">VAULTS</p><IconButton id="create-vault" label="Add vault" className="!size-9 !min-h-9"><Plus size={16} aria-hidden="true" /></IconButton></div>
       {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={`${nav} ${vault.selected ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`} onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon aria-hidden="true" /><span>{vault.name}</span></Button>)}
+      <CollectionLinks className={nav} />
       <div className="mt-auto space-y-1 max-[560px]:contents">
         <Button id="reload" variant="ghost" className={`${nav} max-[560px]:hidden`} title="Sync now"><RefreshCw aria-hidden="true" /><span>Sync</span></Button>
         <Button id="mobile-sync" variant="ghost" className={`${nav} hidden max-[560px]:flex`}>
@@ -963,8 +971,9 @@ function Settings() {
         <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden={activeTab !== "preferences"}>
           <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p><KeyboardHelp />
           <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Lock after inactivity<select id="preference-lock-minutes" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label><label className="grid gap-2">Clear copied values after<select id="preference-clipboard-seconds" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select></label></div>
+          <PwaControls />
         </section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center gap-2 rounded-xl border border-white/10 p-1"><Button variant={vault.selected ? "secondary" : "ghost"} className="min-w-0 flex-1 justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} /><span className="truncate">{vault.name}</span>{vault.selected ? " · Current" : ""}</Button><Button variant="ghost" onClick={() => (window as any).__vaultsActions.openRenameVaultDialog(vault.vaultId)}>Rename</Button></div>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button></section>
+        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center gap-2 rounded-xl border border-white/10 p-1"><Button variant={vault.selected ? "secondary" : "ghost"} className="min-w-0 flex-1 justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} /><span className="truncate">{vault.name}</span>{vault.selected ? " · Current" : ""}</Button><Button variant="ghost" onClick={() => (window as any).__vaultsActions.openRenameVaultDialog(vault.vaultId)}>Rename</Button></div>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button><CollectionsSettings vaults={vaults} /><VaultLifecycleSettings vaults={vaults} /></section>
         <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden={activeTab !== "devices"}>
           <div id="devices-list-page">
             <div className="flex items-start justify-between gap-4 max-[560px]:flex-wrap">
@@ -1032,11 +1041,15 @@ export function App() {
   }, []);
   return (
     <AppErrorBoundary>
+      <PwaLifecycle />
       <Authentication />
       <Vault />
       <WebPasswordHealth />
       <Settings />
       <ToastRegion />
+      <CollectionDialog />
+      <dialog id="sync-review-dialog" className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><h2 id="sync-review-title" className="text-xl font-bold" /><p id="sync-review-detail" className="mt-3 text-sm text-slate-400" /><div className="mt-6 grid gap-2"><Button id="sync-review-mine">Keep my offline changes</Button><Button id="sync-review-server" variant="secondary">Use server version</Button><Button id="sync-review-later" variant="ghost">Review later</Button></div></dialog>
+      <dialog id="browser-enrollment-dialog" className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><h2 className="text-xl font-bold">Register this device</h2><p className="mt-3 text-sm text-slate-400">On an already registered device, unlock 127Vaults and open Settings → Devices → Register a device. Approve this one-time code:</p><output id="browser-enrollment-code" className="my-5 block text-center font-mono text-3xl tracking-widest" /><p id="browser-enrollment-status" className="text-sm text-slate-400" role="status" /><div className="mt-6 flex justify-end gap-2"><Button id="browser-enrollment-cancel" variant="secondary">Cancel</Button><Button id="browser-enrollment-check">Check approval</Button></div></dialog>
       <dialog id="web-create-vault-dialog" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><form id="web-create-vault-form"><h2 id="web-vault-dialog-title" className="text-xl font-bold">Create vault</h2><p className="mt-2 text-sm text-slate-400">Your vault name is stored in encrypted account settings.</p><label className="mt-5 grid gap-2 text-sm">Vault name<Input id="web-vault-name" autoFocus maxLength={80} required /></label><div className="mt-6 flex justify-end gap-2"><Button id="web-create-vault-cancel" type="button" variant="secondary">Cancel</Button><Button id="web-create-vault-submit" type="submit">Create vault</Button></div></form></dialog>
       <dialog id="conflict-dialog" className="m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm max-[560px]:p-4">
         <h2 className="text-xl font-bold">Resolve sync conflict</h2>

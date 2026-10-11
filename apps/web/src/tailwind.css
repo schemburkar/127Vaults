@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @source "../../../packages/ui/src";
 
+/* Home Screen safe areas and mobile form focus must not obscure controls. */
+@media (display-mode: standalone) {
+  body{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  #entry-shell{min-height:calc(100dvh - env(safe-area-inset-top))}
+}
+@media (max-width:800px){input,select,textarea{font-size:16px!important}button{touch-action:manipulation}}
+
 /* One invariant for every shared button. Responsive containers may size and
    justify buttons, but must never turn icon/label content into a column. */
 .ui-button{display:inline-flex!important;flex-direction:row!important;align-items:center!important;flex-wrap:nowrap!important;white-space:nowrap!important}

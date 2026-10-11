@@ -322,6 +322,56 @@ impl Core {
         })
     }
 
+    /// Adds an already password-root-wrapped offline vault to a newer directory.
+    /// The wrapped key and vault ID are preserved, so queued item ciphertexts
+    /// remain usable when another device concurrently creates a vault.
+    /// # Errors
+    /// Rejects an unauthenticated envelope/directory, duplicate vault, or limit.
+    pub fn rebase_private_vault(
+        &mut self,
+        root: KeyHandle,
+        current_directory: &[u8],
+        envelope: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        let r = self.keys.get(&root).ok_or(Error::InvalidHandle)?;
+        let old = Directory::decode(current_directory, &r.bytes, r.tenant, r.account)
+            .map_err(record_error)?;
+        let context: [u8; CONTEXT] = envelope
+            .get(11..104)
+            .ok_or(Error::InvalidInput)?
+            .try_into()
+            .map_err(|_| Error::InvalidInput)?;
+        let vault_id = id(&context, 33);
+        if old.entries.len() >= 5
+            || old.entries.iter().any(|entry| entry.vault == vault_id)
+            || id(&context, 49) != vault_id
+            || epoch(&context) != 1
+        {
+            return Err(Error::InvalidInput);
+        }
+        let handle = self.unwrap_vault(root, envelope, &context)?;
+        self.release(handle)?;
+        let mut entries = old.entries;
+        entries.push(DirectoryEntry {
+            vault: vault_id,
+            epoch: 1,
+            envelope_revision: context[65..81]
+                .try_into()
+                .map_err(|_| Error::InternalError)?,
+            envelope_sha256: sha256(envelope),
+        });
+        entries.sort_by_key(|entry| entry.vault);
+        Directory {
+            tenant: id(&context, 1),
+            account: id(&context, 17),
+            revision: random_revision().map_err(record_error)?,
+            base: old.revision,
+            entries,
+        }
+        .encode(&self.keys.get(&root).ok_or(Error::InvalidHandle)?.bytes)
+        .map_err(record_error)
+    }
+
     /// Opens one vault selected from an authenticated private directory.
     /// # Errors
     /// Rejects a directory, envelope, scope, revision, or digest mismatch.

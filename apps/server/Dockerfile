@@ -14,6 +14,11 @@ FROM dependencies AS web-build
 COPY apps/web/index.html apps/web/index.html
 COPY apps/web/tsconfig.json apps/web/tsconfig.json
 COPY apps/web/vite.config.ts apps/web/vite.config.ts
+COPY apps/web/pwa-build.mjs apps/web/pwa-build.mjs
+COPY apps/web/service-worker.template.js apps/web/service-worker.template.js
+COPY apps/web/public apps/web/public
+COPY apps/web/mvp-client.mjs apps/web/mvp-client.mjs
+COPY apps/web/wasm apps/web/wasm
 COPY apps/web/style.css apps/web/style.css
 COPY apps/web/src apps/web/src
 COPY apps/desktop/src/item-types.ts apps/desktop/src/item-types.ts
@@ -34,6 +39,9 @@ COPY --from=web-build /app/apps/web/dist apps/web/dist
 COPY apps/web/mvp.html apps/web/mvp.html
 COPY apps/web/style.css apps/web/style.css
 COPY apps/web/src/private-vault-client.mjs apps/web/src/private-vault-client.mjs
+COPY apps/web/src/pwa-replica.mjs apps/web/src/pwa-replica.mjs
+COPY apps/web/src/browser-enrollment.mjs apps/web/src/browser-enrollment.mjs
+COPY apps/web/src/vault-lifecycle.mjs apps/web/src/vault-lifecycle.mjs
 COPY apps/web/mvp-client.mjs apps/web/mvp-client.mjs
 COPY apps/extension/src/passkeys.mjs apps/extension/src/passkeys.mjs
 COPY apps/web/wasm apps/web/wasm

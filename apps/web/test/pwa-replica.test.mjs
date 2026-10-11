@@ -1,0 +1,169 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PwaReplica, collapseQueue, networkUnavailable, replicaRead, recordRevision } from '../src/pwa-replica.mjs';
+
+class MemoryStore {
+  values = new Map(); fail = false;
+  async read(key) { return structuredClone(this.values.get(key)); }
+  async write(key, value) { if (this.fail) throw Error('LOCAL_STORAGE_FAILED'); this.values.set(key, structuredClone(value)); }
+}
+const b64 = value => Buffer.from(value).toString('base64url');
+const uuid = value => { const h = Buffer.from(value).toString('hex'); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; };
+let wasm;
+async function fixture() {
+  if (!wasm) {
+    wasm = await import('../wasm/vaults_browser_fixture.js');
+    await wasm.default({ module_or_path: await readFile(new URL('../wasm/vaults_browser_fixture_bg.wasm', import.meta.url)) });
+  }
+  const core = new wasm.ExperimentalEcf1Core(), encoder = new TextEncoder();
+  const template = new Uint8Array(77); template[0] = 1;
+  template.set(new Uint8Array(16).fill(1),1); template.set(new Uint8Array(16).fill(2),17);
+  template[7] = template[23] = 0x40; template[9] = template[25] = 0x80;
+  template.set([0,0,0,1],65); template[76] = 1;
+  const password = encoder.encode('disposable-pwa-master-password'), secret = new Uint8Array(32).fill(3);
+  const root = core.create_root(template,password,secret);
+  const created = core.create_private_vault(root,core.create_empty_directory(root)), vault = created.vault();
+  const vaultId = uuid(vault.context().slice(33,49)), listPath = `/api/v1/vaults/${vaultId}/items`;
+  const records = {
+    '/api/v1/vaults': { directory: b64(created.directory()), vaultEnvelopes: [{ vaultId, envelope: b64(vault.envelope()), retired: false }] },
+    '/api/v1/vault-settings': { revision: null, envelope: null },
+    [listPath]: { catalogue: b64(created.catalogue()), indices: [] },
+    [`/api/v1/vaults/${vaultId}/operations`]: { cursor: 0, operations: [] },
+  };
+  const store = new MemoryStore(), replica = await new PwaReplica({ scope: 'synthetic-device', store }).load();
+  await replica.snapshot(records);
+  await replica.saveUnlock({ descriptor: b64(root.context()), envelope: b64(root.envelope()), authContext: { tenantId: 'synthetic', epoch: 1 } });
+  function mutation(catalogue = replica.read(listPath).catalogue, itemId, title = 'Synthetic offline item') {
+    const made = core.upsert_private_item(vault, Buffer.from(catalogue,'base64url'), itemId ? Buffer.from(itemId.replaceAll('-',''),'hex') : undefined, encoder.encode(JSON.stringify({ title })), encoder.encode(JSON.stringify({ username: 'sample', password: 'synthetic-secret-value', customFields: [] })));
+    const id = uuid(made.item());
+    return { itemId: id, path: `${listPath}${itemId ? `/${itemId}` : ''}`, method: itemId ? 'PUT' : 'POST', body: {
+      requestId: crypto.randomUUID(), baseCatalogueRevision: recordRevision(catalogue,44), catalogue: b64(made.catalogue()), index: b64(made.index()), body: b64(made.body()), ...(itemId ? {} : { itemId: id }),
+      signedOperation: { opId: crypto.randomUUID(), vaultId, itemId: id, deviceId: 'synthetic-device' },
+    } };
+  }
+  return { core,root,vault,created,replica,store,records,vaultId,listPath,password,secret,mutation };
+}
+
+test('offline queue survives restart, updates encrypted catalogue/body, and contains no plaintext', async () => {
+  const f = await fixture(), change = f.mutation();
+  assert.deepEqual(await f.replica.enqueue(change.path,change.method,change.body),{ queued: true });
+  const reopened = await new PwaReplica({ scope: 'synthetic-device', store: f.store }).load();
+  assert.equal(reopened.pending,1);
+  const listed = reopened.read(f.listPath), body = reopened.read(`${f.listPath}/${change.itemId}?catalogueRevision=unused`);
+  const decoded = new TextDecoder().decode(f.core.decrypt_private_part(f.vault,Buffer.from(listed.catalogue,'base64url'),Buffer.from(change.itemId.replaceAll('-',''),'hex'),Buffer.from(body.envelope,'base64url'),3));
+  assert.equal(JSON.parse(decoded).password,'synthetic-secret-value');
+  const disk = JSON.stringify([...f.store.values.values()]);
+  for (const plain of ['synthetic-secret-value','Synthetic offline item','disposable-pwa-master-password']) assert.ok(!disk.includes(plain));
+  f.core.lock(); f.core.free();
+});
+
+test('offline unlock validates the real wrapped root and rejects a wrong password', async () => {
+  const f = await fixture(), record = f.replica.state.unlock;
+  f.core.lock();
+  assert.throws(() => f.core.unwrap_root(Buffer.from(record.envelope,'base64url'),Buffer.from(record.descriptor,'base64url'),new TextEncoder().encode('incorrect-password'),f.secret));
+  const root = f.core.unwrap_root(Buffer.from(record.envelope,'base64url'),Buffer.from(record.descriptor,'base64url'),f.password,f.secret);
+  assert.ok(root); f.core.lock(); f.core.free();
+});
+
+test('storage failure never acknowledges an offline save or advances the replica', async () => {
+  const f = await fixture(), change = f.mutation(), before = structuredClone(f.replica.state);
+  f.store.fail = true;
+  await assert.rejects(f.replica.enqueue(change.path,change.method,change.body),/LOCAL_STORAGE_FAILED/);
+  assert.deepEqual(f.replica.state,before); f.core.lock(); f.core.free();
+});
+
+test('lost responses replay exactly the same request and signature in order', async () => {
+  const f = await fixture(), first = f.mutation();
+  await f.replica.enqueue(first.path,first.method,first.body);
+  const second = f.mutation(undefined,first.itemId,'Updated offline');
+  await f.replica.enqueue(second.path,second.method,second.body);
+  const requests = [];
+  await assert.rejects(f.replica.flush(async (path, options) => { requests.push({path,...options}); throw Error('SERVER_UNREACHABLE'); }),/SERVER_UNREACHABLE/);
+  assert.equal(f.replica.pending,2);
+  await f.replica.flush(async (path, options) => requests.push({path,...options}));
+  assert.deepEqual(requests[0],requests[1]); assert.equal(requests[2].body.requestId,second.body.requestId);
+  assert.equal(f.replica.pending,0); assert.equal(f.replica.local,false); f.core.lock(); f.core.free();
+});
+
+test('conflicts and auth rejection preserve all queued writes', async () => {
+  const f = await fixture(), change = f.mutation();
+  await f.replica.enqueue(change.path,change.method,change.body);
+  for (const message of ['BASE_CHANGED','authentication_required','forbidden']) {
+    await assert.rejects(f.replica.flush(async () => { throw Error(message); }),error => error.message === message && error.pendingEntry.body.requestId === change.body.requestId);
+    assert.equal(f.replica.pending,1);
+  }
+  await assert.rejects(f.replica.snapshot(f.records),/PENDING_LOCAL_CHANGES/);
+  f.core.lock(); f.core.free();
+});
+
+test('rebase consolidates edits while preserving original create and baseline', async () => {
+  const f = await fixture(), first = f.mutation();
+  await f.replica.enqueue(first.path,first.method,first.body);
+  const second = f.mutation(undefined,first.itemId,'Latest intent');
+  await f.replica.enqueue(second.path,second.method,second.body);
+  const collapsed = collapseQueue(f.replica.state.queue);
+  assert.equal(collapsed.length,1); assert.equal(collapsed[0].method,'POST');
+  assert.equal(collapsed[0].body.itemId,first.itemId); assert.equal(collapsed[0].body.body,second.body.body);
+  assert.equal(collapsed[0].baseline.index,null); assert.equal(f.replica.pending,2);
+  f.core.lock(); f.core.free();
+});
+
+test('stale catalogue saves and stale rebase plans cannot overwrite newer local changes', async () => {
+  const f = await fixture(), change = f.mutation();
+  const expected = structuredClone(f.replica.state.queue);
+  await f.replica.enqueue(change.path,change.method,change.body);
+  await assert.rejects(f.replica.enqueue(change.path,change.method,change.body),/BASE_CHANGED/);
+  await assert.rejects(f.replica.replaceQueue(f.records,[],expected),/LOCAL_QUEUE_CHANGED/);
+  assert.equal(f.replica.pending,1); f.core.lock(); f.core.free();
+});
+
+test('scopes isolate device replicas and reread committed local state', async () => {
+  const f = await fixture(), second = await new PwaReplica({ scope: 'synthetic-device', store: f.store }).load();
+  const other = await new PwaReplica({ scope: 'different-device', store: f.store }).load();
+  await f.replica.enqueue('/api/v1/vault-settings','PUT',{baseRevision:null,revision:'one',envelope:'encrypted-settings'});
+  await second.enqueue('/api/v1/vault-settings','PUT',{baseRevision:'one',revision:'two',envelope:'next-encrypted-settings'});
+  assert.equal(second.pending,2); assert.equal(other.pending,0);
+  assert.throws(() => other.read('/api/v1/vaults'),/OFFLINE_DATA_UNAVAILABLE/);
+  f.core.lock(); f.core.free();
+});
+
+test('offline vault creation and concurrent directory rebase preserve the wrapped key and item ciphertext', async () => {
+  const f = await fixture(), offline = f.core.create_private_vault(f.root,f.created.directory());
+  const newVault = offline.vault(), newId = uuid(newVault.context().slice(33,49));
+  const change = { requestId: crypto.randomUUID(), baseDirectoryRevision: recordRevision(b64(f.created.directory()),36), directory:b64(offline.directory()),vaultEnvelope:b64(newVault.envelope()),catalogue:b64(offline.catalogue()) };
+  await f.replica.enqueue('/api/v1/vaults','POST',change);
+  assert.ok(f.replica.read('/api/v1/vaults').vaultEnvelopes.some(row => row.vaultId === newId));
+  assert.equal(f.replica.read(`/api/v1/vaults/${newId}/items`).indices.length,0);
+  const concurrent = f.core.create_private_vault(f.root,f.created.directory());
+  const merged = f.core.rebase_private_vault(f.root,concurrent.directory(),newVault.envelope());
+  const reopened = f.core.open_private_vault(f.root,merged,newVault.context().slice(33,49),newVault.envelope());
+  assert.ok(reopened); assert.throws(() => f.core.rebase_private_vault(f.root,merged,newVault.envelope()));
+  const tampered = newVault.envelope(); tampered[tampered.length-1] ^= 1;
+  assert.throws(() => f.core.rebase_private_vault(f.root,concurrent.directory(),tampered));
+  f.core.lock(); f.core.free();
+});
+
+test('releasing temporary WASM handles permits repeated sync and invalidates released handles', async () => {
+  const f = await fixture();
+  for (let i=0;i<70;i++) {
+    const temporary = f.core.open_private_vault(f.root,f.created.directory(),f.vault.context().slice(33,49),f.vault.envelope());
+    f.core.release_vault(temporary);
+    assert.throws(() => f.core.upsert_private_item(temporary,f.created.catalogue(),undefined,new Uint8Array([1]),new Uint8Array([1])));
+    temporary.free();
+  }
+  f.core.lock(); f.core.free();
+});
+
+test('offline reads exclude auth, devices, admin, setup and license endpoints', () => {
+  for (const path of ['/api/v1/auth/','/api/v1/session','/api/v1/devices','/api/v1/setup','/api/v1/license','/admin/']) assert.equal(replicaRead(path),false,path);
+  assert.equal(networkUnavailable(Error('authentication_failed')),false);
+  assert.equal(networkUnavailable(Error('SERVER_UNREACHABLE')),true);
+});
+test('a server rollback or missing accepted operation cannot replace the last verified snapshot',async()=>{
+  const f=await fixture(),path=`/api/v1/vaults/${f.vaultId}/operations`;
+  const first=structuredClone(f.records);first[path]={cursor:2,operations:[{operation:{opId:'accepted',signature:'signature'}}]};await f.replica.snapshot(first);
+  const older=structuredClone(first);older[path].cursor=1;await assert.rejects(f.replica.snapshot(older),/SYNC_ROLLBACK/);
+  const fork=structuredClone(first);fork[path].operations=[];await assert.rejects(f.replica.snapshot(fork),/SYNC_FORK/);
+  assert.equal(f.replica.state.records[path].operations[0].operation.opId,'accepted');f.core.lock();f.core.free();
+});
