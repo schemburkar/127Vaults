@@ -30,7 +30,6 @@ import {
   LayoutGrid,
   LoaderCircle,
   LockKeyhole,
-  Menu,
   MoreHorizontal,
   Plus,
   Router,
@@ -209,6 +208,8 @@ export function App() {
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [resolvingOperationId, setResolvingOperationId] = useState<string | null>(null);
   const [footerMenu, setFooterMenu] = useState(false);
+  const [compactSidebar, setCompactSidebar] = useState(() => window.matchMedia("(max-width: 850px)").matches);
+  useEffect(() => { const query = window.matchMedia("(max-width: 850px)"); const update = () => setCompactSidebar(query.matches); query.addEventListener("change", update); return () => query.removeEventListener("change", update); }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem("127vaults:sidebar-collapsed") === "true"; } catch { return false; } });
   const [itemTabs, setItemTabs] = useState<Summary[]>([]);
   const openRequest = useRef(0);
@@ -1378,11 +1379,11 @@ export function App() {
     <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
-          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!sidebarCollapsed} onClick={() => { const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
+          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
             127
           </span>
           <strong>127Vaults</strong></button>
-          {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
+          {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="desktop-license-warning text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
             ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
             : licenseStatus.mode === "revoked"
               ? "License revoked: server writes are blocked. Ask the server operator for a replacement license."
@@ -1391,7 +1392,6 @@ export function App() {
                 : "Experimental license state; confirm server operator status before relying on it."}><AlertTriangle size={17} aria-hidden="true" /></button>}
 
         </div>
-        <Button variant="ghost" className="desktop-menu-toggle" aria-expanded={compactNavOpen} aria-label="Toggle navigation" onClick={() => setCompactNavOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
         <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
         <Button variant="ghost" className={cn("justify-start", viewMode === "all" && !favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />

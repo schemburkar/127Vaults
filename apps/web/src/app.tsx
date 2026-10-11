@@ -14,7 +14,6 @@ import {
   LayoutList,
   LayoutGrid,
   LockKeyhole,
-  Menu,
   Plus,
   RefreshCw,
   Router,
@@ -501,10 +500,11 @@ function DeviceList() {
     </ul>
   );
 }
-function Brand({ entry = false }: { entry?: boolean }) {
+function Brand({ entry = false, collapsed = false, onCollapse, compact = false, menuOpen = false }: { entry?: boolean; collapsed?: boolean; onCollapse?: () => void; compact?: boolean; menuOpen?: boolean }) {
   return (
-    <div className={`flex items-center gap-3 ${entry ? "entry-brand mb-8" : "brand px-2 pb-7 pt-2 max-[560px]:p-1"}`}>
-      <i className={`grid place-items-center rounded-xl bg-[#9D1F32] text-[11px] font-black not-italic text-white shadow-sm ${entry ? "size-10" : "size-9"}`}>127</i>
+    <div className={`flex items-center gap-3 ${entry ? "entry-brand mb-8" : "brand relative px-2 pb-7 pt-2 max-[560px]:p-1"}`}>
+      {onCollapse && <button type="button" className="sidebar-brand-toggle absolute inset-x-0 top-0 h-12 rounded-xl" aria-label={compact ? "Toggle navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compact ? menuOpen : !collapsed} onClick={onCollapse} />}
+      <i className={`grid shrink-0 place-items-center rounded-xl bg-[#9D1F32] text-[11px] font-black not-italic text-white shadow-sm ${entry ? "size-10" : "size-9"}`}>127</i>
       <b className="text-[15px] font-bold tracking-[-0.02em] text-white max-[800px]:hidden">127Vaults</b>
       {entry && (
         <span id="state" className="sr-only" aria-live="polite">
@@ -684,6 +684,8 @@ function Authentication() {
 function Sidebar({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: () => void }) {
   const { view: browseView } = useVaultSettings();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 800px)").matches);
+  useEffect(() => { const query = window.matchMedia("(max-width: 800px)"); const update = () => setCompact(query.matches); query.addEventListener("change", update); return () => query.removeEventListener("change", update); }, []);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   useEffect(() => {
     const update = (event: Event) => setFavoritesOnly(!!(event as CustomEvent<{ favoriteView?: boolean }>).detail?.favoriteView);
@@ -695,9 +697,7 @@ function Sidebar({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: ()
   const nav = "nav !min-h-11 w-full justify-start !border-0 !bg-transparent !px-3 text-slate-400 shadow-none hover:!bg-[#E0BB95]/10 hover:!text-[#E0BB95] max-[560px]:h-14 max-[560px]:min-w-0 max-[560px]:flex-1 max-[560px]:gap-1.5 max-[560px]:!px-2 max-[560px]:text-[10px] [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:shrink [&>span]:truncate [&>span]:text-left [&>b]:ml-auto [&>b]:rounded-full [&>b]:bg-white/10 [&>b]:px-2 [&>b]:py-0.5 [&>b]:text-[10px] max-[560px]:[&>b]:hidden";
   return (
     <aside className={`sidebar row-span-2 flex flex-col p-3 text-white ${menuOpen ? "menu-open" : ""}`}>
-      <Brand />
-      <Button variant="ghost" className="web-collapse-toggle" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={onCollapse}><Menu size={18} /><span>Collapse sidebar</span></Button>
-      <Button variant="ghost" className="mobile-menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Menu size={18} /><span>Vaults</span></Button>
+      <Brand collapsed={collapsed} compact={compact} menuOpen={menuOpen} onCollapse={compact ? () => setMenuOpen(open => !open) : onCollapse} />
       <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
       <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly && browseView?.kind === 'all'} className={`${nav} ${!favoritesOnly && browseView?.kind === 'all' ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
@@ -867,9 +867,9 @@ function Vault() {
     try { localStorage.setItem("127vaults:item-layout", next); } catch { /* Storage may be disabled. */ }
   };
   return (
-    <div id="vault" className={`grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-[4.5rem_1fr] max-[560px]:grid-cols-1 max-[560px]:grid-rows-[3.75rem_minmax(0,1fr)] ${layout === "grid" ? "vault-grid" : ""} ${collapsed ? "sidebar-collapsed" : ""}`} hidden>
+    <div id="vault" className={`grid h-dvh grid-cols-[15rem_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d] max-[800px]:grid-cols-1 max-[800px]:grid-rows-[3.75rem_minmax(0,1fr)] ${layout === "grid" ? "vault-grid" : ""} ${collapsed ? "sidebar-collapsed" : ""}`} hidden>
       <Sidebar collapsed={collapsed} onCollapse={collapseSidebar} />
-      <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[560px]:col-start-1 max-[560px]:row-start-2 max-[560px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
+      <main className="grid min-w-0 grid-rows-[4.25rem_1fr] overflow-hidden max-[800px]:col-start-1 max-[800px]:row-start-2 max-[800px]:h-full max-[560px]:grid-rows-[4rem_1fr]">
         <header className="flex items-center justify-between gap-5 border-b border-white/5 px-5 backdrop-blur max-[560px]:px-3">
           <div className="vault-search flex h-12 w-full max-w-2xl items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,.03)] transition focus-within:border-[#E0BB95]/60 focus-within:bg-white/8 focus-within:ring-4 focus-within:ring-[#E0BB95]/10 max-[560px]:max-w-none">
             <Search className="size-4 shrink-0" aria-hidden="true" />

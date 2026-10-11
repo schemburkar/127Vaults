@@ -67,6 +67,17 @@ try {
   await child.evaluate(() => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'vaults-locked' }));
   await child.getByText('Vault locked.', { exact: false }).waitFor();
   assert.equal(await child.getByText('fixture-password', { exact: true }).count(), 0);
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const toggle = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+    assert.ok((await toggle.boundingBox()).x < 50, 'Brand menu control should stay at the top left');
+    await toggle.click();
+    assert.equal(await page.locator('.desktop-nav-content').isVisible(), true);
+    await toggle.click();
+    assert.equal(await page.locator('.desktop-nav-content').isVisible(), false);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.getByRole('button', { name: 'Lock', exact: true }).click();
   await page.getByRole('heading', { name: 'Unlock 127Vaults' }).waitFor();
   assert.equal(await page.getByRole('tab').count(), 0);
