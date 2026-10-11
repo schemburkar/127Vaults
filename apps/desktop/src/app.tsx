@@ -943,7 +943,7 @@ export function App() {
     let disposed = false, removeClose: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(event => {
       if (dirtyRef.current && !window.confirm("Discard your unsaved changes and close 127Vaults?")) event.preventDefault();
-      else { dirtyRef.current = false; void emit("vaults-locked"); }
+      else { event.preventDefault(); dirtyRef.current = false; void emit("vaults-locked").catch(() => {}).then(() => invoke("lock")).catch(() => {}).finally(() => getCurrentWindow().destroy()); }
     }).then(unlisten => { if (disposed) unlisten(); else removeClose = unlisten; }).catch(() => {});
     return () => { disposed = true; removeClose?.(); window.removeEventListener("beforeunload", beforeUnload); };
   }, []);
