@@ -39,7 +39,7 @@ setTimeout(()=>{
  $('lock-app').onclick=()=>{send('vaults:locked');show(null);};
  show(location.port === "12890" ? items[1] : items[0]);
  if(location.search.includes('review=updated')) {
-   const click = label => [...document.querySelectorAll('button')].find(button=>button.textContent.trim()===label)?.click();
+   const click = label => [...document.querySelectorAll('button')].find(button=>(button.getAttribute('aria-label') || button.textContent.trim())===label)?.click();
    setTimeout(()=>click('Keep in tab'),50);
    setTimeout(()=>show(items[1]),100);
    setTimeout(()=>{click('Keep in tab');if(innerWidth>800) document.querySelector('[aria-label="Collapse sidebar"]')?.click();window.__workspacePreviewReady=true;},150);

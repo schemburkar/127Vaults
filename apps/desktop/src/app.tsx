@@ -11,6 +11,8 @@ import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser
 import { choicesForConflict } from "./conflict-choice.mjs";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
 import {
+  PanelsTopLeft,
+  ExternalLink,
   Star,
   ShieldCheck,
   AlertTriangle,
@@ -1518,7 +1520,6 @@ export function App() {
       </section>
       <main className={cn("desktop-detail overflow-auto p-7", (selected || itemTabs.length > 0) && "detail-selected")}>
         {itemTabs.length > 0 && <div className="item-tabs" role="tablist" aria-label="Open items">{itemTabs.map(tab => <div key={`${tab.vaultId}:${tab.itemId}`} className="item-tab"><button role="tab" aria-selected={selected?.itemId === tab.itemId && itemVaultId === tab.vaultId} onClick={() => void openItem(tab)}>{tab.title || "Untitled"}</button><button aria-label={`Close tab ${tab.title}`} onClick={() => { if (!confirmDiscard()) return; setItemTabs(current => current.filter(row => row !== tab)); if (selected?.itemId === tab.itemId && itemVaultId === tab.vaultId) { setSelected(null); setEditing(false); } }}><X size={14} /></button></div>)}</div>}
-        {selected?.itemId && !editing && <div className="item-workspace-actions"><Button variant="ghost" onClick={pinItem}>Keep in tab</Button><Button variant="ghost" onClick={() => void popOutItem()}>Open in window</Button></div>}
         {healthOpen && <PasswordHealth scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
         {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {selected ? (
@@ -1755,8 +1756,8 @@ export function App() {
                     <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
-                    <div className="flex items-center gap-2">
-                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" onClick={beginEditing}>Edit</Button>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" onClick={beginEditing}>Edit</Button><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
                       <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
                     </div>
                   </div>

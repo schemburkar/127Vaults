@@ -746,7 +746,7 @@ function ItemDetail() {
           </div>
           <div className="flex flex-wrap items-center gap-1"><IconButton id="favorite-item" label="Add to favorites" aria-pressed={false}><Star size={17} /></IconButton><Button id="duplicate-item" variant="ghost">Duplicate</Button><Button id="edit-item" variant="secondary">
             Edit
-          </Button></div>
+          </Button><span id="item-workspace-actions" className="inline-flex items-center gap-1" /></div>
         </div>
         <section id="view-signin" className={detailSection}>
           <h3>Sign in</h3>
