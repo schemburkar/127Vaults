@@ -367,6 +367,20 @@ impl ExperimentalEcf1Core {
         })
     }
     /// # Errors
+    /// Rejects an invalid handle or an unauthenticated catalogue.
+    pub fn verify_private_catalogue(
+        &self,
+        vault: &ExperimentalVault,
+        catalogue: &[u8],
+    ) -> Result<Vec<u8>, JsError> {
+        self.core
+            .verify_private_catalogue(vault.handle, catalogue)
+            .map(|items| items.into_iter().flatten().collect())
+            .map_err(ecf1_error)
+    }
+
+    /// Authenticates the catalogue and decrypts the committed item part.
+    /// # Errors
     /// Rejects a catalogue, commitment, context, or ciphertext failure.
     pub fn decrypt_private_part(
         &self,

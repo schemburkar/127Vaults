@@ -126,6 +126,7 @@ const webFiles=new Map([
   ['/app/pwa-replica.mjs',['../../web/src/pwa-replica.mjs','text/javascript; charset=utf-8']],
   ['/app/browser-enrollment.mjs',['../../web/src/browser-enrollment.mjs','text/javascript; charset=utf-8']],
   ['/app/vault-lifecycle.mjs',['../../web/src/vault-lifecycle.mjs','text/javascript; charset=utf-8']],
+  ['/app/signed-sync.mjs',['../../web/src/signed-sync.mjs','text/javascript; charset=utf-8']],
   ['/app/passkeys.mjs',['../../extension/src/passkeys.mjs','text/javascript; charset=utf-8']],
   ['/app/private-vault-client.mjs',['../../web/src/private-vault-client.mjs','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture.js',['../../web/wasm/vaults_browser_fixture.js','text/javascript; charset=utf-8']],

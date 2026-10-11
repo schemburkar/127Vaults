@@ -50,7 +50,7 @@ aliases were removed after browser, acceptance, and CLI consumers migrated.
 | `PUT` | `/api/v1/vaults/{vaultId}/items/{itemId}` | Replace the encrypted item revision. |
 | `GET` | `/api/v1/vaults/{vaultId}/operations` | Fetch signed operations after a cursor. |
 | `POST` | `/api/v1/vaults/{vaultId}/operations` | Append a signed operation. |
-| `GET` | `/api/v1/vaults/{vaultId}/checkpoint` | Fetch the latest signed checkpoint. |
+| `GET` | `/api/v1/vaults/{vaultId}/checkpoint` | Fetch the latest signed checkpoint, or a bounded chain page with `history=1`, optional `after=<checkpoint hash>`, and `limit` (1–500). History responses include `checkpoints`, `hasMore`, and the checkpoint verification key. |
 | `POST` | `/api/v1/vaults/{vaultId}/checkpoint` | Create the next signed checkpoint. |
 | `GET` | `/api/v1/devices` | List trusted devices. |
 | `POST` | `/api/v1/devices/enrollments` | Begin a legacy device enrollment flow. |

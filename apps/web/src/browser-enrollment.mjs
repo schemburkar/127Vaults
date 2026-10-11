@@ -23,5 +23,5 @@ export async function finishBrowserEnrollment(pending, send, persistApproval = a
   const possessionSignature = b64(new Uint8Array(await crypto.subtle.sign('Ed25519', pending.privateKey, encode({ ...binding, purpose: 'device-possession' }))));
   const completed = await send(`/api/v1/device-enrollment/${pending.enrollmentId}/complete`, { method: 'POST', body: { pollToken: pending.pollToken, possessionSignature } });
   if (completed.deviceId !== pending.deviceId) throw Error('ENROLLMENT_INVALID');
-  return { username: pending.username, accountId: binding.accountId, deviceId: pending.deviceId, privateKey: pending.privateKey };
+  return { username: pending.username, accountId: binding.accountId, deviceId: pending.deviceId, publicKey: pending.publicKey, privateKey: pending.privateKey };
 }

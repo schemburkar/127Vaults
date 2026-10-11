@@ -572,9 +572,31 @@ impl Core {
             body: enc_body.envelope,
         })
     }
-    /// Verifies the authenticated catalogue commitment before decrypting one item part.
+    /// Authenticates a catalogue, including an empty one, and returns its item IDs.
     /// # Errors
-    /// Rejects missing items, mismatched commitments/contexts, or failed authentication.
+    /// Rejects an invalid vault handle, scope, catalogue encoding or authentication.
+    pub fn verify_private_catalogue(
+        &self,
+        vault: KeyHandle,
+        catalogue: &[u8],
+    ) -> Result<Vec<[u8; 16]>, Error> {
+        let key = self.keys.get(&vault).ok_or(Error::InvalidHandle)?;
+        if key.kind != Kind::Vault {
+            return Err(Error::InvalidHandle);
+        }
+        let authenticated =
+            Catalogue::decode(catalogue, &key.bytes, key.tenant, key.vault, key.epoch)
+                .map_err(record_error)?;
+        Ok(authenticated
+            .entries
+            .into_iter()
+            .map(|entry| entry.item)
+            .collect())
+    }
+
+    /// Authenticates an item against its vault catalogue and decrypts it.
+    /// # Errors
+    /// Rejects an invalid handle, catalogue, commitment, context or ciphertext.
     pub fn decrypt_private_part(
         &self,
         vault: KeyHandle,

@@ -22,6 +22,11 @@ export function createSignedSyncHandler(store,authenticate,origin,{checkpointPub
           const cursor=url.searchParams.has('cursor')?Number(url.searchParams.get('cursor')):0,limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):100;
           writeJson(res,200,await store.fetch(auth,{vaultId,cursor,limit}));return true;
         }
+        if(url.searchParams.has('history')) {
+          if(url.searchParams.get('history')!=='1'||[...url.searchParams.keys()].some(key=>!['history','after','limit'].includes(key)))throw new SyncProtocolError('invalid_request');
+          const after=url.searchParams.get('after'),limit=url.searchParams.has('limit')?Number(url.searchParams.get('limit')):100;
+          writeJson(res,200,{...await store.checkpointHistory(auth,vaultId,{after,limit}),checkpointPublicKey});return true;
+        }
         if([...url.searchParams.keys()].length)throw new SyncProtocolError('invalid_request');
         writeJson(res,200,{checkpoint:await store.latestCheckpoint(auth,vaultId),checkpointPublicKey});return true;
       }

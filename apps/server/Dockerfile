@@ -42,6 +42,7 @@ COPY apps/web/src/private-vault-client.mjs apps/web/src/private-vault-client.mjs
 COPY apps/web/src/pwa-replica.mjs apps/web/src/pwa-replica.mjs
 COPY apps/web/src/browser-enrollment.mjs apps/web/src/browser-enrollment.mjs
 COPY apps/web/src/vault-lifecycle.mjs apps/web/src/vault-lifecycle.mjs
+COPY apps/web/src/signed-sync.mjs apps/web/src/signed-sync.mjs
 COPY apps/web/mvp-client.mjs apps/web/mvp-client.mjs
 COPY apps/extension/src/passkeys.mjs apps/extension/src/passkeys.mjs
 COPY apps/web/wasm apps/web/wasm

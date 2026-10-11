@@ -6,7 +6,7 @@ import { PwaReplica, collapseQueue, networkUnavailable, replicaRead, recordRevis
 class MemoryStore {
   values = new Map(); fail = false;
   async read(key) { return structuredClone(this.values.get(key)); }
-  async write(key, value) { if (this.fail) throw Error('LOCAL_STORAGE_FAILED'); this.values.set(key, structuredClone(value)); }
+  async write(key, value, expectedRevision) { if (this.fail) throw Error('LOCAL_STORAGE_FAILED'); if(expectedRevision!==undefined&&(this.values.get(key)?.storageRevision||0)!==expectedRevision)throw Error('LOCAL_QUEUE_CHANGED'); this.values.set(key, structuredClone(value)); }
 }
 const b64 = value => Buffer.from(value).toString('base64url');
 const uuid = value => { const h = Buffer.from(value).toString('hex'); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; };
@@ -166,4 +166,43 @@ test('a server rollback or missing accepted operation cannot replace the last ve
   const older=structuredClone(first);older[path].cursor=1;await assert.rejects(f.replica.snapshot(older),/SYNC_ROLLBACK/);
   const fork=structuredClone(first);fork[path].operations=[];await assert.rejects(f.replica.snapshot(fork),/SYNC_FORK/);
   assert.equal(f.replica.state.records[path].operations[0].operation.opId,'accepted');f.core.lock();f.core.free();
+});
+test('rebasing cannot lose an accepted operation or replace a known signing key',async()=>{
+  const f=await fixture(),path=`/api/v1/vaults/${f.vaultId}/operations`;
+  const accepted=f.mutation();await f.replica.enqueue(accepted.path,accepted.method,accepted.body);await f.replica.flush(async()=>({}));
+  const pending=f.mutation(undefined,accepted.itemId);await f.replica.enqueue(pending.path,pending.method,pending.body);
+  const remote=structuredClone(f.records);await assert.rejects(f.replica.replaceQueue(remote,[],f.replica.state.queue),/SYNC_ROLLBACK/);
+  assert.equal(f.replica.pending,1);
+  remote[path]={cursor:1,operations:[{operation:accepted.body.signedOperation}],devicePublicKeys:{device:'new-key'}};
+  f.replica.state.records[path].devicePublicKeys={device:'pinned-key'};
+  assert.throws(()=>f.replica.validateRemote(remote),/SYNC_DEVICE_KEY_CHANGED/);
+  f.core.lock();f.core.free();
+});
+test('storage compare-and-swap rejects overlapping writers even without navigator locks',async()=>{
+  const f=await fixture(),other=await new PwaReplica({scope:'synthetic-device',store:f.store}).load();
+  const first=structuredClone(f.replica.state),second=structuredClone(other.state);
+  first.unlock={descriptor:'first'};second.unlock={descriptor:'second'};
+  await f.replica.commit(first);await assert.rejects(other.commit(second),/LOCAL_QUEUE_CHANGED/);
+  assert.equal((await f.store.read('synthetic-device')).unlock.descriptor,'first');f.core.lock();f.core.free();
+});
+test('persisted queues cannot redirect writes into auth, admin or unrelated API routes',async()=>{
+  const f=await fixture(),mutation=f.mutation();await f.replica.enqueue(mutation.path,mutation.method,mutation.body);
+  const saved=await f.store.read('synthetic-device');saved.queue[0].path='/admin/delete';await f.store.write('synthetic-device',saved);
+  await assert.rejects(new PwaReplica({scope:'synthetic-device',store:f.store}).load(),/LOCAL_REPLICA_INVALID/);
+  await assert.rejects(f.replica.flush(()=>assert.fail('sent redirected request')),/LOCAL_REPLICA_INVALID/);
+  assert.equal(f.replica.pending,1);f.core.lock();f.core.free();
+});
+test('signature validation failures stop replay without acknowledging or deleting local edits',async()=>{
+  const f=await fixture(),mutation=f.mutation();await f.replica.enqueue(mutation.path,mutation.method,mutation.body);
+  f.replica.validateEntry=async()=>{throw Error('INVALID_SYNC_HISTORY')};
+  await assert.rejects(f.replica.flush(()=>assert.fail('sent unverified request')),/INVALID_SYNC_HISTORY/);
+  assert.equal(f.replica.pending,1);f.core.lock();f.core.free();
+});
+test('catalogue verification authenticates empty vaults and returns the complete committed item set',async()=>{
+  const f=await fixture();assert.deepEqual([...f.core.verify_private_catalogue(f.vault,f.created.catalogue())],[]);
+  const changed=f.mutation(),catalogue=Buffer.from(changed.body.catalogue,'base64url');
+  assert.equal(uuid(f.core.verify_private_catalogue(f.vault,catalogue)),changed.itemId);
+  const corrupted=f.created.catalogue();corrupted[corrupted.length-1]^=1;assert.throws(()=>f.core.verify_private_catalogue(f.vault,corrupted));
+  const other=f.core.create_private_vault(f.root,f.created.directory()),handle=other.vault();
+  assert.throws(()=>f.core.verify_private_catalogue(handle,catalogue));f.core.lock();f.core.free();
 });

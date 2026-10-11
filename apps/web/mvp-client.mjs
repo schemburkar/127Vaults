@@ -7,6 +7,7 @@ import { PASSKEY_META, PASSKEY_KEY, readMetadata, passkeyFields } from '/app/pas
 import { PwaReplica, isInstalledApp, networkUnavailable, replicaRead, recordRevision, collapseQueue } from '/app/pwa-replica.mjs';
 import { requestBrowserEnrollment, finishBrowserEnrollment } from '/app/browser-enrollment.mjs';
 import { VaultLifecycleClient } from '/app/vault-lifecycle.mjs';
+import { verifySyncHistory, verifyLatestPayload, verifyCheckpoints, checkpointHash, verifyQueuedOperation } from '/app/signed-sync.mjs';
 const installedApp = isInstalledApp();
 let replica = null, reconnectCredentials = null, serverAuthenticated = false, snapshotBusy = false;
 let sessionGeneration = 0, lockDeadline = 0;
@@ -115,6 +116,8 @@ const updateSessionDates = () => {
   const localStatus = replica?.local ? 'Offline · saved on this device' : '';
   node.textContent = `${syncState === 'syncing' ? 'Syncing…' : syncState === 'error' ? 'Sync needs attention' : localStatus || (hasUnsavedChanges() ? 'Unsaved changes' : lastSynced ? 'Up to date' : 'Not synced')}${replica?.pending ? ` · ${replica.pending} pending change${replica.pending === 1 ? '' : 's'}` : ''} · ${hasUnsavedChanges() ? 'Unsaved edit · ' : ''}Server sync ${time(lastSynced)}`;
   node.title = syncFailure || (installedApp ? 'Encrypted changes are saved on this device and synced while the app is open and connected.' : 'Web saves directly to the server. Unsaved edits have not been synced.');
+  window.__vaultsSyncState = { unlocked: !!root, pending: replica?.pending || 0, offline: !!replica?.local, syncing: busy, error: syncFailure, at: replica?.state.snapshotAt || null };
+  window.dispatchEvent(new CustomEvent('vaults:sync-state', { detail: window.__vaultsSyncState }));
 };
 const toast = (title, detail = "", type = "info") => {
   window.dispatchEvent(new CustomEvent("vaults:toast", { detail: { title, detail, kind: type } }));
@@ -247,6 +250,7 @@ const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storage is fu
     OFFLINE_DATA_UNAVAILABLE: "This device has no complete offline copy yet. Connect and sync first.",
     ONLINE_REQUIRED: "Connect to the server to perform this action.",
     LOCAL_STORAGE_FAILED: "Device storage could not save this change. Free space and retry before closing the app.",
+    LOCAL_REPLICA_INVALID: "The encrypted local queue is invalid. It has been preserved; no queued requests were sent.",
     authentication_required: "Unlock with your master password to reconnect and sync. Local changes are preserved.",
     ENROLLMENT_EXPIRED: "This registration code expired. Close this dialog and register again.",
     ENROLLMENT_INVALID: "Device approval could not be verified. Start a new registration.",
@@ -259,6 +263,11 @@ const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storage is fu
     REMOVAL_SOURCE_CHANGED: "The source vault changed. It remains available; cancel the pending move and start again after syncing.",
     SYNC_ROLLBACK: "The server returned an older sync history. Your verified local copy is preserved.",
     SYNC_FORK: "The server sync history differs from this device’s verified copy. Your local changes are preserved.",
+    INVALID_SYNC_HISTORY: "Sync signatures or the operation chain could not be verified. Your encrypted local copy and changes are preserved.",
+    SYNC_DEVICE_KEY_CHANGED: "A registered device’s signing key changed unexpectedly. Sync stopped; your local changes are preserved.",
+    SYNC_PAYLOAD_MISMATCH: "Downloaded vault records do not match their signed operation. Sync stopped; your local copy is preserved.",
+    INVALID_SYNC_CHECKPOINT: "The server’s signed checkpoint could not be verified. Your local copy and changes are preserved.",
+    SYNC_CHECKPOINT_KEY_CHANGED: "The server checkpoint signing key changed. Sync stopped; verify the server before proceeding.",
     onboarding_failed:
       "Setup was rejected. The code may be invalid, expired, or already used.",
     authentication_failed:
@@ -589,6 +598,7 @@ async function setup() {
       deviceId,
       username: candidate.username,
       privateKey: generated.keys.privateKey,
+      publicKey: b64(generated.publicRaw),
       secretEnvelope,
       secretExpiresAt: installedApp ? undefined : Date.now() + 30 * 24 * 60 * 60 * 1000,
     });
@@ -764,6 +774,7 @@ async function authenticateOnline(secret, password) {
 }
 async function login() {
   const generation = ++sessionGeneration;
+  let loginCredentials;
   let stage = "checking this browser";
   setBusy(true);
   status("login-status", "Checking enrolled device…");
@@ -783,10 +794,11 @@ async function login() {
         $("master").value,
       );
     let { secret, password } = credentials();
+    loginCredentials = { secret, password };
     stage = "verifying account credentials";
     status("login-status", "Verifying credentials…");
     if (installedApp) {
-      replica = await new PwaReplica({ scope: identity.deviceId, changed: replicaChanged }).load();
+      replica = await new PwaReplica({ scope: identity.deviceId, changed: replicaChanged, validateEntry: verifyPendingEntry }).load();
       replicaChanged();
       reconnectCredentials = { secret: secret.slice(), password: password.slice() };
     }
@@ -809,6 +821,7 @@ async function login() {
       replica.local = true; serverAuthenticated = false;
       lastSynced = new Date(replica.state.snapshotAt);
     }
+    if (replica?.state.snapshotAt) await verifyOfflineHistory();
     secret.fill(0); password.fill(0);
     const verificationSalt = crypto.getRandomValues(new Uint8Array(32));
     passkeyVerifier = { salt: verificationSalt, value: await passwordCheckBytes($("master").value, verificationSalt) };
@@ -854,19 +867,84 @@ async function login() {
     status("login-status", `${stage}: ${detail}`, "error");
     msg(`Login did not complete: ${detail}`, "error");
   } finally {
+    loginCredentials?.secret.fill(0); loginCredentials?.password.fill(0);
     setBusy(false);
   }
 }
 async function operationHistory(targetVault, send = remoteCall) {
   let cursor = 0, operations = [], devicePublicKeys = {};
+  const generation = sessionGeneration, context = authContext;
   for (;;) {
     const page = await send(`/api/v1/vaults/${targetVault}/operations?cursor=${cursor}&limit=500`);
+    if (generation !== sessionGeneration || !context) throw Error('LOCKED');
+    if (!Array.isArray(page.operations) || !Number.isSafeInteger(page.cursor) || page.cursor < cursor
+      || typeof page.hasMore !== 'boolean') throw Error('INVALID_SYNC_HISTORY');
+    for (const [device, key] of Object.entries(page.devicePublicKeys || {})) {
+      if (devicePublicKeys[device] && devicePublicKeys[device] !== key) throw Error('SYNC_DEVICE_KEY_CHANGED');
+    }
     operations.push(...page.operations);
     Object.assign(devicePublicKeys, page.devicePublicKeys || {});
-    if (!page.hasMore) return { cursor: page.cursor, operations, devicePublicKeys, hasMore: false };
+    if (!page.hasMore) {
+      // Version-one local queues omitted projected cursors. Full history makes
+      // their positions unambiguous; never repair cursors received remotely.
+      if (send === call && replica?.state.snapshotAt) operations = operations.map((row, index) => ({ ...row, cursor: row.cursor ?? index + 1 }));
+      const knownKeys = Object.assign({}, ...Object.entries(replica?.state.records || {}).filter(([path]) => path.endsWith('/operations')).map(([, history]) => history.devicePublicKeys || {}));
+      if (identity.publicKey) knownKeys[identity.deviceId] = identity.publicKey;
+      const result = await verifySyncHistory({ cursor: page.cursor, operations, devicePublicKeys, hasMore: false }, {
+        tenantId: context.tenantId, vaultId: targetVault, knownKeys, ownDeviceId: identity.deviceId, ownPrivateKey: identity.privateKey,
+      });
+      if (generation !== sessionGeneration) throw Error('LOCKED');
+      return result;
+    }
     if (page.cursor <= cursor) throw Error('INVALID_SERVER_RESPONSE');
     cursor = page.cursor;
   }
+}
+async function verifyOfflineHistory() {
+  const activeReplica = replica, generation = sessionGeneration;
+  for (const row of activeReplica.state.records['/api/v1/vaults'].vaultEnvelopes) {
+    const listed = activeReplica.read(`/api/v1/vaults/${row.vaultId}/items`);
+    const handle = core.open_private_vault(root, un(activeReplica.state.records['/api/v1/vaults'].directory), id(row.vaultId), un(row.envelope));
+    try { verifyListedCatalogue(handle, listed); } finally { core.release_vault(handle); handle.free?.(); }
+    const history = await operationHistory(row.vaultId, call), latest = history.operations.at(-1)?.operation;
+    if (generation !== sessionGeneration || replica !== activeReplica) throw Error('LOCKED');
+    const checkpoints = activeReplica.state.records[`/api/v1/vaults/${row.vaultId}/checkpoint`];
+    if (checkpoints) await verifyCheckpoints(checkpoints.checkpoints, history, { tenantId: authContext.tenantId, vaultId: row.vaultId, publicKey: checkpoints.checkpointPublicKey });
+    if (latest && latest.kind !== 'item.delete') {
+      const path = `/api/v1/vaults/${row.vaultId}/items`, listed = activeReplica.read(path);
+      const index = listed.indices.find(item => item.itemId === latest.itemId);
+      if (!index) throw Error('SYNC_PAYLOAD_MISMATCH');
+      await verifyLatestPayload(history, listed.catalogue, index.envelope, activeReplica.read(`${path}/${latest.itemId}`).envelope);
+    }
+  }
+}
+async function verifyPendingEntry(entry) {
+  const generation = sessionGeneration, activeRoot = root;
+  if (!activeRoot) throw Error('LOCKED');
+  if (entry.path === '/api/v1/vault-settings') core.decrypt_account_settings(activeRoot, un(entry.body.envelope));
+  else if (entry.path === '/api/v1/vaults') {
+    const created = un(entry.body.vaultEnvelope), vaultId = created.slice(44, 60);
+    const handle = core.open_private_vault(activeRoot, un(entry.body.directory), vaultId, created);
+    try { verifyListedCatalogue(handle, { catalogue: entry.body.catalogue, indices: [] }); } finally { core.release_vault(handle); handle.free?.(); }
+  } else await verifyQueuedOperation(entry, { tenantId: authContext.tenantId, deviceId: identity.deviceId, privateKey: identity.privateKey });
+  if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED');
+}
+async function downloadCheckpoints(vaultId, history) {
+  const saved = replica?.state.records[`/api/v1/vaults/${vaultId}/checkpoint`];
+  const checkpoints = structuredClone(saved?.checkpoints || []);
+  let publicKey = saved?.checkpointPublicKey || null;
+  for (;;) {
+    const after = checkpoints.length ? `&after=${await checkpointHash(checkpoints.at(-1))}` : '';
+    const page = await remoteCall(`/api/v1/vaults/${vaultId}/checkpoint?history=1&limit=500${after}`);
+    if (!Array.isArray(page.checkpoints) || typeof page.hasMore !== 'boolean' || (page.hasMore && !page.checkpoints.length)) throw Error('INVALID_SYNC_CHECKPOINT');
+    if (publicKey && publicKey !== page.checkpointPublicKey) throw Error('SYNC_CHECKPOINT_KEY_CHANGED');
+    publicKey = page.checkpointPublicKey;
+    if (page.checkpoints.some(checkpoint => checkpoint.cursor > history.cursor)) throw Error('BASE_CHANGED');
+    checkpoints.push(...page.checkpoints);
+    if (!page.hasMore) break;
+  }
+  await verifyCheckpoints(checkpoints, history, { tenantId: authContext.tenantId, vaultId, publicKey, pinnedKey: saved?.checkpointPublicKey });
+  return { checkpoints, checkpointPublicKey: publicKey };
 }
 async function downloadReplica() {
   const activeRoot = root, generation = sessionGeneration;
@@ -881,6 +959,7 @@ async function downloadReplica() {
     try {
       const listPath = `/api/v1/vaults/${row.vaultId}/items`, listed = await remoteCall(listPath);
       records[listPath] = listed;
+      verifyListedCatalogue(localVault, listed);
       const localCatalogue = un(listed.catalogue), revision = recordRevision(listed.catalogue, 44);
       for (const summary of listed.indices) {
         core.decrypt_private_part(localVault, localCatalogue, id(summary.itemId), un(summary.envelope), 4);
@@ -889,15 +968,30 @@ async function downloadReplica() {
         records[`${listPath}/${summary.itemId}`] = body;
       }
       const operations = await operationHistory(row.vaultId);
+      // Check the catalogue again before comparing the signed payload; a
+      // concurrent save is a retryable torn snapshot, not signature corruption.
+      if ((await remoteCall(listPath)).catalogue !== listed.catalogue) throw Error('BASE_CHANGED');
+      const latest = operations.operations.at(-1)?.operation;
+      if (latest && latest.kind !== 'item.delete') {
+        const latestIndex = listed.indices.find(summary => summary.itemId === latest.itemId);
+        if (!latestIndex) throw Error('SYNC_PAYLOAD_MISMATCH');
+        await verifyLatestPayload(operations, listed.catalogue, latestIndex.envelope, records[`${listPath}/${latest.itemId}`].envelope);
+      }
       // Fetch after bodies/history to reject a torn catalogue snapshot.
       if ((await remoteCall(listPath)).catalogue !== listed.catalogue) throw Error('BASE_CHANGED');
       records[`/api/v1/vaults/${row.vaultId}/operations`] = operations;
+      records[`/api/v1/vaults/${row.vaultId}/checkpoint`] = await downloadCheckpoints(row.vaultId, operations);
     } finally { if (generation === sessionGeneration) core.release_vault(localVault); localVault.free?.(); }
   }
   if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED');
   if (JSON.stringify(await remoteCall('/api/v1/vaults')) !== JSON.stringify(data)) throw Error('BASE_CHANGED');
   if ((await remoteCall('/api/v1/vault-settings')).revision !== records['/api/v1/vault-settings'].revision) throw Error('BASE_CHANGED');
   return records;
+}
+function verifyListedCatalogue(handle, listed) {
+  const authenticated = core.verify_private_catalogue(handle, un(listed.catalogue)), expected = [];
+  for (let offset = 0; offset < authenticated.length; offset += 16) expected.push(uuid(authenticated.slice(offset, offset + 16)));
+  if (!Array.isArray(listed.indices) || JSON.stringify(expected.sort()) !== JSON.stringify(listed.indices.map(row => row.itemId).sort())) throw Error('SYNC_PAYLOAD_MISMATCH');
 }
 async function refreshReplica() {
   if (!replica || replica.local || replica.pending || snapshotBusy) return;
@@ -923,14 +1017,20 @@ const stable = value => JSON.stringify(value, function (_key, entry) {
   return entry && typeof entry === 'object' && !Array.isArray(entry)
     ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry;
 });
-function chooseSyncVersion(title, detail) {
+function chooseSyncVersion(title, detail, destinations = null) {
   return new Promise(resolve => {
     const dialog = $('sync-review-dialog');
     $('sync-review-title').textContent = title; $('sync-review-detail').textContent = detail;
+    const destination = $('sync-review-destination');
+    destination.hidden = !destinations;
+    destination.replaceChildren(...(destinations || []).map(row => new Option(row.name, row.vaultId)));
+    $('sync-review-mine').textContent = destinations ? 'Recover items into this vault' : 'Keep my offline changes';
+    $('sync-review-mine').disabled = !!destinations && !destinations.length;
+    $('sync-review-server').textContent = destinations ? 'Discard these offline edits' : 'Use server version';
     const onLock = () => finish('cancel');
     const finish = choice => { window.removeEventListener('vaults:locked', onLock); dialog.close(); resolve(choice); };
     window.addEventListener('vaults:locked', onLock, { once: true });
-    $('sync-review-mine').onclick = () => finish('mine');
+    $('sync-review-mine').onclick = () => finish(destinations ? destination.value : 'mine');
     $('sync-review-server').onclick = () => finish('server');
     $('sync-review-later').onclick = () => finish('cancel');
     dialog.oncancel = event => { event.preventDefault(); finish('cancel'); };
@@ -939,8 +1039,9 @@ function chooseSyncVersion(title, detail) {
 }
 async function rebasePendingChanges(interactive) {
   const activeReplica = replica, activeRoot = root, generation = sessionGeneration;
-  const oldState = structuredClone(activeReplica.state), expected = oldState.queue;
+  const oldState = structuredClone(activeReplica.state), expected = oldState.queue, recoveryTargets = new Map();
   const records = await downloadReplica(), fresh = structuredClone(records), planned = [];
+  activeReplica.validateRemote(records);
   const check = () => { if (root !== activeRoot || replica !== activeReplica || generation !== sessionGeneration) throw Error('LOCKED'); };
   const decodeSettings = value => value?.envelope ? JSON.parse(td.decode(core.decrypt_account_settings(activeRoot, un(value.envelope)))) : { version: 1, names: {}, collections: [], default_view: null, removal_preference: null };
   for (const entry of collapseQueue(expected)) {
@@ -982,20 +1083,32 @@ async function rebasePendingChanges(interactive) {
       next.body = { baseRevision: fresh[entry.path].revision, revision: uuid(envelope.slice(76,92)), envelope: b64(envelope) };
       next.baseline = structuredClone(fresh[entry.path]);
     } else {
-      const targetVault = entry.body.signedOperation.vaultId, itemId = entry.body.signedOperation.itemId;
+      const sourceId = entry.body.signedOperation.vaultId, itemId = entry.body.signedOperation.itemId;
+      let targetVault = sourceId, recovering = false;
+      const sourceRow = oldState.records['/api/v1/vaults'].vaultEnvelopes.find(row => row.vaultId === sourceId);
+      if (!fresh['/api/v1/vaults'].vaultEnvelopes.some(row => row.vaultId === sourceId && !row.retired)) {
+        if (!interactive) throw Error('SYNC_REVIEW_PENDING');
+        if (!recoveryTargets.has(sourceId)) {
+          const destinations = fresh['/api/v1/vaults'].vaultEnvelopes.filter(row => !row.retired).map((row, index) => ({ vaultId: row.vaultId, name: decodeSettings(fresh['/api/v1/vault-settings']).names?.[row.vaultId] || `Vault ${index + 1}` }));
+          const choice = await chooseSyncVersion('This vault was removed on another device', 'Recover the saved offline items as new items in an active vault, or explicitly discard these edits. Review later keeps the encrypted queue unchanged.', destinations);
+          check(); if (choice === 'cancel') throw Error('SYNC_REVIEW_PENDING'); recoveryTargets.set(sourceId, choice);
+        }
+        targetVault = recoveryTargets.get(sourceId);
+        if (targetVault === 'server') continue;
+        recovering = true;
+      }
       const listPath = `/api/v1/vaults/${targetVault}/items`;
-      const sourceRow = oldState.records['/api/v1/vaults'].vaultEnvelopes.find(row => row.vaultId === targetVault);
       const targetRow = fresh['/api/v1/vaults'].vaultEnvelopes.find(row => row.vaultId === targetVault && !row.retired);
       if (!sourceRow || !targetRow) throw Error('VAULT_RETIRED');
-      const sourceVault = core.open_private_vault(activeRoot, un(oldState.records['/api/v1/vaults'].directory), id(targetVault), un(sourceRow.envelope));
+      const sourceVault = core.open_private_vault(activeRoot, un(oldState.records['/api/v1/vaults'].directory), id(sourceId), un(sourceRow.envelope));
       const targetHandle = core.open_private_vault(activeRoot, un(fresh['/api/v1/vaults'].directory), id(targetVault), un(targetRow.envelope));
       try {
         const decode = (handle, catalogue, indexEnvelope, bodyEnvelope) => ({ itemId,
           index: JSON.parse(td.decode(core.decrypt_private_part(handle, un(catalogue), id(itemId), un(indexEnvelope), 4))),
           body: JSON.parse(td.decode(core.decrypt_private_part(handle, un(catalogue), id(itemId), un(bodyEnvelope), 3))) });
         let local = decode(sourceVault, entry.body.catalogue, entry.body.index, entry.body.body);
-        const base = entry.baseline?.index && entry.baseline?.body ? decode(sourceVault, entry.baseline.catalogue, entry.baseline.index, entry.baseline.body) : null;
-        const listed = fresh[listPath], summary = listed.indices.find(row => row.itemId === itemId);
+        const base = !recovering && entry.baseline?.index && entry.baseline?.body ? decode(sourceVault, entry.baseline.catalogue, entry.baseline.index, entry.baseline.body) : null;
+        const listed = fresh[listPath], summary = !recovering && listed.indices.find(row => row.itemId === itemId);
         const server = summary ? decode(targetHandle, listed.catalogue, summary.envelope, fresh[`${listPath}/${itemId}`].envelope) : null;
         if (stable(local) === stable(server)) continue;
         if (stable(base) !== stable(server)) {
@@ -1006,7 +1119,7 @@ async function rebasePendingChanges(interactive) {
           if (choice?.kind === 'merge') local = choice.item;
           else if (choice !== 'mine') throw Error('SYNC_REVIEW_PENDING');
         }
-        const made = !server && !base
+        const made = !recovering && !server && !base
           ? core.create_private_item_at_id(targetHandle, un(listed.catalogue), id(itemId), te.encode(JSON.stringify(local.index)), te.encode(JSON.stringify(local.body)))
           : core.upsert_private_item(targetHandle, un(listed.catalogue), server ? id(itemId) : undefined, te.encode(JSON.stringify(local.index)), te.encode(JSON.stringify(local.body)));
         const newId = uuid(made.item());
@@ -1044,7 +1157,7 @@ async function syncInstalled({ interactive = true } = {}) {
     await activeReplica.saveUnlock(authenticated.unlock);
     try { await activeReplica.flush(remoteCall); }
     catch (error) {
-      if (error.status !== 409 || !['BASE_CHANGED', 'sync_conflict'].includes(error.message)) throw error;
+      if (error.status !== 409 || !['BASE_CHANGED', 'sync_conflict', 'device_fork', 'VAULT_RETIRED'].includes(error.message)) throw error;
       await rebasePendingChanges(interactive);
       await activeReplica.flush(remoteCall);
     }
@@ -1062,10 +1175,19 @@ async function syncInstalled({ interactive = true } = {}) {
   } finally { if (generation === sessionGeneration) { setBusy(false); updateSessionDates(); } }
 }
 window.addEventListener('online', () => { if (installedApp && root) void syncInstalled({ interactive: false }); });
+window.addEventListener('offline', () => { if (installedApp && root && replica) { replica.local = true; serverAuthenticated = false; updateSessionDates(); } });
 // Background Sync is not universally available on iOS. Foreground retries cover
 // reconnects, missed online events, and expired server sessions without storing
 // the master password or account secret on disk.
-setInterval(() => { if (installedApp && root && !busy && navigator.onLine && (replica?.pending || replica?.local)) void syncInstalled({ interactive: false }); }, 60000);
+setInterval(() => { if (installedApp && root && !busy && navigator.onLine && document.visibilityState === 'visible') void syncInstalled({ interactive: false }); }, 60000);
+let lastForegroundSync = 0;
+const syncOnResume = () => queueMicrotask(() => {
+  if (installedApp && root && !busy && navigator.onLine && Date.now() - lastForegroundSync > 15000) {
+    lastForegroundSync = Date.now(); void syncInstalled({ interactive: false });
+  }
+});
+window.addEventListener('focus', syncOnResume);
+window.addEventListener('pageshow', syncOnResume);
 async function reload({ preserveDraft = false } = {}) {
   if (!preserveDraft && !confirmDiscard()) return;
   syncState = 'syncing'; if (!replica?.pending) syncFailure = ''; updateSessionDates();
@@ -1112,6 +1234,7 @@ async function reload({ preserveDraft = false } = {}) {
     listed = await call(`/api/v1/vaults/${nextVaultId}/items`),
     nextCatalogue = un(listed.catalogue),
     items = [];
+  verifyListedCatalogue(nextVault, listed);
   for (let row of listed.indices) {
     let index = JSON.parse(
       td.decode(
@@ -1169,6 +1292,7 @@ async function loadBrowseItems(vaultIds = null, onlyFavorites = false) {
     const localVault = core.open_private_vault(sessionRoot, un(data.directory), id(row.vaultId), un(row.envelope));
     try {
     const listed = await call(`/api/v1/vaults/${row.vaultId}/items`);
+    verifyListedCatalogue(localVault, listed);
     const localCatalogue = un(listed.catalogue);
     for (const summary of listed.indices) {
       if (root !== sessionRoot) throw Error('LOCKED');
@@ -1397,11 +1521,12 @@ async function signedMutation(
   bodyBytes,
   { targetVault = vaultId, history = null } = {},
 ) {
+  const generation = sessionGeneration, signingIdentity = identity, context = authContext;
   let sync = history || await operationHistory(targetVault, call),
     previous =
       [...(sync.operations ?? [])]
         .reverse()
-        .find((x) => x.operation.deviceId === identity.deviceId)?.operation
+        .find((x) => x.operation.deviceId === signingIdentity.deviceId)?.operation
         .opId ?? null,
     framed = cat(
       be(catalogueBytes.length, 4),
@@ -1413,9 +1538,9 @@ async function signedMutation(
     ),
     body = {
       protocolVersion: 1,
-      tenantId: authContext.tenantId,
+      tenantId: context.tenantId,
       vaultId: targetVault,
-      deviceId: identity.deviceId,
+      deviceId: signingIdentity.deviceId,
       epoch: Number(new DataView(catalogueBytes.buffer, catalogueBytes.byteOffset + 36, 8).getBigUint64(0)),
       causalBase: sync.cursor ?? 0,
       previousDeviceOpId: previous,
@@ -1428,11 +1553,12 @@ async function signedMutation(
       new Uint8Array(
         await crypto.subtle.sign(
           "Ed25519",
-          identity.privateKey,
+          signingIdentity.privateKey,
           te.encode(canonical({ ...body, opId })),
         ),
       ),
     );
+  if (generation !== sessionGeneration || !root || signingIdentity !== identity) throw Error('LOCKED');
   return { ...body, opId, signature };
 }
 function normalizeWebsite(value) {
@@ -2283,6 +2409,7 @@ window.__vaultsActions = {
       const healthVault = core.open_private_vault(sessionRoot, un(data.directory), id(row.vaultId), un(row.envelope));
       try {
       const listed = await call(`/api/v1/vaults/${row.vaultId}/items`);
+      verifyListedCatalogue(healthVault, listed);
       const healthCatalogue = un(listed.catalogue);
       const revision = uuid(healthCatalogue.slice(44, 60));
       for (const summary of listed.indices) {

@@ -5,6 +5,17 @@ type InstallEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ out
 const installed = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 let installPrompt: InstallEvent | null = null;
 let offlineReady = false, shellReady = false;
+type SyncState = { unlocked: boolean; pending: number; offline: boolean; syncing: boolean; error: string; at: number | null };
+function checkShell(worker: ServiceWorker | null) {
+  return new Promise<boolean>(resolve => {
+    if (!worker) { resolve(false); return; }
+    const channel = new MessageChannel();
+    const finish = (ready: boolean) => { clearTimeout(timeout); channel.port1.close(); resolve(ready); };
+    const timeout = window.setTimeout(() => finish(false), 15000);
+    channel.port1.onmessage = event => finish(event.data?.ready === true);
+    worker.postMessage({ type: '127vaults-check-shell' }, [channel.port2]);
+  });
+}
 
 export function PwaLifecycle() {
   useEffect(() => {
@@ -17,8 +28,8 @@ export function PwaLifecycle() {
     if (import.meta.env.PROD && 'serviceWorker' in navigator) {
       const notify = () => { if (installed()) navigator.serviceWorker.controller?.postMessage({ type: '127vaults-installed' }); };
       navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).then(async registration => {
-        await navigator.serviceWorker.ready;
-        shellReady = true; notify(); window.dispatchEvent(new Event('vaults:install-state'));
+        const active = await navigator.serviceWorker.ready;
+        shellReady = await checkShell(active.active); notify(); window.dispatchEvent(new Event('vaults:install-state'));
         // Let waiting releases activate after all old windows close; never
         // reload a running editor or abandon a queued encrypted write.
         if (registration.waiting) window.dispatchEvent(new CustomEvent('vaults:toast', { detail: { title: 'Update ready', detail: 'Close all 127Vaults windows and reopen to use the update.', kind: 'info' } }));
@@ -38,19 +49,24 @@ export function PwaControls({ compact = false }: { compact?: boolean }) {
   const [, refresh] = useState(0);
   const [instructions, setInstructions] = useState(false);
   const [persistent, setPersistent] = useState<boolean | null>(null);
+  const [sync, setSync] = useState<SyncState>(() => (window as any).__vaultsSyncState || { unlocked: false, pending: 0, offline: false, syncing: false, error: '', at: null });
   useEffect(() => {
     const update = () => refresh(value => value + 1);
+    const syncUpdate = (event: Event) => setSync((event as CustomEvent<SyncState>).detail);
     window.addEventListener('vaults:install-state', update);
+    window.addEventListener('vaults:sync-state', syncUpdate);
     navigator.storage?.persisted?.().then(setPersistent).catch(() => {});
-    return () => window.removeEventListener('vaults:install-state', update);
+    return () => { window.removeEventListener('vaults:install-state', update); window.removeEventListener('vaults:sync-state', syncUpdate); };
   }, []);
   const requestStorage = async () => {
-    const result = await navigator.storage?.persist?.(); setPersistent(result ?? false);
+    try { const result = await navigator.storage?.persist?.(); setPersistent(result ?? false); }
+    catch { setPersistent(false); }
   };
   if (installed()) return compact ? null : <div className="mt-6 rounded-xl border border-white/10 p-4 text-sm">
     <h3 className="font-semibold">Installed app</h3>
     <p className="mt-2 text-slate-400" role="status">{offlineReady && shellReady ? 'Ready for offline use. Unlock with your master password; saved changes sync when connected.' : 'Connect and unlock, then Sync to prepare a complete offline copy.'}</p>
     <p className="mt-2 text-xs text-slate-500">Sync runs while the app is open. Removing the app or clearing its website data removes this device’s local copy.</p>
+    {sync.unlocked && <div className="mt-3 border-t border-white/10 pt-3"><p className="text-xs text-slate-400">{sync.pending ? `${sync.pending} encrypted change${sync.pending === 1 ? '' : 's'} awaiting sync.` : sync.offline ? 'Working from this device’s encrypted copy.' : 'No pending local changes.'}{sync.at && ` Last complete copy: ${new Date(sync.at).toLocaleString()}.`}</p>{sync.error && <p className="mt-2 text-xs text-red-300" role="alert">{sync.error}</p>}<Button variant="secondary" className="mt-3" disabled={sync.syncing} onClick={() => void (window as any).__vaultsActions.runAction('reload')}>{sync.syncing ? 'Syncing…' : sync.error ? 'Review and retry sync' : 'Sync now'}</Button></div>}
     {persistent === true ? <p className="mt-3 text-xs text-slate-400">Persistent device storage enabled.</p> : <><Button variant="secondary" className="mt-3" onClick={requestStorage}>Keep data on this device</Button>{persistent === false && <p className="mt-2 text-xs text-slate-400">Storage persistence depends on your browser. Keep a recovery copy of your account secret.</p>}</>}
   </div>;
   return <div className={compact ? 'mt-4 text-center text-xs text-slate-400' : 'mt-6 rounded-xl border border-white/10 p-4 text-sm text-slate-400'}>

@@ -11,6 +11,13 @@ const bytes = text => Uint8Array.from(atob(text.replaceAll('-', '+').replaceAll(
 export const recordRevision = (text, offset) => uuid(bytes(text).slice(offset, offset + 16));
 const keyFor = path => path.split('?')[0];
 const itemPath = /^\/api\/v1\/vaults\/([0-9a-f-]+)\/items(?:\/([0-9a-f-]+))?$/;
+function assertQueuedEntry(entry) {
+  if (!entry || !entry.body || typeof entry.body !== 'object') throw Error('LOCAL_REPLICA_INVALID');
+  const match = typeof entry.path === 'string' && entry.path.match(itemPath);
+  if (entry.path === '/api/v1/vault-settings' && entry.method === 'PUT' || entry.path === '/api/v1/vaults' && entry.method === 'POST') return;
+  if (!match || !['POST', 'PUT'].includes(entry.method) || (entry.method === 'PUT') !== !!match[2]
+    || entry.body.signedOperation?.vaultId !== match[1] || entry.body.signedOperation?.itemId !== (match[2] || entry.body.itemId)) throw Error('LOCAL_REPLICA_INVALID');
+}
 export const replicaRead = path => path === '/api/v1/vaults' || path === '/api/v1/vault-settings' || itemPath.test(keyFor(path)) || /^\/api\/v1\/vaults\/[0-9a-f-]+\/operations\?/.test(path);
 export function collapseQueue(queue) {
   const output = [], positions = new Map();
@@ -48,27 +55,37 @@ export class IndexedReplicaStore {
       });
     } finally { db.close(); }
   }
-  async write(key, value) {
+  async write(key, value, expectedRevision) {
     const db = await this.open();
     try {
       await new Promise((resolve, reject) => {
         const tx = db.transaction('replicas', 'readwrite');
-        tx.objectStore('replicas').put(value, key);
+        const records = tx.objectStore('replicas');
+        let conflict = false;
+        const request = records.get(key);
+        request.onsuccess = () => {
+          if (expectedRevision !== undefined && (request.result?.storageRevision || 0) !== expectedRevision) { conflict = true; tx.abort(); return; }
+          records.put(value, key);
+        };
         tx.oncomplete = () => resolve();
-        tx.onabort = tx.onerror = () => reject(tx.error || Error('LOCAL_STORAGE_FAILED'));
+        tx.onabort = tx.onerror = () => reject(conflict ? Error('LOCAL_QUEUE_CHANGED') : tx.error || Error('LOCAL_STORAGE_FAILED'));
       });
     } finally { db.close(); }
   }
 }
 
 export class PwaReplica {
-  constructor({ store = new IndexedReplicaStore(), scope, changed = () => {} }) {
+  constructor({ store = new IndexedReplicaStore(), scope, changed = () => {}, validateEntry = async () => {} }) {
     this.store = store; this.scope = scope; this.changed = changed;
     this.state = null; this.local = false; this.serial = Promise.resolve();
+    this.validateEntry = validateEntry;
   }
   async load() {
     this.state = await this.store.read(this.scope) || { version: 1, records: {}, queue: [], snapshotAt: null, unlock: null };
     if (this.state.version !== 1) throw Error('LOCAL_REPLICA_VERSION');
+    if (!Array.isArray(this.state.queue) || !this.state.records || typeof this.state.records !== 'object') throw Error('LOCAL_REPLICA_INVALID');
+    this.state.queue.forEach(assertQueuedEntry);
+    if (this.state.storageRevision !== undefined && (!Number.isSafeInteger(this.state.storageRevision) || this.state.storageRevision < 0)) throw Error('LOCAL_REPLICA_INVALID');
     this.changed(this);
     return this;
   }
@@ -86,7 +103,10 @@ export class PwaReplica {
     return next;
   }
   async commit(next) {
-    await this.store.write(this.scope, next);
+    const previous = this.state?.storageRevision || 0;
+    if (previous >= Number.MAX_SAFE_INTEGER) throw Error('LOCAL_STORAGE_FAILED');
+    next.storageRevision = previous + 1;
+    await this.store.write(this.scope, next, previous);
     this.state = next;
     this.changed(this);
   }
@@ -96,15 +116,30 @@ export class PwaReplica {
   async snapshot(records) {
     return this.exclusive(async () => {
       if (this.pending) throw Error('PENDING_LOCAL_CHANGES');
-      for (const [path, history] of Object.entries(this.state.records)) {
-        if (!path.endsWith('/operations') || !records[path]) continue;
-        const next = records[path];
-        if (next.cursor < history.cursor) throw Error('SYNC_ROLLBACK');
-        const known = new Map(next.operations.map(row => [row.operation.opId, row.operation.signature]));
-        if (history.operations.some(row => !known.has(row.operation.opId) || known.get(row.operation.opId) !== row.operation.signature)) throw Error('SYNC_FORK');
-      }
+      this.validateRemote(records);
       await this.commit({ ...this.state, records: copy(records), snapshotAt: Date.now() });
     });
+  }
+  validateRemote(records) {
+    for (const [path, saved] of Object.entries(this.state.records)) {
+      if (!path.endsWith('/checkpoint')) continue;
+      const next = records[path];
+      if (!next || saved.checkpointPublicKey !== next.checkpointPublicKey) throw Error('SYNC_CHECKPOINT_KEY_CHANGED');
+      if (saved.checkpoints.some((checkpoint, index) => JSON.stringify(checkpoint) !== JSON.stringify(next.checkpoints[index]))) throw Error('INVALID_SYNC_CHECKPOINT');
+    }
+    const queued = new Set(this.state.queue.map(entry => entry.body.signedOperation?.opId).filter(Boolean));
+    for (const [path, history] of Object.entries(this.state.records)) {
+      if (!path.endsWith('/operations')) continue;
+      const accepted = history.operations.filter(row => !queued.has(row.operation.opId));
+      const next = records[path];
+      if (!next) { if (accepted.length) throw Error('SYNC_ROLLBACK'); continue; }
+      if (next.cursor < history.cursor - (history.operations.length - accepted.length)) throw Error('SYNC_ROLLBACK');
+      if (accepted.some((row, index) => next.operations[index]?.operation.opId !== row.operation.opId
+        || next.operations[index]?.operation.signature !== row.operation.signature)) throw Error('SYNC_FORK');
+      for (const [device, key] of Object.entries(history.devicePublicKeys || {})) {
+        if (next.devicePublicKeys?.[device] && next.devicePublicKeys[device] !== key) throw Error('SYNC_DEVICE_KEY_CHANGED');
+      }
+    }
   }
   read(path) {
     const value = this.state.records[keyFor(path)];
@@ -156,12 +191,14 @@ export class PwaReplica {
     const operations = records[`/api/v1/vaults/${vaultId}/operations`];
     if (!operations || !body.signedOperation) throw Error('OFFLINE_DATA_UNAVAILABLE');
     operations.cursor++;
-    operations.operations.push({ operation: copy(body.signedOperation) });
+    operations.operations.push({ cursor: operations.cursor, operation: copy(body.signedOperation) });
   }
   async flush(send) {
     return this.exclusive(async () => {
       while (this.pending) {
         const entry = this.state.queue[0];
+        assertQueuedEntry(entry);
+        await this.validateEntry(entry);
         try { await send(entry.path, { method: entry.method, body: entry.body }); }
         catch (error) { error.pendingEntry = copy(entry); throw error; }
         // Preserve exact request IDs and signatures until acceptance. A lost
@@ -174,6 +211,7 @@ export class PwaReplica {
   async replaceQueue(records, entries, expectedQueue) {
     return this.exclusive(async () => {
       if (expectedQueue && JSON.stringify(this.state.queue) !== JSON.stringify(expectedQueue)) throw Error('LOCAL_QUEUE_CHANGED');
+      this.validateRemote(records);
       const next = { ...copy(this.state), records: copy(records), queue: [] };
       for (const entry of entries) { this.project(next.records, entry); next.queue.push(copy(entry)); }
       await this.commit(next);

@@ -12,7 +12,7 @@ async function worker() {
   const source=(await readFile(new URL('../service-worker.template.js',import.meta.url),'utf8')).replace('__SHELL_VERSION__','"test"').replace('__SHELL_ASSETS__',JSON.stringify(['/','/app/react-client.js','/wasm/core.wasm']));
   class OriginRequest extends Request {constructor(path,options){super(new URL(path,origin),options)}}
   vm.runInNewContext(source,{self,caches:{open:async()=>cache,keys:async()=>['127vaults-shell-old','unrelated-cache'],delete:async key=>deleted.push(key)},Request:OriginRequest,URL,Set,fetch:async request=>{network.push(request.url);return{network:true}}});
-  return{events,network,cached,deleted,self};
+  return{events,network,cached,deleted,self,cache};
 }
 test('install caches the complete shell and activation only retires this app caches',async()=>{
   const w=await worker();let work;
@@ -39,4 +39,16 @@ test('release shell includes crypto and every external client module; versions c
   const first=build('first'),second=build('second');assert.notEqual(first,second);
   for(const [path]of PWA_FILES)assert.ok(second.includes(`/${path}`),path);
   assert.doesNotMatch(second,/__SHELL_/);assert.match(second,/manifest.webmanifest/);assert.match(second,/icon-512.png/);
+});
+test('offline readiness checks actual cached assets and repairs a partially removed shell',async()=>{
+  const w=await worker();let repaired=false,reply,work;
+  w.cache.match=async path=>path==='/wasm/core.wasm'&&!repaired?undefined:{cached:path};
+  w.cache.addAll=async requests=>{w.cached.push(...requests.map(request=>new URL(request.url).pathname));repaired=true};
+  w.events.message({data:{type:'127vaults-check-shell'},ports:[{postMessage:value=>reply=value}],waitUntil:promise=>work=promise});await work;
+  assert.equal(reply.ready,true);assert.deepEqual(w.cached,['/wasm/core.wasm']);
+});
+test('a worker registration cannot claim offline readiness when shell repair fails',async()=>{
+  const w=await worker();let reply,work;w.cache.match=async()=>undefined;w.cache.addAll=async()=>{throw Error('offline')};
+  w.events.message({data:{type:'127vaults-check-shell'},ports:[{postMessage:value=>reply=value}],waitUntil:promise=>work=promise});await work;
+  assert.equal(reply.ready,false);
 });

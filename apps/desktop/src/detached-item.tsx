@@ -46,7 +46,7 @@ export function DetachedItem() {
           {field.type === "password" && <Button variant="ghost" onClick={async () => { if (revealed[field.id] !== undefined) { setRevealed(current => { const next = { ...current }; delete next[field.id]; return next; }); } else { try { const value = await secret(field.id); if (active.current) setRevealed(current => ({ ...current, [field.id]: value })); } catch { setMessage("This secret is unavailable."); } } }}>{revealed[field.id] !== undefined ? "Hide" : "Reveal"}</Button>}</div>
       </section>)}
       <PasskeyDetails fields={item.customFields} />
-      <AuthenticatorCode copy={value => navigator.clipboard.writeText(value)} value={item.customFields.find(field => field.id === TOTP_ID)?.value || ""} />
+      {item.customFields.find(field => field.id === TOTP_ID)?.value && <AuthenticatorCode copy={value => navigator.clipboard.writeText(value)} value={item.customFields.find(field => field.id === TOTP_ID)!.value} />}
     </>}
   </main>;
 }

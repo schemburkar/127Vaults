@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "check": "tsc --noEmit && vite build && node --check mvp-client.mjs && node --check pwa-build.mjs && node --check src/pwa-replica.mjs && node --check src/browser-enrollment.mjs && node --check src/vault-lifecycle.mjs && node --check src/main.mjs && node --check src/login-session.mjs && node --check src/fixture-core.mjs && node --check src/fixture-demo.mjs && node --check src/login-item-demo.mjs && node --check src/private-vault-client.mjs && node --check src/ecf1-worker-client.mjs && node --check fixture/ecf1-worker.mjs && node --check fixture/ecf1-smoke.mjs && node --check fixture-server.mjs",
+    "check": "tsc --noEmit && vite build && node --check mvp-client.mjs && node --check pwa-build.mjs && node --check src/pwa-replica.mjs && node --check src/browser-enrollment.mjs && node --check src/vault-lifecycle.mjs && node --check src/signed-sync.mjs && node --check src/main.mjs && node --check src/login-session.mjs && node --check src/fixture-core.mjs && node --check src/fixture-demo.mjs && node --check src/login-item-demo.mjs && node --check src/private-vault-client.mjs && node --check src/ecf1-worker-client.mjs && node --check fixture/ecf1-worker.mjs && node --check fixture/ecf1-smoke.mjs && node --check fixture-server.mjs",
     "test": "node --test",
     "test:pwa:browser": "node ../../scripts/pwa-browser-smoke.mjs"
   },

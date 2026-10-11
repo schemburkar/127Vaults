@@ -44,6 +44,7 @@ export default defineConfig(({ command, mode }) => {
     ['/app/pwa-replica.mjs', join(webRoot, 'src', 'pwa-replica.mjs')],
     ['/app/browser-enrollment.mjs', join(webRoot, 'src', 'browser-enrollment.mjs')],
     ['/app/vault-lifecycle.mjs', join(webRoot, 'src', 'vault-lifecycle.mjs')],
+    ['/app/signed-sync.mjs', join(webRoot, 'src', 'signed-sync.mjs')],
     ['/app/passkeys.mjs', join(webRoot, '..', 'extension', 'src', 'passkeys.mjs')],
     ['/wasm/vaults_browser_fixture.js', join(webRoot, 'wasm', 'vaults_browser_fixture.js')],
     ['/wasm/vaults_browser_fixture_bg.wasm', join(webRoot, 'wasm', 'vaults_browser_fixture_bg.wasm')],

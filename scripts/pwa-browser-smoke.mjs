@@ -11,6 +11,7 @@ import { createHash, createPublicKey, generateKeyPairSync, randomBytes, randomUU
 import { AuthService } from '../apps/server/src/auth-service.mjs';
 import { OpaqueAdapter, encodeBinding, authenticationContextHash } from '../apps/server/src/opaque-adapter.mjs';
 import { directory, catalogue } from '../apps/server/src/private-vault.mjs';
+import { createSignedCheckpoint, checkpointHash, nextOperationHead } from '../packages/sync/src/index.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.VAULTS_PLAYWRIGHT_MODULE || 'playwright');
@@ -29,6 +30,7 @@ const root=core.create_root(template,encoder.encode(master),un(b64(Buffer.alloc(
 let privateDirectory=b64(core.create_empty_directory(root)),settings={revision:null,envelope:null},rejectAuth=false,dropNextWrite=false;
 const vaults=new Map(),receipts=new Map(),devices=new Map(),attempts=new Map(),sessions=new Map(),enrollments=new Map();
 const checkpoints=new Map();
+const checkpointHistory=new Map(),checkpointKeys=generateKeyPairSync('ed25519'),checkpointPublicKey=checkpointKeys.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('base64url');
 const setup=O.server_setup(),serverKey=O.server_public_key(setup),opaque=new OpaqueAdapter(O);
 const approver=generateKeyPairSync('ed25519');
 let origin,opaqueRecord;
@@ -119,7 +121,18 @@ const server=createServer(async(req,res)=>{
     const lifecycle=path.match(/^\/api\/v1\/vaults\/([^/]+)\/(checkpoint|removal|restore)$/);
     if(lifecycle) {
       const row=vaults.get(lifecycle[1]);assert.ok(row);
-      if(lifecycle[2]==='checkpoint'){checkpoints.set(row.vaultId,row.operations.length);return send(200,{checkpoint:{cursor:row.operations.length}})}
+      if(lifecycle[2]==='checkpoint'){
+        const history=checkpointHistory.get(row.vaultId)||[];
+        if(req.method==='GET') {
+          const after=url.searchParams.get('after'),offset=after?history.findIndex(checkpoint=>checkpointHash(checkpoint)===after)+1:0;
+          if(after&&offset===0)return send(409,{error:'checkpoint_fork'});
+          const limit=Number(url.searchParams.get('limit')||100);
+          return send(200,{checkpointPublicKey,checkpoints:history.slice(offset,offset+limit),hasMore:offset+limit<history.length});
+        }
+        let head='0'.repeat(64);for(const {operation} of row.operations)head=nextOperationHead(head,operation);
+        const checkpoint=createSignedCheckpoint({tenantId,vaultId:row.vaultId,epoch:1,cursor:row.operations.length,previousCheckpointHash:history.length?checkpointHash(history.at(-1)):'0'.repeat(64),operationHeadHash:head},checkpointKeys.privateKey);
+        history.push(checkpoint);checkpointHistory.set(row.vaultId,history);checkpoints.set(row.vaultId,row.operations.length);return send(200,{checkpoint});
+      }
       if(body.sourceCatalogueRevision!==catalogue(un(row.catalogue)).revision)return send(409,{error:'BASE_CHANGED'});
       if(lifecycle[2]==='restore'){assert.equal(row.retirementChoice,'archive');row.retired=false;row.retirementChoice=null;return accept({restored:true})}
       assert.equal(checkpoints.get(row.vaultId),row.operations.length);
@@ -148,6 +161,7 @@ const server=createServer(async(req,res)=>{
       if(url.searchParams.get('catalogueRevision')!==revision)return send(409,{error:'BASE_CHANGED'});
       const item=row.items.get(route[3]);if(!item)return send(404,{error:'NOT_FOUND'});return send(200,{envelope:item.body,catalogueRevision:revision,itemId:item.itemId});
     }
+    if(row.retired)return send(409,{error:'VAULT_RETIRED'});
     if(body.baseCatalogueRevision!==revision)return send(409,{error:'BASE_CHANGED'});
     const op=body.signedOperation,{signature,...unsigned}=op;
     assert.equal(op.deviceId,session.deviceId);assert.equal(op.tenantId,tenantId);assert.equal(op.vaultId,row.vaultId);
@@ -172,10 +186,12 @@ try {
   browser=await chromium.launch({headless:true,...(process.env.VAULTS_BROWSER_EXECUTABLE?{executablePath:process.env.VAULTS_BROWSER_EXECUTABLE}:{})});
   const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true,serviceWorkers:'allow'});
   await context.addInitScript(()=>{
+    window.addEventListener('vaults:toast',event=>{if(event.detail.kind==='error')console.error('acceptance-error:',JSON.stringify(event.detail))});
     const original=window.matchMedia.bind(window);
     window.matchMedia=query=>query==='(display-mode: standalone)'?{...original(query),matches:true,addEventListener(){},removeEventListener(){}}:original(query);
   });
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  page.on('console',message=>{if(message.text().startsWith('acceptance-error:'))console.error(message.text())});
   await page.goto(`${origin}/?pwa=1`);await page.locator('#register-browser-device').waitFor({state:'visible'});
   await page.locator('#username').fill(username);await page.locator('#register-browser-device').click();await page.locator('#browser-enrollment-code').waitFor({state:'visible'});
   assert.equal(await page.locator('#browser-enrollment-code').textContent(),'ABCDEFGH');
@@ -186,6 +202,12 @@ try {
   await page.waitForFunction(async()=>{const registration=await navigator.serviceWorker.getRegistration();return !!registration?.active});
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date'));
   console.log('Verified device enrollment, authenticated unlock and offline shell preparation.');
+  await page.evaluate(async()=>{
+    const {IndexedReplicaStore}=await import('/app/pwa-replica.mjs'),store=new IndexedReplicaStore(),scope='isolated-cas-acceptance';
+    await store.write(scope,{storageRevision:0});
+    const results=await Promise.allSettled([store.write(scope,{storageRevision:1,writer:'first'},0),store.write(scope,{storageRevision:1,writer:'second'},0)]);
+    if(results.filter(result=>result.status==='fulfilled').length!==1||results.find(result=>result.status==='rejected')?.reason.message!=='LOCAL_QUEUE_CHANGED')throw Error('local compare-and-swap failed');
+  });
   await page.screenshot({path:resolve(output,'installed-mobile.png'),fullPage:true});
   const row=()=>page.locator(`[data-item-id="${firstItem}"]`);
   // Server directory ordering is by insertion here; select first explicitly.
@@ -197,6 +219,17 @@ try {
   await page.reload();await page.locator('#master').waitFor({state:'visible'});assert.equal(await page.locator('#legacy-secret-field').isVisible(),false);
   await page.locator('#master').fill('incorrect-disposable-password');await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));
   assert.equal(await page.locator('#vault').isVisible(),false);
+  // A correct password must not make a corrupted local signed queue trusted.
+  const scope=[...devices.keys()][0];
+  const intact=await page.evaluate(async scope=>{const {IndexedReplicaStore}=await import('/app/pwa-replica.mjs');return new IndexedReplicaStore().read(scope)},scope);
+  await page.evaluate(async({scope,intact})=>{
+    const {IndexedReplicaStore}=await import('/app/pwa-replica.mjs'),changed=structuredClone(intact),operation=changed.queue[0].body.signedOperation;
+    operation.signature='A'.repeat(86);for(const [path,history]of Object.entries(changed.records))if(path.endsWith('/operations'))for(const row of history.operations)if(row.operation.opId===operation.opId)row.operation.signature=operation.signature;
+    changed.storageRevision++;await new IndexedReplicaStore().write(scope,changed,intact.storageRevision);
+  },{scope,intact});
+  await page.locator('#master').fill(master);await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('signatures'));
+  assert.equal(await page.locator('#vault').isVisible(),false);
+  await page.evaluate(async({scope,intact})=>{const {IndexedReplicaStore}=await import('/app/pwa-replica.mjs'),store=new IndexedReplicaStore(),current=await store.read(scope);intact.storageRevision=current.storageRevision+1;await store.write(scope,intact,current.storageRevision)},{scope,intact});
   await page.locator('#master').fill(master);await page.locator('#login').click();await page.locator('#vault').waitFor({state:'visible'});
   console.log('Verified offline restart, wrong-password rejection and password-only unlock.');
   await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);await row().click();
@@ -226,8 +259,13 @@ try {
   assert.equal(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(handle,un(vaults.get(firstVault).catalogue),ids(firstItem),un(original.body),3))).password,'synthetic-offline-update');core.release_vault(handle);handle.free();
   assert.ok(JSON.parse(new TextDecoder().decode(core.decrypt_account_settings(root,un(settings.envelope)))).names);
   // Lost response after acceptance leaves the request queued; replay is idempotent.
-  await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);await row().click();await page.locator('#edit-item').click();await page.locator('#item-password').fill('synthetic-lost-response-update');dropNextWrite=true;
+  await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);await row().click();await page.locator('#edit-item').click();await page.locator('#item-password').fill('synthetic-lost-response-update');
+  // Abort the delivered response after accepting the write. Keep interception
+  // active until local acknowledgement, including any browser transport retry.
+  const lostReply=async route=>{if(route.request().method()==='PUT'){await route.fetch();await route.abort('failed')}else await route.continue()};
+  const lostPath=`**/api/v1/vaults/${firstVault}/items/${firstItem}`;await page.route(lostPath,lostReply);
   const before=receipts.size;await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
+  await page.unroute(lostPath,lostReply);
   await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.waitForFunction(()=>!document.querySelector('#session-dates').textContent.includes('pending')&&document.querySelector('#session-dates').textContent.includes('Up to date'),{timeout:20000});
   assert.equal(receipts.size,before+1);
   assert.equal(JSON.parse(new TextDecoder().decode(core.decrypt_account_settings(root,un(settings.envelope)))).collections[0].name,'Offline collection fixture');
@@ -244,10 +282,27 @@ try {
   await page.locator('#confirm-dialog').waitFor({state:'visible'});await page.locator('#confirm-accept').click();await move;
   assert.equal(vaults.get(secondVault).retirementChoice,'move');assert.equal(vaults.get(firstVault).items.size,3);assert.equal(vaults.get(secondVault).items.size,1);
   console.log('Verified collections, default view, recoverable archive/restore and vault move.');
+  // Recover durable edits when a different device removes their source vault.
+  const recoverySource=[...vaults.values()].find(row=>!row.retired&&row.vaultId!==firstVault&&row.vaultId!==secondVault).vaultId;
+  await context.setOffline(true);await page.evaluate(id=>window.__vaultsActions.selectVault(id),recoverySource);
+  await page.locator('#new-item').click();await page.locator('#title').fill('Retired-vault recovery fixture');await page.locator('#item-password').fill('synthetic-recovery-password');await page.locator('#save').click();
+  await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
+  vaults.get(recoverySource).retired=true;vaults.get(recoverySource).retirementChoice='archive';
+  await context.setOffline(false);await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'));
+  await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.locator('#sync-review-dialog').waitFor({state:'visible'});
+  await page.locator('#sync-review-later').click();await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
+  await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.locator('#sync-review-dialog').waitFor({state:'visible'});await page.locator('#sync-review-destination').selectOption(firstVault);await page.locator('#sync-review-mine').click();
+  await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'));
+  assert.equal(vaults.get(firstVault).items.size,4);assert.equal(vaults.get(recoverySource).items.size,0);
+  console.log('Verified retired-vault offline edit recovery and cancellation.');
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(output,'installed-desktop.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   rejectAuth=true;await page.locator('#lock-app').click();await page.locator('#master').fill(master);await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));assert.equal(await page.locator('#vault').isVisible(),false);
   assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);
   const ordinary=await browser.newContext({serviceWorkers:'allow'}),tab=await ordinary.newPage();await tab.goto(origin);await tab.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration())?.active);await ordinary.setOffline(true);await assert.rejects(tab.reload());await ordinary.close();
-  console.log(JSON.stringify({ok:true,enrollment:true,offlineReload:true,passwordOnlyUnlock:true,offlineWrites:true,multipleVaults:true,collections:true,defaultView:true,archiveRestoreMove:true,conflictReview:true,lostResponseReplay:true,ordinaryBrowserOnlineOnly:true,mobileAndDesktop:true}));
+  console.log(JSON.stringify({ok:true,enrollment:true,offlineReload:true,passwordOnlyUnlock:true,offlineWrites:true,multipleVaults:true,collections:true,defaultView:true,archiveRestoreMove:true,conflictReview:true,lostResponseReplay:true,signedHistoryAndCheckpoints:true,tamperedQueueRejected:true,concurrentStorageWrites:true,retiredVaultRecovery:true,ordinaryBrowserOnlineOnly:true,mobileAndDesktop:true}));
+} catch (error) {
+  const failedPage=browser?.contexts()[0]?.pages()[0];
+  if(failedPage)console.error(await failedPage.evaluate(()=>({sync:document.querySelector('#session-dates')?.textContent,save:document.querySelector('#save')?.disabled,formHidden:document.querySelector('#item-form')?.hidden,invalid:[...document.querySelectorAll('#item-form :invalid')].map(input=>({id:input.id,type:input.type,validation:input.validationMessage})),login:document.querySelector('#login-status')?.textContent,notices:document.querySelector('[aria-label="Notifications"]')?.textContent})));
+  throw error;
 } finally { await browser?.close();server.closeAllConnections();await new Promise(done=>server.close(done));core.lock();core.free(); }

@@ -52,6 +52,20 @@ export class PgSignedSyncStore {
     return {operations,cursor:operations.at(-1)?.cursor??cursor,hasMore,devicePublicKeys};
   }
   async latestCheckpoint(auth,vaultId){await this.#authorized(this.pool,auth,vaultId);const r=(await this.pool.query('SELECT * FROM vaults.sync_checkpoints WHERE tenant_id=$1 AND vault_id=$2 ORDER BY checkpoint_sequence DESC LIMIT 1',[auth.tenantId,vaultId])).rows[0];return r?this.#checkpoint(r):null;}
+  async checkpointHistory(auth,vaultId,{after=null,limit=100}={}) {
+    if(after!==null&&(typeof after!=='string'||!/^[0-9a-f]{64}$/.test(after)))throw new SyncProtocolError('invalid_request');
+    if(!Number.isSafeInteger(limit)||limit<1||limit>500)throw new SyncProtocolError('invalid_limit');
+    await this.#authorized(this.pool,auth,vaultId);
+    let sequence=0;
+    if(after!==null) {
+      const previous=(await this.pool.query('SELECT checkpoint_sequence FROM vaults.sync_checkpoints WHERE tenant_id=$1 AND vault_id=$2 AND checkpoint_hash=$3',[auth.tenantId,vaultId,hex(after)])).rows[0];
+      if(!previous)throw new SyncProtocolError('checkpoint_fork');
+      sequence=safe(previous.checkpoint_sequence);
+    }
+    const rows=(await this.pool.query('SELECT * FROM vaults.sync_checkpoints WHERE tenant_id=$1 AND vault_id=$2 AND checkpoint_sequence>$3 ORDER BY checkpoint_sequence LIMIT $4',[auth.tenantId,vaultId,sequence,limit+1])).rows;
+    const hasMore=rows.length>limit;if(hasMore)rows.pop();
+    return {checkpoints:rows.map(row=>this.#checkpoint(row)),hasMore};
+  }
   async createCheckpoint(auth,vaultId){return this.#tx(async c=>{const s=await this.#authorized(c,auth,vaultId,true),cursor=safe(s.next_cursor)-1,priorSequence=safe(s.latest_checkpoint_sequence,'checkpoint_exhausted');if(priorSequence===Number.MAX_SAFE_INTEGER)throw new SyncProtocolError('checkpoint_exhausted');const checkpoint=createSignedCheckpoint({tenantId:auth.tenantId,vaultId,epoch:Number(s.epoch),cursor,previousCheckpointHash:Buffer.from(s.latest_checkpoint_hash).toString('hex'),operationHeadHash:Buffer.from(s.operation_head_hash).toString('hex')},this.checkpointPrivateKey);const hash=checkpointHash(checkpoint),sequence=priorSequence+1;await c.query(`INSERT INTO vaults.sync_checkpoints(tenant_id,vault_id,checkpoint_sequence,protocol_version,epoch,cursor,previous_checkpoint_hash,operation_head_hash,checkpoint_hash,server_signature) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[auth.tenantId,vaultId,sequence,checkpoint.protocolVersion,checkpoint.epoch,checkpoint.cursor,hex(checkpoint.previousCheckpointHash),hex(checkpoint.operationHeadHash),hex(hash),Buffer.from(checkpoint.signature,'base64url')]);await c.query('UPDATE vaults.sync_vault_state SET latest_checkpoint_sequence=$3,latest_checkpoint_hash=$4 WHERE tenant_id=$1 AND vault_id=$2',[auth.tenantId,vaultId,sequence,hex(hash)]);return checkpoint;});}
   #checkpoint(r){return {protocolVersion:Number(r.protocol_version),tenantId:r.tenant_id,vaultId:r.vault_id,epoch:Number(r.epoch),cursor:safe(r.cursor),previousCheckpointHash:Buffer.from(r.previous_checkpoint_hash).toString('hex'),operationHeadHash:Buffer.from(r.operation_head_hash).toString('hex'),signature:Buffer.from(r.server_signature).toString('base64url')};}
 }

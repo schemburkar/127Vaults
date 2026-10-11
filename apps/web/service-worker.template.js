@@ -18,6 +18,19 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('message', event => {
   if (event.data?.type === '127vaults-installed' && event.source?.id) installedClients.add(event.source.id);
+  if (event.data?.type === '127vaults-check-shell' && event.ports?.[0]) {
+    event.waitUntil((async () => {
+      try {
+        const cache = await caches.open(CACHE), missing = [];
+        for (const path of ASSETS) if (!await cache.match(path)) missing.push(path);
+        // Repair a partially removed shell while connected; readiness is based
+        // on cached bytes, not merely on a surviving worker registration.
+        if (missing.length) await cache.addAll(missing.map(path => new Request(path, { cache: 'reload', credentials: 'same-origin' })));
+        for (const path of ASSETS) if (!await cache.match(path)) throw Error('INCOMPLETE_SHELL');
+        event.ports[0].postMessage({ ready: true });
+      } catch { event.ports[0].postMessage({ ready: false }); }
+    })());
+  }
 });
 self.addEventListener('fetch', event => {
   const request = event.request, url = new URL(request.url);

@@ -6,6 +6,7 @@ export const PWA_FILES = [
   ['app/pwa-replica.mjs', 'src/pwa-replica.mjs'],
   ['app/browser-enrollment.mjs', 'src/browser-enrollment.mjs'],
   ['app/vault-lifecycle.mjs', 'src/vault-lifecycle.mjs'],
+  ['app/signed-sync.mjs', 'src/signed-sync.mjs'],
   ['app/private-vault-client.mjs', 'src/private-vault-client.mjs'],
   ['app/passkeys.mjs', '../extension/src/passkeys.mjs'],
   ['wasm/vaults_browser_fixture.js', 'wasm/vaults_browser_fixture.js'],
