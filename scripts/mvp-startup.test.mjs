@@ -58,15 +58,29 @@ test('custom CA configuration requires that exact filename rather than falling b
   await ensureTlsReady(values, 'dev');
 });
 
-test('actual startup exits with the TLS error before creating runtime files or starting containers', async t => {
+for (const args of [['start'], ['dev'], ['dev', '--check']]) {
+test(`actual ${args.join(' ')} exits with the TLS error before creating runtime files or starting containers`, async t => {
   const { directory, identity } = await fixture(t, ['live/server.crt', 'ca/ca.crt']);
   await mkdir(join(directory, 'scripts'));
   for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
   await writeFile(join(directory, '.env'), `VAULTS_TLS_DIR=${identity}\n`);
-  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', 'start'], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true });
+  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', ...args], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
-  assert.ok(result.stderr.includes(missingMessage(identity, 'start')), result.stderr);
+  assert.ok(result.stderr.includes(missingMessage(identity, args[0])), result.stderr);
   assert.deepEqual((await readdir(identity)).sort(), ['ca', 'live']);
   assert.equal(await readFile(join(identity, 'live', 'server.crt'), 'utf8'), 'synthetic fixture: live/server.crt');
+});
+}
+
+test('launcher preflight accepts complete TLS files without starting containers or creating runtime secrets', async t => {
+  const { directory, identity } = await fixture(t, required);
+  await mkdir(join(directory, 'scripts'));
+  for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
+  await writeFile(join(directory, '.env'), `VAULTS_TLS_DIR=${identity}\n`);
+  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', 'dev', '--check'], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Local TLS startup files are present/);
+  assert.deepEqual((await readdir(identity)).sort(), ['ca', 'live']);
 });

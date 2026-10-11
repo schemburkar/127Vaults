@@ -10,6 +10,13 @@ import { fileURLToPath } from 'node:url';
 const root=dirname(dirname(fileURLToPath(import.meta.url))),action=process.argv[2];
 if(!['start','dev','migrate','exercise','view','browser','reset','stop'].includes(action))throw Error('Usage: node scripts/mvp-acceptance.mjs start|dev|migrate|exercise|view|browser|reset|stop');
 const values={};for(const line of (await readFile(join(root,'.env'),'utf8')).split(/\r?\n/)){const match=/^([A-Z0-9_]+)=(.*)$/.exec(line);if(match)values[match[1]]=match[2]}
+if(action==='start'||action==='dev'){
+ await ensureTlsReady(values, action);
+ if(process.argv[3]==='--check'){
+  console.log('Local TLS startup files are present.');
+  process.exit(0);
+ }
+}
 const project='vaults-acceptance';
 const localCompose=join(root,'.tools','compose',process.platform==='win32'?'Scripts/podman-compose.exe':'bin/podman-compose');
 const podman=process.platform==='win32'?join(process.env.ProgramFiles??'C:\\Program Files','RedHat','Podman','podman.exe'):'podman';
@@ -45,7 +52,6 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  run(process.execPath,['scripts/build-fixture.mjs']);
  console.log('The hot-reload UI and API are already running at https://127.0.0.1:12780.');
 }else if(action==='start'||action==='dev'){
- await ensureTlsReady(values, action);
  await ensureRuntimeSecrets();
  run(process.execPath,['scripts/build-fixture.mjs']);
  run(podman,['build','-t','localhost/127vaults-server:experimental','-f','apps/server/Dockerfile','.']);

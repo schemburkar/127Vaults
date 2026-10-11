@@ -83,6 +83,11 @@ another CA filename. Restore missing files from the matching identity backup.
 Use the printed `pnpm tls:init` command for a new development identity; do not
 replace an existing identity just to clear this error.
 
+The helper checks TLS files in the current terminal before opening the server
+window, so a missing-file diagnostic is visible immediately. You can run that
+check alone with `node scripts/mvp-acceptance.mjs dev --check`; it does not start
+containers or generate identity files.
+
 Run `pnpm test:mvp-startup` to verify the startup diagnostics, partial-file
 failures, custom CA selection, and complete-file success. These tests use
 isolated synthetic files and do not need Podman or change your local identity.

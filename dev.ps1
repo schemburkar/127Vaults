@@ -7,6 +7,15 @@ param(
 $repoRoot = $PSScriptRoot
 
 if ('server' -in $Service) {
+    Push-Location $repoRoot
+    try {
+        & node scripts/mvp-acceptance.mjs dev --check
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Server startup preflight failed. See the diagnostic above; no server window was opened.'
+        }
+    } finally {
+        Pop-Location
+    }
     Write-Host 'Starting server: pnpm mvp:dev'
     Start-Process powershell.exe -WorkingDirectory $repoRoot -ArgumentList '-NoExit', '-Command', 'pnpm mvp:dev'
 }
