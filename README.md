@@ -53,13 +53,35 @@ option. The separate Rust/WASM demonstration is documented in the
 
 ### Run the server and both clients during development (Windows)
 
-Run `./dev.ps1` from PowerShell to start the server and desktop in separate
-PowerShell windows and print the extension loading instructions. Pass service
-names to select only those parts, for example `./dev.ps1 server desktop` or
-`./dev.ps1 desktop`. The windows run the same commands shown below and display
-their output directly. The extension has no development process: load
-`apps/extension` unpacked in Chrome or Edge, then click Reload on its extension
-card after changing its files. `./dev.ps1 extension` prints these instructions.
+The launcher helper is [`dev.ps1`](dev.ps1) in the repository root. From
+PowerShell, choose the components you want:
+
+```powershell
+cd C:\Projects\127Vaults
+.\dev.ps1
+```
+
+| Command | Starts or shows |
+| --- | --- |
+| `.\dev.ps1` | API/server, hot-reload web client, desktop app, and extension loading instructions |
+| `.\dev.ps1 server` | API/server and hot-reload web client |
+| `.\dev.ps1 desktop` | Desktop app only |
+| `.\dev.ps1 server desktop` | API/server, hot-reload web client, and desktop app |
+| `.\dev.ps1 extension` | Extension loading and reload instructions only |
+
+**To start the web app, use `server`.** The helper accepts `server`, `desktop`,
+and `extension`; there is no separate `web` argument. Open the web client at
+`https://127.0.0.1:12780`. Desktop-only startup does not start the API; it uses
+its configured server or an existing encrypted offline replica.
+
+The helper opens separate PowerShell windows for the selected development
+processes, with their output visible. Stop a process with Ctrl+C in its window.
+To stop the acceptance API/database containers afterward, run `pnpm mvp:stop`;
+this retains the database volume.
+
+The extension has no development process: load `apps/extension` unpacked in
+Chrome or Edge, then click Reload on its extension card after changing its
+files. `.\dev.ps1 extension` prints these instructions.
 
 Install the workspace dependencies with `pnpm install` and complete the `.env`
 and local TLS setup in the [development runbook](docs/release/experimental-development.md)
