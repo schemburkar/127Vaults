@@ -74,6 +74,20 @@ and `extension`; there is no separate `web` argument. Open the web client at
 `https://127.0.0.1:12780`. Desktop-only startup does not start the API; it uses
 its configured server or an existing encrypted offline replica.
 
+If server startup reports **Local TLS files are missing**, verify that the
+`.env` value `VAULTS_TLS_DIR` points to the intended existing identity and that
+it contains `live/server.crt`, `live/server.key`, and
+`ca/<VAULTS_CA_CERT_FILE>` (default: `ca/ca.crt`). A configured filename such as
+`trusted-ca.crt` must exist under `ca/`; the launcher does not fall back to
+another CA filename. Restore missing files from the matching identity backup.
+Use the printed `pnpm tls:init` command for a new development identity; do not
+replace an existing identity just to clear this error.
+
+Run `pnpm test:mvp-startup` to verify the startup diagnostics, partial-file
+failures, custom CA selection, and complete-file success. These tests use
+isolated synthetic files and do not need Podman or change your local identity.
+They also run as part of `pnpm test`.
+
 The helper opens separate PowerShell windows for the selected development
 processes, with their output visible. Stop a process with Ctrl+C in its window.
 To stop the acceptance API/database containers afterward, run `pnpm mvp:stop`;

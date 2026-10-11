@@ -1,3 +1,4 @@
+import { ensureTlsReady } from './mvp-startup.mjs';
 import { spawnSync } from 'node:child_process';
 import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
@@ -20,12 +21,7 @@ const composeRun=(args,options)=>run(composeProvider,[...compose,...args],option
 const serverContainer=`${project}_server_1`;
 const copyCa=destination=>run(podman,['cp',`${serverContainer}:/run/secrets/ca.crt`,destination]);
 const exists=async path=>{try{await access(path);return true}catch{return false}};
-async function ensureTlsReady(){
- const directory=values.VAULTS_TLS_DIR;
- if(!directory)throw Error('VAULTS_TLS_DIR is missing from .env. Complete the TLS setup in docs/release/experimental-development.md.');
- const required=[join(directory,'live','server.crt'),join(directory,'live','server.key'),join(directory,'ca',values.VAULTS_CA_CERT_FILE||'ca.crt')];
- if(!(await Promise.all(required.map(exists))).every(Boolean))throw Error(`Local TLS files are missing in ${directory}. Run pnpm tls:init -- 127.0.0.1 "${directory}" before pnpm mvp:${action}.`);
-}
+
 const portOpen=port=>new Promise(resolve=>{const socket=connect({host:'127.0.0.1',port});socket.setTimeout(1000);socket.on('connect',()=>{socket.destroy();resolve(true)});socket.on('error',()=>resolve(false));socket.on('timeout',()=>{socket.destroy();resolve(false)})});
 async function waitForServerReady(){
  for(let attempt=0;attempt<30;attempt++){
@@ -49,7 +45,7 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  run(process.execPath,['scripts/build-fixture.mjs']);
  console.log('The hot-reload UI and API are already running at https://127.0.0.1:12780.');
 }else if(action==='start'||action==='dev'){
- await ensureTlsReady();
+ await ensureTlsReady(values, action);
  await ensureRuntimeSecrets();
  run(process.execPath,['scripts/build-fixture.mjs']);
  run(podman,['build','-t','localhost/127vaults-server:experimental','-f','apps/server/Dockerfile','.']);
