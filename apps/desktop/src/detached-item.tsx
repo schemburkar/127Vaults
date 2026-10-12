@@ -35,7 +35,7 @@ export function DetachedItem() {
     try { await navigator.clipboard.writeText(hidden ? await secret(field) : value); setMessage("Copied · clipboard clears in 30 seconds"); setTimeout(() => void navigator.clipboard.writeText("").catch(() => {}), 30000); }
     catch { setMessage("Could not copy this field."); }
   };
-  return <main className="desktop-detail min-h-screen p-6">
+  return <main className="ui-item-window desktop-detail min-h-screen p-6">
     <div className="mb-6 flex justify-between gap-3"><strong>Item window</strong><Button variant="ghost" onClick={() => void getCurrentWindow().close()}>Close</Button></div>
     <p className="mb-4 text-sm text-slate-400" role="status">{message}</p>
     {item && <><h1 className="mb-6 text-2xl font-bold">{item.title || "Untitled"}</h1>

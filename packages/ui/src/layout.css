@@ -1,0 +1,116 @@
+/* Shared layout rhythm for web and desktop surfaces. */
+:root {
+  --ui-space-field: 1rem;
+  --ui-space-section: 2rem;
+  --ui-surface-padding: 2rem;
+  --ui-surface-radius: 1rem;
+  --ui-dialog-width: 36rem;
+  --ui-dialog-wide-width: 56rem;
+  --ui-viewport-gap: 1rem;
+}
+.ui-modal-overlay {
+  padding: var(--ui-viewport-gap);
+  overflow: auto;
+  overscroll-behavior: contain;
+  backdrop-filter: blur(4px);
+}
+dialog.ui-dialog, .ui-modal-overlay > .ui-dialog {
+  width: min(var(--ui-dialog-width), calc(100vw - 2 * var(--ui-viewport-gap)));
+  max-width: none;
+  max-height: min(44rem, calc(100dvh - 2 * var(--ui-viewport-gap)));
+  min-width: 0;
+  margin: auto;
+  padding: var(--ui-surface-padding);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border-radius: var(--ui-surface-radius);
+  color: #f1f5f9;
+  box-shadow: 0 24px 80px #0008;
+  overflow-wrap: anywhere;
+}
+dialog.ui-dialog-wide, .ui-modal-overlay > .ui-dialog-wide {
+  --ui-dialog-width: var(--ui-dialog-wide-width);
+}
+.ui-dialog-workspace {
+  height: min(44rem, calc(100dvh - 2 * var(--ui-viewport-gap)));
+}
+dialog.ui-dialog::backdrop {
+  background: #020617bf;
+  backdrop-filter: blur(4px);
+}
+.ui-dialog h2, .ui-page-header h2 {
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.025em;
+}
+.ui-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ui-dialog p { line-height: 1.6; }
+.ui-dialog form, .ui-dialog fieldset, .ui-dialog label, .ui-dialog .grid { min-width: 0; }
+.ui-dialog select, .ui-dialog textarea, .ui-dialog input:not([type=checkbox]):not([type=radio]):not([type=range]) {
+  min-width: 0;
+  max-width: 100%;
+}
+.ui-dialog label.grid { grid-template-columns: minmax(0, 1fr); }
+.ui-dialog .ui-button {
+  max-width: 100%;
+  height: auto;
+  min-height: 2.75rem;
+  padding-block: .625rem;
+  white-space: normal !important;
+  text-align: center;
+  line-height: 1.4;
+}
+.ui-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .75rem;
+  margin-top: var(--ui-space-section);
+  padding-top: 1rem;
+  border-top: 1px solid #ffffff12;
+}
+.ui-dialog-actions-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.ui-access-shell {
+  padding: var(--ui-space-section);
+  min-height: 100dvh;
+}
+.ui-access-shell > .ui-access-card {
+  width: 100%;
+  max-width: 35rem;
+  padding: 2.5rem;
+  border-radius: var(--ui-surface-radius);
+}
+.ui-access-card h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.025em; }
+.ui-access-card p { line-height: 1.6; }
+.ui-page-header { gap: 1rem; flex-wrap: wrap; }
+.ui-page-section { margin-top: var(--ui-space-section); }
+.ui-page-section > h3 { margin-bottom: 1rem; }
+@media (max-width: 620px), (max-height: 600px) {
+  :root { --ui-surface-padding: 1.5rem; }
+  .ui-access-shell { padding: 1rem; }
+  .ui-access-shell > .ui-access-card { padding: 1.5rem; }
+}
+@media (max-width: 420px) {
+  :root { --ui-viewport-gap: .5rem; --ui-surface-padding: 1.25rem; }
+  .ui-dialog-actions:not(.ui-dialog-actions-stack) > .ui-button { flex: 1 1 auto; }
+}
+
+.ui-item-window { width: 100%; max-width: 56rem; margin-inline: auto; padding: var(--ui-surface-padding); }
+.ui-item-window h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.ui-item-window section { margin-bottom: var(--ui-space-field); border-radius: .75rem; }
+.ui-item-window section > div { flex-wrap: wrap; gap: .75rem; }
+.ui-dialog pre { min-width: 0; max-width: 100%; }
+
+.desktop-detail .ui-page-section { margin-top: var(--ui-space-section); }
+.ui-dialog .ui-dialog-actions { margin-top: var(--ui-space-section); }

@@ -192,3 +192,6 @@
 .web-settings-body{padding:1rem}
 }
 .web-settings-body select,.web-settings-body input,.web-settings-body textarea{min-width:0;width:100%}.web-settings-body .grid{min-width:0}.web-settings-body label.grid{grid-template-columns:minmax(0,1fr)}
+
+@import "../../../packages/ui/src/layout.css";
+.web-settings-panel > .grid{grid-template-columns:minmax(0,1fr)}

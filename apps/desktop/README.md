@@ -12,6 +12,10 @@ The sidebar can collapse to a 72-pixel icon rail independently of the item list/
 
 Run `node scripts/item-workspace-desktop-smoke.mjs` with a local desktop Vite server and Playwright to exercise these interactions using synthetic IPC responses. `VAULTS_PLAYWRIGHT_MODULE` and `VAULTS_BROWSER_EXECUTABLE` can select an installed runtime/browser.
 
+Web and desktop share surface spacing, dialog widths, action rows, and access-card sizing in `packages/ui/src/layout.css`. Use `ui-dialog` for ordinary dialogs, `ui-dialog-wide` for comparisons, and `ui-dialog-workspace` when changing options should retain a stable height. Keep existing form and action IDs when applying these classes.
+
+Run `node scripts/surface-layout-smoke.mjs` with both local Vite servers to check dialog bounds, long vault lists, narrow settings, access-card consistency, and generator resizing. Desktop IPC uses synthetic fixtures. `VAULTS_BROWSER_CHANNEL` can select an installed browser such as `msedge`; `VAULTS_LAYOUT_SCREENSHOTS` optionally saves screenshots to a directory. The web and desktop URLs can be overridden with `VAULTS_WEB_URL` and `VAULTS_DESKTOP_URL`.
+
 Website passkeys registered through the extension appear as dedicated encrypted
 items and sync through the same replica. Their private keys are excluded from
 generic item summaries and renderer field hydration; saving an existing passkey

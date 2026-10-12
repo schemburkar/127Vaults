@@ -1156,8 +1156,8 @@ export function App() {
 
   if (!unlocked && registrationOpen)
     return (
-      <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
-        <section className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
+      <main className="ui-access-shell grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
+        <section className="ui-access-card w-full max-w-lg rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
           {registrationSuccess ? (
             <div className="grid min-h-[28rem] place-content-center text-center">
               <div className="mx-auto grid size-20 place-items-center rounded-full bg-emerald-400/15 text-emerald-300">
@@ -1275,8 +1275,8 @@ export function App() {
 
   if (!unlocked)
     return (
-      <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
-        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
+      <main className="ui-access-shell grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
+        <section className="ui-access-card w-full max-w-md rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
           <div className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-[#9D1F32]">
             <LockKeyhole />
           </div>
@@ -1541,7 +1541,7 @@ export function App() {
           <div className="mx-auto max-w-3xl">
             {editing ? (
               <>
-                <div className="desktop-edit-header mb-7 flex items-start justify-between gap-4">
+                <div className="ui-page-header desktop-edit-header mb-7 flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
                       {selected.itemId ? "EDIT ITEM" : "NEW ITEM"}
@@ -1595,7 +1595,7 @@ export function App() {
                     </label>}
                   </div>
                 </section>
-                <section className="mt-8">
+                <section className="ui-page-section mt-8">
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
                     {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                   </h3>
@@ -1644,7 +1644,7 @@ export function App() {
                 </section>
                 <PasskeyDetails fields={selected.customFields} onRemove={() => setSelected({ ...selected, customFields: [...setItemType(selected.customFields.filter(f => f.id !== "__127vaults_passkey" && f.id !== "__127vaults_passkey_key"), itemType(selected.customFields) === "passkey" ? "login" : itemType(selected.customFields)), { id: "__127vaults_remove_passkey", label: "Remove passkey", type: "metadata", value: "true" }] })} />
                 {(itemType(selected.customFields) !== "passkey" || selected.customFields.some(f => f.id === TOTP_ID && f.value)) && <AuthenticatorEditor value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />}
-                <section className="mt-8 border-t border-white/10 pt-7">
+                <section className="ui-page-section mt-8 border-t border-white/10 pt-7">
                   <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
                   <div className="grid gap-3">{sections(selected.customFields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/12 bg-white/3">
                     <div className="flex flex-wrap items-center gap-3 p-4">
@@ -1666,7 +1666,7 @@ export function App() {
                   </div>)}</div>
                   <RelatedPicker type={itemType(selected.customFields)} onSelect={addRelated} />
                 </section>
-                <section className="mt-8">
+                <section className="ui-page-section mt-8">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-xs font-bold tracking-[.1em] text-slate-500">
                       CUSTOM FIELDS
@@ -1766,7 +1766,7 @@ export function App() {
               </>
             ) : (
               <>
-                <div className="desktop-detail-heading mb-7">
+                <div className="ui-page-header desktop-detail-heading mb-7">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
@@ -2018,43 +2018,44 @@ export function App() {
           </div>
         </section>
       </dialog>}
-      {settingsReview && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="settings-review-title">
-        <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100">
+      {settingsReview && <div className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="settings-review-title">
+        <div className="ui-dialog ui-dialog-wide border border-white/10 bg-[#11162b] text-slate-100">
           <h2 id="settings-review-title" className="text-lg font-semibold">Review vault settings conflict</h2>
           <p className="mt-2 text-sm text-slate-400">Compare vault names, collections, default view, and removal preference. Choose which complete settings version to keep.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><div><h3 className="mb-2 font-medium">This device</h3><pre className="max-h-64 overflow-auto rounded bg-black/30 p-3 text-xs">{JSON.stringify(settingsReview.local, null, 2)}</pre></div><div><h3 className="mb-2 font-medium">Server</h3><pre className="max-h-64 overflow-auto rounded bg-black/30 p-3 text-xs">{JSON.stringify(settingsReview.server, null, 2)}</pre></div></div>
-          <div className="mt-5 flex justify-end gap-2"><Button variant="ghost" onClick={() => setSettingsReview(null)}>Cancel</Button>{(["local", "server"] as const).map((keep) => <Button key={keep} onClick={() => void invoke<VaultSettings>("vault_settings_resolve", { keep }).then((result) => { setCollections(result.collections); setDefaultView(result.defaultView); setSettingsConflict(result.conflict); setSettingsReview(null); notify("success", "Vault settings resolved"); }).catch((error) => notify("error", "Could not resolve settings", friendlyError(error)))}>Keep {keep}</Button>)}</div>
+          <div className="ui-dialog-actions"><Button variant="secondary" onClick={() => setSettingsReview(null)}>Cancel</Button>{(["local", "server"] as const).map((keep) => <Button key={keep} onClick={() => void invoke<VaultSettings>("vault_settings_resolve", { keep }).then((result) => { setCollections(result.collections); setDefaultView(result.defaultView); setSettingsConflict(result.conflict); setSettingsReview(null); notify("success", "Vault settings resolved"); }).catch((error) => notify("error", "Could not resolve settings", friendlyError(error)))}>Keep {keep}</Button>)}</div>
         </div>
       </div>}
-      {collectionDialog && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title">
-        <section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#11162b] p-7 shadow-2xl">
+      {collectionDialog && <div className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title">
+        <section className="ui-dialog border border-white/10 bg-[#11162b]">
           <h2 id="collection-dialog-title" className="text-xl font-bold">{collectionDialog === "create" ? "Create collection" : "Edit collection"}</h2>
           <label className="mt-5 block text-sm text-slate-300">Collection name
             <Input autoFocus className="mt-2" maxLength={80} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} />
           </label>
-          <p className="mt-5 text-sm text-slate-300">Included vaults</p>
+          <p className="mt-5 text-sm text-slate-300">Include vaults</p>
           <div className="mt-2 grid gap-2">{activeVaults.map((vault) => <label key={vault.vaultId} className="flex items-center gap-3 rounded-lg border border-white/10 p-2 text-sm">
             <input type="checkbox" checked={collectionVaultDraft.includes(vault.vaultId)} onChange={(event) => setCollectionVaultDraft((current) => event.target.checked ? [...current, vault.vaultId] : current.filter((id) => id !== vault.vaultId))} />
             {vault.name} <small className="ml-auto text-slate-500">{vault.code}</small>
           </label>)}</div>
-          <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" onClick={() => setCollectionDialog(null)}>Cancel</Button>
+          <div className="ui-dialog-actions"><Button variant="secondary" onClick={() => setCollectionDialog(null)}>Cancel</Button>
             <Button disabled={!collectionNameDraft.trim() || !collectionVaultDraft.length} onClick={() => void saveCollection()}>Save collection</Button></div>
         </section>
       </div>}
-      {vaultDialog && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title">
-        <section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#11162b] p-7 shadow-2xl">
+      {vaultDialog && <div className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title">
+        <section className="ui-dialog border border-white/10 bg-[#11162b]">
           <h2 id="vault-dialog-title" className="text-xl font-bold">{vaultDialog === "create" ? "Create vault" : "Rename vault"}</h2>
+          <p className="mt-2 text-sm text-slate-400">Your vault name is stored in encrypted account settings.</p>
           <label className="mt-5 block text-sm text-slate-300">Vault name
             <Input autoFocus className="mt-2" maxLength={80} value={vaultNameDraft} onChange={(event) => setVaultNameDraft(event.target.value)} />
           </label>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setVaultDialog(null)}>Cancel</Button>
-            <Button disabled={!vaultNameDraft.trim()} onClick={() => void (vaultDialog === "create" ? addVault() : renameVault())}>{vaultDialog === "create" ? "Create" : "Save name"}</Button>
+          <div className="ui-dialog-actions">
+            <Button variant="secondary" onClick={() => setVaultDialog(null)}>Cancel</Button>
+            <Button disabled={!vaultNameDraft.trim()} onClick={() => void (vaultDialog === "create" ? addVault() : renameVault())}>{vaultDialog === "create" ? "Create vault" : "Save name"}</Button>
           </div>
         </section>
       </div>}
-      {removalDialog && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="removal-dialog-title">
-        <section className="w-full max-w-lg rounded-2xl border border-amber-300/20 bg-[#11162b] p-7 shadow-2xl">
+      {removalDialog && <div className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="removal-dialog-title">
+        <section className="ui-dialog border border-amber-300/20 bg-[#11162b]">
           <h2 id="removal-dialog-title" className="text-xl font-bold">Remove {vaults.find((row) => row.vaultId === removalDialog.sourceId)?.name ?? "vault"}</h2>
           <p className="mt-2 text-sm text-slate-300">{removalItemCount === null ? "Items" : `${removalItemCount} item(s)`} will remain encrypted and recoverable in the source vault. Choose what should happen to the active view.</p>
           <fieldset className="mt-5 grid gap-3"><legend className="mb-2 text-sm font-semibold">Removal choice</legend>
@@ -2064,17 +2065,17 @@ export function App() {
           {removalItemCount !== null && removalItemCount > 50 && <p className="mt-3 text-xs text-amber-300">Move supports at most 50 items. Archive this vault or move items in smaller batches first.</p>}
           {removalDialog.choice === "move" && <label className="mt-4 grid gap-2 text-sm">Destination vault<select className="desktop-settings-select" value={removalDialog.destinationId} onChange={(event) => setRemovalDialog({ ...removalDialog, destinationId: event.target.value })}>{activeVaults.filter((row) => row.vaultId !== removalDialog.sourceId).map((row) => <option key={row.vaultId} value={row.vaultId}>{row.name} · {row.code}</option>)}</select></label>}
           <p className="mt-4 text-xs text-slate-400">The operation requires a connection and no unresolved local edits. If interrupted, it can be resumed from Settings.</p>
-          <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" disabled={removalBusy} onClick={() => setRemovalDialog(null)}>Cancel</Button><Button disabled={removalBusy || (removalDialog.choice === "move" && (!removalDialog.destinationId || (removalItemCount !== null && removalItemCount > 50)))} onClick={() => void removeVault(removalDialog.sourceId, removalDialog.choice, removalDialog.destinationId)}>{removalBusy ? "Working…" : removalDialog.choice === "move" ? "Move and retire" : "Archive vault"}</Button></div>
+          <div className="ui-dialog-actions"><Button variant="secondary" disabled={removalBusy} onClick={() => setRemovalDialog(null)}>Cancel</Button><Button disabled={removalBusy || (removalDialog.choice === "move" && (!removalDialog.destinationId || (removalItemCount !== null && removalItemCount > 50)))} onClick={() => void removeVault(removalDialog.sourceId, removalDialog.choice, removalDialog.destinationId)}>{removalBusy ? "Working…" : removalDialog.choice === "move" ? "Move and retire" : "Archive vault"}</Button></div>
         </section>
       </div>}
       {conflict && (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6 backdrop-blur-sm"
+          className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="conflict-title"
         >
-          <section className="max-h-[90dvh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-7 shadow-2xl max-[620px]:p-4">
+          <section className="ui-dialog ui-dialog-wide border border-amber-300/20 bg-[#11162b]">
             <AlertTriangle className="text-amber-300" />
             <h2 id="conflict-title" className="mt-4 text-xl font-bold">
               Resolve sync conflict
@@ -2091,7 +2092,7 @@ export function App() {
                 })}
               </div>
             )}
-            <div className="mt-6 grid gap-2">
+            <div className="ui-dialog-actions ui-dialog-actions-stack">
               {conflict.kind !== "delete-edit-divergence" && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button onClick={() => void prepareMerge()}>Compare and select fields…</Button>)}
               {conflict.kind !== "delete-edit-divergence" && (
               <Button
@@ -2121,7 +2122,7 @@ export function App() {
                   }
                 }}
               >
-                Use theirs · discard mine
+                Use server version
               </Button>
               <Button variant="ghost" onClick={() => { setConflict(null); if (conflict.kind === "delete-edit-divergence") setEditing(false); }}>
                 {conflict.kind === "delete-edit-divergence" ? "Close" : "Cancel and keep editing"}

@@ -49,7 +49,7 @@ const eyebrow = "mb-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] t
 const muted = "text-slate-400";
 const fieldLabel = "grid gap-2 text-[13px] font-semibold text-slate-400";
 const panel = "overflow-auto rounded-[1.25rem] border border-white/7 bg-[#46484821] shadow-[0_14px_36px_-24px_rgba(0,0,0,.8)] backdrop-blur-sm";
-const detailSection = "mt-7 [&>h3]:mb-3 [&>h3]:text-xs [&>h3]:font-bold [&>h3]:uppercase [&>h3]:tracking-[0.08em] [&>h3]:text-slate-500 [&>label+label]:mt-4";
+const detailSection = "ui-page-section mt-7 [&>h3]:mb-3 [&>h3]:text-xs [&>h3]:font-bold [&>h3]:uppercase [&>h3]:tracking-[0.08em] [&>h3]:text-slate-500 [&>label+label]:mt-4";
 const inlineStatus = "inline-block min-h-5 text-xs text-slate-500";
 const backButton = "mb-3 w-fit !px-1 text-[#E0BB95]";
 
@@ -604,8 +604,8 @@ function Registration() {
 
 function Authentication() {
   return (
-    <div id="entry-shell" className="grid min-h-dvh place-items-center overflow-auto bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-6 max-[560px]:p-3">
-      <section id="access" className="w-full max-w-[35rem] rounded-[1.75rem] border border-white/10 bg-[#11162b] p-10 shadow-[0_28px_80px_-30px_rgba(0,0,0,.75)] max-[560px]:rounded-[1.25rem] max-[560px]:p-6">
+    <div id="entry-shell" className="ui-access-shell grid min-h-dvh place-items-center overflow-auto bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-6 max-[560px]:p-3">
+      <section id="access" className="ui-access-card w-full max-w-[35rem] rounded-[1.75rem] border border-white/10 bg-[#11162b] p-10 shadow-[0_28px_80px_-30px_rgba(0,0,0,.75)] max-[560px]:rounded-[1.25rem] max-[560px]:p-6">
         <div className="mx-auto mb-7 grid size-16 place-items-center rounded-2xl bg-[#9D1F32] text-white shadow-lg shadow-[#9D1F32]/15">
           <LockKeyhole className="size-7" aria-hidden="true" />
           <span id="state" className="sr-only" aria-live="polite">Loading</span>
@@ -738,7 +738,7 @@ function ItemDetail() {
         <p>Choose an item from the list or create a new item.</p>
       </div>
       <article id="item-view" hidden>
-        <div className="vault-detail-heading flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">
+        <div className="vault-detail-heading ui-page-header flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold">
           <div>
             <p id="view-type" className={eyebrow}>LOGIN</p>
             <h2 id="view-title" />
@@ -798,7 +798,7 @@ function ItemDetail() {
         data-form-type="other"
       >
         <input id="item-id" type="hidden" />
-        <div className="vault-edit-header flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold max-[560px]:[&_h2]:text-xl">
+        <div className="vault-edit-header ui-page-header flex items-start justify-between gap-4 [&_h2]:mb-1 [&_h2]:text-[1.75rem] [&_h2]:font-bold max-[560px]:[&_h2]:text-xl">
           <div>
             <p id="form-mode" className={eyebrow}>
               NEW LOGIN
@@ -1028,16 +1028,16 @@ export function App() {
       <Settings />
       <ToastRegion />
       <CollectionDialog />
-      <dialog id="sync-review-dialog" className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><h2 id="sync-review-title" className="text-xl font-bold" /><p id="sync-review-detail" className="mt-3 text-sm text-slate-400" /><select id="sync-review-destination" aria-label="Recovery vault" hidden className="mt-4 w-full rounded-xl border border-white/10 bg-[#11162b] p-3 text-white" /><div className="mt-6 grid gap-2"><Button id="sync-review-mine">Keep my offline changes</Button><Button id="sync-review-server" variant="secondary">Use server version</Button><Button id="sync-review-later" variant="ghost">Review later</Button></div></dialog>
-      <dialog id="browser-enrollment-dialog" className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><h2 className="text-xl font-bold">Register this device</h2><p className="mt-3 text-sm text-slate-400">On an already registered device, unlock 127Vaults and open Settings → Devices → Register a device. Approve this one-time code:</p><output id="browser-enrollment-code" className="my-5 block text-center font-mono text-3xl tracking-widest" /><p id="browser-enrollment-status" className="text-sm text-slate-400" role="status" /><div className="mt-6 flex justify-end gap-2"><Button id="browser-enrollment-cancel" variant="secondary">Cancel</Button><Button id="browser-enrollment-check">Check approval</Button></div></dialog>
-      <dialog id="web-create-vault-dialog" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><form id="web-create-vault-form"><h2 id="web-vault-dialog-title" className="text-xl font-bold">Create vault</h2><p className="mt-2 text-sm text-slate-400">Your vault name is stored in encrypted account settings.</p><label className="mt-5 grid gap-2 text-sm">Vault name<Input id="web-vault-name" autoFocus maxLength={80} required /></label><div className="mt-6 flex justify-end gap-2"><Button id="web-create-vault-cancel" type="button" variant="secondary">Cancel</Button><Button id="web-create-vault-submit" type="submit">Create vault</Button></div></form></dialog>
-      <dialog id="conflict-dialog" className="m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-amber-300/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm max-[560px]:p-4">
-        <h2 className="text-xl font-bold">Resolve sync conflict</h2>
+      <dialog aria-labelledby="sync-review-title" id="sync-review-dialog" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100"><h2 id="sync-review-title" className="text-xl font-bold" /><p id="sync-review-detail" className="mt-3 text-sm text-slate-400" /><select id="sync-review-destination" aria-label="Recovery vault" hidden className="mt-4 w-full rounded-xl border border-white/10 bg-[#11162b] p-3 text-white" /><div className="ui-dialog-actions ui-dialog-actions-stack"><Button id="sync-review-mine">Keep my offline changes</Button><Button id="sync-review-server" variant="secondary">Use server version</Button><Button id="sync-review-later" variant="ghost">Review later</Button></div></dialog>
+      <dialog aria-labelledby="browser-enrollment-title" id="browser-enrollment-dialog" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100"><h2 className="text-xl font-bold" id="browser-enrollment-title">Register this device</h2><p className="mt-3 text-sm text-slate-400">On an already registered device, unlock 127Vaults and open Settings → Devices → Register a device. Approve this one-time code:</p><output id="browser-enrollment-code" className="my-5 block text-center font-mono text-3xl tracking-widest" /><p id="browser-enrollment-status" className="text-sm text-slate-400" role="status" /><div className="ui-dialog-actions"><Button id="browser-enrollment-cancel" variant="secondary">Cancel</Button><Button id="browser-enrollment-check">Check approval</Button></div></dialog>
+      <dialog aria-labelledby="web-vault-dialog-title" id="web-create-vault-dialog" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100"><form id="web-create-vault-form"><h2 id="web-vault-dialog-title" className="text-xl font-bold">Create vault</h2><p className="mt-2 text-sm text-slate-400">Your vault name is stored in encrypted account settings.</p><label className="mt-5 grid gap-2 text-sm">Vault name<Input id="web-vault-name" autoFocus maxLength={80} required /></label><div className="ui-dialog-actions"><Button id="web-create-vault-cancel" type="button" variant="secondary">Cancel</Button><Button id="web-create-vault-submit" type="submit">Create vault</Button></div></form></dialog>
+      <dialog aria-labelledby="web-conflict-title" id="conflict-dialog" className="ui-dialog ui-dialog-wide border border-amber-300/20 bg-[#11162b] text-slate-100">
+        <h2 className="text-xl font-bold" id="web-conflict-title">Resolve sync conflict</h2>
         <p id="conflict-detail" className="mt-2 text-sm leading-6 text-slate-400">This item changed on another device while you were editing it. Choose which version to keep.</p>
         <div id="merge-fields" className="mt-5 hidden max-h-[50dvh] overflow-auto rounded-xl border border-white/10" />
-        <div className="mt-6 grid gap-2"><Button id="conflict-merge">Merge field by field…</Button><Button id="conflict-apply-merge" className="hidden">Use merged version</Button><Button id="conflict-keep" variant="secondary">Keep my changes and retry</Button><Button id="conflict-server" variant="secondary">Discard mine and use server</Button><Button id="conflict-cancel" variant="ghost">Cancel and keep editing</Button></div>
+        <div className="ui-dialog-actions ui-dialog-actions-stack"><Button id="conflict-merge">Merge field by field…</Button><Button id="conflict-apply-merge" className="hidden">Use merged version</Button><Button id="conflict-keep" variant="secondary">Keep my changes and retry</Button><Button id="conflict-server" variant="secondary">Use server version</Button><Button id="conflict-cancel" variant="ghost">Cancel and keep editing</Button></div>
       </dialog>
-      <dialog id="confirm-dialog" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-slate-950/70"><h2 id="confirm-title" className="text-xl font-bold"/><p id="confirm-detail" className="mt-2 text-sm leading-6 text-slate-400"/><div className="mt-6 flex justify-end gap-2"><Button id="confirm-cancel" variant="secondary">Cancel</Button><Button id="confirm-accept">Continue</Button></div></dialog>
+      <dialog aria-labelledby="confirm-title" id="confirm-dialog" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100"><h2 id="confirm-title" className="text-xl font-bold"/><p id="confirm-detail" className="mt-2 text-sm leading-6 text-slate-400"/><div className="ui-dialog-actions"><Button id="confirm-cancel" variant="secondary">Cancel</Button><Button id="confirm-accept">Continue</Button></div></dialog>
     </AppErrorBoundary>
   );
 }

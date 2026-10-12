@@ -164,9 +164,9 @@ export function SecretGenerator({
               close();
             }}
             onClose={close}
-            className="fixed inset-0 m-auto max-h-[90dvh] w-[min(30rem,calc(100vw-2rem))] overflow-auto rounded-2xl border border-white/20 bg-[#11162b] p-6 text-slate-100 shadow-2xl backdrop:bg-black/70"
+            className="ui-dialog ui-dialog-workspace border border-white/20 bg-[#11162b] text-slate-100"
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="ui-dialog-header flex items-center justify-between gap-3">
               <h2 id={titleId} className="text-xl font-bold">
                 Generate {label}
               </h2>

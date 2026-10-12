@@ -167,3 +167,5 @@
 }
 
 .desktop-settings-notices:empty{display:none}.desktop-settings-notices{display:grid;gap:.5rem;margin-bottom:1.25rem}
+
+@import "../../../packages/ui/src/layout.css";
