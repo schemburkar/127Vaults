@@ -5,9 +5,10 @@ import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { schemaV1Checksum, schemaChecksum, schemaV3Checksum, schemaV5Checksum } from '../../apps/server/src/schema.mjs';
+import { schemaV1Checksum, schemaChecksum, schemaV3Checksum, schemaV5Checksum, schemaV6Checksum } from '../../apps/server/src/schema.mjs';
 
 const engine = process.argv.includes('--docker') ? 'docker' : 'podman';
+const image = process.env.VAULTS_MIGRATION_IMAGE || 'localhost/127vaults-server:test';
 const name = `127vaults-migrate-${randomBytes(6).toString('hex')}`;
 const temp = await mkdtemp(join(tmpdir(), '127vaults-migrate-'));
 const password = randomBytes(32).toString('hex');
@@ -29,7 +30,7 @@ async function run(program, argv, { output, expectFailure = false } = {}) {
 const psql = sql => run(engine, ['exec', name, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', sql]);
 const migration = (action, expectFailure = false) => run(engine, ['run', '--rm', '--network', `container:${name}`, '-v', `${passwordFile}:/run/secrets/runtime/postgres-password:ro`,
   '-e', 'VAULTS_EXPERIMENTAL=1', '-e', 'VAULTS_DATABASE_HOST=127.0.0.1', '-e', 'VAULTS_DATABASE_PASSWORD_FILE=/run/secrets/runtime/postgres-password',
-  '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/entry.mjs', 'schema', action], { expectFailure });
+  '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', image, 'node', 'apps/server/src/entry.mjs', 'schema', action], { expectFailure });
 try {
   await run(engine, ['run', '-d', '--name', name, '--network', 'none', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_USER=vaults', '-e', 'POSTGRES_DB=vaults_experimental', 'docker.io/library/postgres:17-bookworm']);
   started = true;
@@ -97,13 +98,18 @@ try {
   if (current !== `5 ${schemaV5Checksum}`) throw Error('Schema 4 -> 5 checksum mismatch.');
   await migration('apply');
   const latest = await psql('SELECT version::text || \' \' || checksum FROM vaults.schema_version');
-  if (latest !== `6 ${schemaChecksum}`) throw Error('Schema 5 -> 6 checksum mismatch.');
+  if (latest !== `6 ${schemaV6Checksum}`) throw Error('Schema 5 -> 6 checksum mismatch.');
   if (await rowCounts() !== expectedRows) throw Error('Schema 3 -> 6 changed populated row counts.');
+  await migration('dry-run');
+  if (await psql('SELECT version FROM vaults.schema_version') !== '6') throw Error('Schema-7 dry run changed the installation.');
+  await migration('apply');
+  if (await psql("SELECT version::text || ' ' || checksum FROM vaults.schema_version") !== `7 ${schemaChecksum}`) throw Error('Schema 6 -> 7 checksum mismatch.');
+  if (await rowCounts() !== expectedRows) throw Error('Schema 6 -> 7 changed populated row counts.');
   await psql("UPDATE vaults.schema_version SET checksum=repeat('0',64)");
   await run(engine, ['run', '--rm', '--network', `container:${name}`, '-v', `${passwordFile}:/run/secrets/runtime/postgres-password:ro`,
     '-e', 'VAULTS_EXPERIMENTAL=1', '-e', 'VAULTS_DATABASE_HOST=127.0.0.1', '-e', 'VAULTS_DATABASE_PASSWORD_FILE=/run/secrets/runtime/postgres-password',
-    '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', 'localhost/127vaults-server:test', 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { expectFailure: true });
-  console.log(`Disposable migration passed: verified encrypted pre-backup, dry runs, lock contention refusal, schema 1 -> 2 -> 3 -> 4 -> 5 -> 6, checksum ${schemaChecksum}.`);
+    '-e', 'VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=1', image, 'node', 'apps/server/src/entry.mjs', 'provision', 'status'], { expectFailure: true });
+  console.log(`Disposable migration passed: verified encrypted pre-backup, dry runs, lock contention refusal, schema 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7, checksum ${schemaChecksum}.`);
 } finally {
   if (started) await run(engine, ['rm', '-f', name]).catch(() => {});
   const parent = resolve(tmpdir()) + sep;

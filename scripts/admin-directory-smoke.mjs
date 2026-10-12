@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const args = process.argv.slice(2);
-if (args.some(value => value !== '--docker') || args.length > 1) throw Error('Use node scripts/admin-directory-smoke.mjs [--docker].');
+if (args.some(value => !['--docker', '--management', '--browser'].includes(value)) || new Set(args).size !== args.length || args.includes('--browser') && !args.includes('--management')) throw Error('Use node scripts/admin-directory-smoke.mjs [--docker] [--management [--browser]].');
+const management = args.includes('--management');
 const engine = args.includes('--docker') ? 'docker' : 'podman';
 const name = `vaults-admin-check-${randomUUID()}`;
 const root = resolve(import.meta.dirname, '..');
@@ -36,9 +37,9 @@ try {
     catch { await new Promise(done => setTimeout(done, 500)); }
   }
   if (!ready) throw Error('Disposable PostgreSQL did not become ready.');
-  console.log('Checking admin directories against isolated PostgreSQL 17.');
-  await run(process.execPath, ['--test', 'apps/server/test/admin-directory.pg.test.mjs'], {
-    capture: false, env: { ...process.env, VAULTS_ADMIN_TEST_DATABASE_URL: `postgresql://postgres:${fixturePassword}@127.0.0.1:${port}/postgres` },
+  console.log(`Checking admin ${management ? 'management' : 'directories'} against isolated PostgreSQL 17.`);
+  await run(process.execPath, ['--test', `apps/server/test/${management ? 'admin-management' : 'admin-directory'}.pg.test.mjs`], {
+    capture: false, env: { ...process.env, VAULTS_ADMIN_MANAGEMENT_BROWSER: args.includes('--browser') ? '1' : '0', [management ? 'VAULTS_ADMIN_MANAGEMENT_DATABASE_URL' : 'VAULTS_ADMIN_TEST_DATABASE_URL']: `postgresql://postgres:${fixturePassword}@127.0.0.1:${port}/postgres` },
   });
 } finally {
   if (created) { await run(engine, ['rm', '--force', name]); console.log('Removed the disposable admin database and its in-memory data.'); }

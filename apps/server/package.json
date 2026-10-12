@@ -9,7 +9,7 @@
     "provision": "node src/entry.mjs provision",
     "schema": "node src/entry.mjs schema",
     "test": "node --test",
-    "check:admin": "node --check src/admin/directory.mjs && node --check admin/directory.js && node --check admin/api.js && node --check scripts/admin-browser-smoke.mjs && node --check ../../scripts/admin-directory-smoke.mjs",
+    "check:admin": "node --check src/admin/directory.mjs && node --check admin/directory.js && node --check admin/api.js && node --check scripts/admin-browser-smoke.mjs && node --check ../../scripts/admin-directory-smoke.mjs && node --check src/admin/management.mjs && node --check src/ownership-handler.mjs && node --check admin/management.js",
     "test:admin:browser": "node scripts/admin-browser-smoke.mjs",
     "test:admin:database": "node ../../scripts/admin-directory-smoke.mjs"
   },

@@ -440,6 +440,19 @@ function ItemList({ layout }: { layout: "list" | "grid" }) {
   );
 }
 
+function OwnershipRequests() {
+  type Grant = { grantId: string; expiresAt: string };
+  const [grants, setGrants] = useState<Grant[]>(() => (window as any).__vaultsOwnershipRequests || []);
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => {
+    const update = () => setGrants((window as any).__vaultsOwnershipRequests || []);
+    window.addEventListener('vaults:ownership', update);
+    update();
+    return () => window.removeEventListener('vaults:ownership', update);
+  }, []);
+  if (!grants.length) return null;
+  return <section className="mb-4 grid gap-3 rounded-xl border border-white/10 p-4" aria-label="Pending ownership requests"><h3 className="font-semibold">Pending ownership requests</h3><p className="text-sm text-slate-400">Accept after an unlock within the last five minutes. Server ownership does not grant access to anyone else's vault.</p>{grants.map(grant => <Button key={grant.grantId} disabled={pending !== null} onClick={async () => { setPending(grant.grantId); try { await (window as any).__vaultsActions.acceptOwnership(grant.grantId); } finally { setPending(null); } }}>{pending === grant.grantId ? 'Confirming ownership…' : `Accept ownership · expires ${new Date(grant.expiresAt).toLocaleString()}`}</Button>)}</section>;
+}
 function DeviceList() {
   const [view, setView] = useState<{
     devices: DeviceSummary[];
@@ -960,6 +973,7 @@ function Settings() {
         <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-vaults" hidden={activeTab !== "vaults"}><div className="grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center gap-2 rounded-xl border border-white/10 p-1"><Button variant={vault.selected ? "secondary" : "ghost"} className="min-w-0 flex-1 justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} /><span className="truncate">{vault.name}</span>{vault.selected ? " · Current" : ""}</Button><Button variant="ghost" onClick={() => (window as any).__vaultsActions.openRenameVaultDialog(vault.vaultId)}>Rename</Button></div>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button><CollectionsSettings vaults={vaults} /><VaultLifecycleSettings vaults={vaults} /></section>
         <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-devices" hidden={activeTab !== "devices"}>
           <div id="devices-list-page">
+            <OwnershipRequests />
             <Button id="show-device-registration">Register a device</Button>
             <div id="device-status" className={`inline-status ${inlineStatus}`} role="status" />
             <DeviceList />

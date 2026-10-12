@@ -50,7 +50,7 @@ const pool = { async query(sql, values = []) {
     const search = values[index++].toLowerCase();
     rows = rows.filter(row => (isUsers ? [row.username, row.display_name, row.email, row.id] : isInvitations ? [row.id, row.email, row.created_by] : [row.id, row.username, row.display_name]).join(' ').toLowerCase().includes(search));
   }
-  if (sql.includes('a.enrollment_state=$') || sql.includes('d.lifecycle_status=$')) { const status = values[index++]; rows = rows.filter(row => (isUsers ? row.enrollment_state : row.lifecycle_status) === status); }
+  if (sql.includes('a.enrollment_state=$') || sql.includes("ELSE a.enrollment_state END)=$") || sql.includes('d.lifecycle_status=$')) { const status = values[index++]; rows = rows.filter(row => (isUsers ? row.enrollment_state : row.lifecycle_status) === status); }
   if (isInvitations && sql.includes('END=$')) { const status = values[index++]; rows = rows.filter(row => row.status === status); }
   if (sql.includes('a.server_role=$')) { const role = values[index++]; rows = rows.filter(row => row.server_role === role); }
   if (sql.includes('d.protection_class=$')) { const protection = values[index++]; rows = rows.filter(row => row.protection_class === protection); }

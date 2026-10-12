@@ -67,9 +67,9 @@ test('PostgreSQL owner can approve, enroll and revoke a second device without ch
         [tenant, createHash('sha256').update(device).digest(), device === otherDevice ? otherAccount : owner, device, Buffer.alloc(32), Buffer.alloc(60)]);
     }
     await assert.rejects(store.revoke(otherAuth, { deviceId: proposed }), { code: 'AUTH_REQUIRED' });
-    // The ownership guard also rejects no-op owner updates; revocation must
-    // avoid the update altogether when recovery state is already available.
-    await assert.rejects(pool.query('UPDATE vaults.accounts SET recovery_state=recovery_state WHERE id=$1', [owner]), { code: 'P0001' });
+    // Schema 7 permits harmless owner updates and protects active ownership.
+    await pool.query('UPDATE vaults.accounts SET recovery_state=recovery_state WHERE id=$1', [owner]);
+    await assert.rejects(pool.query("UPDATE vaults.accounts SET server_role='user' WHERE id=$1", [owner]), { code: 'P0001' });
     assert.deepEqual(await store.revoke(auth, { deviceId: proposed.toUpperCase() }), { deviceId: proposed, status: 'revoked', lostLastDevice: false });
     await assert.rejects(store.completeEnrollmentRequest({ ...started, possessionSignature: possession }), { code: 'ENROLLMENT_INVALID' });
     const devices = (await store.list(auth)).devices;

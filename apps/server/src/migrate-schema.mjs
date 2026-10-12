@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { runtimeDatabaseConfig } from './runtime-config.mjs';
-import { migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, schemaStatus } from './schema-migration.mjs';
+import { migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, migrateSchema6To7, schemaStatus } from './schema-migration.mjs';
 
 export async function runMigration(action) {
 const fail = message => { throw new Error(message); };
@@ -21,7 +21,9 @@ try {
           ? await migrateSchema3To4(client, { dryRun: action === 'dry-run' })
           : state.version === 4
             ? await migrateSchema4To5(client, { dryRun: action === 'dry-run' })
-            : await migrateSchema5To6(client, { dryRun: action === 'dry-run' });
+            : state.version === 5
+              ? await migrateSchema5To6(client, { dryRun: action === 'dry-run' })
+              : await migrateSchema6To7(client, { dryRun: action === 'dry-run' });
   }
   console.log(JSON.stringify({ experimental: true, action, ...result }));
 } catch (error) {

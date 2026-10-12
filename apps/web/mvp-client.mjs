@@ -856,7 +856,7 @@ async function login() {
     else if (vaultSettings.default_view?.kind === 'collection') await selectBrowseView({ kind: 'collection', id: vaultSettings.default_view.id });
     else if (vaultSettings.default_view?.kind === 'vault') await selectVault(vaultSettings.default_view.id);
     applyDefaultView = false;
-    if (!replica?.local) await reloadDevices();
+    if (!replica?.local) { await reloadDevices(); await reloadOwnershipRequests(); }
     queueMicrotask(openPendingDesktopEnrollment);
   } catch (e) {
     await lock(false);
@@ -1402,6 +1402,29 @@ async function revokeDevice(device) {
     msg(`Device could not be revoked (${e.message}).`, "error");
   } finally {
     setBusy(false);
+  }
+}
+function publishOwnershipRequests(grants = []) {
+  window.__vaultsOwnershipRequests = grants;
+  window.dispatchEvent(new CustomEvent("vaults:ownership", { detail: grants }));
+}
+async function reloadOwnershipRequests() {
+  publishOwnershipRequests();
+  if (!root || replica?.local) return;
+  const generation = sessionGeneration;
+  let result;
+  try { result = await call('/api/v1/ownership/requests'); } catch { return; }
+  if (generation !== sessionGeneration || !Array.isArray(result.grants) || result.grants.length > 100) return;
+  publishOwnershipRequests(result.grants.filter(grant => /^[0-9a-f-]{36}$/.test(grant.grantId) && typeof grant.expiresAt === 'string' && Number.isFinite(new Date(grant.expiresAt).getTime())));
+}
+async function acceptOwnership(grantId) {
+  if (!root || !window.__vaultsOwnershipRequests?.some(grant => grant.grantId === grantId)) return;
+  if (!await confirmAction('Accept server ownership?', 'This gives your account server-owner responsibilities. Your existing sessions will end; unlock again after acceptance.')) return;
+  try {
+    await call('/api/v1/ownership/requests/' + grantId + '/accept', { method: 'POST', body: { requestId: crypto.randomUUID() } });
+    await lock(); toast('Ownership accepted', 'Unlock again to refresh your server role.', 'success');
+  } catch (error) {
+    toast('Ownership was not confirmed', error.message === 'fresh_auth_required' ? 'Lock and unlock again, then accept this request within five minutes.' : safeError(error), 'error');
   }
 }
 async function reloadDevices() {
@@ -2232,6 +2255,7 @@ async function lock(logout = true) {
   passkeyVerifier?.value.fill(0);
   passkeyVerifier = null;
   editorPasskeyFields = [];
+  publishOwnershipRequests();
   editorBaseline = null; favoritesOnly = false; favoriteItems = []; lastSynced = lastLocalChange = null; syncState = "idle";
   window.dispatchEvent(new Event('vaults:locked'));
   window.dispatchEvent(new Event("vaults:clear-generator"));
@@ -2382,6 +2406,7 @@ function setBusy(v) {
 }
 window.addEventListener("vaults:workspace-activity", () => { if (root) arm(); });
 window.__vaultsActions = {
+  acceptOwnership,
   copyField,
   closeWorkspaceItem: () => { if (!confirmDiscard()) return false; clearItem(); renderItems(loadedItems); return true; },
   openWorkspaceItem: async (tab) => {
@@ -2530,7 +2555,7 @@ $("footer-use-server").onclick = async () => {
   try { await reload(); clearItem(); toast("Server version restored", "Local unsaved edits were discarded.", "success"); }
   catch (error) { toast("Server version unavailable", safeError(error), "error"); }
 };
-$("reload-devices").onclick = reloadDevices;
+$("reload-devices").onclick = async () => { await reloadDevices(); await reloadOwnershipRequests(); };
 $("begin-enrollment").onclick = beginEnrollment;
 $("complete-enrollment").onclick = completeEnrollment;
 $("settings-toggle").onclick = () => {

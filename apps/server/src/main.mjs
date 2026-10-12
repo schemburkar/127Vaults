@@ -28,6 +28,8 @@ import { readSecretFile, readinessToken, runtimeDatabaseConfig } from './runtime
 import { createOpsTelemetry } from './ops-log.mjs';
 import { createAdminHandler } from './admin/handler.mjs';
 import { loadOperators } from './admin/credentials.mjs';
+import { PgAdminManagement } from './admin/management.mjs';
+import { createOwnershipHandler } from './ownership-handler.mjs';
 import { createLicenseHandler } from './license-handler.mjs';
 import { loadLicenseStatus } from './license-status.mjs';
 import { createLicenseWriteGuard } from './license-write-guard.mjs';
@@ -103,7 +105,9 @@ const syncHandler=createSignedSyncHandler(syncStore,authenticate,transport.origi
 const deviceStore=new PgDeviceLifecycleStore(pool);
 const deviceLifecycleHandler=createDeviceLifecycleHandler(deviceStore,authenticate,transport.origin);
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
-const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion});
+const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
+const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
+const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion,management:adminManagement});
 const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
   publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,
@@ -147,6 +151,7 @@ const server = createServer(tls, async (req, res) => {
   }
   if (stopping) { reply(503, { status: 'unavailable' }); return; }
   if(await adminHandler(req,res))return;
+  if(await ownershipHandler(req,res))return;
   if(await setupHandler(req,res))return;
   const webUrl = new URL(req.url, transport.origin);
   const asset=webFiles.get(webUrl.pathname === '/' ? '/' : req.url);

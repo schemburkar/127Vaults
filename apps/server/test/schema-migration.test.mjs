@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, requireSchema
+  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV6Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, schemaV7MigrationSql, requireSchema
 } from '../src/schema.mjs';
-import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, schemaStatus } from '../src/schema-migration.mjs';
+import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, migrateSchema6To7, schemaStatus } from '../src/schema-migration.mjs';
 
 const counts = { accounts: '2', devices: '2', sessions: '1', vaults: '1', items: '3' };
 class MigrationClient {
@@ -15,6 +15,7 @@ class MigrationClient {
     if (sql.includes("to_regclass('vaults.schema_version')")) return { rows: [{ relation: 'vaults.schema_version' }], rowCount: 1 };
     if (sql.startsWith('SELECT version, checksum')) return { rows: [{ version: this.version, checksum: this.checksum }], rowCount: 1 };
     if (sql.includes("nspname='cloud'")) return { rows: [{ present: this.cloud }], rowCount: 1 };
+    if (sql.startsWith('SELECT count(*)::int invalid')) return { rows: [{ invalid: this.invalid }], rowCount: 1 };
     if (sql.startsWith('SELECT\n  (SELECT count(*)')) return { rows: [counts], rowCount: 1 };
     if (sql.startsWith('SELECT\n    (SELECT count(*)')) return { rows: [{ count: this.invalid }], rowCount: 1 };
     return { rows: [], rowCount: 0 };
@@ -60,10 +61,10 @@ test('schema status and runtime requirement distinguish known manifests', async 
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 3, checksum: schemaV3Checksum })), { state: 'migration-required', version: 3 });
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 4, checksum: schemaV4Checksum })), { state: 'migration-required', version: 4 });
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 5, checksum: schemaV5Checksum })), { state: 'migration-required', version: 5 });
-  const current = new MigrationClient({ version: 6, checksum: schemaChecksum });
-  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 6 });
+  const current = new MigrationClient({ version: 7, checksum: schemaChecksum });
+  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 7 });
   await requireSchema(current);
-  await assert.rejects(requireSchema(new MigrationClient({ version: 6, checksum: schemaChecksum, cloud: true })), /Cloud database cannot be served/);
+  await assert.rejects(requireSchema(new MigrationClient({ version: 7, checksum: schemaChecksum, cloud: true })), /Cloud database cannot be served/);
   await assert.rejects(requireSchema(new MigrationClient()), /automatic upgrades are disabled/);
 });
 
@@ -96,7 +97,17 @@ test('schema 6 migration adds recoverable retirement without changing vault or i
   assert.deepEqual(await migrateSchema5To6(client), { from: 5, to: 6, dryRun: false });
   assert.ok(schemaV6MigrationSql.includes('retirement_choice'));
   assert.ok(schemaV6MigrationSql.includes('private_vault_move_items'));
+  assert.equal(client.calls.at(-2).parameters[0], schemaV6Checksum);
+});
+
+test('schema 7 requires the frozen schema-6 checksum and validates active ownership before committing', async () => {
+  const client = new MigrationClient({ version: 6, checksum: schemaV6Checksum });
+  assert.deepEqual(await migrateSchema6To7(client), { from: 6, to: 7, dryRun: false });
+  assert.ok(client.calls.some(call => call.sql === schemaV7MigrationSql));
   assert.equal(client.calls.at(-2).parameters[0], schemaChecksum);
+  assert.deepEqual(await schemaStatus(new MigrationClient({ version: 6, checksum: schemaV6Checksum })), { state: 'migration-required', version: 6 });
+  await assert.rejects(migrateSchema6To7(new MigrationClient({ version: 6, checksum: schemaV6Checksum, invalid: '1' })), /invariant validation failed/);
+  await assert.rejects(migrateSchema6To7(new MigrationClient({ version: 6, checksum: '0'.repeat(64) })), /migration refused/);
 });
 
 test('DDL retains bounded cryptographic fields, idempotency, FKs, and legacy backfill', () => {

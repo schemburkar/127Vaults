@@ -1650,6 +1650,63 @@
           }
         }
       }
+    },
+    "/api/v1/ownership/requests": {
+      "get": {
+        "summary": "List pending ownership grants for the authenticated recipient.",
+        "responses": {
+          "200": {
+            "description": "Authenticated ownership response."
+          },
+          "default": {
+            "description": "Detail-safe authentication, authorization or availability error."
+          }
+        }
+      }
+    },
+    "/api/v1/ownership/requests/{id}/accept": {
+      "post": {
+        "summary": "Accept an ownership grant as its recipient after fresh device-bound authentication.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "requestId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated ownership response."
+          },
+          "default": {
+            "description": "Detail-safe authentication, authorization or availability error."
+          }
+        }
+      }
     }
   },
   "components": {

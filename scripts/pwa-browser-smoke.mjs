@@ -34,6 +34,7 @@ const checkpointHistory=new Map(),checkpointKeys=generateKeyPairSync('ed25519'),
 const setup=O.server_setup(),serverKey=O.server_public_key(setup),opaque=new OpaqueAdapter(O);
 const approver=generateKeyPairSync('ed25519');
 let origin,opaqueRecord;
+const ownershipGrantId=randomUUID();let ownershipAccepted=false;
 function addVault(name) {
   const made=core.create_private_vault(root,un(privateDirectory)),handle=made.vault(),vaultId=uuid(handle.context().slice(33,49));
   privateDirectory=b64(made.directory());
@@ -108,6 +109,8 @@ const server=createServer(async(req,res)=>{
     if(req.method!=='GET'&&path!=='/api/v1/session')assert.equal(req.headers['x-127v-csrf'],session.csrf);
     if(path==='/api/v1/session'){sessions.delete(token);return send(200,{loggedOut:true})}
     if(path==='/api/v1/license')return send(200,{mode:'active'});
+    if(path==='/api/v1/ownership/requests')return send(200,{grants:process.env.VAULTS_TEST_OWNERSHIP==='1'&&!ownershipAccepted?[{grantId:ownershipGrantId,requestedBy:'operator:fixture',expiresAt:new Date(Date.now()+86400000).toISOString()}]:[]});
+    if(path===`/api/v1/ownership/requests/${ownershipGrantId}/accept`){assert.equal(req.method,'POST');assert.match(body.requestId,/^[0-9a-f-]{36}$/);ownershipAccepted=true;sessions.clear();return send(200,{accepted:true,role:'owner',signInRequired:true})}
     if(path==='/api/v1/devices')return send(200,{devices:[...devices.keys()].map(deviceId=>({deviceId,status:'active',credentialState:'current',protectionClass:'software'}))});
     if(path==='/api/v1/vault-settings') {
       if(req.method==='GET')return send(200,settings);
@@ -311,7 +314,16 @@ try {
   console.log('Verified retired-vault offline edit recovery and cancellation.');
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(output,'installed-desktop.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-  rejectAuth=true;await page.locator('#lock-app').click();await page.locator('#master').fill(master);await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));assert.equal(await page.locator('#vault').isVisible(),false);
+  if(process.env.VAULTS_TEST_OWNERSHIP==='1') {
+    await page.evaluate(()=>window.__vaultsActions.runAction('settings'));
+    await page.locator('#settings').getByRole('button',{name:'Devices',exact:true}).click();
+    await page.getByRole('button',{name:/^Accept ownership/}).click();
+    await page.locator('#confirm-dialog').waitFor({state:'visible'});await page.locator('#confirm-accept').click();
+    await page.locator('#master').waitFor({state:'visible'});
+    assert.equal(ownershipAccepted,true);assert.equal(await page.getByRole('button',{name:/^Accept ownership/}).count(),0);
+    console.log('Verified recipient ownership confirmation clears unlocked state and requires sign-in again.');
+  } else await page.locator('#lock-app').click();
+  rejectAuth=true;await page.locator('#master').fill(master);await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));assert.equal(await page.locator('#vault').isVisible(),false);
   assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);
   const ordinary=await browser.newContext({serviceWorkers:'allow'}),tab=await ordinary.newPage();await tab.goto(origin);await tab.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration())?.active);await ordinary.setOffline(true);await assert.rejects(tab.reload());await ordinary.close();
   console.log(JSON.stringify({ok:true,enrollment:true,offlineReload:true,passwordOnlyUnlock:true,offlineWrites:true,multipleVaults:true,collections:true,defaultView:true,archiveRestoreMove:true,conflictReview:true,lostResponseReplay:true,signedHistoryAndCheckpoints:true,tamperedQueueRejected:true,concurrentStorageWrites:true,retiredVaultRecovery:true,ordinaryBrowserOnlineOnly:true,mobileAndDesktop:true}));

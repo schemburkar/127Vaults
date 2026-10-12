@@ -4,7 +4,7 @@ import { OnboardingError } from './onboarding.mjs';
 // Unredeemed, live invitation emails reserve seats until redeemed, revoked, or expired.
 export async function readSeatUsage(client, tenantId, now) {
   const result = await client.query(`SELECT
-    (SELECT count(*)::int FROM vaults.accounts WHERE tenant_id=$1 AND enrollment_state='active') AS active_users,
+    (SELECT count(*)::int FROM vaults.accounts WHERE tenant_id=$1 AND enrollment_state='active' AND suspended_at IS NULL) AS active_users,
     (SELECT count(*)::int FROM vaults.invitation_emails e
       JOIN vaults.invitation_records i USING (tenant_id,id)
       WHERE e.tenant_id=$1 AND e.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>$2) AS reserved_seats`,

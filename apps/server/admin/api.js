@@ -22,6 +22,11 @@ export function validResponse(path, method, value) {
       && (value.invitations === undefined || object(value.invitations) && integer(value.invitations.pending) && integer(value.invitations.expired))
       && (!value.backup || object(value.backup) && text(value.backup.state) && (value.backup.detail === undefined || text(value.backup.detail)));
   }
+  if (kind === 'actions') return value.suspended === true || value.reactivated === true || value.authenticationUnlocked === true || value.revoked === true
+    || value.cancelled === true || ['user', 'admin'].includes(value.role) || value.acceptanceRequired === true && text(value.grantId) && timestamp(value.expiresAt)
+    || text(value.invitationId) && timestamp(value.expiresAt) && integer(value.seatCount) && /^127V-I1-[A-Za-z0-9_-]{43}$/.test(value.token);
+  if (kind === 'audit') return Array.isArray(value.events) && value.events.length <= 100 && value.events.every(item => object(item) && text(item.id) && text(item.actor) && text(item.action) && ['accepted', 'denied'].includes(item.outcome) && timestamp(item.createdAt));
+  if (kind === 'ownership') return Array.isArray(value.grants) && value.grants.length <= 100 && value.grants.every(item => object(item) && text(item.grantId) && text(item.accountId) && text(item.username) && timestamp(item.expiresAt));
   if (!['users', 'devices', 'invitations'].includes(kind)) return false;
   if (!Array.isArray(value[kind]) || !integer(value.total) || !integer(value.page) || value.page < 1
     || !integer(value.pageSize) || value.pageSize < 1 || value.pageSize > 100 || !integer(value.pageCount)
@@ -73,5 +78,16 @@ export function errorMessage(error) {
     server_unavailable: 'The server returned an unavailable or unexpected response. Check the server, then try again.',
     incompatible_response: 'The server returned data this console could not display. Reload the page and check that the console and server versions match.',
     invalid_directory_query: 'These filters could not be applied. Clear the filters and try again.',
+    fresh_auth_required: 'Enter your current operator password to confirm this action.',
+    last_active_owner: 'Keep at least one active owner. Ask another enrolled account to accept ownership first.',
+    grant_already_pending: 'This account already has a pending ownership request.',
+    grant_unavailable: 'This ownership request expired, was cancelled, or was already accepted.',
+    recipient_unavailable: 'Choose an active, unsuspended account that is not already an owner.',
+    owner_required: 'Complete first-owner enrollment before creating invitations.',
+    request_id_reused: 'This request ID belongs to a different action. Close the dialog and start again.',
+    email_already_registered: 'One of these emails already belongs to an enrolled account.',
+    seat_limit_reached: 'No license seat is available for this action. Ask the operator to review capacity.',
+    license_inactive: 'This installation’s license does not allow new seats or invitations.',
+    admin_unavailable: 'The action could not be confirmed. Check the server and retry the same action.',
   })[error.code] ?? 'The request could not be completed. Try again.';
 }

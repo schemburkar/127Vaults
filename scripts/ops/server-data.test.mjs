@@ -3,6 +3,6 @@ import assert from 'node:assert/strict';
 import { supportedBackupSchema } from './server-data.mjs';
 
 test('backup tooling recognizes the current self-hosted schema', () => {
-  for (const version of ['1', '2', '3', '4', '5', '6']) assert.equal(supportedBackupSchema(version), true);
-  for (const version of ['0', '7', '6 extra', 'schema-6']) assert.equal(supportedBackupSchema(version), false);
+  for (const version of ['1', '2', '3', '4', '5', '6', '7']) assert.equal(supportedBackupSchema(version), true);
+  for (const version of ['0', '8', '6 extra', 'schema-6']) assert.equal(supportedBackupSchema(version), false);
 });

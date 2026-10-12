@@ -1,16 +1,17 @@
 import { escapeHtml, date, badge, newDirectory, directoryQuery, directoryView, detailsView, reviewQueue } from './directory.js';
 import { requestAdmin as api, errorMessage as message } from './api.js';
+import { accountActions, showManagementAction } from './management.js';
 
 const root = document.querySelector('#app');
 const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
 const resource = () => ({ data: null, loading: false, error: '', checkedAt: null, request: 0, controller: null });
-const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), error: '', loginName: '', retryUntil: 0, signingOut: false, generation: 0 };
+const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), audit: resource(), ownership: resource(), error: '', loginName: '', retryUntil: 0, signingOut: false, generation: 0 };
 let sessionTimer;
 let loginTimer;
 
 function sectionFromHash() { return Object.hasOwn(titles, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; }
 function cancelRequests() {
-  for (const key of ['overview', 'users', 'devices', 'invitations']) {
+  for (const key of ['overview', 'users', 'devices', 'invitations', 'audit', 'ownership']) {
     state[key].controller?.abort();
     state[key].loading = false;
     state[key].request += 1;
@@ -23,7 +24,7 @@ function clearSession(error = '') {
   state.loginName = state.session?.username ?? state.loginName;
   state.session = null;
   state.overview = resource(); state.users = newDirectory(); state.devices = newDirectory();
-  state.invitations = newDirectory();
+  state.invitations = newDirectory(); state.audit = resource(); state.ownership = resource();
   state.error = error;
   state.signingOut = false;
   login();
@@ -108,6 +109,7 @@ function overview() {
   return `<p class="muted">Local server health and account activity. Checked ${escapeHtml(date(o.checkedAt))}.</p>${mismatch ? '<div class="notice error" role="alert"><strong>Database schema needs attention.</strong><p>The installed schema differs from the expected version. Follow the migration runbook before using the server.</p></div>' : ''}<div class="grid"><div class="card"><span class="label">API & database</span><span class="value">${escapeHtml(o.status)}</span>${badge(mismatch ? 'schema mismatch' : 'online')}</div><div class="card"><span class="label">Accounts</span><span class="value">${escapeHtml(o.users?.users ?? '—')}</span><span class="detail">${escapeHtml(o.users?.active_users ?? '—')} active</span><button class="text-button card-link" data-inspect="users" type="button">View accounts →</button></div><div class="card"><span class="label">Active devices</span><span class="value">${escapeHtml(o.activeDevices)}</span><span class="detail">Across all accounts</span><button class="text-button card-link" data-inspect="devices" type="button">View devices →</button></div><div class="card"><span class="label">Backup</span><span class="value">${escapeHtml(backup.state)}</span><span class="detail">${escapeHtml(backup.detail ?? 'No recent status available')}</span><button class="text-button card-link" data-section="backups" type="button">Review backup status →</button></div></div>${reviewQueue(o)}<div class="columns"><section class="panel"><h2>Server details</h2><dl class="details-list"><div><dt>Server address</dt><dd>${escapeHtml(location.host)}</dd></div><div><dt>Installed schema</dt><dd>${escapeHtml(o.schemaVersion)}</dd></div><div><dt>Expected schema</dt><dd>${escapeHtml(o.expectedSchemaVersion)}</dd></div></dl><p class="muted">Health reflects the live API and database check. Unknown backup status does not confirm a recent backup.</p></section><section class="panel"><h2>Operator access</h2><p class="muted">Signed in as ${escapeHtml(state.session.username)} (${escapeHtml(state.session.role)}). Session expires ${escapeHtml(date(state.session.expiresAt))}.</p><p class="muted">This admin session has no vault unlock state or vault keys.</p></section></div>`;
 }
 function roles() {
+  if (state.session.managementEnabled) return '<p class="muted">Server account roles do not grant vault keys. This console uses separately configured local operators.</p><section class="panel"><h2>Manage roles</h2><p>Open an account’s details under Users to grant or remove an admin role, request ownership acceptance, or remove an owner role. Owners can manage elevated roles; admins cannot change or suspend owners.</p><p>Every action requires your current operator password. At least one active owner must remain. Recipients accept ownership in their vault web app after a fresh unlock.</p><p>License installation, destructive server operations and secret settings remain in the operator runbooks.</p></section>';
   return `<p class="muted">Server roles are separate from vault membership and access.</p><div class="columns"><section class="panel"><h2>Owner</h2><p class="muted">Controls ownership, licensing, destructive server operations and root settings. Also has admin capabilities.</p><ul class="list"><li>Can initiate owner grants and transfers when implemented.</li><li>Cannot remove the last active owner.</li><li>Does not automatically receive vault keys or content access.</li></ul></section><section class="panel"><h2>Server admin</h2><p class="muted">Handles delegated control-plane operations such as users, invitations, authentication locks and routine settings.</p><ul class="list"><li>Cannot add, remove or demote owners.</li><li>Has no automatic access to private or shared vaults.</li><li>Exact write permissions will be finalized before controls are enabled.</li></ul></section></div><div class="notice">Role and ownership changes are not available in this version. The current database supports one provisional vault-account owner. Operator roles apply to this separate read-only console.</div>`;
 }
 function backups() {
@@ -116,8 +118,18 @@ function backups() {
   return `<p class="muted">Backup visibility for this server. Checked ${escapeHtml(date(state.overview.data.checkedAt))}.</p><section class="panel"><h2>Current backup status</h2><p>${badge(backup.state)}</p><p class="muted">${escapeHtml(backup.detail)}</p>${backup.state === 'unknown' ? '<div class="notice">Backup freshness is unknown. Check the operator backup logs and your last restore rehearsal before relying on this server.</div>' : ''}<p class="footnote">Backup creation and restore remain in the operator runbook. This page does not initiate either action.</p></section>`;
 }
 function placeholder(name) { return `<section class="panel empty-state"><h2>${escapeHtml(name)} is coming later</h2><p>This area is reserved for a reviewed administration workflow.</p></section>`; }
-const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles, devices: () => directoryView('devices', state.devices), backups, settings: () => placeholder('Settings'), audit: () => placeholder('Audit') };
-function currentResource() { return ['overview', 'backups'].includes(state.section) ? state.overview : ['users', 'devices', 'invitations'].includes(state.section) ? state[state.section] : null; }
+const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles: () => roles() + ownershipView(), devices: () => directoryView('devices', state.devices), backups, settings: () => placeholder('Settings'), audit: auditView };
+function currentResource() { return ['overview', 'backups'].includes(state.section) ? state.overview : ['users', 'devices', 'invitations'].includes(state.section) ? state[state.section] : state.session.managementEnabled && state.section === 'audit' ? state.audit : state.session.managementEnabled && state.session.role === 'owner' && state.section === 'roles' ? state.ownership : null; }
+function auditView() {
+  if (!state.session.managementEnabled) return placeholder('Audit');
+  const events = state.audit.data?.events || [];
+  return `<section class="panel"><h2>Recent management actions</h2><p class="muted">The latest 100 accepted and denied actions. Vault data, passwords and invitation codes are excluded.</p><div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Outcome</th><th>Target ID</th></tr></thead><tbody>${events.map(event => `<tr><td>${escapeHtml(date(event.createdAt))}</td><td>${escapeHtml(event.actor)}</td><td>${escapeHtml(event.action)}</td><td>${escapeHtml(event.outcome)}</td><td class="mono">${escapeHtml(event.targetId || 'Installation')}</td></tr>`).join('')}</tbody></table></div>${!events.length ? '<p>No recorded management actions loaded.</p>' : ''}</section>`;
+}
+function ownershipView() {
+  if (!state.session.managementEnabled || state.session.role !== 'owner') return '';
+  const grants = state.ownership.data?.grants || [];
+  return `<section class="panel"><h2>Pending ownership requests</h2><p class="muted">Recipients accept in their vault web app after a fresh unlock. Requests expire after 24 hours.</p>${grants.map((grant, index) => `<div class="refresh-bar"><p>${escapeHtml(grant.username)} · expires ${escapeHtml(date(grant.expiresAt))}</p><button class="button" data-cancel-grant="${index}" type="button">Cancel request</button></div>`).join('')}${!grants.length ? '<p>No pending ownership requests loaded.</p>' : ''}</section>`;
+}
 function render({ focus = '' } = {}) {
   if (!state.session) return;
   const active = document.activeElement;
@@ -137,6 +149,15 @@ function render({ focus = '' } = {}) {
   document.querySelector('#refresh-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
   document.querySelector('#retry-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
   if (directory) bindDirectory(state.section);
+  if (state.session.managementEnabled && state.section === 'invitations') {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'button primary'; button.textContent = 'Create invitation';
+    button.onclick = () => showManagementAction(root, state.session, { action: 'invitation.create', label: 'Create invitation', detail: 'Reserve seats for up to ten email addresses. Share the resulting code through your chosen trusted channel. Recipients must verify their email during enrollment.' }, null, () => { state.invitations.data = null; }, button);
+    document.querySelector('#page-title').parentElement.append(button);
+  }
+  document.querySelectorAll('[data-cancel-grant]').forEach(button => {
+    const grant = state.ownership.data.grants[Number(button.dataset.cancelGrant)];
+    button.onclick = () => showManagementAction(root, state.session, { action: 'ownership.cancel', label: 'Cancel ownership request', detail: 'The recipient can no longer accept this request. Existing ownership is unchanged.' }, grant.grantId, () => { state.ownership.data = null; }, button);
+  });
   updateSessionStatus();
   const target = focus || previousFocus;
   const element = target ? document.getElementById(target) : navFocus ? document.querySelector(`.nav [data-section="${navFocus}"]`) : null;
@@ -152,8 +173,9 @@ function navigate(section) {
 window.addEventListener('hashchange', () => navigate(sectionFromHash()));
 async function loadSection(force = false, focus = '') {
   const section = state.section;
-  const key = section === 'backups' ? 'overview' : section;
-  if (!['overview', 'users', 'devices', 'invitations'].includes(key) || !state.session) return;
+  const key = section === 'backups' ? 'overview' : section === 'roles' ? 'ownership' : section;
+  if (['ownership','audit'].includes(key) && (!state.session?.managementEnabled || key === 'ownership' && state.session.role !== 'owner')) return;
+  if (!['overview', 'users', 'devices', 'invitations', 'audit', 'ownership'].includes(key) || !state.session) return;
   const entry = state[key];
   if (!force && (entry.data || entry.loading)) return;
   entry.controller?.abort();
@@ -164,10 +186,10 @@ async function loadSection(force = false, focus = '') {
   entry.loading = true; entry.error = '';
   render({ focus: focus === 'directory-search' ? '' : focus });
   try {
-    const data = await api(key + (key === 'overview' ? '' : '?' + directoryQuery(key, entry)), { signal: controller.signal });
+    const data = await api(key + (['users','devices','invitations'].includes(key) ? '?' + directoryQuery(key, entry) : ''), { signal: controller.signal });
     if (entry.request !== request || state.generation !== generation) return;
     entry.data = data; entry.checkedAt = new Date().toISOString();
-    if (key !== 'overview') entry.page = data.page;
+    if (['users','devices','invitations'].includes(key)) entry.page = data.page;
   } catch (error) {
     if (controller.signal.aborted || entry.request !== request || state.generation !== generation) return;
     if (error.status === 401) { clearSession('Your operator session expired or the server restarted. Sign in again to continue.'); return; }
@@ -175,7 +197,7 @@ async function loadSection(force = false, focus = '') {
   } finally {
     if (entry.request === request && state.generation === generation) {
       entry.loading = false; entry.controller = null;
-      if ((state.section === key || key === 'overview' && state.section === 'backups') && state.session) render({ focus });
+      if ((state.section === key || key === 'overview' && state.section === 'backups' || key === 'ownership' && state.section === 'roles') && state.session) render({ focus });
     }
   }
 }
@@ -240,6 +262,13 @@ function showDetails(kind, item, trigger) {
     catch { status.textContent = 'Select the ID above and copy it manually.'; dialog.querySelector('input').focus(); dialog.querySelector('input').select(); }
   });
   dialog.querySelector('#details-devices')?.addEventListener('click', () => { dialog.close(); accountDevices(item); });
+  if (state.session.managementEnabled) {
+    for (const descriptor of accountActions(kind, item, state.session.role)) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'button'; button.textContent = descriptor.label;
+      button.onclick = () => { dialog.close(); showManagementAction(root, state.session, descriptor, item.id, () => { state[kind].data = null; }, trigger); };
+      dialog.append(button);
+    }
+  }
   dialog.showModal();
 }
 async function signOut() {

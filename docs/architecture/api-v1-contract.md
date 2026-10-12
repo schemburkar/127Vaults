@@ -34,6 +34,8 @@ aliases were removed after browser, acceptance, and CLI consumers migrated.
 | `DELETE` | `/api/v1/session` | End the current session. |
 | `POST` | `/api/v1/onboarding/register` | Register the bootstrap owner. |
 | `POST` | `/api/v1/invitations` | Create an invitation as an authenticated owner. |
+| `GET` | `/api/v1/ownership/requests` | List unexpired ownership grants addressed to this authenticated account. |
+| `POST` | `/api/v1/ownership/requests/{id}/accept` | Accept this account's ownership grant after device-bound authentication within five minutes; request ID retries are recorded and existing sessions are revoked. |
 | `POST` | `/api/v1/onboarding/invitation` | Begin invited-user registration using the invitation token and registration candidate. |
 | `POST` | `/api/v1/onboarding/invitation/{id}/email` | Send the verification code for the identified onboarding attempt. |
 | `POST` | `/api/v1/onboarding/invitation/{id}/complete` | Verify the email code and complete invited-user registration. |

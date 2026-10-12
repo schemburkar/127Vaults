@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { verifyPassword } from './credentials.mjs';
 import { directoryInput, DirectoryInputError, readDirectory } from './directory.mjs';
+import { AdminManagementError } from './management.mjs';
+import { parseJsonObject, readRequestBody, HttpBoundaryError } from '../http-boundary.mjs';
 
 const assets = new Map([
   ['/admin', ['../../admin/index.html', 'text/html; charset=utf-8']],
@@ -11,11 +13,12 @@ const assets = new Map([
   ['/admin/style.css', ['../../admin/style.css', 'text/css; charset=utf-8']],
   ['/admin/directory.js', ['../../admin/directory.js', 'text/javascript; charset=utf-8']],
   ['/admin/api.js', ['../../admin/api.js', 'text/javascript; charset=utf-8']],
+  ['/admin/management.js', ['../../admin/management.js', 'text/javascript; charset=utf-8']],
 ]);
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
-export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
+export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, management = null, backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
   const attempts = new Map();
   const byName = new Map(operators.map(operator => [operator.username, operator]));
@@ -66,12 +69,12 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       const token = randomBytes(32).toString('base64url');
       const csrf = randomBytes(32).toString('base64url');
       sessions.set(digest(token), { username: operator.username, role: operator.role, csrf, expires: now() + 30 * 60_000 });
-      json(res, 200, { username: operator.username, role: operator.role, csrf, expiresAt: new Date(now() + 30 * 60_000).toISOString() }, { 'Set-Cookie': `${cookieName}=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800` });
+      json(res, 200, { username: operator.username, role: operator.role, csrf, expiresAt: new Date(now() + 30 * 60_000).toISOString(), managementEnabled: Boolean(management) }, { 'Set-Cookie': `${cookieName}=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800` });
       return true;
     }
     const active = session(req);
     if (!active) { json(res, 401, { error: 'admin_auth_required' }); return true; }
-    if (path === '/api/admin/session' && req.method === 'GET') { json(res, 200, { username: active.username, role: active.role, csrf: active.csrf, expiresAt: new Date(active.expires).toISOString() }); return true; }
+    if (path === '/api/admin/session' && req.method === 'GET') { json(res, 200, { username: active.username, role: active.role, csrf: active.csrf, expiresAt: new Date(active.expires).toISOString(), managementEnabled: Boolean(management) }); return true; }
     if (path === '/api/admin/session' && req.method === 'DELETE') {
       const a = Buffer.from(String(req.headers['x-127v-admin-csrf'] ?? ''));
       const b = Buffer.from(active.csrf);
@@ -79,6 +82,29 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       const token = String(req.headers.cookie).split(';').map(x => x.trim()).find(x => x.startsWith(`${cookieName}=`)).slice(cookieName.length + 1);
       sessions.delete(digest(token));
       json(res, 200, { signedOut: true }, { 'Set-Cookie': `${cookieName}=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` }); return true;
+    }
+    if (path === '/api/admin/actions' && req.method === 'POST' && management) {
+      const operator = byName.get(active.username);
+      let value;
+      try {
+        const a = Buffer.from(String(req.headers['x-127v-admin-csrf'] ?? '')), b = Buffer.from(active.csrf);
+        if (req.headers.origin !== origin || a.length !== b.length || !timingSafeEqual(a, b)) throw new AdminManagementError('forbidden', 403);
+        value = parseJsonObject(req, await readRequestBody(req, 8192));
+        const source = req.socket.remoteAddress, record = attempts.get(source) ?? { count: 0, until: 0 };
+        if (record.until > now()) throw new AdminManagementError('rate_limited', 429);
+        if (!verifyPassword(operator, value.password)) {
+          record.count++; record.until = now() + Math.min(60000, record.count * 5000); attempts.set(source, record);
+          throw new AdminManagementError('fresh_auth_required', 403);
+        }
+        attempts.delete(source);
+        const { password, ...input } = value;
+        json(res, 200, await management.execute(operator, input));
+      } catch (error) {
+        if (!value || ['forbidden', 'fresh_auth_required', 'rate_limited'].includes(error.code)) await management.denied(operator, value?.action, value?.targetId).catch(() => {});
+        const safe = error instanceof AdminManagementError || error instanceof HttpBoundaryError;
+        json(res, safe ? error.status : 503, { error: safe ? error.code : 'admin_unavailable' });
+      }
+      return true;
     }
     if (req.method !== 'GET') { json(res, 405, { error: 'read_only' }); return true; }
     try {
@@ -102,6 +128,16 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       if (['/api/admin/users', '/api/admin/devices', '/api/admin/invitations'].includes(path)) {
         const kind = path.split('/').at(-1);
         json(res, 200, await readDirectory(pool, kind, directoryInput(url.searchParams, kind))); return true;
+      }
+      if (management && path === '/api/admin/audit') {
+        const rows = (await pool.query('SELECT id,actor_id,action,target_id,outcome,created_at FROM vaults.admin_control_audit ORDER BY created_at DESC,id DESC LIMIT 100')).rows;
+        json(res, 200, { events: rows.map(row => ({ id: row.id, actor: row.actor_id, action: row.action, targetId: row.target_id, outcome: row.outcome, createdAt: row.created_at.toISOString() })) }); return true;
+      }
+      if (management && path === '/api/admin/ownership') {
+        if (active.role !== 'owner') { json(res, 403, { error: 'forbidden' }); return true; }
+        const rows = (await pool.query(`SELECT g.id,g.recipient_id,a.username,g.expires_at FROM vaults.ownership_grants g
+          JOIN vaults.accounts a ON a.tenant_id=g.tenant_id AND a.id=g.recipient_id WHERE g.cancelled_at IS NULL AND g.accepted_at IS NULL AND g.expires_at>now() ORDER BY g.created_at LIMIT 100`)).rows;
+        json(res, 200, { grants: rows.map(row => ({ grantId: row.id, accountId: row.recipient_id, username: row.username, expiresAt: row.expires_at.toISOString() })) }); return true;
       }
       json(res, 404, { error: 'not_found' });
     } catch (error) { json(res, error instanceof DirectoryInputError ? 400 : 503, { error: error instanceof DirectoryInputError ? 'invalid_directory_query' : 'admin_data_unavailable' }); }

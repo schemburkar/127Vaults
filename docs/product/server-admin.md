@@ -1,4 +1,4 @@
-# Local server administration (first read-only slice)
+# Local server administration
 
 The admin page is served at `/admin/` on the same HTTPS server as the API. Its files and route handler live under `apps/server/admin` and `apps/server/src/admin`. It has its own operator credentials, cookie, and session. Signing in here does not sign in to, unlock, or grant access to a vault. It shares the server process and PostgreSQL connection so it can report live account and device metadata; it does not need a second backend service.
 
@@ -18,19 +18,20 @@ Remove-Item Env:VAULTS_ADMIN_SETUP_PASSWORD
 
 Restart the container so it loads the file, then open `https://127.0.0.1:12780/admin/` with the local CA trusted. In `pnpm mvp:dev`, the same URL is proxied to the containerized API. If no operator file exists, the admin sign-in API returns `admin_not_configured`; the vault client remains available.
 
-The file format allows multiple operators with `owner` or `admin` roles. Additional entries must use unique names and the same salt/hash format. For now, these roles apply only to this separate read-only operator console. The database still has a provisional single owner and user roles for vault accounts. Ownership transfer and role mutation require a reviewed migration and permission matrix before controls are added.
+The file format allows multiple operators with `owner` or `admin` roles. Additional entries must use unique names and the same salt/hash format. For now, these roles apply only to this separate read-only operator console. Schema 7 supports multiple server owners, admins and users. Existing schema 6 is frozen and needs an explicit backed-up migration. The [management contract](../architecture/internal-admin-management.md) defines permissions, fresh authentication, last-owner protection and recipient acceptance.
 
 ## Current pages and limits
 
 - **Overview:** Live API/database and schema checks, account and active-device counts. A review queue links directly to pending/expired invitation recipients, active devices with rotation/stale credentials, unclassified device protection and backup visibility. Backup status explicitly says `unknown` until an operator-safe backup status source is connected.
 - **Users:** Search all enrolled accounts by name, username, email or account ID; filter by role and enrollment status. Results have 25, 50 or 100 rows per page, total counts and previous/next navigation. Account details show the full ID, email verification and creation time; open an account's device inventory directly. Read only.
-- **Invitations:** Search recipients by email, inviter username or invitation record ID; filter pending, expired, revoked or redeemed recipients. One record can have multiple recipients. Redemption takes precedence over subsequent expiry/revocation. Details show only internal IDs and timestamps; activation links, bearer tokens and verification codes are excluded. Creation uses the existing owner onboarding workflow. Resend and revocation controls remain unimplemented in this console.
-- **Roles & ownership:** Explains proposed owner/admin permissions and current limits. Read only.
-- **Devices:** Search all devices by device ID, username or account name; filter by lifecycle status, protection and credential state. Inspect full device/account IDs, credential state, creation and revocation/replacement timestamps. An account-specific inventory can be cleared with **All accounts**. Revocation and reports are not implemented here.
+- **Invitations:** Search recipients by email, inviter username or invitation record ID; filter pending, expired, revoked or redeemed recipients. One record can have multiple recipients. Redemption takes precedence over subsequent expiry/revocation. Details show only internal IDs and timestamps; activation links, bearer tokens and verification codes are excluded. Creation uses the existing owner onboarding workflow. Create and revoke invitations through a fresh-password confirmation. Distribution and resend remain explicit operator actions outside the console.
+- **Roles & ownership:** Owners grant/revoke admin roles, request recipient ownership acceptance, cancel pending requests and demote owners while retaining at least one active owner. Account roles and local console operators remain distinct.
+- **Devices:** Search all devices by device ID, username or account name; filter by lifecycle status, protection and credential state. Inspect full device/account IDs, credential state, creation and revocation/replacement timestamps. An account-specific inventory can be cleared with **All accounts**. Fresh-password device revocation is supported; an admin cannot target an owner. Offline copies are not remotely erased.
 - **Backups:** Shows the available status. Backup and restore still use the existing operator runbook.
-- **Settings and audit:** Placeholders.
+- **Audit:** Latest 100 accepted and denied management actions, including actor, target ID and time.
+- **Settings:** Secret and deployment settings remain in operator runbooks.
 
-Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. All admin endpoints are read-only except sign-in and sign-out. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
+Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. Management actions require an exact Origin, the operator session CSRF token and fresh password confirmation. Accepted and denied authenticated actions are audited without credentials or vault data. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
 
 Sign-in preserves the operator name after a failed attempt and clears the password. The password visibility button and Caps Lock hint help correct entry mistakes. When the server supplies a retry delay, the sign-in button shows a countdown and becomes available when that delay ends. A request is bounded to 15 seconds; unreachable servers and incompatible responses receive clear recovery guidance.
 
