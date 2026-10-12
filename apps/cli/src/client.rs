@@ -43,6 +43,26 @@ pub struct Session {
     vault_handles: std::collections::HashMap<String, KeyHandle>,
 }
 
+fn verified_cached_item_body(
+    core: &Core,
+    vault: KeyHandle,
+    catalogue: &[u8],
+    item_id: &str,
+    index: &[u8],
+    cached: Option<&ReplicaItem>,
+) -> Option<Vec<u8>> {
+    let cached = cached?;
+    if cached.item_id != item_id || cached.index != URL_SAFE_NO_PAD.encode(index) {
+        return None;
+    }
+    let body = URL_SAFE_NO_PAD.decode(&cached.body).ok()?;
+    // Reuse ciphertext only after verification against the current server
+    // catalogue's body commitment, revision and authenticated vault context.
+    core.decrypt_private_part(vault, catalogue, uuid_bytes(item_id).ok()?, &body, 3)
+        .ok()?;
+    Some(body)
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct OfflineUnlockRecord {
@@ -2117,6 +2137,17 @@ impl Session {
                     .map_err(|_| "invalid catalogue")?,
             )
             .to_string();
+            let cached_replica = self.replica_store.load(&vault_id)?;
+            let cached_items: std::collections::HashMap<_, _> = cached_replica
+                .as_ref()
+                .map(|replica| {
+                    replica
+                        .items
+                        .iter()
+                        .map(|item| (item.item_id.as_str(), item))
+                        .collect()
+                })
+                .unwrap_or_default();
             let mut items = Vec::new();
             for row in catalogue_response["indices"]
                 .as_array()
@@ -2130,13 +2161,25 @@ impl Session {
                 self.core
                     .decrypt_private_part(handle, &catalogue, uuid_bytes(&item_id)?, &index, 4)
                     .map_err(|_| "item index verification failed")?;
-                let body_response = self.get(&format!(
-                    "/api/v1/vaults/{vault_id}/items/{item_id}?catalogueRevision={revision}"
-                ))?;
-                let body = bytes(&body_response, "envelope")?;
-                self.core
-                    .decrypt_private_part(handle, &catalogue, uuid_bytes(&item_id)?, &body, 3)
-                    .map_err(|_| "item verification failed")?;
+                let body = if let Some(body) = verified_cached_item_body(
+                    &self.core,
+                    handle,
+                    &catalogue,
+                    &item_id,
+                    &index,
+                    cached_items.get(item_id.as_str()).copied(),
+                ) {
+                    body
+                } else {
+                    let body_response = self.get(&format!(
+                        "/api/v1/vaults/{vault_id}/items/{item_id}?catalogueRevision={revision}"
+                    ))?;
+                    let body = bytes(&body_response, "envelope")?;
+                    self.core
+                        .decrypt_private_part(handle, &catalogue, uuid_bytes(&item_id)?, &body, 3)
+                        .map_err(|_| "item verification failed")?;
+                    body
+                };
                 items.push(ReplicaItem {
                     item_id,
                     index: URL_SAFE_NO_PAD.encode(index),
@@ -2318,10 +2361,33 @@ impl Session {
         r.json().map_err(|_| "invalid server response".to_owned())
     }
     pub fn license_status(&self) -> Result<Value, String> {
+        let response = self
+            .license_status_request()?
+            .send()
+            .map_err(|error| server_connection_error(&error))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "server rejected request ({})",
+                response.status().as_u16()
+            ));
+        }
+        response
+            .json()
+            .map_err(|_| "invalid server response".to_owned())
+    }
+
+    /// Prepares a license request without keeping the session borrowed during I/O.
+    ///
+    /// # Errors
+    /// Returns an error when the session is offline.
+    pub fn license_status_request(&self) -> Result<reqwest::blocking::RequestBuilder, String> {
         if !self.online {
             return Err("license status requires a server connection".to_owned());
         }
-        self.get("/api/v1/license")
+        Ok(self
+            .client
+            .get(format!("{}/api/v1/license", self.origin))
+            .header("Cookie", &self.cookie))
     }
     fn post_auth(
         &self,

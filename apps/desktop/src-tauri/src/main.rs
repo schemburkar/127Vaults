@@ -310,13 +310,13 @@ async fn unlock(
     // unlock progress UI remains responsive.
     let config = config_directory()?;
     let supplied_secret = !account_secret.is_empty();
-    let secret = if account_secret.is_empty() {
-        cached_account_secret(&config, &username)
-            .ok_or("account secret is required on this device or after 30 days")?
-    } else {
-        account_secret
-    };
     let (session, result, connector_owned) = tauri::async_runtime::spawn_blocking(move || {
+        let secret = if account_secret.is_empty() {
+            cached_account_secret(&config, &username)
+                .ok_or("account secret is required on this device or after 30 days")?
+        } else {
+            account_secret
+        };
         let mut session = unlock_with_offline_fallback(
             &config,
             &username,
@@ -391,8 +391,26 @@ fn device_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn license_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
-    with_session(&state, |session| session.license_status())
+async fn license_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    // Only request preparation holds the session mutex. A slow status endpoint
+    // must not block item commands, the webview thread, or locking the vault.
+    let request = with_session(&state, |session| session.license_status_request())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let response = request
+            .send()
+            .map_err(|_| "license status unavailable".to_owned())?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "server rejected request ({})",
+                response.status().as_u16()
+            ));
+        }
+        response
+            .json()
+            .map_err(|_| "invalid server response".to_owned())
+    })
+    .await
+    .map_err(|_| "license status worker stopped unexpectedly".to_owned())?
 }
 
 #[tauri::command]

@@ -136,6 +136,151 @@ fn fixture(responses: Vec<(u16, Value)>) -> (String, JoinHandle<Vec<Request>>) {
 }
 
 #[test]
+fn repeated_hydration_reuses_verified_ciphertext_without_skipping_remote_history() {
+    let mut session = session("http://127.0.0.1:1");
+    let directory = session.core.create_empty_directory(session.root).unwrap();
+    let vault = session
+        .core
+        .create_private_vault(session.root, &directory)
+        .unwrap();
+    let handle = vault.vault.handle.unwrap();
+    let vault_id =
+        uuid::Uuid::from_bytes(vault.vault.context[33..49].try_into().unwrap()).to_string();
+    let item = session
+        .core
+        .upsert_private_item(handle, &vault.catalogue, None, b"index", b"body")
+        .unwrap();
+    let item_id = uuid::Uuid::from_bytes(item.item).to_string();
+    let directory_response = json!({"directory":URL_SAFE_NO_PAD.encode(&vault.directory),
+        "vaultEnvelopes":[{"vaultId":vault_id,"envelope":URL_SAFE_NO_PAD.encode(&vault.vault.envelope)}]});
+    let catalogue_response = json!({"catalogue":URL_SAFE_NO_PAD.encode(&item.catalogue),
+        "indices":[{"itemId":item_id,"envelope":URL_SAFE_NO_PAD.encode(&item.index)}]});
+    let sync = json!({"cursor":0,"hasMore":false,"operations":[],"devicePublicKeys":{}});
+    let checkpoint = json!({"checkpoint":null,"checkpointPublicKey":
+        URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&[6;32]).verifying_key().to_bytes())});
+    let (origin, worker) = fixture(vec![
+        (200, directory_response.clone()),
+        (200, catalogue_response.clone()),
+        (200, json!({"envelope":URL_SAFE_NO_PAD.encode(&item.body)})),
+        (200, sync.clone()),
+        (200, checkpoint.clone()),
+        (200, directory_response),
+        (200, catalogue_response),
+        (200, sync),
+        (200, checkpoint),
+    ]);
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    session.hydrate_replicas().unwrap();
+    session.hydrate_replicas().unwrap();
+    let requests = worker.join().unwrap();
+    assert_eq!(requests.len(), 9);
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r.line.contains(&format!("/items/{item_id}?")))
+            .count(),
+        1
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r.line.contains("/operations?"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r.line.contains("/checkpoint"))
+            .count(),
+        2
+    );
+    let replica = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(replica.items[0].body, URL_SAFE_NO_PAD.encode(&item.body));
+    let profile = session.profile_dir.clone();
+    session.online = false;
+    drop(session);
+    fs::remove_dir_all(profile).unwrap();
+}
+
+#[test]
+fn cached_bodies_require_current_commitments_and_authenticated_ciphertext() {
+    let mut session = session("http://127.0.0.1:1");
+    let directory = session.core.create_empty_directory(session.root).unwrap();
+    let vault = session
+        .core
+        .create_private_vault(session.root, &directory)
+        .unwrap();
+    let handle = vault.vault.handle.unwrap();
+    let item = session
+        .core
+        .upsert_private_item(handle, &vault.catalogue, None, b"index", b"body")
+        .unwrap();
+    let item_id = uuid::Uuid::from_bytes(item.item).to_string();
+    let cached = ReplicaItem {
+        item_id: item_id.clone(),
+        index: URL_SAFE_NO_PAD.encode(&item.index),
+        body: URL_SAFE_NO_PAD.encode(&item.body),
+        created_at: None,
+        updated_at: None,
+    };
+    let reuse = |core: &Core, catalogue: &[u8], index: &[u8], cached: Option<&ReplicaItem>| {
+        verified_cached_item_body(core, handle, catalogue, &item_id, index, cached)
+    };
+    assert_eq!(
+        reuse(&session.core, &item.catalogue, &item.index, Some(&cached)),
+        Some(item.body.clone())
+    );
+    assert!(reuse(&session.core, &item.catalogue, &item.index, None).is_none());
+    assert!(
+        reuse(
+            &session.core,
+            &item.catalogue,
+            b"different index",
+            Some(&cached)
+        )
+        .is_none()
+    );
+    let mut tampered = cached.clone();
+    let mut body = item.body.clone();
+    *body.last_mut().unwrap() ^= 1;
+    tampered.body = URL_SAFE_NO_PAD.encode(body);
+    assert!(reuse(&session.core, &item.catalogue, &item.index, Some(&tampered)).is_none());
+    tampered.body = "invalid base64!".to_owned();
+    assert!(reuse(&session.core, &item.catalogue, &item.index, Some(&tampered)).is_none());
+    let changed = session
+        .core
+        .upsert_private_item(
+            handle,
+            &item.catalogue,
+            Some(item.item),
+            b"index",
+            b"changed body",
+        )
+        .unwrap();
+    tampered = cached.clone();
+    tampered.index = URL_SAFE_NO_PAD.encode(&changed.index);
+    assert!(
+        reuse(
+            &session.core,
+            &changed.catalogue,
+            &changed.index,
+            Some(&tampered)
+        )
+        .is_none()
+    );
+    session.core.lock();
+    assert!(reuse(&session.core, &item.catalogue, &item.index, Some(&cached)).is_none());
+    session.online = false;
+}
+
+#[test]
 fn session_inspect_approve_and_revoke_use_authenticated_canonical_requests() {
     let binding = inspection();
     let (origin, worker) = fixture(vec![

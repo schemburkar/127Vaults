@@ -16,6 +16,12 @@ Web and desktop share surface spacing, dialog widths, action rows, and access-ca
 
 Run `node scripts/surface-layout-smoke.mjs` with both local Vite servers to check dialog bounds, long vault lists, narrow settings, access-card consistency, and generator resizing. Desktop IPC uses synthetic fixtures. `VAULTS_BROWSER_CHANNEL` can select an installed browser such as `msedge`; `VAULTS_LAYOUT_SCREENSHOTS` optionally saves screenshots to a directory. The web and desktop URLs can be overridden with `VAULTS_WEB_URL` and `VAULTS_DESKTOP_URL`.
 
+## Unlock performance
+
+The workspace development profile optimizes password derivation and curve arithmetic while retaining application debug builds. The frozen Argon2 parameters remain 64 MiB, three passes, and one lane. Run `cargo run --locked -p vaults-crypto --example unlock_timing` to measure root verification with synthetic material; this measures the crypto phase rather than total online unlock time. When rebuilding development binaries, also run `cargo build --locked -p vaults-cli --bin 127vaults` so the optional sibling connector agent uses the same optimized crypto.
+
+Online unlock still authenticates with the server and checks signed history and checkpoints. Unchanged encrypted item bodies can be reused only after authentication against the current server catalogue; missing, changed, or invalid bodies are downloaded and verified. License and removal status load after the verified vault is shown. License network I/O runs outside the session mutex so a slow status request cannot block browsing or locking.
+
 Website passkeys registered through the extension appear as dedicated encrypted
 items and sync through the same replica. Their private keys are excluded from
 generic item summaries and renderer field hydration; saving an existing passkey

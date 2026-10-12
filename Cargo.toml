@@ -20,3 +20,21 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+# Desktop dev uses native crypto, whereas the browser fixture is built with
+# --release. Keep application debugging while avoiding unoptimized password
+# derivation and curve arithmetic. The frozen KDF parameters are unchanged.
+[profile.dev.package.vaults-crypto]
+opt-level = 3
+
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
+
+[profile.dev.package.opaque-ke]
+opt-level = 3

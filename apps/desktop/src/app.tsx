@@ -457,10 +457,8 @@ export function App() {
       setDefaultView(result.settings.defaultView);
       setRemovalPreference(result.settings.removalPreference);
       setVaults(result.vaults);
-      setRemovalPlan(await invoke<RemovalPlan>("vault_removal_status").catch(() => null));
       setItems(result.items);
       setOnline(result.online);
-      setLicenseStatus(result.online ? await invoke<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string }>("license_status").catch(() => null) : null);
       setOfflineReason(result.offlineReason);
       setLastSynced(result.online ? new Date() : null);
       setUnlocked(true);
@@ -976,6 +974,20 @@ export function App() {
     catch { setPendingChanges(null); }
   };
   useEffect(() => { if (unlocked) void refreshSyncStatus(); }, [unlocked]);
+  // Ancillary status must not delay presenting the verified, unlocked vault.
+  useEffect(() => {
+    if (!unlocked) return;
+    let disposed = false;
+    void invoke<RemovalPlan>("vault_removal_status").then((plan) => {
+      if (!disposed) setRemovalPlan(plan);
+    }).catch(() => { /* Explicit vault actions report their own errors. */ });
+    if (online) {
+      void invoke<NonNullable<typeof licenseStatus>>("license_status").then((license) => {
+        if (!disposed) setLicenseStatus(license);
+      }).catch(() => { /* Status is advisory; the server enforces write permissions. */ });
+    } else { setLicenseStatus(null); }
+    return () => { disposed = true; };
+  }, [unlocked, online]);
   // Connector saves use this same encrypted replica. Refresh external writes
   // without replacing an editor draft, and deliver queued writes when online.
   useEffect(() => {
