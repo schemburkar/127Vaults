@@ -54,7 +54,10 @@ test('PostgreSQL owner can approve, enroll and revoke a second device without ch
     await assert.rejects(store.completeEnrollmentRequest({ ...started, possessionSignature: signature({ ...binding, purpose: 'device-possession' }, otherKeys) }), { code: 'ENROLLMENT_INVALID' });
     const possession = signature({ ...binding, purpose: 'device-possession' }, proposedKeys);
     assert.deepEqual(await store.completeEnrollmentRequest({ ...started, possessionSignature: possession }), { version: 1, deviceId: proposed, credentialEpoch: 1 });
-    await assert.rejects(store.completeEnrollmentRequest({ ...started, possessionSignature: possession }), { code: 'ENROLLMENT_INVALID' });
+    // Lost completion replies are retried with the same possession proof.
+    assert.deepEqual(await store.completeEnrollmentRequest({ ...started, possessionSignature: possession }), { version: 1, deviceId: proposed, credentialEpoch: 1 });
+    assert.equal(Number((await pool.query('SELECT count(*) AS n FROM vaults.devices WHERE tenant_id=$1 AND id=$2', [tenant, proposed])).rows[0].n), 1);
+    await assert.rejects(store.completeEnrollmentRequest({ ...started, possessionSignature: signature({ ...binding, purpose: 'device-possession' }, otherKeys) }), { code: 'ENROLLMENT_INVALID' });
     await assert.rejects(store.approveEnrollmentRequest(auth, { enrollmentId: started.enrollmentId, approvalSignature: signature(binding, currentKeys) }), { code: 'ENROLLMENT_INVALID' });
 
     // Sessions are fixed-shape test records; no password, account secret, OPAQUE
@@ -68,6 +71,7 @@ test('PostgreSQL owner can approve, enroll and revoke a second device without ch
     // avoid the update altogether when recovery state is already available.
     await assert.rejects(pool.query('UPDATE vaults.accounts SET recovery_state=recovery_state WHERE id=$1', [owner]), { code: 'P0001' });
     assert.deepEqual(await store.revoke(auth, { deviceId: proposed.toUpperCase() }), { deviceId: proposed, status: 'revoked', lostLastDevice: false });
+    await assert.rejects(store.completeEnrollmentRequest({ ...started, possessionSignature: possession }), { code: 'ENROLLMENT_INVALID' });
     const devices = (await store.list(auth)).devices;
     assert.equal(devices.find(device => device.deviceId === proposed).status, 'revoked');
     assert.equal(devices.find(device => device.deviceId === current).status, 'active');

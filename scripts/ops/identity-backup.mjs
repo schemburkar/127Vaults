@@ -22,7 +22,7 @@ const identityFiles = [
   'live/server.key', 'live/server.crt',
   'runtime/token.key', 'runtime/checkpoint.key', 'runtime/postgres-password', 'runtime/readiness-token'
 ];
-const optionalFiles = ['runtime/smtp-password'];
+const optionalFiles = ['runtime/smtp-password', 'runtime/admin-operators.json'];
 
 async function run(argv) {
   const child = spawn(process.execPath, [operator, 'envelope', ...argv], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });

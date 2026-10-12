@@ -95,6 +95,29 @@ On Windows with Podman, the operator now refuses `start`, `status`, `identify`, 
 
 For invited-user email verification, configure a trusted SMTP-over-TLS service on port 465. After `init`, append `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, and `VAULTS_INSTALLATION_LABEL` to `.env`. Write the SMTP password alone to `<private directory>/runtime/smtp-password` with operator-only permissions; do not put it in `.env`. On `start`, the installer adds `compose.smtp.yaml`, which gives only the server an outbound network while PostgreSQL remains on the private backend. Invalid SMTP configuration fails startup. This external SMTP path needs a live provider and egress test before invited-user real-data use; the default installation supports only the first owner.
 
+## Enable the internal admin console
+
+The loopback server bundle includes the read-only console at `/admin/` and its
+operator setup command. After installation initialization, use the actual private
+identity directory and a separate operator password:
+
+```powershell
+$operatorFile = Join-Path '<private-directory>' 'runtime/admin-operators.json'
+$securePassword = Read-Host 'New admin operator password' -AsSecureString
+$env:VAULTS_ADMIN_SETUP_PASSWORD = [System.Net.NetworkCredential]::new('', $securePassword).Password
+try { node server.mjs admin init localowner $operatorFile }
+finally { Remove-Item Env:VAULTS_ADMIN_SETUP_PASSWORD }
+node server.mjs install start --compose-provider '<full path to podman-compose>'
+```
+
+The first operator is an owner and its file cannot be overwritten by this command.
+Restart loads the file. Vault identities remain separate. Account, role and device
+management writes remain in the existing operator/client workflows; the console
+provides inspection only. Private-LAN deployments refuse admin access. The encrypted
+identity backup includes `runtime/admin-operators.json` when present; older backups
+without console operators remain readable. The command also works in the source
+checkout and requires only Node 24 in an extracted bundle.
+
 ## Backup and restore rehearsal
 
 Create a random 32-byte backup key in a protected path that is **not** the installation directory or backup destination, using `node server.mjs database keygen --output <private-key-path>`; retain an offline recovery copy. The same `server.mjs` command is used in the source checkout and extracted bundle. Set the exact database container name from `node server.mjs install status`. The project name is generated during `init` and recorded in `.env`, preventing a new test identity from accidentally reusing an older test volume.

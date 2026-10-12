@@ -2372,7 +2372,7 @@ function setBusy(v) {
   busy = v;
   document.body.setAttribute("aria-busy", String(v));
   for (let b of document.querySelectorAll(
-    "#save,#new-item,#create-vault,#web-create-vault-submit,#login,#setup,#begin-enrollment,#complete-enrollment,#mobile-sync,#register-browser-device,#browser-enrollment-check",
+    "#save,#new-item,#create-vault,#web-create-vault-submit,#login,#setup,#begin-enrollment,#complete-enrollment,#reload,#mobile-sync,#register-browser-device,#browser-enrollment-check",
   ))
     b.disabled =
       v ||
@@ -2406,7 +2406,7 @@ window.__vaultsActions = {
     if (id === "new-item") beginEdit(null);
     else if (id === "edit-item" && currentItem) beginEdit();
     else if (id === "create-vault") openCreateVaultDialog();
-    else if (id === "reload") syncInstalled().catch(() => msg("Vault refresh failed.", "error"));
+    else if (id === "reload") return syncInstalled().catch(() => msg("Vault refresh failed.", "error"));
     else if (id === "settings") $("settings-toggle").click();
     else if (id === "lock" && confirmDiscard()) lock();
   },

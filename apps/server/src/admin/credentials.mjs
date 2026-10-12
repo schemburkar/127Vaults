@@ -31,15 +31,21 @@ export function verifyPassword(operator, password) {
   return timingSafeEqual(scryptSync(password, operator.salt, 64), operator.hash);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [username, role, destination] = process.argv.slice(2);
+export function runAdmin(args) {
+  const [action, username, destination] = args;
   const password = process.env.VAULTS_ADMIN_SETUP_PASSWORD;
-  if (!format.test(username ?? '') || !['owner', 'admin'].includes(role) || !destination || !password) {
-    console.error('Usage: set VAULTS_ADMIN_SETUP_PASSWORD, then node credentials.mjs <username> <owner|admin> <output-file>');
-    process.exitCode = 1;
-  } else {
-    const item = { username, role, ...hashPassword(password) };
-    writeFileSync(destination, JSON.stringify({ operators: [item] }, null, 2), { flag: 'wx', mode: 0o600 });
-    console.log(`Created ${role} operator ${username}.`);
+  if (args.length !== 3 || action !== 'init' || !format.test(username ?? '') || !destination || !password) {
+    throw new Error('Set VAULTS_ADMIN_SETUP_PASSWORD, then use admin init <username> <new operator-file>. The first operator is an owner.');
   }
+  const item = { username, role: 'owner', ...hashPassword(password) };
+  writeFileSync(destination, JSON.stringify({ operators: [item] }, null, 2), { flag: 'wx', mode: 0o600 });
+  console.log(`Created owner operator ${username}. Restart the server to load the operator file.`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try {
+    const [username, role, destination] = process.argv.slice(2);
+    if (role !== 'owner' || process.argv.length !== 5) throw new Error('Use credentials.mjs <username> owner <new operator-file>.');
+    runAdmin(['init', username, destination]);
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

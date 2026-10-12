@@ -68,6 +68,7 @@ const failures=[];
 const server=createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,origin),path=url.pathname;
+    if (process.env.VAULTS_TEST_TRACE === '1' && path.startsWith('/api/')) console.log(`Fixture ${req.method} ${path}`);
     const send=(status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store',...headers});res.end(JSON.stringify(value))};
     if(!path.startsWith('/api/')) {
       const asset=path==='/'?'index.html':path.slice(1);
@@ -262,7 +263,7 @@ try {
   addVault('Concurrent fixture');
   await context.setOffline(false);
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'),{timeout:20000});
-  await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.locator('#conflict-dialog').waitFor({state:'visible'});
+  await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#conflict-dialog').waitFor({state:'visible'});
   await page.locator('#conflict-keep').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'),{timeout:20000});
   assert.equal(vaults.size,4);assert.ok([...vaults.get(firstVault).items.values()].length===2);
@@ -276,6 +277,7 @@ try {
   dropNextWrite=true;
   const before=receipts.size;await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
   await page.waitForFunction(()=>!document.querySelector('#reload').disabled);
+  console.log('Verified the lost response left an encrypted change queued and released the save controls.');
   lostRepliesFor=null;
   await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.waitForFunction(()=>!document.querySelector('#session-dates').textContent.includes('pending')&&document.querySelector('#session-dates').textContent.includes('Up to date'),{timeout:20000});
   assert.equal(receipts.size,before+1);
@@ -301,9 +303,9 @@ try {
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
   vaults.get(recoverySource).retired=true;vaults.get(recoverySource).retirementChoice='archive';
   await context.setOffline(false);await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'));
-  await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.locator('#sync-review-dialog').waitFor({state:'visible'});
+  await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#sync-review-dialog').waitFor({state:'visible'});
   await page.locator('#sync-review-later').click();await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
-  await page.evaluate(()=>window.__vaultsActions.runAction('reload'));await page.locator('#sync-review-dialog').waitFor({state:'visible'});await page.locator('#sync-review-destination').selectOption(firstVault);await page.locator('#sync-review-mine').click();
+  await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#sync-review-dialog').waitFor({state:'visible'});await page.locator('#sync-review-destination').selectOption(firstVault);await page.locator('#sync-review-mine').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'));
   assert.equal(vaults.get(firstVault).items.size,4);assert.equal(vaults.get(recoverySource).items.size,0);
   console.log('Verified retired-vault offline edit recovery and cancellation.');

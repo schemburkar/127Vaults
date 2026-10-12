@@ -12,7 +12,7 @@ Create an operator file in the runtime directory mounted by `compose.yaml`. The 
 $operatorFile = Join-Path $env:VAULTS_TLS_DIR 'runtime/admin-operators.json'
 $securePassword = Read-Host 'New admin operator password' -AsSecureString
 $env:VAULTS_ADMIN_SETUP_PASSWORD = [System.Net.NetworkCredential]::new('', $securePassword).Password
-node apps/server/src/admin/credentials.mjs localowner owner $operatorFile
+node server.mjs admin init localowner $operatorFile
 Remove-Item Env:VAULTS_ADMIN_SETUP_PASSWORD
 ```
 
