@@ -25,6 +25,9 @@ all app surfaces as internally accepted yet.
 All artifacts are unsigned private-test builds, outside the checkout at
 `C:\Projects\127Vaults-Releases`. Each directory includes `release.json`,
 `SHA256SUMS` and the verifier. No push or publication occurred.
+All six selected directories passed full file-set and SHA-256 verification;
+the [recorded revisions and checksums](internal-release-artifacts-2026-10-12.json)
+preserve that evidence in this repository.
 
 - Server: `server/internal-20261012-c/linux-amd64`, source `61cfcea`, schema 7,
   image `localhost/127vaults-server:release-4c92423254fc7009`.
