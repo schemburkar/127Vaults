@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import {
   Star,
   ShieldCheck,
@@ -925,47 +925,26 @@ function Vault() {
 }
 
 function Settings() {
-  const settingsTab = "settings-tab w-full justify-start";
+  const settingsTab = "settings-tab";
   const [activeTab, setActiveTab] = useState<"profile" | "devices" | "vaults" | "preferences">("profile");
   const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
   useEffect(() => { const tab = (event: Event) => setActiveTab((event as CustomEvent<typeof activeTab>).detail); const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:settings-view", tab); window.addEventListener("vaults:vaults", update); if ((window as any).__vaultsSnapshot) setVaults((window as any).__vaultsSnapshot); return () => { window.removeEventListener("vaults:settings-view", tab); window.removeEventListener("vaults:vaults", update); }; }, []);
   return (
-    <dialog id="settings" className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#04071d] p-0 text-slate-100 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm max-[560px]:inset-0 max-[560px]:m-0 max-[560px]:h-dvh max-[560px]:max-h-none max-[560px]:w-screen max-[560px]:max-w-none max-[560px]:rounded-none max-[560px]:border-0">
-      <div className="grid min-h-[31rem] grid-cols-[12rem_1fr] max-[560px]:min-h-full max-[560px]:grid-cols-1 max-[560px]:grid-rows-[auto_1fr]">
-        <aside className="flex flex-col border-r border-white/7 bg-transparent p-4 max-[560px]:grid max-[560px]:grid-cols-2 max-[560px]:items-center max-[560px]:gap-1 max-[560px]:border-b max-[560px]:border-r-0 max-[560px]:p-3">
-          <div className="max-[560px]:col-span-2">
-            <p className={eyebrow}>SETTINGS</p>
-            <h2 className="text-xl font-bold">Settings</h2>
-          </div>
-          <Button
-            variant="ghost"
-            className={`${settingsTab} ${activeTab === "profile" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`}
-            data-settings-view="profile"
-          >
-            Profile
-          </Button>
-          <Button
-            variant="ghost"
-            className={`${settingsTab} ${activeTab === "devices" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`}
-            data-settings-view="devices"
-          >
-            Devices
-          </Button>
-          <Button variant="ghost" className={`${settingsTab} ${activeTab === "vaults" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`} data-settings-view="vaults">Vaults</Button>
-          <Button variant="ghost" className={`${settingsTab} ${activeTab === "preferences" ? "active bg-[#E0BB95]/12 text-[#E0BB95] shadow-sm" : ""}`} data-settings-view="preferences">Preferences</Button>
-          <Button
-            id="close-settings"
-            variant="secondary"
-            className="settings-close absolute right-3 top-3 !size-9 !min-h-9 !justify-center !p-0"
-            aria-label="Close settings"
-            title="Close settings"
-          >
-            <X size={18} />
-          </Button>
+    <dialog id="settings" className="web-settings-dialog" aria-labelledby="web-settings-title">
+      <div className="web-settings">
+        <aside className="web-settings-nav">
+          <h2 id="web-settings-title">Settings</h2>
+          <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} variant="ghost" className={`${settingsTab} ${activeTab === tab ? "active" : ""}`} aria-current={activeTab === tab ? "page" : undefined} aria-controls={`settings-${tab}`} data-settings-view={tab}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</nav>
         </aside>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-profile" hidden={activeTab !== "profile"}>
-          <h2>Profile</h2>
-          <p className={muted}>Your account and personal preferences.</p>
+        <div className="web-settings-main">
+          <header className="web-settings-header">
+            <div><h3 id="web-settings-panel-title">{activeTab[0].toUpperCase() + activeTab.slice(1)}</h3><p>{activeTab === "profile" ? "Your account and security in this browser." : activeTab === "devices" ? "Manage devices registered to your account." : activeTab === "vaults" ? "Manage your encrypted vaults." : "Choose how this browser handles your session and copied values."}</p></div>
+            <Button id="close-settings" variant="ghost" className="settings-close" aria-label="Close settings" title="Close settings"><X size={18} /></Button>
+          </header>
+          <div ref={bodyRef} className="web-settings-body text-sm">
+        <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-profile" hidden={activeTab !== "profile"}>
           <div className="grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4">
             <span className="text-xs text-slate-500">Username</span>
             <strong id="profile-username" />
@@ -974,24 +953,18 @@ function Settings() {
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Account secret</span><span id="profile-secret-status" className="text-sm" /></div>
           <PwaControls />
         </section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-preferences" hidden={activeTab !== "preferences"}>
-          <h2>Preferences</h2><p className={muted}>Choose how this browser handles your session and copied values.</p><KeyboardHelp />
+        <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-preferences" hidden={activeTab !== "preferences"}>
+          <KeyboardHelp />
           <div className="mt-6 grid gap-5 text-sm"><label className="grid gap-2">Lock after inactivity<select id="preference-lock-minutes" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label><label className="grid gap-2">Clear copied values after<select id="preference-clipboard-seconds" className="rounded-xl border border-white/10 bg-[#11162b] p-3 text-white"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select></label></div>
         </section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&>h2]:text-2xl [&>h2]:font-bold" id="settings-vaults" hidden={activeTab !== "vaults"}><h2>Vaults</h2><p className={muted}>Choose a vault or create another encrypted vault.</p><div className="mt-6 grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center gap-2 rounded-xl border border-white/10 p-1"><Button variant={vault.selected ? "secondary" : "ghost"} className="min-w-0 flex-1 justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} /><span className="truncate">{vault.name}</span>{vault.selected ? " · Current" : ""}</Button><Button variant="ghost" onClick={() => (window as any).__vaultsActions.openRenameVaultDialog(vault.vaultId)}>Rename</Button></div>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button><CollectionsSettings vaults={vaults} /><VaultLifecycleSettings vaults={vaults} /></section>
-        <section className="overflow-auto p-8 max-[560px]:p-5 [&_h2]:text-2xl [&_h2]:font-bold" id="settings-devices" hidden={activeTab !== "devices"}>
+        <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-vaults" hidden={activeTab !== "vaults"}><div className="grid gap-2">{vaults.map((vault) => <div key={vault.vaultId} className="flex items-center gap-2 rounded-xl border border-white/10 p-1"><Button variant={vault.selected ? "secondary" : "ghost"} className="min-w-0 flex-1 justify-start" onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon size={17} /><span className="truncate">{vault.name}</span>{vault.selected ? " · Current" : ""}</Button><Button variant="ghost" onClick={() => (window as any).__vaultsActions.openRenameVaultDialog(vault.vaultId)}>Rename</Button></div>)}</div><Button id="settings-create-vault" className="mt-5" onClick={() => (window as any).__vaultsActions.openCreateVaultDialog()}>Create vault</Button><CollectionsSettings vaults={vaults} /><VaultLifecycleSettings vaults={vaults} /></section>
+        <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-devices" hidden={activeTab !== "devices"}>
           <div id="devices-list-page">
-            <div className="flex items-start justify-between gap-4 max-[560px]:flex-wrap">
-              <div>
-                <h2>Devices</h2>
-                <p className={muted}>Devices registered to this account.</p>
-              </div>
-              <Button id="show-device-registration">Register new</Button>
-            </div>
+            <Button id="show-device-registration">Register a device</Button>
             <div id="device-status" className={`inline-status ${inlineStatus}`} role="status" />
             <DeviceList />
             <Button id="reload-devices" variant="secondary">
-              Refresh
+              Refresh devices
             </Button>
           </div>
           <div id="device-registration-page" hidden>
@@ -1024,6 +997,8 @@ function Settings() {
             />
           </div>
         </section>
+          </div>
+        </div>
       </div>
     </dialog>
   );
