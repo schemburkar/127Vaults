@@ -4,6 +4,13 @@ Updated 2026-10-05. The [product work index](../product/README.md) links the onl
 
 ## Current decision
 
+The 2026-10-12 user-selected cut requires Windows and Linux desktop/CLI,
+web/PWA, server, extension and admin writes. The
+[internal candidate evidence](internal-release-readiness-2026-10-12.md)
+records implemented management writes, schema-7 recovery and native backend
+checks, with the installed-extension/GUI/human acceptance still open. This
+internal decision does not waive the supported-release or real-secret gates.
+
 The narrow fictitious-data server and browser flow are an **internal experimental MVP**. The offline server bundle is an operator-led test distribution. There is no supported first release or public beta for real credentials yet. The [server backlog](../product/server-backlog.md) records each remaining server acceptance condition, and the [selected real-data pilot gate](selected-real-data-pilot.md) governs any user-selected live credential.
 
 ## First supported release gate

@@ -1,8 +1,10 @@
 # Internal admin management contract
 
-Status: implementation in progress, 2026-10-12. The user requires management
+Status: implemented internal write slice, acceptance partial, 2026-10-12. The user requires management
 writes for the internal Windows/Linux release. This contract defines the first
-write slice for SRV-016; completion requires database, HTTP and browser evidence.
+write slice for SRV-016. Database, HTTP, Edge management and packaged HTTPS
+write/recovery evidence pass; human and clean-host acceptance remain open. See
+[current release evidence](../release/internal-release-readiness-2026-10-12.md).
 
 The console retains its separate loopback-only local operator identity. Local
 operator roles authorize console operations; vault account roles never confer

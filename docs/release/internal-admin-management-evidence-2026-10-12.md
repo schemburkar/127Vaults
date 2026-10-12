@@ -37,11 +37,18 @@ redacted audit. No existing installation was migrated during this work.
   check passed after the new suspension filter was introduced.
 - Workspace `pnpm check` and `pnpm test` passed. Live PostgreSQL checks above are
   separate from the default test runner's explicitly skipped integration rows.
+- The schema-7 `internal-20261012-c` extracted server package passed verified
+  HTTPS invitation create, identical replay, divergent request-ID refusal,
+  revoke and audit redaction. Its encrypted database/identity backup, guarded
+  empty-project restore, second-restore refusal and existing-owner read passed.
+  Evidence is retained in `C:\Projects\127Vaults-internal-recovery-20261012-f`.
+- The exact release image passed populated schema 1→7 migration, encrypted
+  pre-backup, dry-run rollback, lock contention and checksum verification.
 
 ## Release boundary
 
-These checks do not replace a schema-7 packaged-server recovery drill, native
-client acceptance on Windows and Linux, or installed-extension browser/native
-messaging acceptance. Those remain in the internal release gate. Management
+The schema-7 packaged recovery drill and Windows/Linux native backend checks
+now pass. Installed desktop GUI and the full extension browser/site/source
+matrix remain open in the [internal release gate](internal-release-readiness-2026-10-12.md). Management
 writes are loopback-only. Private-LAN console access remains refused. Secret
 settings, restore, migration, shutdown and licensing stay in operator runbooks.

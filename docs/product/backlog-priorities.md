@@ -1,52 +1,35 @@
 # Backlog priority review
 
-Updated 2026-10-06. This is the current scheduling decision for the live [component backlogs](README.md). It does not change their acceptance states or the [release gate](../release/beta-readiness.md). The [2026-09-08 MVP plan](mvp-plan.md) remains a historical decision: its online web and server flow has been implemented for fictitious data. The user subsequently requested an offline-capable, read-only Chrome/Edge autofill connector for web, desktop and CLI; its development priority is P0, while supported release acceptance stays separate.
+Updated 2026-10-12. The user selected an internal fictitious-data release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
 
-## Priority meanings
+See the [internal release candidate evidence and remaining gates](../release/internal-release-readiness-2026-10-12.md). The goal is not yet achieved across every surface: installed-extension fill, installed desktop GUI/clean-machine acceptance and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).
 
-| Priority | Meaning | Release implication |
+| Priority | Current meaning |
+| --- | --- |
+| P0 | Security/data-loss regression or a required runtime boundary for an explicitly selected mode |
+| P1 internal | Blocks acceptance of a selected internal surface on Windows or Linux |
+| P1 supported release | Installation, deployment and review required before a supported release |
+| P2 | Optional expansion outside the internal acceptance cut |
+
+## Selected P1 closure order
+
+| Order | Component and rows | Evidence and next action |
 | --- | --- | --- |
-| P0 — MVP now | Required to reproduce the operator-led web/server MVP and build the requested offline, read-only Chrome/Edge autofill extension with fictitious data. | No real-secret or public-beta claim. |
-| P1 — first release | Required if the named feature or client is included in a supported first release. Work can follow the P0 cut. | Release only after its own acceptance and the common release gate. |
-| P2 — later | Optional product expansion or an experiment that can be disabled without breaking P0. | Reprioritize before enabling or advertising it. |
+| 1 | Extension EXT-002–005, EXT-007–009, EXT-012 | Packaged Edge/native-host offline discovery/read/origin/write/lock and Edge passkey adapter pass. Finish visible selected-login fill, Chrome/Edge source handoff, frames/navigation, idle/OS lock, restart and installer registration matrix. Unlock belongs to the source client. |
+| 2 | Desktop DESK-004–008 | Windows/Linux packages and native online/offline backend/keyring checks pass; Windows process restart passes. Finish installed GUI, clean-machine install/update/uninstall, device/settings and disclosure acceptance. Shared-engine two-device tests close only part of DESK-004. |
+| 3 | CLI CLI-003/004/006/008/009 | Both platform packages, live keyrings, second-device enrollment, durable conflicts, offline replay and checkpoints pass. Finish terminal/pipe disclosure, clean-machine and remaining device/settings cases. |
+| 4 | Web WEB-003/005–008 | Enrollment and installed-PWA offline recovery are implemented. Edge Rust/WASM fixture passes restart/conflict/replay and ownership acceptance. Finish intended-host CA/human ceremony, enabled type cross-client round trips and wider browser/accessibility matrix. Ordinary browser sessions remain online-only. |
+| 5 | Admin SRV-016 | Schema-7 audited invitation/account/device/role/ownership writes pass PostgreSQL, HTTP, Edge and packaged HTTPS. Finish human acceptance. SMTP resend, secret settings and restore remain operator workflows. |
+| 6 | Server SRV-002/003/005/013 | Extracted schema-7 guarded backup/restore and populated 1→7 migration pass. Unrelated-host/Docker/private-LAN, operational shutdown/upgrade and backup-key custody remain supported-release gates. |
 
-Previously completed capability rows are recorded as **Baseline**; priority usually applies to remaining work. A completed scope decision can retain the priority of the deferred features it concerns. A P1 row can be implemented already but still need verification. A feature excluded from P0 must be absent or clearly experimental in the MVP build and documentation.
+Admin management writes have been implemented during this window. The contract includes confirmations, fresh operator passwords, exact Origin/CSRF, redacted audit, exact replay receipts and concurrent last-owner protection. Local console operators remain distinct from enrolled account roles. Ownership requires the recipient's own freshly authenticated acceptance.
 
-## P0 scope and order
+## Scope boundaries
 
-The MVP surface is the online web app and one self-hosted server with PostgreSQL. Acceptance uses one private vault per test account and covers owner and invited-user onboarding, OPAQUE unlock, login item create/read/update, explicit lock, and authenticated encrypted persistence. Keep the web session online only. Use fictitious data and an operator-led install. Desktop and CLI can serve as test devices and extension credential sources. The extension's requested development slice is an offline-capable read-only connector with explicit selected-login fill; offline access comes from an installed desktop/CLI encrypted replica.
+- Shared vaults and native iOS/Android/iPad delivery remain excluded. Work is a second private vault.
+- Cloud rows remain P0 **for Cloud**, but Cloud startup remains closed and is outside this self-hosted candidate.
+- Public site commercialization, optional table output, drag-to-fill and wider import/export do not block this internal cut.
+- Enabled license behavior must preserve reads and encrypted pending work. Production entitlement/clock/restore policy remains in SRV-017/018 and the supported-release gate.
+- Independent cryptographic/application review, real-secret approval, public signing/distribution and legal review cannot be replaced by local tests.
 
-Current product direction excludes shared vaults and native iOS, Android, and
-iPad clients from this MVP. The public site's Work vault is a second private
-vault. Do not reintroduce sharing claims or mobile delivery gates without a new
-scope decision.
-
-1. **Rebuild and run the test bundle** (SRV-013): the existing Windows/Podman host passed the fresh-volume operator and verified HTTPS smoke on 2026-10-06; see [evidence](../release/server-bundle-smoke-2026-10-06.md). Clean-host and restore checks remain P1.
-2. **Complete the browser ceremony** (WEB-007): trust the local CA on the intended host, enroll and unlock in a real browser, verify owner and invited-user isolation, lock and restart. Browser-native enrollment and the wider LAN matrix remain P1.
-3. **Run the narrow hostile-path check** (SRV-004): wrong credentials, unauthorized account/vault access, malformed or substituted ciphertext, stale-base update and divergent request-ID reuse. Inspect requests, logs and database for plaintext or user secrets. Record evidence against the [internal MVP acceptance](mvp-plan.md#internal-mvp-acceptance).
-4. **Close the operator handoff**: document the known limits, test credentials and reset procedure in the test-install runbook. Capture human acceptance of the browser walkthrough. Do not mark a broader backlog row Done from this subset alone.
-5. **Complete and verify the extension slice** (EXT-001–004, EXT-007/008): hydrate a desktop/CLI replica, register the native connector, stop the server and close the web tab, unlock that local replica through the extension, fill conventional and split login forms, then check active-client handoff, lock, restart, rollback, origin change, ambiguous forms, same-origin frames and absence of writes. Keep EXT-005 packaging and distribution in P1.
-
-P0 is complete when these checks pass and their evidence is linked from the relevant backlog rows. A failure becomes a scoped fix in that same row before moving to P1.
-
-## Remaining work by component
-
-| Component | P0 — MVP now | P1 — first release | P2 — later |
-| --- | --- | --- | --- |
-| Public site | None; waitlist stays closed in static preview | SITE-001–005, each enabled only after its own privacy, billing, artifact, or Cloud gate | None currently |
-| Web | WEB-007 browser ceremony subset | WEB-003, WEB-005, WEB-007 remaining, WEB-008, WEB-009 license messaging | WEB-004 scanner verification, WEB-006 offline browser |
-| Server | SRV-004 narrow hostile-path subset, SRV-013 rebuilt-bundle smoke | SRV-002, SRV-003, SRV-004 remaining, SRV-005–011, SRV-013 remaining, SRV-017/018 licensing | SRV-012, SRV-014–016 |
-| Desktop | None; test device only | DESK-004–008, DESK-010 license messaging, with DESK-008 only if multiple vaults/collections ship | DESK-003, DESK-009 |
-| CLI | None; test device only | CLI-003, CLI-004, CLI-006, CLI-008, CLI-009 if multiple vaults/collections ship, CLI-012 license status | CLI-007, CLI-010, CLI-011 optional table output |
-| Browser extension | EXT-001–004 and EXT-007/008 offline, read-only development and browser walkthrough | EXT-005 packaging and supported browser matrix, EXT-009 popup polish, EXT-010 license state | None currently; EXT-006 excludes edits |
-
-The desktop and CLI P1 rows are **conditional client gates**: include them only if that client ships in the first supported release. WEB-003 and the multi-vault settings rows are similarly conditional on enabling those item types and views. P2 archive/move functionality already exists experimentally; verify it before enabling it in a supported build. The localhost admin page is P2; operator commands remain the first release control plane.
-
-## Dependency order after P0
-
-1. Finish server restore, migration, clean-host, Docker/LAN, SMTP and security evidence (SRV-002–010). Freeze formats and obtain independent review before any real-secret pilot (SRV-007/011).
-2. Close web cross-client, conflict and security verification for the enabled web features (WEB-003/005/008).
-3. Select the first supported client set. If desktop or CLI ships, close its sync/device, secret-exposure, packaging and clean-machine rows. Defer drag-to-fill, archive/move and extended item types unless explicitly selected and verified.
-4. Complete the extension's permission, origin, frame and lock review. Include it in a supported release only after its own security and browser matrix passes.
-
-No P2 feature blocks P0. Release readiness is evaluated separately by [beta readiness](../release/beta-readiness.md); a P0 pass alone never authorizes real credentials.
+The [2026-09-08 MVP plan](mvp-plan.md) and older batch plans are historical. Their online-only web and read-only-admin cut does not describe current installed-PWA and admin-write implementation. No broad backlog row is closed from a narrow acceptance pass.

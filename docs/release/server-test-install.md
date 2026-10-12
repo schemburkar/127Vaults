@@ -97,7 +97,7 @@ For invited-user email verification, configure a trusted SMTP-over-TLS service o
 
 ## Enable the internal admin console
 
-The loopback server bundle includes the read-only console at `/admin/` and its
+The loopback server bundle includes the local management console at `/admin/` and its
 operator setup command. After installation initialization, use the actual private
 identity directory and a separate operator password:
 

@@ -2,7 +2,7 @@
 // Existing installations and volumes are never stopped, reset or deleted.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve, join, relative, isAbsolute, sep } from 'node:path';
 import { request } from 'node:https';
@@ -112,12 +112,27 @@ try {
     assert.equal(result.ok, true);
     await run(['scripts/live-transport-acceptance.mjs', origin, caPath], root, trusted);
   });
-  await check('packaged admin sign-in, inventory and sign-out', async () => {
+  await check('packaged admin sign-in, audited writes, replay and sign-out', async () => {
     const login = await http('/api/admin/session', { method: 'POST', body: { username: 'localowner', password: 'synthetic-internal-admin-password' } });
     assert.equal(login.status, 200);
     const session = JSON.parse(login.data), cookie = login.headers['set-cookie'][0].split(';')[0];
+    assert.equal(session.managementEnabled, true);
     assert.equal((await http('/api/admin/users', { headers: { cookie } })).status, 200);
     assert.equal((await http('/api/admin/users')).status, 401);
+    const headers = { cookie, origin, 'x-127v-admin-csrf': session.csrf };
+    const create = { action: 'invitation.create', requestId: randomUUID(), emails: ['packaged-management@example.invalid'], expiresInHours: 24, password: 'synthetic-internal-admin-password' };
+    const created = await http('/api/admin/actions', { method: 'POST', headers, body: create });
+    assert.equal(created.status, 200);
+    const invitation = JSON.parse(created.data);
+    assert.match(invitation.token, /^127V-I1-/);
+    assert.deepEqual(JSON.parse((await http('/api/admin/actions', { method: 'POST', headers, body: create })).data), invitation);
+    const divergent = await http('/api/admin/actions', { method: 'POST', headers, body: { ...create, expiresInHours: 48 } });
+    assert.equal(divergent.status, 409);
+    assert.equal((await http('/api/admin/actions', { method: 'POST', headers, body: { action: 'invitation.revoke', requestId: randomUUID(), targetId: invitation.invitationId, password: create.password } })).status, 200);
+    const audit = await http('/api/admin/audit', { headers });
+    assert.equal(audit.status, 200);
+    assert.ok(audit.data.includes('invitation.create') && audit.data.includes('invitation.revoke'));
+    assert.ok(!audit.data.includes(invitation.token) && !audit.data.includes(create.password));
     const logout = await http('/api/admin/session', { method: 'DELETE', headers: { cookie, origin, 'x-127v-admin-csrf': session.csrf } });
     assert.equal(logout.status, 200); assert.equal((await http('/api/admin/users', { headers: { cookie } })).status, 401);
   });
@@ -149,7 +164,7 @@ try {
     assert.equal((await http('/api/admin/session', { method: 'POST', body: { username: 'localowner', password: 'synthetic-internal-admin-password' } })).status, 200);
   });
   await writeFile(join(work, 'evidence.json'), JSON.stringify({ date: '2026-10-12', scope: 'Windows Podman isolated fictitious-data server release', status: 'passed', checks,
-    fixturePort: port, fixtureOverride: 'PORT and loopback Compose mapping; original listeners preserved', limitations: ['Existing host only; not Docker or unrelated-host acceptance.', 'Admin management writes are a separate pending gate.'] }, null, 2) + '\n');
+    fixturePort: port, fixtureOverride: 'PORT and loopback Compose mapping; original listeners preserved', limitations: ['Existing host only; not Docker or unrelated-host acceptance.', 'Broader admin permission and ownership acceptance use the separate PostgreSQL and browser fixtures.'] }, null, 2) + '\n');
   console.log('Internal server backup/restore and packaged admin acceptance passed. Evidence and stopped fixture volumes retained.');
 } finally {
   for (const directory of projects.reverse()) await operator(directory, ['install', 'stop', ...provider]).catch(() => {});

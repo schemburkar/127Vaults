@@ -1,4 +1,10 @@
-use std::{fs, path::Path, sync::mpsc, thread, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
 
 use vaults_cli::client;
 
@@ -178,26 +184,57 @@ fn main() -> Result<(), String> {
         }
         return Ok(());
     }
-    let config = Path::new(".tools/api010-device-a");
+    // Optional isolated release fixture; historical defaults remain unchanged.
+    let external = std::env::var_os("VAULTS_INTERNAL_CLIENT_ROOT").map(PathBuf::from);
+    let server_id = if external.is_some() {
+        let value = std::env::var("VAULTS_INTERNAL_SERVER_ID")
+            .map_err(|_| "explicit fixture server ID is required")?;
+        uuid::Uuid::parse_str(&value).map_err(|_| "fixture server ID must be a UUID")?;
+        value
+    } else {
+        "127vaults-local".to_owned()
+    };
+    let trust_source = if let Some(base) = &external {
+        fs::create_dir(base)
+            .map_err(|_| "release client fixture directory must be new".to_owned())?;
+        let trust = base.join("trust");
+        vaults_cli::establish_trust(&vaults_cli::TrustArgs {
+            url: std::env::var("VAULTS_INTERNAL_CLIENT_URL")
+                .map_err(|_| "missing release fixture URL")?,
+            ca: PathBuf::from(
+                std::env::var_os("VAULTS_INTERNAL_CLIENT_CA").ok_or("missing fixture CA")?,
+            ),
+            server_id: server_id.clone(),
+            tailscale_name: None,
+            tailscale_ip: false,
+            config_dir: trust.clone(),
+        })?;
+        trust
+    } else {
+        PathBuf::from(".127vaults-cli")
+    };
+    let config_owned = external.as_ref().map_or_else(
+        || PathBuf::from(".tools/api010-device-a"),
+        |base| base.join("device-a"),
+    );
+    let config = config_owned.as_path();
     fs::create_dir_all(config).map_err(|error| error.to_string())?;
-    fs::copy(".127vaults-cli/trust.conf", config.join("trust.conf"))
+    fs::copy(trust_source.join("trust.conf"), config.join("trust.conf"))
         .map_err(|error| error.to_string())?;
     fs::copy(
-        ".127vaults-cli/installation-ca.pem",
+        trust_source.join("installation-ca.pem"),
         config.join("installation-ca.pem"),
     )
     .map_err(|error| error.to_string())?;
     let device_id = "22222222-2222-4222-8222-222222222222";
     fs::write(
         config.join("device.conf"),
-        format!(
-            "version=1\ndevice_id={device_id}\nserver_id=127vaults-local\nusername=owner_127\n"
-        ),
+        format!("version=1\ndevice_id={device_id}\nserver_id={server_id}\nusername=owner_127\n"),
     )
     .map_err(|error| error.to_string())?;
     let entry = keyring::Entry::new(
         "127Vaults device identity",
-        &format!("127vaults-local:{device_id}"),
+        &format!("{server_id}:{device_id}"),
     )
     .map_err(|error| error.to_string())?;
     match entry.get_secret() {
@@ -209,26 +246,31 @@ fn main() -> Result<(), String> {
             .set_secret(&[9_u8; 32])
             .map_err(|error| error.to_string())?,
     }
-    let mut session = client::unlock(config, "owner_127", &secret, password)?;
+    let mut session = paced_unlock(config, "owner_127", &secret, password)?;
     let vaults = session.vault_list()?;
     println!(
         "{}: {} vault(s)",
         config.display(),
         vaults.as_array().map_or(0, Vec::len)
     );
-    let second = Path::new(".tools/api010-device-b");
+    let second_owned = external.as_ref().map_or_else(
+        || PathBuf::from(".tools/api010-device-b"),
+        |base| base.join("device-b"),
+    );
+    let second = second_owned.as_path();
     fs::create_dir_all(second).map_err(|error| error.to_string())?;
-    fs::copy(".127vaults-cli/trust.conf", second.join("trust.conf"))
+    fs::copy(trust_source.join("trust.conf"), second.join("trust.conf"))
         .map_err(|error| error.to_string())?;
     fs::copy(
-        ".127vaults-cli/installation-ca.pem",
+        trust_source.join("installation-ca.pem"),
         second.join("installation-ca.pem"),
     )
     .map_err(|error| error.to_string())?;
     if !second.join("device.conf").exists() {
         let (sender, receiver) = mpsc::channel();
+        let enrolling = second.to_path_buf();
         let worker = thread::spawn(move || {
-            vaults_cli::enroll_device_with_status(second, "owner_127", |code| {
+            vaults_cli::enroll_device_with_status(&enrolling, "owner_127", |code| {
                 let _ = sender.send(code.to_owned());
             })
         });
@@ -240,7 +282,7 @@ fn main() -> Result<(), String> {
             .join()
             .map_err(|_| "enrollment worker panicked".to_owned())??;
     }
-    let other = client::unlock(second, "owner_127", &secret, password)?;
+    let other = paced_unlock(second, "owner_127", &secret, password)?;
     println!(
         "{}: {} vault(s)",
         second.display(),
@@ -274,8 +316,8 @@ fn main() -> Result<(), String> {
         .to_owned();
     drop(session);
 
-    let mut a = client::unlock(config, "owner_127", &secret, password)?;
-    let mut b = client::unlock(second, "owner_127", &secret, password)?;
+    let mut a = paced_unlock(config, "owner_127", &secret, password)?;
+    let mut b = paced_unlock(second, "owner_127", &secret, password)?;
     b.item_upsert(
         &vault_id,
         Some(&item_id),
@@ -305,14 +347,14 @@ fn main() -> Result<(), String> {
     }
     drop(a);
     drop(b);
-    let mut b = client::unlock(second, "owner_127", &secret, password)?;
+    let mut b = paced_unlock(second, "owner_127", &secret, password)?;
     let merged = b.item_get(&vault_id, &item_id, None)?;
     if merged["title"] != local_title || merged["website"] != "https://remote.invalid" {
         return Err("different-field changes did not converge".to_owned());
     }
     println!("different-field online rebase: converged");
 
-    let mut a = client::unlock(config, "owner_127", &secret, password)?;
+    let mut a = paced_unlock(config, "owner_127", &secret, password)?;
     let server_title = format!("{marker}-server");
     b.item_upsert(
         &vault_id,
@@ -358,7 +400,7 @@ fn main() -> Result<(), String> {
         return Err("queued draft was lost".to_owned());
     }
     drop(a);
-    let mut a = client::unlock(config, "owner_127", &secret, password)?;
+    let mut a = paced_unlock(config, "owner_127", &secret, password)?;
     a.item_upsert_resolving(
         &vault_id,
         &item_id,
@@ -371,7 +413,7 @@ fn main() -> Result<(), String> {
     )?;
     drop(a);
     drop(b);
-    let mut b = client::unlock(second, "owner_127", &secret, password)?;
+    let mut b = paced_unlock(second, "owner_127", &secret, password)?;
     if b.item_get(&vault_id, &item_id, None)?["title"] != mine_title {
         return Err("reviewed merge did not converge".to_owned());
     }
@@ -403,7 +445,7 @@ fn main() -> Result<(), String> {
         return Err("offline edit was not queued".to_owned());
     }
     drop(offline);
-    let mut a = client::unlock(config, "owner_127", &secret, password)?;
+    let mut a = paced_unlock(config, "owner_127", &secret, password)?;
     let result = a.sync_now()?;
     if result["rebased"] != 1 {
         return Err(format!("offline rebase failed: {result}"));
@@ -414,7 +456,7 @@ fn main() -> Result<(), String> {
     }
     drop(a);
     drop(b);
-    let mut b = client::unlock(second, "owner_127", &secret, password)?;
+    let mut b = paced_unlock(second, "owner_127", &secret, password)?;
     let final_item = b.item_get(&vault_id, &item_id, None)?;
     if final_item["title"] != offline_title
         || final_item["website"] != "https://offline-remote.invalid"
@@ -435,7 +477,7 @@ fn main() -> Result<(), String> {
     println!("offline queued rebase: converged; idempotent retry; replica ciphertext-only");
     b.checkpoint_now(&vault_id)?;
     drop(b);
-    let a = client::unlock(config, "owner_127", &secret, password)?;
+    let a = paced_unlock(config, "owner_127", &secret, password)?;
     let pinned: serde_json::Value =
         serde_json::from_slice(&fs::read(&replica_path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
@@ -447,6 +489,22 @@ fn main() -> Result<(), String> {
     }
     println!("signed checkpoint: verified and pinned on second device");
     Ok(())
+}
+
+fn paced_unlock(
+    config: &Path,
+    username: &str,
+    secret: &str,
+    password: &[u8],
+) -> Result<client::Session, String> {
+    match client::unlock(config, username, secret, password) {
+        Err(error) if error.contains("(429)") => {
+            println!("authentication rate limit: waiting for the next window");
+            thread::sleep(Duration::from_secs(61));
+            client::unlock(config, username, secret, password)
+        }
+        result => result,
+    }
 }
 
 fn ensure_conflict(result: Result<serde_json::Value, String>) -> Result<(), String> {
