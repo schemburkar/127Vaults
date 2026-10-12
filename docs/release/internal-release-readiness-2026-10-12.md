@@ -64,6 +64,15 @@ window on 429. Linux ran under a new D-Bus session and a fixture-only
 enrolled fictitious `owner_127` profile matching the required fixture UUID.
 The native-host browser test temporarily selected that profile and registered
 the fixture extension ID, then restored the prior pointer and registry value.
+The repeatable Windows Edge API check is
+`scripts/internal-native-connector-smoke.mjs`; all five explicit arguments are
+required, and the new external workspace retains evidence and prior registration
+metadata. The server-stopped run passed at
+`C:\Projects\127Vaults-internal-native-20261012-b\evidence.json`.
+A locked-agent negative run failed as expected and preserved the original
+profile pointer bytes and registration value; its fixture is retained with
+suffix `-c`.
+It does not automate or accept the popup/form-fill walkthrough.
 No existing installation was migrated. Original listeners on 12780/12781 and
 their database were preserved; fixture identities and stopped volumes remain
 outside the checkout for review.

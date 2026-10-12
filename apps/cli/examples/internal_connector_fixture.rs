@@ -35,6 +35,9 @@ fn main() -> Result<(), String> {
         }
         "stop" => {
             vaults_cli::stop_connector_agent(&profile);
+            if vaults_cli::connector_agent_active(&profile) {
+                return Err("fixture agent remained active after lock".to_owned());
+            }
             println!("Fictitious connector agent locked.");
         }
         _ => return Err("expected start or stop".to_owned()),
