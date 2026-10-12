@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextSetupStep } from './test-install.mjs';
+import { databaseContainerArgs, nextSetupStep } from './test-install.mjs';
+
+test('restore container selection is scoped by both Compose labels and refuses an invalid project', () => {
+  const args = databaseContainerArgs('vaults-test-123456789abc');
+  assert.ok(args.includes('label=com.docker.compose.project=vaults-test-123456789abc'));
+  assert.ok(args.includes('label=com.docker.compose.service=database'));
+  for (const project of [undefined, '', 'vaults-acceptance', 'vaults-test-123456789abc\nother']) assert.throws(() => databaseContainerArgs(project));
+});
 
 const ready = { bootstrapRequired: false,
   license: { mode: 'active', clockState: 'trusted', maxActiveUsers: 5 },

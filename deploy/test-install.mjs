@@ -21,6 +21,14 @@ export function nextSetupStep({ bootstrapRequired, license, seatUsage }, smtpCon
   return 'Next: verify backups and invite users from the enrolled owner account.';
 }
 
+export function databaseContainerArgs(project) {
+  if (!/^vaults-test-[a-f0-9]{12}$/.test(project)) throw Error('Invalid restore project identity.');
+  // podman-compose does not support `ps -q <service>`. Both engines expose
+  // Compose's project/service labels, which also prevent selecting another DB.
+  return ['ps', '--filter', `label=com.docker.compose.project=${project}`,
+    '--filter', 'label=com.docker.compose.service=database', '--format', '{{.ID}}'];
+}
+
 export async function runTestInstall(argv) {
 const action = argv[0];
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
@@ -150,7 +158,8 @@ async function restoreDatabase() {
       } catch { await new Promise(done => setTimeout(done, 1000)); }
     }
     if (!empty) throw Error('Restore target is unreadable or already contains a schema; no database import was attempted.');
-    const databaseContainer = await runCompose(['ps', '-q', 'database'], { quiet: true });
+    const project = /^VAULTS_PROJECT=(vaults-test-[a-f0-9]{12})$/m.exec(content)?.[1];
+    const databaseContainer = await run(engine, databaseContainerArgs(project), { quiet: true });
     if (!/^[a-f0-9]{12,64}$/.test(databaseContainer)) throw Error('Could not identify the isolated database container.');
     await run(engine, ['cp', dump, `${databaseContainer}:/tmp/database.dump`]);
     try {
