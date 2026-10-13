@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-export async function openDesktopFixtureInspector(origin) {
+export async function openDesktopFixtureInspector(origin, transport=process.platform==='win32'?'webview2':'webkit') {
   assert.match(origin,/^http:\/\/127\.0\.0\.1:\d+$/);
-  if(process.platform==='win32'){
+  if(transport==='webview2'){
     const {chromium}=createRequire(import.meta.url)(process.env.VAULTS_PLAYWRIGHT_MODULE||'playwright');
     let browser;
     for(let i=0;i<80;i++){
@@ -18,7 +18,7 @@ export async function openDesktopFixtureInspector(origin) {
     await page.waitForFunction(()=>!!window.__TAURI_INTERNALS__);
     return {evaluate:expression=>page.evaluate(expression),close:()=>browser.close()};
   }
-  assert.equal(process.platform,'linux');
+  assert.equal(transport,'webkit');
   let html='';
   for(let i=0;i<80;i++){
     try{html=await(await fetch(origin)).text();if(html.includes('127Vaults Desktop')&&html.includes('tauri://localhost'))break;}catch{}

@@ -7,11 +7,12 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { resolve, join, relative, isAbsolute, sep } from 'node:path';
 import { attachExtensionPopup } from './extension-popup-driver.mjs';
+import { runInstalledPasskeyFixture } from './installed-extension-passkey-fixture.mjs';
 
 const options = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i], value = process.argv[i + 1];
-  if (!['--extension', '--host', '--profile', '--desktop-profile', '--react-fixture', '--work', '--server-id'].includes(key) || !value || options[key]) throw Error('Supply explicit extension, host, profile, workspace and server ID; optional desktop profile and React fixture.');
+  if (!['--extension', '--host', '--profile', '--desktop-profile', '--react-fixture', '--work', '--server-id', '--passkeys', '--passkeys-only'].includes(key) || !value || options[key]) throw Error('Supply explicit extension, host, profile, workspace and server ID; optional desktop profile and React fixture.');
   options[key] = value;
 }
 for (const key of ['--extension', '--host', '--profile', '--work', '--server-id']) if (!options[key]) throw Error('Missing fixture argument.');
@@ -131,6 +132,8 @@ try {
     }
   }
   const page = context.pages()[0] || await context.newPage();
+  let passkeyPage=page;
+  if(options['--passkeys-only']!=='yes'){
   for (const [path, fields] of [['/login',['username','password']],['/username',['username']],['/password',['password']]]) {
     await page.goto(origin+path);
     const view = await selectedPopup(page);
@@ -193,7 +196,6 @@ try {
     assert.ok((await worker.evaluate(()=>globalThis.fixtureNativeActions)).some(row=>row.action==='get'&&row.source==='desktop'));
     checks.push('desktop/CLI source handoff');
   } else await view.close();
-  const version=context.browser().version();
   await context.close(); context=null;
   await launch();
   const restartedPage=context.pages()[0]||await context.newPage(); await restartedPage.goto(origin+'/login');
@@ -203,6 +205,13 @@ try {
   view=await selectedPopup(restartedPage);await view.locator('#lock-vault').click();
   await view.locator('#status').filter({hasText:/locked/i}).waitFor();
   assert.equal(await view.locator('#items .item:visible').count(),0);await view.close();checks.push('source lock clears visible results');
+  passkeyPage=restartedPage;
+  }
+  if(options['--passkeys']==='yes'){
+    assert.ok(options['--desktop-profile'],'Passkeys require an explicit fictitious desktop profile');
+    await runInstalledPasskeyFixture({page:passkeyPage,worker,popup,context,origin,checks});
+  }
+  const version=context.browser().version();
   await writeFile(join(work,'evidence.json'),JSON.stringify({date:new Date().toISOString(),status:'passed',browserVersion:version,platform:process.platform,scope:'Real installed extension popup, activeTab and native host; synthetic sites and fictitious profiles',checks,limitations:['No physical OS-lock acceptance.','No external website account or real credentials used.']},null,2)+'\n');
   console.log('Installed extension popup and native form checks passed: '+checks.join('; '));
 } finally {

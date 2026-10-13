@@ -13,7 +13,7 @@ See the [internal release candidate evidence and remaining gates](../release/int
 
 ## Selected P1 closure order
 
-Linux packaged queued-conflict comparison and explicit selected-field resolution now pass, with a fresh peer read confirming the saved choice. Windows queued-conflict GUI and wider settings/device acceptance remain open.
+Windows/Linux packaged queued-conflict comparison and explicit selected-field resolution pass, with peer reads confirming the saved choice. Both platforms also pass peer-created settings review with immediate vault/collection view refresh. Wider default-view/device/interruption and clean-machine acceptance remain open.
 
 | Order | Component and rows | Evidence and next action |
 | --- | --- | --- |

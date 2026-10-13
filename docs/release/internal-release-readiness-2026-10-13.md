@@ -1,13 +1,14 @@
 # Internal release readiness — 2026-10-13
 
 **Decision: internal fictitious-data release candidate; final acceptance remains open.**
-Installed Linux queued-conflict review and explicit selected-field resolution now pass.
+Installed Windows/Linux queued-conflict review, selected-field resolution and
+peer-created vault/collection settings review now pass.
 Windows and Linux desktop/CLI, the Chromium extension, web/PWA, self-hosted
 server and admin management writes are selected. This report supersedes the
 remaining-work list in the [October 12 report](internal-release-readiness-2026-10-12.md),
 whose server, admin, migration, recovery and PWA evidence remains applicable.
 
-Four release blockers were reproduced and fixed on local `main`:
+Five release blockers were reproduced and fixed on local `main`:
 
 | Commit | Fix and validation |
 | --- | --- |
@@ -15,6 +16,7 @@ Four release blockers were reproduced and fixed on local `main`:
 | `2cf8a77` | Desktop and native connector share explicit absolute `VAULTS_CONFIG_DIR` selection. Invalid overrides refuse instead of reading another profile. Profile selection tests and actual source handoff pass. |
 | `bd85ab0` | Adopted desktop/CLI profiles use separate unlock-agent keyring capabilities. Previously starting one invalidated the other. Canonical path identities separate clones while retaining legacy agent compatibility. Actual simultaneous agents, source handoff and independent lock pass. |
 | `27a70eb` | Signup/new-password and ambiguous forms refuse before requesting a saved credential. Regression tests and both installed-browser runs pass. |
+| `daf3d78`, `b6dd3e5` | Accepting peer-created settings now refreshes vault names, collection membership and removal preference immediately. Removed selected collections return to all items; unsaved drafts require reviewed discard. A guarded native vault-list command supports the refresh. Both rebuilt desktop packages pass the formerly failing settings-review/navigation case. |
 
 ## Acceptance achieved
 
@@ -22,7 +24,7 @@ Four release blockers were reproduced and fixed on local `main`:
 | --- | --- | --- |
 | Server and admin | Schema-7 packaged verified HTTPS, audited management writes, PostgreSQL/HTTP/Edge permission checks, recipient ownership acceptance, concurrent last-owner protection, guarded database/identity backup/restore and populated 1→7 migration. See October 12 evidence. | Intended-host human acceptance, unrelated-host deployment and remaining operational policy. No existing installation was migrated. |
 | Web/PWA | Real Rust/WASM Edge unlock, offline restart, encrypted queue replay, conflict and lost-response recovery, archive/restore/move and ownership acceptance. Workspace checks/tests pass again. | Intended-host CA/enrollment ceremony, enabled-type cross-client round trips and broader browser/accessibility acceptance. |
-| Desktop | Packaged Windows NSIS app: actual UI username/secret/password unlock, online item read, reveal/hide, title edit/save and lock clearing. Packaged Linux AppImage: actual React UI/native backend online cross-client read/edit/save, offline unlock/edit/save, same-profile restart preserving edits and online replay/save with zero pending operations. Both native backends/keyrings and prior two-device tests pass. Windows same-path update/reconnect/uninstall passes. Isolated-root Debian install/reinstall/remove passes using existing-host libraries. | Clean-machine installation, normal Linux package lifecycle with dependencies, broader GUI device/settings/multiple-vault/removal cases, clipboard/drag exposure and accessibility. The separate dpkg database used forced dependency handling; it does not accept a fresh-host install. Existing Linux package 0.1.0 was preserved. |
+| Desktop | Packaged Windows NSIS app: actual UI username/secret/password unlock, online item read, reveal/hide, title edit/save and lock clearing. Packaged Linux AppImage: actual React UI/native backend online cross-client read/edit/save, offline unlock/edit/save, same-profile restart preserving edits and online replay/save with zero pending operations. Both native backends/keyrings and prior two-device tests pass. Windows same-path update/reconnect/uninstall passes. Isolated-root Debian install/reinstall/remove passes using existing-host libraries. | Both platforms also pass queued offline conflict resolution and peer settings review. Fresh Ubuntu container dependencies, GUI startup and package remove/reinstall pass. Still required: clean physical-machine installation/keyring enrollment, broader GUI device/default-view/multiple-vault/removal cases, clipboard/drag exposure and accessibility. Existing Linux package 0.1.0 was preserved. |
 | CLI | Latest Windows/Linux packages: real agents/keyrings, concurrent adopted profiles, default list/get pipe redaction and explicit password-only pipe output pass. Prior second-device enrollment, rebase, durable conflicts, offline replay and checkpoints pass. | Physical terminal and clean-machine acceptance, wider settings/device/revocation/rotation cases. |
 | Extension | Actual toolbar popup and native host on Windows Edge 155.0.4283.45 and Linux Chrome for Testing 151.0.7922.34: ordinary/split login, explicit same-origin frame selection, cross-origin refusal, shadow DOM, genuine React controlled-form rerender, navigation refusal before native get, no-match, desktop/CLI handoff, browser process restart/reconnect and source lock clearing. No submission occurs. | Physical OS lock/idle expiry, permission/repair matrix, enabled installed-site passkey-provider acceptance and wider external-site/browser/accessibility coverage. |
 
@@ -62,7 +64,9 @@ failed diagnostics beside its evidence path. The bounded Rust helper's
 `inspect-title`, `conflict` and `settings` modes verify encrypted state and
 peer reads without printing passwords. Replay uses a new copy of the pending
 fixture and a fresh competing server edit; server state has advanced after the
-successful resolution. Windows queued-conflict GUI acceptance remains separate.
+successful resolution. Windows also passed a queued offline edit, process restart,
+competing Linux-device edit, masked comparison and explicit local-title resolution.
+Its evidence is `C:\Projects\127Vaults-internal-install-20261013-e\conflict-ui.json`.
 
 ### Additional settings acceptance
 
@@ -74,6 +78,34 @@ vault name, collection and saved item through the real server. Evidence is at
 `C:\Projects\127Vaults-internal-install-20261013-a\linux-settings-second-device.sh`.
 This does not close divergent settings/default-view/interruption acceptance.
 
+Windows also passed actual GUI vault/collection creation. Settings changed on one
+device deliberately require explicit review on the other. The rebuilt Linux
+package accepted Windows-created settings and immediately refreshed both names;
+the rebuilt Windows package then accepted Linux-created settings and did the same.
+Both verified empty-vault and collection navigation after acceptance. Evidence:
+`/home/vaults-dev/vaults-settings-review-20261013-c/settings-review-evidence.json`
+and `C:\Projects\127Vaults-internal-install-20261013-e\settings-review-ui.json`.
+These runs use desktop `internal-20261013-d`, source `b6dd3e5`.
+
+### Fresh Linux package acceptance and pending passkey consent
+
+The final desktop Debian package and standalone CLI passed in a fresh Ubuntu
+24.04 container: declared dependencies installed normally, the actual WebKit GUI
+opened its unconfigured trust form, native framing reported no enrolled sources,
+and removal/reinstallation preserved a separate profile marker. Evidence is
+`C:\Projects\127Vaults-internal-clean-client-20261013-a\evidence.json`;
+`scripts/internal-linux-package-smoke.mjs` records artifact revisions and the base
+image digest. This supersedes the dependency-lifecycle gap in the table above,
+but Xvfb/container startup does not establish physical-machine or keyring enrollment
+acceptance.
+
+The installed-site passkey harness is prepared and syntax checked, but registration
+and assertion remain unverified. Actual headed Chrome displayed its website-access
+permission prompt; the fixture timed out safely without accepting it. Browser
+permission approval awaits the user's requested confirmation under the computer-use
+consent policy. `scripts/installed-extension-passkey-fixture.mjs` can replay this
+gate after approval in a fresh isolated browser profile.
+
 The following scripts are committed for replay with explicit fixture paths:
 
 - `scripts/internal-extension-form-smoke.mjs`, `extension-popup-driver.mjs` and
@@ -81,8 +113,10 @@ The following scripts are committed for replay with explicit fixture paths:
 - `scripts/internal-native-connector-smoke.mjs`: source/read/refusal/lock and
   explicit fixture uninstall/update/foreign-registration cases. This API-only
   harness is separate from the popup/form harness.
-- `scripts/internal-linux-desktop-ui-smoke.mjs`: real packaged AppImage UI,
-  configurable previous/new title and Online/Offline expectation.
+- `scripts/internal-desktop-ui-smoke.mjs` and `desktop-fixture-inspector.mjs`:
+  real packaged Windows WebView2/Linux WebKit UI, configurable previous/new title,
+  Online/Offline expectation and conflict/settings review. The earlier Linux entry
+  point forwards to this shared harness.
 - `scripts/internal-cli-disclosure-smoke.mjs`: captured pipe output assertions,
   with credentials omitted from console diagnostics.
 - `apps/cli/examples/internal_connector_fixture.rs`: explicitly enrolled
@@ -114,7 +148,7 @@ verification. [Recorded revisions and checksums](internal-release-artifacts-2026
 are committed; unsigned private-test artifacts remain at `C:\Projects\127Vaults-Releases`.
 
 - Server: `server/internal-20261012-c/linux-amd64`, source `61cfcea`, schema 7.
-- Desktop: `desktop/internal-20261013-b/{windows,linux}`, source `27a70eb`.
+- Desktop: `desktop/internal-20261013-d/{windows,linux}`, source `b6dd3e5`.
 - CLI: `cli/internal-20261013-b/{windows,linux}`, source `bd85ab0`.
 - Extension: `extension/internal-20261013-a/chromium`, source `27a70eb`.
 
@@ -126,9 +160,10 @@ Later acceptance-only changes do not alter the selected product binaries.
 
 ## Next work
 
-1. Complete the Windows queued-conflict GUI walkthrough and divergent settings cases.
+1. Complete remaining settings/default-view, device and enabled item-type cases.
 2. Finish physical idle/OS lock and enabled installed passkey-site acceptance.
-3. Finish clean-machine Windows/Linux installation and Linux package lifecycle.
+3. Finish clean physical-machine Windows/Linux installation and Linux keyring
+   enrollment; fresh-container Debian dependencies/startup/lifecycle now pass.
 4. Complete multi-vault/settings/device and enabled item-type cross-client UI
    cases; retain interruption/revocation and disclosure requirements.
 5. Complete the intended-host CA/enrollment and human web/admin walkthrough,

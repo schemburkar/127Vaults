@@ -1,6 +1,6 @@
 # Desktop backlog
 
-Linux installed GUI same-field conflict comparison and explicit selected-field resolution pass; a fresh peer read confirms the saved choice. See the [current evidence](../release/internal-release-readiness-2026-10-13.md). Windows queued-conflict GUI and wider settings/device acceptance remain open.
+Windows/Linux installed GUI same-field conflict comparison and selected-field resolution pass; peer reads confirm the saved choice. Both accept peer-created settings with immediate vault/collection name refresh. See the [current evidence](../release/internal-release-readiness-2026-10-13.md). Wider settings/device/interruption and clean-machine acceptance remain open.
 
 Updated 2026-10-13. Windows and Linux Tauri client; see [desktop scope](../../apps/desktop/README.md) and the [public desktop walkthrough](../../public-website/index.html#experience). The shell now reflows below 850px with an expandable vault/action menu and switches between list and detail below 620px. Item actions and conflict choices wrap in compact windows; manual unlocked narrow-window verification remains to be done.
 

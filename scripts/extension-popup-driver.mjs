@@ -41,6 +41,8 @@ export async function attachExtensionPopup(browserSession, targetId) {
     async count(){return evaluate(this.elements()+'.length');}
     async waitFor({state='visible'}={}){await wait(()=>evaluate(`(()=>{const el=${this.elements()}[0];return ${state==='hidden'?'!el||el.getClientRects().length===0':'!!el&&el.getClientRects().length>0'};})()`),this.css);}
     async selectOption(value){await evaluate(`(()=>{const el=${this.elements()}[0];if(!el)throw Error('Missing source selector');el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
+    async selectFirstOption(){await wait(()=>evaluate(`!!${this.elements()}[0]?.options?.length`),'popup choices');const value=await evaluate(`${this.elements()}[0].options[0].value`);await this.selectOption(value);}
+    async waitForEnabled(){await wait(()=>evaluate(`(()=>{const el=${this.elements()}[0];return !!el&&!el.disabled&&el.getClientRects().length>0;})()`),'enabled '+this.css);}
     async click(){
       const point=await evaluate(`(()=>{const el=${this.elements()}[0];if(!el)throw Error('Missing popup action');const rect=el.getBoundingClientRect();return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};})()`);
       await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});
@@ -50,6 +52,7 @@ export async function attachExtensionPopup(browserSession, targetId) {
   await send('Runtime.enable');
   return {
     locator:css=>new Locator(css),
+    snapshot:()=>evaluate('document.body.innerText'),
     isClosed:async()=>!(await browserSession.send('Target.getTargets',{filter:[{}]})).targetInfos.some(info=>info.targetId===targetId),
     waitForURL:url=>wait(()=>evaluate(`location.href===${JSON.stringify(url)}`),'popup URL'),
     waitForEvent:event=>{

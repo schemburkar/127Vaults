@@ -4,4 +4,4 @@ Updated 2026-10-13. Owner: desktop implementation. Current work: DESK-004–008 
 
 Record acceptance in the component backlog. See [current evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). No broad row is Done from these subset checks.
 
-Linux packaged queued-conflict comparison and selected-field resolution pass, including a fresh peer read. Basic GUI vault/collection creation and second-device encrypted settings read also pass. Next finish Windows queued-conflict GUI and divergent settings/device acceptance.
+Windows/Linux packaged queued-conflict comparison and selected-field resolution pass, including peer reads. Both GUI vault/collection creation and explicit peer-settings review pass. Accepting settings now immediately refreshes vault names and collection membership in the rebuilt packages. Next finish default-view/device/interruption, disclosure and clean-machine acceptance.
