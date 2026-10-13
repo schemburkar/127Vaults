@@ -1771,6 +1771,7 @@ function extensionRelatedLogins(item, siteOrigin) {
   return output;
 }
 window.__vaultsExtensionActions = {
+  status() { return { locked: !root || !vault || !catalogue }; },
   passkeyVaults() {
     if (!root || !vault || !catalogue) throw Error("Unlock the web vault first.");
     return [{ vaultId, name: availableVaults.find(row => row.vaultId === vaultId)?.name || "Current vault" }];

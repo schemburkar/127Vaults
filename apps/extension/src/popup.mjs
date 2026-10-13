@@ -1,6 +1,7 @@
 import { matchingLogin, originOf, permissionPattern } from './match.mjs';
 import { probeFrame, fillFrame } from './fill.mjs';
 import { sourceStatus } from './source-status.mjs';
+import { findUnlockedVaultTab } from './vault-tab.mjs';
 import { setupPasskeyPopup } from './popup-passkeys.mjs';
 
 const $ = id => document.getElementById(id);
@@ -27,7 +28,7 @@ function status(message, error = false) {
 }
 function errorMessage(error) {
   const code = String(error?.message || error);
-  if (/Cannot access|permission|host/i.test(code)) return 'Browser access was denied. Reconnect the vault or reopen this page and try again.';
+  if (/Cannot access|permission|not allowed to access/i.test(code)) return 'Browser access to the vault tab was denied. Use Web connection to grant access to its HTTPS address, then refresh.';
   return code.replace(/_/g, ' ').slice(0, 150);
 }
 async function script(tabId, func, args = [], extra = {}, world = 'ISOLATED') {
@@ -79,7 +80,12 @@ function renderItems() {
 }
 async function findVaultTab() {
   const tabs = await chrome.tabs.query({});
-  return tabs.find(tab => tab.id && tab.id !== targetTab.id && originOf(tab.url) === vaultOrigin) || null;
+  return findUnlockedVaultTab(tabs, vaultOrigin, targetTab.id, async id => {
+      return (await script(id, () => {
+        const actions = window.__vaultsExtensionActions;
+        return actions?.status ? actions.status() : actions?.list ? actions.list(location.origin) : null;
+      }, [], {}, 'MAIN'))[0]?.result;
+  });
 }
 function licenseNotice(license) {
   if (!license || license.enforcement === 'disabled') return '';

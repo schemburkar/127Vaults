@@ -202,3 +202,15 @@ on a failed refresh. Isolated offline UI evidence at
 `C:\Projects\127Vaults-sync-compare-20261013-a\ui-evidence.json` verifies inline
 comparison/server-copy errors and retained queued work. This fixture uses an
 explicit test conflict marker; it does not establish the cause of the user's 409.
+
+Further connection diagnostics found an October 9 registered native host reporting
+the desktop agent inactive while the rebuilt host reported that same agent active.
+The local registration was updated to a persistent rebuilt connector, preserving
+the existing extension ID; its original manifest is backed up with the development
+recovery evidence. Web-source selection now includes an active unlocked vault tab,
+tries other matching tabs when one is locked/inaccessible, and maintains exact
+origin/port checks. Three selection regressions pass (26 extension tests total).
+Conflict dialogs now retain their owning vault for comparison, selected-field save
+and server-copy actions rather than relying on the changing main view. Desktop and
+web checks pass. The user's live Edge popup and specific remaining conflict require
+confirmation after extension reload and app unlock; no user edit was discarded.

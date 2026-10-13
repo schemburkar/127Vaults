@@ -76,7 +76,7 @@ type Notice = {
   title: string;
   detail?: string;
 };
-type Conflict = { draft: Item; message: string; operationId?: string; kind?: string; server?: Item; choices?: Record<string, "local" | "server"> };
+type Conflict = { vaultId?: string; draft: Item; message: string; operationId?: string; kind?: string; server?: Item; choices?: Record<string, "local" | "server"> };
 type EngineConflict = { operationId: string; itemId: string; vaultId: string; kind: string; localFields?: string[]; remoteFields?: string[] };
 type SyncReviewItem = { operationId: string; itemId: string; vaultId: string; title: string; fields: string[]; conflict: EngineConflict | null; error: string | null };
 type SyncReview = { items: SyncReviewItem[]; settingsPending: boolean; settingsConflict: boolean };
@@ -405,12 +405,16 @@ export function App() {
     }
   };
   const prepareMerge = async () => {
-    if (!conflict?.draft.itemId || !conflict.operationId || conflictBusy) return;
+    if (conflictBusy) return;
+    if (!conflict?.draft.itemId || !conflict.operationId) {
+      setConflictError("This review no longer identifies a queued edit. Close it and reopen Review sync to select the current pending change.");
+      return;
+    }
     const generation = syncReviewGeneration.current;
     setConflictBusy(true);
     setConflictError(null);
     try {
-      const result = await invoke<{ deleted: boolean; server: Item | null; conflict: EngineConflict }>("conflict_compare", { vaultId, itemId: conflict.draft.itemId, operationId: conflict.operationId });
+      const result = await invoke<{ deleted: boolean; server: Item | null; conflict: EngineConflict }>("conflict_compare", { vaultId: conflict.vaultId ?? vaultId, itemId: conflict.draft.itemId, operationId: conflict.operationId });
       if (generation !== syncReviewGeneration.current) return;
       if (result.deleted) {
         setConflict({ ...conflict, kind: "delete-edit-divergence", message: "This item is absent from the verified server state. Your queued edit is preserved until you explicitly discard it." });
@@ -428,9 +432,10 @@ export function App() {
     setSelected(merged);
     setEditOriginal(conflict.server);
     setResolvingOperationId(conflict.operationId ?? null);
+    setItemVaultId(conflict.vaultId ?? vaultId);
     setEditing(true);
     setConflict(null);
-    void save(merged, conflict.operationId ?? null);
+    void save(merged, conflict.operationId ?? null, conflict.vaultId);
   };
   const unlock = async () => {
     if (busy) return false;
@@ -745,9 +750,9 @@ export function App() {
       notify("info", "Move plan cleared", "Destination copies may remain for review.");
     } catch (error) { notify("error", "Could not clear move plan", friendlyError(error)); }
   };
-  const save = async (draft = selected, resolutionId = resolvingOperationId) => {
+  const save = async (draft = selected, resolutionId = resolvingOperationId, ownerVaultId?: string) => {
     if (!draft || saving) return;
-    const destination = draft.itemId ? itemVaultId : viewMode === "single" ? vaultId : itemVaultId;
+    const destination = ownerVaultId ?? (draft.itemId ? itemVaultId : viewMode === "single" ? vaultId : itemVaultId);
     if (!destination) {
       notify("error", "Choose a vault", "Select the destination vault before saving this item.");
       return;
@@ -813,6 +818,7 @@ export function App() {
       const message = String(e);
       if (message.includes("409")) {
         setConflict({
+          vaultId: destination,
           draft: structuredClone(draft),
           message:
             "This item changed on another device while you were editing it.",
@@ -873,7 +879,7 @@ export function App() {
         setVaultId(pendingConflict.vaultId);
         setItemVaultId(pendingConflict.vaultId);
         const draft = await invoke<Item>("conflict_draft", { vaultId: pendingConflict.vaultId, itemId: pendingConflict.itemId, operationId: pendingConflict.operationId });
-        setConflict({ draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
+        setConflict({ vaultId: pendingConflict.vaultId, draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
       }
       const needsReview = result.conflicts.length || result.pending || result.vaultSettings?.pending || result.vaultSettings?.conflict;
       notify(needsReview ? "info" : "success", needsReview ? "Sync needs review" : "Sync complete", needsReview ? "Some changes are still waiting. Open Review sync for affected items and fields." : `${result.accepted} pending change${result.accepted === 1 ? "" : "s"} accepted.`);
@@ -888,12 +894,12 @@ export function App() {
       throw e;
     } finally { syncInFlight.current = false; }
   };
-  const useServerVersion = async (itemId: string, operationId: string) => {
+  const useServerVersion = async (itemId: string, operationId: string, ownerVaultId = vaultId) => {
     if (conflictBusy) return;
     setConflictBusy(true);
     setConflictError(null);
     try {
-      const result = await invoke<{ items: Summary[] }>("discard_conflict", { vaultId, itemId, operationId });
+      const result = await invoke<{ items: Summary[] }>("discard_conflict", { vaultId: ownerVaultId, itemId, operationId });
       setItems(viewMode === "single" ? result.items : await listVisibleItems());
       setOnline(true);
       setEditing(false);
@@ -1037,7 +1043,7 @@ export function App() {
       setVaultId(row.vaultId);
       setItemVaultId(row.vaultId);
       setSyncReviewOpen(false);
-      setConflict({ draft, operationId: row.operationId, kind: row.conflict.kind,
+      setConflict({ vaultId: row.vaultId, draft, operationId: row.operationId, kind: row.conflict.kind,
         message: row.conflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. Your queued edit is still saved locally." : `Review queued changes to ${row.title || "Untitled item"}. Changed fields: ${row.fields.join(", ") || "not determined"}.` });
     } catch (error) { notify("error", "Could not review item", friendlyError(error)); }
   };
@@ -2203,7 +2209,7 @@ export function App() {
                     const draft = conflict.draft;
                     const operationId = conflict.operationId ?? null;
                     setConflict(null);
-                    void save(draft, operationId);
+                    void save(draft, operationId, conflict.vaultId);
                   } else {
                     void prepareMerge();
                   }
@@ -2218,7 +2224,7 @@ export function App() {
                 onClick={() => {
                   const itemId = conflict.draft.itemId;
                   if (itemId && conflict.operationId) {
-                    void useServerVersion(itemId, conflict.operationId);
+                    void useServerVersion(itemId, conflict.operationId, conflict.vaultId ?? vaultId);
                   } else {
                     void prepareMerge();
                   }
