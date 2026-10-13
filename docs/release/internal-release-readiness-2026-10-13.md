@@ -146,17 +146,22 @@ fixture process. Encrypted fixture profiles and stopped volumes remain for revie
 
 ## Artifacts and checks
 
-All six selected artifact directories passed complete file-set/SHA-256
+All six current candidate artifact directories passed complete file-set/SHA-256
 verification. [Recorded revisions and checksums](internal-release-artifacts-2026-10-13.json)
 are committed; unsigned private-test artifacts remain at `C:\Projects\127Vaults-Releases`.
 
-- Server: `server/internal-20261012-c/linux-amd64`, source `61cfcea`, schema 7.
-- Desktop: `desktop/internal-20261013-d/{windows,linux}`, source `b6dd3e5`.
-- CLI: `cli/internal-20261013-b/{windows,linux}`, source `bd85ab0`.
-- Extension: `extension/internal-20261013-a/chromium`, source `27a70eb`.
+- Server: `server/internal-20261013-a/linux-amd64`, source `8aeaf9b`, schema 7.
+- Desktop: `desktop/internal-20261013-e/{windows,linux}`, source `8aeaf9b`.
+- CLI: `cli/internal-20261013-c/{windows,linux}`, source `8aeaf9b`.
+- Extension: `extension/internal-20261013-b/chromium`, source `8aeaf9b`.
+
+Earlier artifacts remain for reproduction but lack the later queued-rebase fixes.
+The current packages are prepared candidates; their complete cross-client/UI
+acceptance is tracked in the expanded matrix and remains open.
 
 `pnpm check`, `pnpm test`, `cargo fmt --check`, workspace Clippy with warnings
-denied and `cargo test --workspace` pass. CLI library: 62 pass, one intentionally
+denied and `cargo test --workspace` passed in the earlier run. Latest CLI library:
+65 pass, one intentionally
 ignored live fixture test; its separate live acceptance evidence is listed above
 and in the October 12 report. New harness syntax and Git whitespace checks pass.
 Later acceptance-only changes do not alter the selected product binaries.
@@ -194,8 +199,8 @@ verified durable pending metadata across reopen without field-value disclosure.
 Actual isolated desktop UI acceptance is recorded at
 `C:\Projects\127Vaults-sync-review-20261013-a\ui-evidence.json`: offline unlock,
 item/field review, values withheld, unconfirmed-copy refusal and lock clearing.
-This follow-up is not included in the immutable desktop packages selected above;
-they need rebuilding before accepting this behaviour as packaged release evidence.
+The current rebuilt candidates include this follow-up. Their packaged runtime
+acceptance is a separate gate from the development UI evidence above.
 
 Conflict comparison now refreshes verified server state without replaying pending
 mutations. Errors are displayed within the conflict dialog; server-copy selection

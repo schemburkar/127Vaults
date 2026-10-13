@@ -80,3 +80,18 @@ restart, conflict review, lost response, signed history/checkpoints, settings an
 vault lifecycle: `C:\Projects\127Vaults-sync-pwa-20261013-a\evidence.json`.
 Run it with `VAULTS_TEST_CHAINED_QUEUE=1`; its HTTP fixture is distinct from the
 native PostgreSQL/TLS matrix. Both use real Rust cryptography and disposable data.
+
+Windows real-server tests also pass selected-field conflict resolution and taking
+the server title while preserving an independently queued password update:
+`C:\Projects\127Vaults-sync-matrix-20261013-b\fields.json` and `server-copy.json`.
+Seven enabled non-passkey types pass bidirectional fields and disclosure checks
+using two live sessions: `...\types.json`. These are engine tests, not all-client
+rendering or the separate passkey ceremony gate.
+
+All six new candidate directories are file-set/SHA-256 verified and built from
+`8aeaf9b`: server `internal-20261013-a`, desktop `internal-20261013-e`, CLI
+`internal-20261013-c`, extension `internal-20261013-b`. The artifact inventory is
+explicitly marked candidate-only. Windows package-extracted UI queue acceptance is
+prepared at `C:\Projects\127Vaults-sync-desktop-20261013-a`; automatic approval review
+rejected its launch as "blocked by policy" without a further reason. Approval of
+that exact isolated fixture launch is pending. It has not been reported passed.

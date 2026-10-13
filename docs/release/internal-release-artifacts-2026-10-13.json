@@ -1,16 +1,17 @@
 {
-  "verifiedAt": "2026-10-13T04:13:36.337Z",
+  "verifiedAt": "2026-10-13T15:00:59.752Z",
+  "acceptance": "candidate only; cross-client sync release matrix remains open",
   "artifacts": [
     {
-      "path": "server/internal-20261012-c/linux-amd64",
+      "path": "server/internal-20261013-a/linux-amd64",
       "product": "server",
       "platform": "linux-amd64",
-      "sourceRevision": "61cfcea39f467f125f541399d272e2d0b47e10da",
+      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
       "files": [
         {
           "name": "127vaults-server-0.0.0-linux-amd64.tar",
           "sizeBytes": 834729984,
-          "sha256": "b96f6b8c8855d80e1e070df67979281e2204dafcacfdb189f7da9045bed28368"
+          "sha256": "231c1f015a421d8c31fe40c024b09a5e5e2f0da8db1bbd1929c9be39ac00f7cf"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -19,8 +20,8 @@
         },
         {
           "name": "README.md",
-          "sizeBytes": 17768,
-          "sha256": "834be8a3481083665bd1846960a708f0d9943fc2c2f504c4158e61d5b80ea2ea"
+          "sizeBytes": 17775,
+          "sha256": "0ade97b468dc65fe362497170fde623aff30544d514be6eb5de6a4423fc6e8b8"
         },
         {
           "name": "verify-release.mjs",
@@ -30,15 +31,15 @@
       ]
     },
     {
-      "path": "desktop/internal-20261013-d/windows",
+      "path": "desktop/internal-20261013-e/windows",
       "product": "desktop",
       "platform": "windows",
-      "sourceRevision": "b6dd3e5716f72d18e2f1042b763a4ca346746d82",
+      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-windows-x64.exe",
-          "sizeBytes": 5102323,
-          "sha256": "285278709d120dedd22279fd91a5341cfd0adacecf4ba37fd613a4f382eb0c27"
+          "sizeBytes": 5109780,
+          "sha256": "7ab1bc7ea74b1e5419409470739c787ac7efcf2242009b4bc3712567a214de06"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -58,20 +59,20 @@
       ]
     },
     {
-      "path": "desktop/internal-20261013-d/linux",
+      "path": "desktop/internal-20261013-e/linux",
       "product": "desktop",
       "platform": "linux",
-      "sourceRevision": "b6dd3e5716f72d18e2f1042b763a4ca346746d82",
+      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.AppImage",
-          "sizeBytes": 85977592,
-          "sha256": "c8c108e9491d2d5e42fb0cdd3e647c71099fbdf4275ad2c3d6c5063533f0841d"
+          "sizeBytes": 85985784,
+          "sha256": "98e78a74f1a9e63c584f8cafa254b528b6e31063472ff0c8341017a831d37fa0"
         },
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.deb",
-          "sizeBytes": 11155670,
-          "sha256": "0e1fe552c31b3a9cbe4382a153cca67880a16b5eab55d97071ea086644a93948"
+          "sizeBytes": 11166098,
+          "sha256": "6d45ec0f19f8f167e9f1e63d28d5ad191ad56e5439dbd23fe8d2aadde3aa270b"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -91,15 +92,15 @@
       ]
     },
     {
-      "path": "cli/internal-20261013-b/windows",
+      "path": "cli/internal-20261013-c/windows",
       "product": "cli",
       "platform": "windows",
-      "sourceRevision": "bd85ab0f8e3a142a68c14934e90ab18b503ed48e",
+      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
       "files": [
         {
           "name": "127vaults-cli-0.0.0-windows-x64.zip",
-          "sizeBytes": 3110632,
-          "sha256": "3f634736af7abfec19c8e3f2375a65566809333b41f23b791aabbe004e2c3cb3"
+          "sizeBytes": 3109993,
+          "sha256": "de2115150d79732d7be893663609ef48ce273e8f01d7ee179d63462dd5a91ec9"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -119,15 +120,15 @@
       ]
     },
     {
-      "path": "cli/internal-20261013-b/linux",
+      "path": "cli/internal-20261013-c/linux",
       "product": "cli",
       "platform": "linux",
-      "sourceRevision": "bd85ab0f8e3a142a68c14934e90ab18b503ed48e",
+      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
       "files": [
         {
           "name": "127vaults-cli-0.0.0-linux-x64.tar.gz",
-          "sizeBytes": 4279539,
-          "sha256": "363c9418ba9d90af3b580a97ce63b791de59323c98fbb41748333427f2924e61"
+          "sizeBytes": 4280884,
+          "sha256": "e68d33e3dda9ae56f813995c30be0f9890934f797acbfbedd851559532775474"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -147,15 +148,15 @@
       ]
     },
     {
-      "path": "extension/internal-20261013-a/chromium",
+      "path": "extension/internal-20261013-b/chromium",
       "product": "extension",
       "platform": "chromium",
-      "sourceRevision": "27a70eb2046393ad1d86915258d99b71e802be46",
+      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
       "files": [
         {
           "name": "127vaults-extension-0.1.0.zip",
-          "sizeBytes": 27832,
-          "sha256": "a1220cf10d8471b5d84d82ed00c5628c2a223bf17294a84f1c146d821a7fb865"
+          "sizeBytes": 28454,
+          "sha256": "084d9f584b8aa0ac1e0de2f5e65cb6f34e077c09ae975409e96eca377d370177"
         },
         {
           "name": "LICENSE-POLICY.md",

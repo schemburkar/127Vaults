@@ -153,7 +153,13 @@ fn main() -> Result<(), String> {
     if args.len() == 4 && args[3] == Path::new("chained") {
         return stale_creations(&args[0], &args[1], &args[2], true);
     }
+    if args.len() == 4 && [Path::new("fields"), Path::new("server")].contains(&args[3].as_path()) {
+        return field_conflicts(&args[0], &args[1], &args[2], args[3] == Path::new("server"));
+    }
     if args.len() != 3 {
+        if args.len() == 4 && args[3] == Path::new("types") {
+            return type_roundtrips(&args[0], &args[1], &args[2]);
+        }
         return Err("supply explicit fixture device A, B and evidence path".to_owned());
     }
     stale_creations(&args[0], &args[1], &args[2], false)
@@ -246,4 +252,198 @@ fn record(evidence: &Path, report: &serde_json::Value) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     println!("{report}");
     Ok(())
+}
+
+fn type_roundtrips(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
+    if validate(a)? == validate(b)? {
+        return Err("distinct fixture devices required".to_owned());
+    }
+    let mut passed = Vec::new();
+    let mut writer = open(a, false)?;
+    let mut reader = open(b, false)?;
+    for kind in ["login", "bank", "card", "wifi", "router", "ssh", "password"] {
+        let vault = writer.vault_list()?[0]["vaultId"]
+            .as_str()
+            .ok_or("fixture vault missing")?
+            .to_owned();
+        let title = format!("Sync matrix {kind} {}", uuid::Uuid::new_v4());
+        let fields = vec![
+            json!({"id":"__127vaults_item_type","label":"Type","type":"text","value":kind}),
+            json!({"id":"matrix_text","label":"Matrix text","type":"text","value":"fixture metadata"}),
+            json!({"id":"matrix_secret","label":"Matrix secret","type":"password","value":"fixture custom secret"}),
+        ];
+        let made = writer.item_upsert(
+            &vault,
+            None,
+            &title,
+            "https://typed.invalid",
+            "fixture-user",
+            "fixture-password",
+            &fields,
+        )?;
+        let item = made["itemId"]
+            .as_str()
+            .ok_or("fixture item missing")?
+            .to_owned();
+        writer.sync_now()?;
+        reader.sync_now()?;
+        let value = reader.item_get(&vault, &item, None)?;
+        if value["itemType"] != kind
+            || value["title"] != title
+            || value["password"] != "[redacted]"
+            || reader.item_get(&vault, &item, Some("password"))? != "fixture-password"
+            || reader.item_get(&vault, &item, Some("matrix_secret"))? != "fixture custom secret"
+        {
+            return Err(format!(
+                "typed forward roundtrip or disclosure failed: {kind}"
+            ));
+        }
+        let mut changed = fields.clone();
+        changed[1]["value"] = json!("peer metadata");
+        reader.item_upsert(
+            &vault,
+            Some(&item),
+            &title,
+            "https://typed.invalid",
+            "fixture-peer-user",
+            "fixture-password",
+            &changed,
+        )?;
+        reader.sync_now()?;
+        writer.sync_now()?;
+        let value = writer.item_get(&vault, &item, None)?;
+        if value["username"] != "fixture-peer-user"
+            || value["itemType"] != kind
+            || !value["customFields"].as_array().is_some_and(|rows| {
+                rows.iter()
+                    .any(|row| row["id"] == "matrix_text" && row["value"] == "peer metadata")
+            })
+        {
+            return Err(format!("typed reverse roundtrip failed: {kind}"));
+        }
+        passed.push(kind);
+    }
+    record(
+        evidence,
+        &json!({"scenario":"enabled non-passkey types, bidirectional encrypted fields and disclosure","passed":true,"types":passed,"passkeys":"separate ceremony gate"}),
+    )
+}
+
+fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Result<(), String> {
+    if validate(a)? == validate(b)? {
+        return Err("two distinct fixture devices required".to_owned());
+    }
+    let run = uuid::Uuid::new_v4();
+    let base_title = format!("Sync matrix base {run}");
+    let local_title = format!("Sync matrix local {run}");
+    let server_title = format!("Sync matrix server {run}");
+    let (vault, item) = create_conflict_baseline(a, &base_title)?;
+    let mut offline = open(a, true)?;
+    offline.item_upsert(
+        &vault,
+        Some(&item),
+        &local_title,
+        "https://fields.invalid",
+        "fixture-user",
+        "fixture-password",
+        &[],
+    )?;
+    offline.item_upsert(
+        &vault,
+        Some(&item),
+        &local_title,
+        "https://fields.invalid",
+        "fixture-user",
+        "fixture-new-password",
+        &[],
+    )?;
+    drop(offline);
+    let mut peer = open(b, false)?;
+    peer.item_upsert(
+        &vault,
+        Some(&item),
+        &server_title,
+        "https://fields.invalid",
+        "fixture-user",
+        "fixture-password",
+        &[],
+    )?;
+    peer.sync_now()?;
+    drop(peer);
+    let mut resumed = open(a, false)?;
+    let result = resumed.sync_now()?;
+    let conflicts = result["conflicts"]
+        .as_array()
+        .ok_or("conflicts unavailable")?;
+    if conflicts.len() != 1 {
+        return Err("expected one title conflict after independent password rebase".to_owned());
+    }
+    let operation = conflicts[0]["operationId"]
+        .as_str()
+        .ok_or("conflict operation missing")?;
+    let comparison = resumed.conflict_compare(&vault, &item, operation)?;
+    if comparison["server"]["password"] != "fixture-new-password" {
+        return Err("independent queued password was lost".to_owned());
+    }
+    if keep_server {
+        resumed.discard_conflict(&vault, &item, operation)?;
+    } else {
+        resumed.item_upsert_resolving(
+            &vault,
+            &item,
+            operation,
+            &local_title,
+            "https://fields.invalid",
+            "fixture-user",
+            "fixture-new-password",
+            &[],
+        )?;
+        resumed.sync_now()?;
+    }
+    let status = resumed.replica_status()?;
+    let mut peer = open(b, false)?;
+    let actual = peer.item_get(&vault, &item, None)?;
+    let secret = peer.item_get(&vault, &item, Some("password"))?;
+    let expected = if keep_server {
+        &server_title
+    } else {
+        &local_title
+    };
+    let passed = actual["title"].as_str() == Some(expected)
+        && secret == "fixture-new-password"
+        && status["pending"] == 0
+        && status["conflicts"] == 0;
+    record(
+        evidence,
+        &json!({"scenario":"two offline updates plus peer title change","passed":passed,"kept":if keep_server{"server title"}else{"selected local title"},"independentPasswordPreserved":secret=="fixture-new-password","pending":status["pending"],"conflicts":status["conflicts"]}),
+    )?;
+    if passed {
+        Ok(())
+    } else {
+        Err("field conflict resolution did not preserve independent edits".to_owned())
+    }
+}
+
+fn create_conflict_baseline(profile: &Path, title: &str) -> Result<(String, String), String> {
+    let mut initial = open(profile, false)?;
+    let vault = initial.vault_list()?[0]["vaultId"]
+        .as_str()
+        .ok_or("fixture vault missing")?
+        .to_owned();
+    let made = initial.item_upsert(
+        &vault,
+        None,
+        title,
+        "https://fields.invalid",
+        "fixture-user",
+        "fixture-password",
+        &[],
+    )?;
+    let item = made["itemId"]
+        .as_str()
+        .ok_or("fixture item missing")?
+        .to_owned();
+    initial.sync_now()?;
+    drop(initial);
+    Ok((vault, item))
 }
