@@ -594,6 +594,40 @@ export function App() {
       notify("success", "Default view saved");
     } catch (error) { notify("error", "Could not save default view", friendlyError(error)); }
   };
+  const resolveVaultSettings = async (keep: "local" | "server") => {
+    if (!confirmDiscard()) return;
+    let resolved = false;
+    try {
+      const result = await invoke<VaultSettings>("vault_settings_resolve", { keep });
+      resolved = true;
+      setCollections(result.collections);
+      setDefaultView(result.defaultView);
+      setRemovalPreference(result.removalPreference);
+      setSettingsConflict(result.conflict);
+      setSettingsReview(null);
+      const nextVaults = await invoke<VaultSummary[]>("vault_list");
+      setVaults(nextVaults);
+      const active = nextVaults.filter(vault => !vault.retired);
+      if (viewMode === "collection" && selectedCollectionId && !result.collections.some(collection => collection.id === selectedCollectionId)) {
+        setItems(await listAllItems(active));
+        setViewMode("all");
+        setSelectedCollectionId(null);
+        setSelected(null);
+        setEditing(false);
+        setItemVaultId("");
+        setRevealed(new Set());
+      } else if (viewMode === "collection" && selectedCollectionId) {
+        const collection = await invoke<{ items: Summary[] }>("collection_items", { collectionId: selectedCollectionId });
+        setItems(collection.items);
+      } else if (viewMode === "all") {
+        setItems(await listAllItems(active));
+      }
+      await refreshSyncStatus();
+      notify("success", "Vault settings resolved");
+    } catch (error) {
+      notify("error", resolved ? "Settings saved; refresh needed" : "Could not resolve settings", resolved ? "Sync again to refresh the vault view." : friendlyError(error));
+    }
+  };
   const addVault = async () => {
     try {
       const result = await invoke<{ created: VaultSummary; vaults: VaultSummary[] }>("vault_create", { name: vaultNameDraft });
@@ -2035,7 +2069,7 @@ export function App() {
           <h2 id="settings-review-title" className="text-lg font-semibold">Review vault settings conflict</h2>
           <p className="mt-2 text-sm text-slate-400">Compare vault names, collections, default view, and removal preference. Choose which complete settings version to keep.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><div><h3 className="mb-2 font-medium">This device</h3><pre className="max-h-64 overflow-auto rounded bg-black/30 p-3 text-xs">{JSON.stringify(settingsReview.local, null, 2)}</pre></div><div><h3 className="mb-2 font-medium">Server</h3><pre className="max-h-64 overflow-auto rounded bg-black/30 p-3 text-xs">{JSON.stringify(settingsReview.server, null, 2)}</pre></div></div>
-          <div className="ui-dialog-actions"><Button variant="secondary" onClick={() => setSettingsReview(null)}>Cancel</Button>{(["local", "server"] as const).map((keep) => <Button key={keep} onClick={() => void invoke<VaultSettings>("vault_settings_resolve", { keep }).then((result) => { setCollections(result.collections); setDefaultView(result.defaultView); setSettingsConflict(result.conflict); setSettingsReview(null); notify("success", "Vault settings resolved"); }).catch((error) => notify("error", "Could not resolve settings", friendlyError(error)))}>Keep {keep}</Button>)}</div>
+          <div className="ui-dialog-actions"><Button variant="secondary" onClick={() => setSettingsReview(null)}>Cancel</Button>{(["local", "server"] as const).map((keep) => <Button key={keep} onClick={() => void resolveVaultSettings(keep)}>Keep {keep}</Button>)}</div>
         </div>
       </div>}
       {collectionDialog && <div className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title">
