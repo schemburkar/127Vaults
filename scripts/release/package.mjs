@@ -82,7 +82,7 @@ export async function packageDesktop(output, options = {}) {
     externalBin: ['binaries/127vaults', 'binaries/127vaults-extension-host'],
     resources: options.minimal ? { [`../../../apps/extension/install-native-host.${windows ? 'ps1' : 'sh'}`]: `install-native-host.${windows ? 'ps1' : 'sh'}` }
       : { '../../../apps/extension/install-native-host.ps1': 'install-native-host.ps1', '../../../apps/extension/install-native-host.sh': 'install-native-host.sh' },
-    ...(windows ? { windows: { nsis: { installMode: 'currentUser' }, webviewInstallMode: { type: 'downloadBootstrapper', silent: true } } } : {})
+    ...(windows ? { windows: { nsis: { installMode: 'currentUser', installerHooks: join(sourceRoot, 'apps/desktop/src-tauri/installer-hooks.nsh') }, webviewInstallMode: { type: 'downloadBootstrapper', silent: true } } } : {})
   } }, null, 2));
   // Invoke the actual JS CLI, avoiding Windows .cmd shell interpolation of user paths.
   await execute(process.execPath, [join(sourceRoot, 'apps/desktop/node_modules/@tauri-apps/cli/tauri.js'), 'build', '--config', config, '--', '--locked'],

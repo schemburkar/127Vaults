@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile, writeFile, unlink, mkdir, copyFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-import { join, resolve, relative, isAbsolute, sep } from 'node:path';
+import { join, resolve, relative, isAbsolute, sep, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 
@@ -11,7 +11,7 @@ if (process.platform !== 'win32') throw Error('This fixture currently supports W
 const options = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i], value = process.argv[i + 1];
-  if (!['--extension', '--host', '--profile', '--work', '--server-id'].includes(key) || !value || options[key]) throw Error('Supply --extension, --host, --profile, --work and --server-id.');
+  if (!['--extension', '--host', '--profile', '--work', '--server-id', '--uninstaller'].includes(key) || !value || options[key]) throw Error('Supply --extension, --host, --profile, --work and --server-id; optional --uninstaller tests the fixture installation removal.');
   options[key] = value;
 }
 for (const key of ['--extension', '--host', '--profile', '--work', '--server-id']) if (!options[key]) throw Error('All fixture arguments are required.');
@@ -23,8 +23,12 @@ assert.ok(device.includes(`server_id=${serverId}\n`) && device.includes('usernam
 const checkout = resolve(import.meta.dirname, '..'), rel = relative(checkout, work);
 if (!rel || !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`)) throw Error('Fixture workspace must be outside the checkout.');
 await mkdir(work); // Refuse reuse; every run preserves its own evidence.
-const host = join(work, '127vaults-extension-host.exe'), manifest = join(work, 'com.127vaults.connector.json');
-await copyFile(resolve(options['--host']), host);
+const installedHost = resolve(options['--host']);
+const uninstaller = options['--uninstaller'] && resolve(options['--uninstaller']);
+if (uninstaller && (dirname(uninstaller) !== dirname(installedHost) || basename(uninstaller) !== 'uninstall.exe' || basename(installedHost) !== '127vaults-extension-host.exe')) throw Error('Uninstaller must be the explicit fixture app sibling of the packaged native host.');
+const host = uninstaller ? installedHost : join(work, '127vaults-extension-host.exe');
+const manifest = join(dirname(host), 'com.127vaults.connector.json');
+if (!uninstaller) await copyFile(installedHost, host);
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.VAULTS_PLAYWRIGHT_MODULE || 'playwright');
 const pointer = join(homedir(), '.127vaults-active');
@@ -70,6 +74,11 @@ try {
   assert.equal((await native({ action: 'item-update', source: 'cli' })).ok, false);
   assert.equal((await native({ action: 'lock', source: 'cli' })).ok, true);
   assert.equal((await native({ action: 'get', ...selected, siteOrigin })).ok, false);
+  if (uninstaller) {
+    execFileSync(uninstaller, ['/S'], { windowsHide: true, stdio: 'ignore', timeout: 60000 });
+    const registeredPath = ps("if(Test-Path -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY){(Get-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY).GetValue('')}");
+    assert.notEqual(registeredPath.toLowerCase(), manifest.toLowerCase(), 'Uninstall left its own native-host registration dangling.');
+  }
   await writeFile(join(work, 'evidence.json'), JSON.stringify({ id: randomUUID(), date: new Date().toISOString(), status: 'passed', scope: 'Installed Edge extension and packaged native-host API; fictitious profile only', checks: ['sources', 'list/get', 'wrong-origin refusal', 'generic-write refusal', 'lock clearing'], limitations: ['No visible popup/form-fill acceptance.', 'Offline status requires the operator to stop only the fixture server before running.'] }, null, 2) + '\n');
   console.log('Installed Edge/native-host fixture passed source/read/origin/write/lock checks.');
 } finally {
@@ -83,9 +92,10 @@ try {
     } finally {
       if (registered) {
         if (oldRegistry.present) {
+          ps("if(!(Test-Path -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY)){$null=New-Item -Path $env:VAULTS_FIXTURE_HOST_KEY -Force}");
           if (oldRegistry.value === null) ps("$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.127vaults.connector',$true); try{$k.DeleteValue('', $false)}finally{$k.Dispose()}");
           else { process.env.VAULTS_FIXTURE_OLD_VALUE = oldRegistry.value; ps("Set-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY -Value $env:VAULTS_FIXTURE_OLD_VALUE"); }
-        } else ps("Remove-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY -Force");
+        } else ps("if(Test-Path -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY){Remove-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY -Force}");
       }
     }
   }
