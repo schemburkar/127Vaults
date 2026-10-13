@@ -163,7 +163,7 @@ try {
     assert.equal(result.ok, true); assert.equal(result.installation, id); assert.ok(result.itemCount > 0);
     assert.equal((await http('/api/admin/session', { method: 'POST', body: { username: 'localowner', password: 'synthetic-internal-admin-password' } })).status, 200);
   });
-  await writeFile(join(work, 'evidence.json'), JSON.stringify({ date: '2026-10-12', scope: 'Windows Podman isolated fictitious-data server release', status: 'passed', checks,
+  await writeFile(join(work, 'evidence.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Windows Podman isolated fictitious-data server release', status: 'passed', checks,
     fixturePort: port, fixtureOverride: 'PORT and loopback Compose mapping; original listeners preserved', limitations: ['Existing host only; not Docker or unrelated-host acceptance.', 'Broader admin permission and ownership acceptance use the separate PostgreSQL and browser fixtures.'] }, null, 2) + '\n');
   console.log('Internal server backup/restore and packaged admin acceptance passed. Evidence and stopped fixture volumes retained.');
 } finally {

@@ -95,3 +95,10 @@ explicitly marked candidate-only. Windows package-extracted UI queue acceptance 
 prepared at `C:\Projects\127Vaults-sync-desktop-20261013-a`; automatic approval review
 rejected its launch as "blocked by policy" without a further reason. Approval of
 that exact isolated fixture launch is pending. It has not been reported passed.
+
+The rebuilt server bundle passed fresh identity/admin setup, verified HTTPS,
+hostile owner/item paths, packaged admin sign-in and audited writes/replay,
+encrypted database/identity backup, guarded empty-project restore and owner login
+with existing encrypted items after restore. Evidence:
+`C:\Projects\127Vaults-sync-server-20261013-a\evidence.json`. Its owned projects were
+stopped afterward; the user's development server was not stopped or reset.
