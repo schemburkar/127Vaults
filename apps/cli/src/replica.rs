@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 const FORMAT_VERSION: u32 = 1;
-const MAX_REPLICA_BYTES: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_REPLICA_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]

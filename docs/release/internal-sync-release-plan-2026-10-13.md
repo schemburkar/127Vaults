@@ -94,7 +94,24 @@ All six new candidate directories are file-set/SHA-256 verified and built from
 explicitly marked candidate-only. Windows package-extracted UI queue acceptance is
 prepared at `C:\Projects\127Vaults-sync-desktop-20261013-a`; automatic approval review
 rejected its launch as "blocked by policy" without a further reason. Approval of
-that exact isolated fixture launch is pending. It has not been reported passed.
+that exact isolated fixture launch was explicitly granted by the user. The retry
+was nevertheless rejected by automatic approval review with the same reason.
+It has not been reported passed; do not substitute engine tests for this UI gate.
+
+The user confirmed that both original queued Desktop changes now sync successfully.
+This closes the reported two-change queue reproduction, not the complete matrix.
+Windows-to-Linux-to-Windows native engine field synchronization passed for all seven
+enabled non-passkey types, including redacted reads and explicit secret disclosure:
+`C:\Projects\127Vaults-sync-matrix-20261013-b\cross-os-types.json`.
+
+Native history loading previously refused any vault with more than 500 operations.
+The source now collects bounded pages before the existing signature/checkpoint
+verification and replica commit. Regression tests cover 502 rows, read-only loading,
+stalled/mismatched cursors and changed device verification keys. Windows library
+checks pass 67 tests with one separately gated live-device test ignored; workspace
+Clippy passes. Real-server 502-write/fresh-unlock acceptance is still running and
+has not yet been counted passed. Existing immutable candidates predate this change
+and must be rebuilt before selection.
 
 The rebuilt server bundle passed fresh identity/admin setup, verified HTTPS,
 hostile owner/item paths, packaged admin sign-in and audited writes/replay,

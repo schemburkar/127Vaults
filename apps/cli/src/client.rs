@@ -2249,10 +2249,7 @@ impl Session {
                 .sync_transport
                 .as_ref()
                 .ok_or("sync transport unavailable")?;
-            let sync = transport.pull(&vault_id, 0, 500)?;
-            if sync["hasMore"] == true {
-                return Err("replica hydration exceeds the sync page limit".to_owned());
-            }
+            let sync = crate::sync_transport::pull_history(transport, &vault_id)?;
             let operations = sync["operations"]
                 .as_array()
                 .ok_or("invalid sync response")?;
