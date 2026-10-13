@@ -95,6 +95,67 @@ fn verify_conflict(profile: &Path, title: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn verify_sync_review(profile: &Path) -> Result<(), String> {
+    let mut session = vaults_cli::client::unlock_offline(
+        profile,
+        "owner_127",
+        &"07".repeat(32),
+        b"fictitious password 127vaults",
+    )?;
+    let vaults = session.vault_list()?;
+    let vault_id = vaults
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["retired"] != true))
+        .and_then(|row| row["vaultId"].as_str())
+        .ok_or("fixture vault unavailable")?;
+    session.item_upsert(
+        vault_id,
+        None,
+        "Synthetic sync review check",
+        "https://review.invalid",
+        "synthetic-review-user",
+        "synthetic-review-password",
+        &[],
+    )?;
+    drop(session);
+    let mut reopened = vaults_cli::client::unlock_offline(
+        profile,
+        "owner_127",
+        &"07".repeat(32),
+        b"fictitious password 127vaults",
+    )?;
+    let review = reopened.sync_review()?;
+    let row = review["items"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter()
+                .find(|row| row["title"] == "Synthetic sync review check")
+        })
+        .ok_or("durable queued item missing from review")?;
+    if row["fields"]
+        != serde_json::json!(["title", "website", "username", "password", "customFields"])
+        || !row["conflict"].is_null()
+    {
+        return Err("review misclassified pending fields or invented a conflict".to_owned());
+    }
+    let serialized = review.to_string();
+    if [
+        "synthetic-review-password",
+        "synthetic-review-user",
+        "https://review.invalid",
+    ]
+    .iter()
+    .any(|secret| serialized.contains(secret))
+    {
+        return Err("review disclosed a field value".to_owned());
+    }
+    println!(
+        "Durable pending item labels and field names verified; values withheld and no conflict invented."
+    );
+
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let action = args.next().ok_or("expected start or stop")?;
@@ -104,6 +165,7 @@ fn main() -> Result<(), String> {
     uuid::Uuid::parse_str(&server_id).map_err(|_| "fixture server ID must be a UUID")?;
     let device_id = fixture_device(&profile, &server_id)?;
     match action.as_str() {
+        "review-check" => verify_sync_review(&profile)?,
         "conflict" => verify_conflict(&profile, &args.next().ok_or("expected fixture title")?)?,
         "inspect-title" => {
             let title = args.next().ok_or("expected fictitious title")?;

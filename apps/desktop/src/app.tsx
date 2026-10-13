@@ -78,6 +78,8 @@ type Notice = {
 };
 type Conflict = { draft: Item; message: string; operationId?: string; kind?: string; server?: Item; choices?: Record<string, "local" | "server"> };
 type EngineConflict = { operationId: string; itemId: string; vaultId: string; kind: string; localFields?: string[]; remoteFields?: string[] };
+type SyncReviewItem = { operationId: string; itemId: string; vaultId: string; title: string; fields: string[]; conflict: EngineConflict | null; error: string | null };
+type SyncReview = { items: SyncReviewItem[]; settingsPending: boolean; settingsConflict: boolean };
 const dragSession = createDragSession();
 const generateSecret = (options: GeneratorOptions) => invoke<string>("generate_secret", { options });
 function DesktopSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
@@ -140,6 +142,11 @@ export function App() {
   const [pendingChanges, setPendingChanges] = useState<number | null>(null);
   const [syncConflicts, setSyncConflicts] = useState(0);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "error">("idle");
+  const [syncFailure, setSyncFailure] = useState<string | null>(null);
+  const [syncReview, setSyncReview] = useState<SyncReview | null>(null);
+  const [syncReviewOpen, setSyncReviewOpen] = useState(false);
+  const syncInFlight = useRef(false);
+  const syncReviewGeneration = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const dirtyRef = useRef(false);
   const [enrolling, setEnrolling] = useState(false);
@@ -253,7 +260,7 @@ export function App() {
   const archivedVaults = vaults.filter((vault) => vault.retired && vault.retirementChoice === "archive");
   const notify = (kind: Notice["kind"], title: string, detail?: string) => {
     const id = Date.now() + Math.random();
-    setNotices((current) => [...current, { id, kind, title, detail }]);
+    setNotices((current) => [...current.filter(notice => notice.title !== title || notice.detail !== detail), { id, kind, title, detail }]);
     window.setTimeout(
       () =>
         setNotices((current) => current.filter((notice) => notice.id !== id)),
@@ -306,6 +313,7 @@ export function App() {
   };
 
   const lock = async (reason = "Locked") => {
+    syncReviewGeneration.current += 1;
     window.dispatchEvent(new Event("vaults:clear-generator"));
     openRequest.current++;
     setItemTabs([]);
@@ -316,6 +324,9 @@ export function App() {
     setSyncConflicts(0);
     setFavoritesOnly(false);
     setSyncState("idle");
+    setSyncFailure(null);
+    setSyncReview(null);
+    setSyncReviewOpen(false);
     setLastSynced(null);
     setLastLocalChange(null);
     setUnlocked(false);
@@ -784,7 +795,6 @@ export function App() {
       setEditOriginal(null);
       setResolvingOperationId(null);
       await refreshSyncStatus();
-      if (!response.result.queued) setLastSynced(new Date());
       if (response.result.queued) setOnline(false);
       setLastLocalChange(new Date());
       setStatus(
@@ -819,6 +829,7 @@ export function App() {
     } finally { setSaving(false); }
   };
   const synchronize = async () => {
+    if (syncInFlight.current) return;
     if (!confirmDiscard()) return;
     if (!online) {
       setSettingsTab("profile");
@@ -827,8 +838,10 @@ export function App() {
       return;
     }
     try {
+      syncInFlight.current = true;
       setSyncState("syncing");
-      const result = await invoke<{ accepted: number; items: Summary[]; vaults: VaultSummary[]; selectedVaultId: string | null; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
+      setSyncFailure(null);
+      const result = await invoke<{ accepted: number; pending: number; items: Summary[]; vaults: VaultSummary[]; selectedVaultId: string | null; conflicts: EngineConflict[]; vaultSettings?: VaultSettings }>(
         "sync",
         { vaultId },
       );
@@ -852,7 +865,6 @@ export function App() {
       } else {
         setItems(viewMode === "single" ? result.items : await listVisibleItems(result.vaults.filter((row) => !row.retired)));
       }
-      setLastSynced(new Date());
       setSyncState("idle");
       await refreshSyncStatus();
       setStatus(
@@ -867,24 +879,29 @@ export function App() {
         const draft = await invoke<Item>("conflict_draft", { vaultId: pendingConflict.vaultId, itemId: pendingConflict.itemId, operationId: pendingConflict.operationId });
         setConflict({ draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
       }
-      notify(result.conflicts.length ? "info" : "success", result.conflicts.length ? "Sync needs review" : "Sync complete", result.conflicts.length ? "Review the queued edit before saving." : `${result.accepted} pending change${result.accepted === 1 ? "" : "s"} accepted.`);
+      const needsReview = result.conflicts.length || result.pending || result.vaultSettings?.pending || result.vaultSettings?.conflict;
+      notify(needsReview ? "info" : "success", needsReview ? "Sync needs review" : "Sync complete", needsReview ? "Some changes are still waiting. Open Review sync for affected items and fields." : `${result.accepted} pending change${result.accepted === 1 ? "" : "s"} accepted.`);
       return result;
     } catch (e) {
       const detail = friendlyError(e);
       setStatus(detail);
       setSyncState("error");
-      notify("error", "Sync failed", detail);
+      setSyncFailure(detail.includes("409") ? "The server rejected a conflicting request. Review the queued items below; the exact cause is not yet confirmed." : detail);
+      await refreshSyncStatus();
+      notify("error", "Sync needs attention", detail.includes("409") ? "The server rejected a conflicting request. Open Review sync to inspect queued items and fields." : detail);
       throw e;
-    }
+    } finally { syncInFlight.current = false; }
   };
   const useServerVersion = async (itemId: string, operationId: string) => {
     try {
       const result = await invoke<{ items: Summary[] }>("discard_conflict", { vaultId, itemId, operationId });
       setItems(viewMode === "single" ? result.items : await listVisibleItems());
       setOnline(true);
-      setLastSynced(new Date());
       setEditing(false);
       setEditOriginal(null);
+      setSyncState("idle");
+      setSyncFailure(null);
+      await refreshSyncStatus();
       const summary = result.items.find((item) => item.itemId === itemId);
       if (summary) await openItem(summary);
       else setSelected(null);
@@ -999,13 +1016,34 @@ export function App() {
     return () => { disposed = true; removeClose?.(); window.removeEventListener("beforeunload", beforeUnload); };
   }, []);
   const refreshSyncStatus = async () => {
+    const generation = syncReviewGeneration.current;
     try {
       const result = await invoke<{ pending: number; conflicts: number; lastVerifiedSyncAt: number | null }>("replica_status");
+      if (generation !== syncReviewGeneration.current) return;
       setPendingChanges(result.pending);
       setSyncConflicts(result.conflicts);
       if (result.lastVerifiedSyncAt) setLastSynced(new Date(result.lastVerifiedSyncAt * 1000));
+      else setLastSynced(null);
+      try {
+        const review = await invoke<SyncReview>("sync_review");
+        if (generation === syncReviewGeneration.current) setSyncReview(review);
+      }
+      catch { if (generation === syncReviewGeneration.current) setSyncReview(null); }
     }
-    catch { setPendingChanges(null); }
+    catch { if (generation === syncReviewGeneration.current) setPendingChanges(null); }
+  };
+  const reviewQueuedItem = async (row: SyncReviewItem) => {
+    if (!row.conflict || !confirmDiscard()) return;
+    const generation = syncReviewGeneration.current;
+    try {
+      const draft = await invoke<Item>("conflict_draft", { vaultId: row.vaultId, itemId: row.itemId, operationId: row.operationId });
+      if (generation !== syncReviewGeneration.current) return;
+      setVaultId(row.vaultId);
+      setItemVaultId(row.vaultId);
+      setSyncReviewOpen(false);
+      setConflict({ draft, operationId: row.operationId, kind: row.conflict.kind,
+        message: row.conflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. Your queued edit is still saved locally." : `Review queued changes to ${row.title || "Untitled item"}. Changed fields: ${row.fields.join(", ") || "not determined"}.` });
+    } catch (error) { notify("error", "Could not review item", friendlyError(error)); }
   };
   useEffect(() => { if (unlocked) void refreshSyncStatus(); }, [unlocked]);
   // Ancillary status must not delay presenting the verified, unlocked vault.
@@ -1953,10 +1991,11 @@ export function App() {
         <span
           className={cn(
             "size-2 rounded-full",
-            online ? "bg-emerald-400" : "bg-amber-400",
+            syncState === "error" ? "bg-red-400" : syncConflicts || !online ? "bg-amber-400" : "bg-emerald-400",
           )}
         ></span>
-        <strong>{syncState === "syncing" ? "Syncing…" : syncState === "error" ? "Sync failed" : syncConflicts ? "Needs review" : online ? "Online" : "Offline"}</strong><span>{pendingChanges === null ? "Pending changes unknown" : `${pendingChanges} pending change${pendingChanges === 1 ? "" : "s"}`}</span><Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs" disabled={syncState === "syncing"} onClick={() => void synchronize().catch(() => {})}>{syncState === "error" ? "Retry sync" : "Sync now"}</Button>
+        <strong>{syncState === "syncing" ? "Syncing…" : syncState === "error" ? "Sync failed" : syncConflicts || syncReview?.items.some(row => row.error) ? "Needs review" : online ? "Online" : "Offline"}</strong><span>{pendingChanges === null ? "Pending changes unknown" : `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} waiting to sync`}</span><Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs" disabled={syncState === "syncing"} onClick={() => void synchronize().catch(() => {})}>{syncState === "error" ? "Retry sync" : "Sync now"}</Button>
+        {(syncState === "error" || syncConflicts > 0 || (pendingChanges ?? 0) > 0) && <Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs text-amber-200" onClick={() => { setSyncReviewOpen(true); void refreshSyncStatus(); }}>Review sync</Button>}
         <span className="ml-auto">
           Local change{" "}
           {lastLocalChange
@@ -1965,7 +2004,7 @@ export function App() {
                 minute: "2-digit",
               })
             : "—"}{" "}
-          · Server sync{" "}
+          · Last verified server sync{" "}
           {lastSynced
             ? lastSynced.toLocaleTimeString([], {
                 hour: "2-digit",
@@ -2114,6 +2153,25 @@ export function App() {
           <div className="ui-dialog-actions"><Button variant="secondary" disabled={removalBusy} onClick={() => setRemovalDialog(null)}>Cancel</Button><Button disabled={removalBusy || (removalDialog.choice === "move" && (!removalDialog.destinationId || (removalItemCount !== null && removalItemCount > 50)))} onClick={() => void removeVault(removalDialog.sourceId, removalDialog.choice, removalDialog.destinationId)}>{removalBusy ? "Working…" : removalDialog.choice === "move" ? "Move and retire" : "Archive vault"}</Button></div>
         </section>
       </div>}
+      {syncReviewOpen && (
+        <div className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="sync-review-title">
+          <section className="ui-dialog ui-dialog-wide max-h-[85vh] overflow-y-auto border border-amber-300/20 bg-[#11162b]">
+            <h2 id="sync-review-title" className="text-xl font-bold">Review changes waiting to sync</h2>
+            <p className="mt-3 text-sm text-slate-300">{syncFailure || "Queued changes are saved in the encrypted local replica. Review confirmed conflicts before choosing which version to keep."}</p>
+            <p className="mt-2 text-xs text-slate-400">Field values stay hidden here. Taking the server version discards only the selected queued edit; other pending changes remain.</p>
+            {!syncReview && <p className="mt-4 text-amber-200">The pending-item details could not be loaded. Retry sync or reconnect; no queued changes were discarded.</p>}
+            {syncReview?.items.map(row => <article key={row.operationId} className="mt-4 rounded-lg border border-white/10 p-4">
+              <h3 className="font-bold">{row.title || "Untitled item"}</h3>
+              <p className="mt-1 text-xs text-slate-400">Vault: {vaults.find(vault => vault.vaultId === row.vaultId)?.name || row.vaultId}</p>
+              <p className="mt-2 text-sm">Changed fields: {row.fields.map(field => field === "customFields" ? "Custom fields" : field).join(", ") || "Not determined"}</p>
+              {row.conflict ? <><p className="mt-2 text-sm text-amber-200">{row.conflict.kind === "delete-edit-divergence" ? "Deleted on the server; your local edit is preserved." : "A queued edit conflicts with the server version."}</p><Button className="mt-3" onClick={() => void reviewQueuedItem(row)}>Review item and choose version</Button></> : <p className="mt-2 text-xs text-slate-400">{row.error ? `${row.error}. This request has not been classified as an item conflict. Retry or reconnect before choosing a server copy.` : "Waiting to send. Retry sync when connected."}</p>}
+            </article>)}
+            {(syncReview?.settingsPending || syncReview?.settingsConflict) && <article className="mt-4 rounded-lg border border-white/10 p-4"><h3 className="font-bold">Vault and collection settings</h3><p className="mt-2 text-sm">{syncReview.settingsConflict ? "Settings changed on another device and need review." : "Local settings are waiting to sync."}</p>{syncReview.settingsConflict && <Button className="mt-3" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(review => { setSyncReviewOpen(false); setSettingsReview(review); }).catch(error => notify("error", "Could not review settings", friendlyError(error)))}>Review settings</Button>}</article>}
+            {syncReview && !syncReview.items.length && !syncReview.settingsPending && !syncReview.settingsConflict && <p className="mt-4 text-sm">No queued item or settings changes were found. The failure may concern fetching server updates; retry or reconnect.</p>}
+            <div className="ui-dialog-actions"><Button variant="secondary" disabled={syncState === "syncing"} onClick={() => void synchronize().catch(() => {})}>Retry sync</Button><Button variant="ghost" onClick={() => setSyncReviewOpen(false)}>Close</Button></div>
+          </section>
+        </div>
+      )}
       {conflict && (
         <div
           className="ui-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6 backdrop-blur-sm"
@@ -2126,6 +2184,7 @@ export function App() {
             <h2 id="conflict-title" className="mt-4 text-xl font-bold">
               Resolve sync conflict
             </h2>
+            <p className="mt-2 font-semibold">{conflict.draft.title || "Untitled item"}</p>
             <p className="mt-2 text-sm leading-6 text-slate-400">
               {conflict.message} Compare each field and select the value to save.
             </p>

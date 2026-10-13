@@ -676,6 +676,11 @@ fn replica_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String
 }
 
 #[tauri::command]
+fn sync_review(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, vaults_cli::client::Session::sync_review)
+}
+
+#[tauri::command]
 fn sync(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
     with_session(&state, |session| {
         let result = session.sync_now()?;
@@ -856,6 +861,7 @@ fn main() {
             item_secret,
             item_save,
             replica_status,
+            sync_review,
             sync,
             discard_local_changes,
             discard_conflict,

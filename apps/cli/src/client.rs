@@ -2431,6 +2431,58 @@ impl Session {
         )
     }
 
+    /// Read pending item labels and changed field names without returning values.
+    pub fn sync_review(&mut self) -> Result<Value, String> {
+        let mut rows = Vec::new();
+        for replica in self.replica_store.list()? {
+            for pending in &replica.pending {
+                let item_id = pending.operation["itemId"]
+                    .as_str()
+                    .ok_or("invalid pending item")?;
+                let local = self.decrypt_item_parts(
+                    &replica.vault_id,
+                    item_id,
+                    pending.request["catalogue"]
+                        .as_str()
+                        .ok_or("invalid pending catalogue")?,
+                    pending.request["index"]
+                        .as_str()
+                        .ok_or("invalid pending index")?,
+                    pending.request["body"]
+                        .as_str()
+                        .ok_or("invalid pending body")?,
+                )?;
+                let base = match (&pending.base_catalogue, &pending.base_item) {
+                    (Some(catalogue), Some(item)) => Some(self.decrypt_item_parts(
+                        &replica.vault_id,
+                        item_id,
+                        catalogue,
+                        &item.index,
+                        &item.body,
+                    )?),
+                    _ => None,
+                };
+                let fields: Vec<_> = ["title", "website", "username", "password", "customFields"]
+                    .into_iter()
+                    .filter(|field| {
+                        base.as_ref()
+                            .is_none_or(|value| value[*field] != local[*field])
+                    })
+                    .collect();
+                let conflict = replica
+                    .conflicts
+                    .iter()
+                    .find(|row| row["operationId"] == pending.operation["opId"]);
+                rows.push(json!({"vaultId":replica.vault_id,"itemId":item_id,
+                    "operationId":pending.operation["opId"],"title":local["title"],
+                    "fields":fields,"conflict":conflict,"error":replica.sync_error}));
+            }
+        }
+        Ok(
+            json!({"items":rows,"settingsPending":self.settings_record.pending.is_some(),"settingsConflict":self.settings_conflict}),
+        )
+    }
+
     pub fn replica_status(&self) -> Result<Value, String> {
         let replicas = self.replica_store.list()?;
         let last_verified_sync_at = replicas

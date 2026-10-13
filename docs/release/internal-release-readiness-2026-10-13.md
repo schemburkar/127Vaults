@@ -172,3 +172,24 @@ Later acceptance-only changes do not alter the selected product binaries.
 Independent review, real-secret approval, signing/public distribution, Cloud and
 public beta remain separate. No broad backlog row becomes Done from these subset
 checks. Nothing was pushed or published.
+
+## Subsequent development fix: sync failure review
+
+The development desktop now exposes Review sync for failed or queued work. Its
+read-only native command decrypts pending requests locally and returns only item
+titles, vault/item/operation identifiers, changed field names and existing conflict
+markers. Values remain hidden. Confirmed conflicts route to the existing masked
+comparison and selected-operation server-copy workflow; unclassified failures
+cannot discard local edits. Pending settings have their own review entry.
+Overlapping sync requests are guarded, identical notifications are deduplicated,
+warning colours replace the misleading green failure indicator, and the timestamp
+is labelled Last verified server sync. Lock invalidates late review responses.
+
+Desktop check/18 tests, workspace Clippy and CLI library 62 tests pass (one existing
+live-fixture test remains intentionally ignored). A copied fictitious profile
+verified durable pending metadata across reopen without field-value disclosure.
+Actual isolated desktop UI acceptance is recorded at
+`C:\Projects\127Vaults-sync-review-20261013-a\ui-evidence.json`: offline unlock,
+item/field review, values withheld, unconfirmed-copy refusal and lock clearing.
+This follow-up is not included in the immutable desktop packages selected above;
+they need rebuilding before accepting this behaviour as packaged release evidence.
