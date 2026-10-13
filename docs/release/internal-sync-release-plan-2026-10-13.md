@@ -71,3 +71,12 @@ runs use the separate fictitious keyring; no real profile was modified.
 | Chained create/edit after identity/snapshot fix | `...-d/chained-after.json` | Original ID and edited title preserved; both items on peer; zero pending/conflicts |
 
 These are source-engine evidence, not yet packaged UI or a complete all-client pass.
+
+Windows independently enrolled a new fictitious peer on its own OS keyring and
+passed the same chained stale-create/edit scenario with stable identity and zero
+pending/conflicts: `C:\Projects\127Vaults-sync-matrix-20261013-b\chained-windows.json`.
+The extended actual Edge/PWA fixture also passes chained creations/edits, offline
+restart, conflict review, lost response, signed history/checkpoints, settings and
+vault lifecycle: `C:\Projects\127Vaults-sync-pwa-20261013-a\evidence.json`.
+Run it with `VAULTS_TEST_CHAINED_QUEUE=1`; its HTTP fixture is distinct from the
+native PostgreSQL/TLS matrix. Both use real Rust cryptography and disposable data.

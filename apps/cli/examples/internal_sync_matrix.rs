@@ -134,12 +134,7 @@ fn stale_creations(a: &Path, b: &Path, evidence: &Path, chained_edit: bool) -> R
     let report = json!({"scenario":"two offline creations on stale catalogue, peer advance, restart/replay",
         "passed":passed,"error":outcome.as_ref().err(),"pending":status["pending"],"conflicts":status["conflicts"],
         "peerReadBoth":converged,"bothDraftsStillQueued":retained,"chainedEdit":chained_edit,"identityPreserved":identity_preserved});
-    std::fs::write(
-        evidence,
-        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    println!("{report}");
+    record(evidence, &report)?;
     if passed {
         Ok(())
     } else {
@@ -149,6 +144,9 @@ fn stale_creations(a: &Path, b: &Path, evidence: &Path, chained_edit: bool) -> R
 
 fn main() -> Result<(), String> {
     let args: Vec<_> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    if args.len() == 4 && args[3] == Path::new("enroll") {
+        return enroll_fixture(&args[0], &args[1]);
+    }
     if args.len() == 4 && args[3] == Path::new("recover") {
         return recover(&args[0], &args[1], &args[2]);
     }
@@ -159,6 +157,35 @@ fn main() -> Result<(), String> {
         return Err("supply explicit fixture device A, B and evidence path".to_owned());
     }
     stale_creations(&args[0], &args[1], &args[2], false)
+}
+
+fn enroll_fixture(a: &Path, b: &Path) -> Result<(), String> {
+    validate(a)?;
+    if !b.is_absolute() || b.exists() {
+        return Err("new absolute fixture profile required".to_owned());
+    }
+    std::fs::create_dir(b).map_err(|e| e.to_string())?;
+    for file in ["trust.conf", "installation-ca.pem"] {
+        std::fs::copy(a.join(file), b.join(file)).map_err(|e| e.to_string())?;
+    }
+    let owner = open(a, false)?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let enrolling = b.to_path_buf();
+    let worker = std::thread::spawn(move || {
+        vaults_cli::enroll_device_with_status(&enrolling, "owner_127", |code| {
+            let _ = sender.send(code.to_owned());
+        })
+    });
+    let code = receiver
+        .recv_timeout(std::time::Duration::from_secs(20))
+        .map_err(|e| e.to_string())?;
+    owner.approve_device_code(&code)?;
+    worker
+        .join()
+        .map_err(|_| "fixture enrollment worker panicked")??;
+    validate(b)?;
+    println!("Distinct fictitious device enrolled on this OS keyring.");
+    Ok(())
 }
 
 fn recover(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
@@ -203,15 +230,20 @@ fn recover(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
     });
     let passed = outcome.is_ok() && status["pending"] == 0 && status["conflicts"] == 0 && unique;
     let report = json!({"scenario":"recover preserved failed two-creation queue","passed":passed,"error":outcome.as_ref().err(),"pending":status["pending"],"conflicts":status["conflicts"],"peerReadBothExactlyOnce":unique});
-    std::fs::write(
-        evidence,
-        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    println!("{report}");
+    record(evidence, &report)?;
     if passed {
         Ok(())
     } else {
         Err("preserved queue recovery failed".to_owned())
     }
+}
+
+fn record(evidence: &Path, report: &serde_json::Value) -> Result<(), String> {
+    std::fs::write(
+        evidence,
+        serde_json::to_vec_pretty(report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    println!("{report}");
+    Ok(())
 }

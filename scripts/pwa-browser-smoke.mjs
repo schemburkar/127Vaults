@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createHash, createPublicKey, generateKeyPairSync, randomBytes, randomUUID, sign, verify } from 'node:crypto';
 import { AuthService } from '../apps/server/src/auth-service.mjs';
@@ -66,6 +66,9 @@ const store={
 const auth=new AuthService({store,opaque});
 const types={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.webmanifest':'application/manifest+json'};
 const failures=[];
+const chainedQueue = process.env.VAULTS_TEST_CHAINED_QUEUE === '1';
+const extraQueueItems = Number(chainedQueue);
+let queuedCreationId;
 const server=createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,origin),path=url.pathname;
@@ -185,7 +188,7 @@ const registration=O.client_registration_start(Buffer.alloc(32,3),encoder.encode
 const response=O.server_registration_start(setup,registration.message(),registrationBinding);
 opaqueRecord=Buffer.from(O.server_registration_finish(O.client_registration_finish(registration.state(),Buffer.alloc(32,3),encoder.encode(master),response,registrationBinding)));
 let browser;
-const output=resolve(import.meta.dirname,'..','.tools/pwa-browser-check');await mkdir(output,{recursive:true});
+const output=process.env.VAULTS_TEST_OUTPUT ? resolve(process.env.VAULTS_TEST_OUTPUT) : resolve(import.meta.dirname,'..','.tools/pwa-browser-check');await mkdir(output,{recursive:true});
 try {
   browser=await chromium.launch({headless:true,...(process.env.VAULTS_BROWSER_EXECUTABLE?{executablePath:process.env.VAULTS_BROWSER_EXECUTABLE}:{})});
   const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true,serviceWorkers:'allow'});
@@ -250,6 +253,19 @@ try {
   await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);await row().click();
   if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.locator('#new-item').click();await page.locator('#title').fill('Created offline fixture');await page.locator('#item-password').fill('synthetic-created-offline');await page.locator('#save').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('2 pending changes'));
+  if (chainedQueue) {
+    const createdRow=page.locator('[data-item-id]').filter({hasText:'Created offline fixture'});
+    queuedCreationId=await createdRow.getAttribute('data-item-id');
+    if(await page.locator('#close-item-detail').isVisible())await page.locator('#close-item-detail').click();
+    await createdRow.click();await page.locator('#edit-item').click();
+    await page.locator('#title').fill('Created offline fixture edited');await page.locator('#save').click();
+    await page.waitForFunction(()=>document.body.getAttribute('aria-busy')==='false');
+    if(await page.locator('#close-item-detail').isVisible())await page.locator('#close-item-detail').click();
+    await page.evaluate(vaultId=>window.__vaultsActions.selectVault(vaultId),firstVault);
+    await page.locator('#new-item').click();await page.locator('#title').fill('Second created offline fixture');
+    await page.locator('#item-password').fill('synthetic-second-created-offline');await page.locator('#save').click();
+    await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('4 pending changes'));
+  }
   await page.evaluate(()=>window.__vaultsActions.openCollectionDialog());
   await page.locator('#web-collection-name').fill('Offline collection fixture');
   await page.locator(`#web-collection-vaults input[value="${firstVault}"]`).check();await page.locator(`#web-collection-vaults input[value="${secondVault}"]`).check();
@@ -257,8 +273,8 @@ try {
   const collectionId=await page.evaluate(()=>window.__vaultsSettings.settings.collections[0].id);
   await page.evaluate(id=>window.__vaultsActions.setDefaultView(`collection:${id}`),collectionId);
   await page.evaluate(id=>window.__vaultsActions.selectBrowseView({kind:'collection',id}),collectionId);
-  assert.equal(await page.locator('[data-item-id]').count(),3);
-  await page.evaluate(()=>window.__vaultsActions.selectBrowseView({kind:'all'}));assert.equal(await page.locator('[data-item-id]').count(),3);
+  assert.equal(await page.locator('[data-item-id]').count(),3+extraQueueItems);
+  await page.evaluate(()=>window.__vaultsActions.selectBrowseView({kind:'all'}));assert.equal(await page.locator('[data-item-id]').count(),3+extraQueueItems);
   await page.evaluate(()=>window.__vaultsActions.openCreateVaultDialog());await page.locator('#web-vault-name').fill('Offline vault fixture');await page.locator('#web-create-vault-submit').click();await page.locator('#web-create-vault-dialog').waitFor({state:'hidden'});
   await page.screenshot({path:resolve(output,'offline-mobile.png'),fullPage:true});
   // Another device changes the original item and independently adds a vault.
@@ -269,7 +285,15 @@ try {
   await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#conflict-dialog').waitFor({state:'visible'});
   await page.locator('#conflict-keep').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'),{timeout:20000});
-  assert.equal(vaults.size,4);assert.ok([...vaults.get(firstVault).items.values()].length===2);
+  assert.equal(vaults.size,4);assert.equal(vaults.get(firstVault).items.size,2+extraQueueItems);
+  if(chainedQueue) {
+    const row=vaults.get(firstVault),item=row.items.get(queuedCreationId);
+    assert.ok(item,'Chained queued creation must preserve its item ID');
+    const handle=core.open_private_vault(root,un(privateDirectory),ids(firstVault),un(row.envelope));
+    assert.equal(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(handle,un(row.catalogue),ids(queuedCreationId),un(item.index),4))).title,'Created offline fixture edited');
+    core.release_vault(handle);handle.free();
+    console.log('Verified PWA chained offline create/edit and multiple stale creations with stable item identity.');
+  }
   const original=vaults.get(firstVault).items.get(firstItem),handle=core.open_private_vault(root,un(privateDirectory),ids(firstVault),un(vaults.get(firstVault).envelope));
   assert.equal(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(handle,un(vaults.get(firstVault).catalogue),ids(firstItem),un(original.body),3))).password,'synthetic-offline-update');core.release_vault(handle);handle.free();
   assert.ok(JSON.parse(new TextDecoder().decode(core.decrypt_account_settings(root,un(settings.envelope)))).names);
@@ -297,7 +321,7 @@ try {
   await page.evaluate(id=>window.__vaultsActions.manageVault(id,'restore'),secondVault);assert.equal(vaults.get(secondVault).retired,false);
   const move=page.evaluate(({source,target})=>window.__vaultsActions.manageVault(source,'move',target),{source:secondVault,target:firstVault});
   await page.locator('#confirm-dialog').waitFor({state:'visible'});await page.locator('#confirm-accept').click();await move;
-  assert.equal(vaults.get(secondVault).retirementChoice,'move');assert.equal(vaults.get(firstVault).items.size,3);assert.equal(vaults.get(secondVault).items.size,1);
+  assert.equal(vaults.get(secondVault).retirementChoice,'move');assert.equal(vaults.get(firstVault).items.size,3+extraQueueItems);assert.equal(vaults.get(secondVault).items.size,1);
   console.log('Verified collections, default view, recoverable archive/restore and vault move.');
   // Recover durable edits when a different device removes their source vault.
   const recoverySource=[...vaults.values()].find(row=>!row.retired&&row.vaultId!==firstVault&&row.vaultId!==secondVault).vaultId;
@@ -310,7 +334,7 @@ try {
   await page.locator('#sync-review-later').click();await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
   await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#sync-review-dialog').waitFor({state:'visible'});await page.locator('#sync-review-destination').selectOption(firstVault);await page.locator('#sync-review-mine').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'));
-  assert.equal(vaults.get(firstVault).items.size,4);assert.equal(vaults.get(recoverySource).items.size,0);
+  assert.equal(vaults.get(firstVault).items.size,4+extraQueueItems);assert.equal(vaults.get(recoverySource).items.size,0);
   console.log('Verified retired-vault offline edit recovery and cancellation.');
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(output,'installed-desktop.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
@@ -326,7 +350,9 @@ try {
   rejectAuth=true;await page.locator('#master').fill(master);await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));assert.equal(await page.locator('#vault').isVisible(),false);
   assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);
   const ordinary=await browser.newContext({serviceWorkers:'allow'}),tab=await ordinary.newPage();await tab.goto(origin);await tab.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration())?.active);await ordinary.setOffline(true);await assert.rejects(tab.reload());await ordinary.close();
-  console.log(JSON.stringify({ok:true,enrollment:true,offlineReload:true,passwordOnlyUnlock:true,offlineWrites:true,multipleVaults:true,collections:true,defaultView:true,archiveRestoreMove:true,conflictReview:true,lostResponseReplay:true,signedHistoryAndCheckpoints:true,tamperedQueueRejected:true,concurrentStorageWrites:true,retiredVaultRecovery:true,ordinaryBrowserOnlineOnly:true,mobileAndDesktop:true}));
+  const evidence={ok:true,enrollment:true,offlineReload:true,passwordOnlyUnlock:true,offlineWrites:true,multipleVaults:true,collections:true,defaultView:true,archiveRestoreMove:true,conflictReview:true,lostResponseReplay:true,signedHistoryAndCheckpoints:true,tamperedQueueRejected:true,concurrentStorageWrites:true,retiredVaultRecovery:true,ordinaryBrowserOnlineOnly:true,mobileAndDesktop:true,chainedOfflineCreateEdit:chainedQueue,scope:'Actual browser/WASM/UI with isolated HTTP fixture; separate from PostgreSQL/TLS acceptance'};
+  await writeFile(resolve(output,'evidence.json'),JSON.stringify(evidence,null,2)+'\n');
+  console.log(JSON.stringify(evidence));
 } catch (error) {
   const failedPage=browser?.contexts()[0]?.pages()[0];
   if(failedPage)console.error(await failedPage.evaluate(()=>({sync:document.querySelector('#session-dates')?.textContent,save:document.querySelector('#save')?.disabled,formHidden:document.querySelector('#item-form')?.hidden,invalid:[...document.querySelectorAll('#item-form :invalid')].map(input=>({id:input.id,type:input.type,validation:input.validationMessage})),login:document.querySelector('#login-status')?.textContent,notices:document.querySelector('[aria-label="Notifications"]')?.textContent})));
