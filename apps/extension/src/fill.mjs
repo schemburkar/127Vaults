@@ -8,7 +8,9 @@ export function probeFrame(expectedOrigin) {
   ]);
   const inputs = collect(document);
   const visible = input => input instanceof HTMLInputElement && !input.disabled && !input.readOnly && input.type !== 'hidden' && input.getClientRects().length > 0 && getComputedStyle(input).visibility !== 'hidden';
+  if (inputs.some(input => visible(input) && input.type === 'password' && input.autocomplete === 'new-password')) return { eligible: false, frameOrigin: location.origin, reason: 'NEW_PASSWORD_FORM' };
   const password = inputs.filter(input => visible(input) && input.type === 'password' && input.autocomplete !== 'new-password');
+  if (password.length > 1 && password.filter(input => input.autocomplete === 'current-password').length !== 1) return { eligible: false, frameOrigin: location.origin, reason: 'AMBIGUOUS_PASSWORD_FORM' };
   const username = inputs.filter(input => visible(input) && ['text','email','tel',''].includes(input.type) && /username|e.?mail|login|user|identifier/i.test([input.autocomplete,input.name,input.id,input.placeholder,input.getAttribute('aria-label'),input.labels && [...input.labels].map(label => label.textContent).join(' ')].join(' ')));
   return { eligible: password.length > 0 || username.length > 0, passwordCount: password.length, usernameCount: username.length, focused: document.hasFocus(), frameOrigin: location.origin };
 }
@@ -21,6 +23,7 @@ export function fillFrame(expectedOrigin, credential) {
   ]);
   const visible = input => input instanceof HTMLInputElement && !input.disabled && !input.readOnly && input.type !== 'hidden' && input.getClientRects().length > 0 && getComputedStyle(input).visibility !== 'hidden' && getComputedStyle(input).display !== 'none';
   const inputs = collect(document).filter(visible);
+  if (inputs.some(input => input.type === 'password' && input.autocomplete === 'new-password')) return { ok: false, reason: 'NEW_PASSWORD_FORM' };
   const tokens = input => [input.autocomplete,input.name,input.id,input.placeholder,input.getAttribute('aria-label'),input.labels && [...input.labels].map(label => label.textContent).join(' ')].join(' ').toLowerCase();
   const passwords = inputs.filter(input => input.type === 'password' && input.autocomplete !== 'new-password');
   const current = passwords.filter(input => input.autocomplete === 'current-password');

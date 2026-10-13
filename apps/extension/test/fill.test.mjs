@@ -88,11 +88,12 @@ test('does not fill ambiguous or changed-password forms', () => {
   const first = new Input('password');
   const second = new Input('password');
   page([first, second]);
+  assert.equal(probeFrame(origin).eligible, false);
   assert.equal(fillFrame(origin, credential).reason, 'AMBIGUOUS_PASSWORD_FORM');
   assert.equal(first.value, '');
   const newPassword = new Input('password', { autocomplete: 'new-password' });
   page([newPassword]);
-  assert.equal(fillFrame(origin, credential).reason, 'NO_LOGIN_FIELDS');
+  assert.equal(fillFrame(origin, credential).reason, 'NEW_PASSWORD_FORM');
   assert.equal(newPassword.value, '');
 });
 
@@ -100,5 +101,16 @@ test('rejects a changed frame origin before touching fields', () => {
   const password = new Input('password');
   page([password], 'https://other.example.test');
   assert.equal(fillFrame(origin, credential).reason, 'ORIGIN_CHANGED');
+  assert.equal(password.value, '');
+});
+
+test('a signup form cannot receive an existing username beside a new password', () => {
+  const form = {};
+  const username = new Input('text', { autocomplete: 'username', form });
+  const password = new Input('password', { autocomplete: 'new-password', form });
+  page([username, password]);
+  assert.equal(probeFrame(origin).eligible, false);
+  assert.equal(fillFrame(origin, credential).ok, false);
+  assert.equal(username.value, '');
   assert.equal(password.value, '');
 });

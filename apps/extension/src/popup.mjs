@@ -202,7 +202,10 @@ async function choose(item) {
     const origin = originOf(fresh.url);
     const probes = await script(targetTab.id, probeFrame, [origin], { allFrames: true });
     const candidates = probes.filter(row => row.result?.eligible && row.result.frameOrigin === origin);
-    if (!candidates.length) throw Error('No usable login fields were found on this page.');
+    if (!candidates.length) {
+      const rejected = probes.find(row => row.result?.frameOrigin === origin && row.result?.reason);
+      throw Error(rejected?.result.reason || 'No usable login fields were found on this page.');
+    }
     const fill = async frameId => {
       const latest = await chrome.tabs.get(targetTab.id);
       if (!matchingLogin(item.website, latest.url)) throw Error('The page changed before fill.');
