@@ -29,6 +29,72 @@ fn start(executable: &Path, profile: &Path) -> Result<(), String> {
     )
 }
 
+fn verify_settings(
+    profile: &Path,
+    vault_name: &str,
+    collection_name: &str,
+    title: &str,
+) -> Result<(), String> {
+    let mut session = vaults_cli::client::unlock(
+        profile,
+        "owner_127",
+        &"07".repeat(32),
+        b"fictitious password 127vaults",
+    )?;
+    let vaults = session.vault_list()?;
+    if !vaults.as_array().is_some_and(|rows| {
+        rows.iter()
+            .any(|row| row["name"].as_str() == Some(vault_name))
+    }) {
+        return Err("GUI-created encrypted vault name did not reach the second device".to_owned());
+    }
+    let settings = session.vault_settings();
+    let collection_id = settings["collections"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter()
+                .find(|row| row["name"].as_str() == Some(collection_name))
+        })
+        .and_then(|row| row["id"].as_str())
+        .ok_or("GUI-created collection did not reach the second device")?;
+    let items = session.collection_items(collection_id)?;
+    if !items["items"]
+        .as_array()
+        .is_some_and(|rows| rows.iter().any(|row| row["title"].as_str() == Some(title)))
+    {
+        return Err("GUI collection edit did not reach the second device".to_owned());
+    }
+    println!("Second device read GUI-created encrypted vault name, collection and saved item.");
+
+    Ok(())
+}
+
+fn verify_conflict(profile: &Path, title: &str) -> Result<(), String> {
+    let secret = "07".repeat(32);
+    let password = b"fictitious password 127vaults";
+    let mut offline = vaults_cli::client::unlock_offline(profile, "owner_127", &secret, password)?;
+    if !offline
+        .item_list_all()?
+        .as_array()
+        .is_some_and(|rows| rows.iter().any(|row| row["title"].as_str() == Some(title)))
+    {
+        return Err("preserved pending fixture title is unavailable".to_owned());
+    }
+    drop(offline);
+    let mut online = vaults_cli::client::unlock(profile, "owner_127", &secret, password)?;
+    let result = online.sync_now()?;
+    let conflicts = result["conflicts"].as_array().map_or(0, Vec::len);
+    println!(
+        "Fixture sync: pending={}, conflicts={conflicts}, rebased={}",
+        result["pending"], result["rebased"]
+    );
+    if conflicts == 0 {
+        return Err("same-title fixture change did not require conflict review".to_owned());
+    }
+    println!("Preserved second-device change requires review in the shared engine.");
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let action = args.next().ok_or("expected start or stop")?;
@@ -38,6 +104,32 @@ fn main() -> Result<(), String> {
     uuid::Uuid::parse_str(&server_id).map_err(|_| "fixture server ID must be a UUID")?;
     let device_id = fixture_device(&profile, &server_id)?;
     match action.as_str() {
+        "conflict" => verify_conflict(&profile, &args.next().ok_or("expected fixture title")?)?,
+        "inspect-title" => {
+            let title = args.next().ok_or("expected fictitious title")?;
+            let mut session = vaults_cli::client::unlock_offline(
+                &profile,
+                "owner_127",
+                &"07".repeat(32),
+                b"fictitious password 127vaults",
+            )?;
+            if !session
+                .item_list_all()?
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|row| row["title"].as_str() == Some(&title)))
+            {
+                return Err(
+                    "saved fictitious title is absent from the encrypted replica".to_owned(),
+                );
+            }
+            println!("Explicit fictitious title found in the encrypted replica.");
+        }
+        "settings" => {
+            let vault_name = args.next().ok_or("expected fictitious vault name")?;
+            let collection_name = args.next().ok_or("expected fictitious collection name")?;
+            let title = args.next().ok_or("expected fictitious item title")?;
+            verify_settings(&profile, &vault_name, &collection_name, &title)?;
+        }
         "start" => {
             let executable = PathBuf::from(args.next().ok_or("expected packaged CLI executable")?);
             start(&executable, &profile)?;

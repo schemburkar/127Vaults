@@ -1,8 +1,8 @@
 # Backlog priority review
 
-Updated 2026-10-12. The user selected an internal fictitious-data release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
+Updated 2026-10-13. The user selected an internal fictitious-data release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
 
-See the [internal release candidate evidence and remaining gates](../release/internal-release-readiness-2026-10-12.md). The goal is not yet achieved across every surface: installed-extension fill, installed desktop GUI/clean-machine acceptance and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).
+See the [internal release candidate evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). Installed extension password-fill matrices pass on Windows Edge and Linux Chrome; basic installed desktop GUI acceptance passes on both platforms. Physical OS lock/idle, clean-machine/Linux package lifecycle, wider settings/device/type cases and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).
 
 | Priority | Current meaning |
 | --- | --- |
@@ -13,11 +13,17 @@ See the [internal release candidate evidence and remaining gates](../release/int
 
 ## Selected P1 closure order
 
+**Next P1: investigate the installed Linux queued-conflict discrepancy.** The
+AppImage GUI did not show the required review dialog after a durable offline
+edit and competing device edit; the preserved profile produces one pending
+conflict in the shared engine. See the October 13 reproduction. This gate stays
+open despite the passing basic desktop and extension matrices.
+
 | Order | Component and rows | Evidence and next action |
 | --- | --- | --- |
-| 1 | Extension EXT-002–005, EXT-007–009, EXT-012 | Packaged Edge/native-host offline discovery/read/origin/write/lock and Edge passkey adapter pass. Finish visible selected-login fill, Chrome/Edge source handoff, frames/navigation, idle/OS lock, restart and installer registration matrix. Unlock belongs to the source client. |
-| 2 | Desktop DESK-004–008 | Windows/Linux packages and native online/offline backend/keyring checks pass; Windows and Linux process restart passes. Finish installed GUI, clean-machine install/update/uninstall, device/settings and disclosure acceptance. Shared-engine two-device tests close only part of DESK-004. |
-| 3 | CLI CLI-003/004/006/008/009 | Both platform packages, live keyrings, second-device enrollment, durable conflicts, offline replay and checkpoints pass. Finish terminal/pipe disclosure, clean-machine and remaining device/settings cases. |
+| 1 | Extension EXT-002–005, EXT-007–009, EXT-012 | Real Windows Edge/Linux Chrome popup fill, split/React/shadow/frame forms, navigation refusal, desktop/CLI handoff, browser restart and source lock pass. Signup/ambiguous forms refuse before credential retrieval. Finish physical idle/OS lock, permission/repair, installed passkey-site and wider browser/accessibility cases. |
+| 2 | Desktop DESK-004–008 | Windows/Linux native backend/keyring checks and basic installed GUI read/reveal/hide/edit/save/lock pass. Linux offline GUI edits survive process restart. Windows same-path update/reconnect and owned/foreign-registration uninstall pass. Finish clean-machine/Linux lifecycle and wider device/settings/disclosure cases. Shared-engine two-device tests close only part of DESK-004. |
+| 3 | CLI CLI-003/004/006/008/009 | Both packages/keyrings, independent adopted-profile agents, second-device enrollment, conflicts/replay/checkpoints and default-redacted/explicit-password pipe output pass. Finish physical terminal, clean-machine and wider device/settings cases. |
 | 4 | Web WEB-003/005–008 | Enrollment and installed-PWA offline recovery are implemented. Edge Rust/WASM fixture passes restart/conflict/replay and ownership acceptance. Finish intended-host CA/human ceremony, enabled type cross-client round trips and wider browser/accessibility matrix. Ordinary browser sessions remain online-only. |
 | 5 | Admin SRV-016 | Schema-7 audited invitation/account/device/role/ownership writes pass PostgreSQL, HTTP, Edge and packaged HTTPS. Finish human acceptance. SMTP resend, secret settings and restore remain operator workflows. |
 | 6 | Server SRV-002/003/005/013 | Extracted schema-7 guarded backup/restore and populated 1→7 migration pass. Unrelated-host/Docker/private-LAN, operational shutdown/upgrade and backup-key custody remain supported-release gates. |

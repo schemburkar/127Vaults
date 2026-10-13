@@ -1,0 +1,24 @@
+// Captures packaged CLI pipe output without logging fictitious credentials.
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { isAbsolute, join } from 'node:path';
+const [binary,profile,serverId,evidence]=process.argv.slice(2);
+assert.ok(binary&&profile&&serverId&&evidence&&isAbsolute(profile));
+const device=await readFile(join(profile,'device.conf'),'utf8');
+assert.ok(device.includes(`server_id=${serverId}\n`)&&device.includes('username=owner_127\n'),'Explicit fictitious fixture required.');
+const run=args=>{try{return execFileSync(binary,[...args,'--config-dir',profile],{encoding:'utf8',windowsHide:true,timeout:15000,stdio:['ignore','pipe','pipe']});}catch(error){throw Error(`Packaged fixture command failed (exit ${error.status ?? 'unavailable'}); captured output omitted.`);}};
+const secret='api010-fiction-secret';
+const listed=run(['item','list','--all']);
+assert.ok(!listed.includes(secret));
+const rows=JSON.parse(listed),row=rows.find(row=>row.website==='https://offline-remote.invalid');
+assert.ok(row&&row.itemId&&row.vaultId,'Expected fictitious login');
+const itemArgs=['item','get',row.itemId,'--vault',row.vaultId];
+const shown=run(itemArgs);
+assert.ok(!shown.includes(secret)&&!shown.includes('07'.repeat(32))&&!shown.includes('fictitious password 127vaults'));
+assert.equal(JSON.parse(shown).password,'[redacted]');
+const explicit=run([...itemArgs,'--password','password']);
+assert.ok(explicit.trim()===secret,'Explicit password pipe value differed');
+assert.ok(explicit.trim().split('\n').length===1,'Password output includes extra text');
+await writeFile(evidence,JSON.stringify({date:new Date().toISOString(),status:'passed',platform:process.platform,checks:['packaged item list pipe excludes password','default item get redacts password and excludes unlock credentials','explicit password flag emits only requested fictitious field'],limitations:['Pipe output on existing host; physical terminal and clean-machine acceptance remain separate.']},null,2)+'\n',{flag:'wx'});
+console.log('Packaged CLI disclosure checks passed; captured credentials were not logged.');

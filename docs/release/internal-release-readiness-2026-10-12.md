@@ -1,5 +1,7 @@
 # Internal release readiness — 2026-10-12
 
+Historical report. See the [October 13 update](internal-release-readiness-2026-10-13.md) for current artifact selection, passed GUI/extension checks and remaining gates.
+
 The requested scope is the self-hosted server, web/PWA, Windows and Linux
 desktop and CLI, Chromium extension, and admin management writes. Acceptance
 uses fictitious data only. Cloud, public distribution and real-secret approval

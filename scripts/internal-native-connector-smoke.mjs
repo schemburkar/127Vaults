@@ -11,7 +11,7 @@ if (process.platform !== 'win32') throw Error('This fixture currently supports W
 const options = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i], value = process.argv[i + 1];
-  if (!['--extension', '--host', '--profile', '--work', '--server-id', '--uninstaller'].includes(key) || !value || options[key]) throw Error('Supply --extension, --host, --profile, --work and --server-id; optional --uninstaller tests the fixture installation removal.');
+  if (!['--extension', '--host', '--profile', '--work', '--server-id', '--uninstaller', '--update-installer', '--registration-case'].includes(key) || !value || options[key]) throw Error('Supply --extension, --host, --profile, --work and --server-id; optional fixture uninstaller/update installer.');
   options[key] = value;
 }
 for (const key of ['--extension', '--host', '--profile', '--work', '--server-id']) if (!options[key]) throw Error('All fixture arguments are required.');
@@ -25,6 +25,9 @@ if (!rel || !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`)) thr
 await mkdir(work); // Refuse reuse; every run preserves its own evidence.
 const installedHost = resolve(options['--host']);
 const uninstaller = options['--uninstaller'] && resolve(options['--uninstaller']);
+const registrationCase=options['--registration-case']||'owned';
+assert.ok(['owned','foreign'].includes(registrationCase),'Use owned or foreign registration case.');
+if((options['--update-installer']||registrationCase==='foreign')&&!uninstaller)throw Error('Lifecycle options require the explicit fixture uninstaller.');
 if (uninstaller && (dirname(uninstaller) !== dirname(installedHost) || basename(uninstaller) !== 'uninstall.exe' || basename(installedHost) !== '127vaults-extension-host.exe')) throw Error('Uninstaller must be the explicit fixture app sibling of the packaged native host.');
 const host = uninstaller ? installedHost : join(work, '127vaults-extension-host.exe');
 const manifest = join(dirname(host), 'com.127vaults.connector.json');
@@ -41,12 +44,15 @@ const oldRegistry = JSON.parse(ps("$p=$env:VAULTS_FIXTURE_HOST_KEY; if(Test-Path
 await writeFile(join(work, 'prior-registration.json'), JSON.stringify(oldRegistry, null, 2) + '\n');
 if (oldPointer !== null) await writeFile(join(work, 'prior-profile-pointer.txt'), oldPointer);
 let context, native, registered = false, pointerChanged = false;
+const lifecycleChecks=[];
+await mkdir(join(work,'empty-desktop'));
 try {
   await writeFile(pointer, profile + '\n'); pointerChanged = true;
   context = await chromium.launchPersistentContext(join(work, 'browser'), {
     executablePath: process.env.VAULTS_EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
     ignoreDefaultArgs: ['--disable-extensions'], headless: true,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    env:{...process.env,VAULTS_CONFIG_DIR:join(work,'empty-desktop')},
   });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).host;
@@ -75,11 +81,28 @@ try {
   assert.equal((await native({ action: 'lock', source: 'cli' })).ok, true);
   assert.equal((await native({ action: 'get', ...selected, siteOrigin })).ok, false);
   if (uninstaller) {
+    if(options['--update-installer']){
+      execFileSync(uninstaller,['/S','/UPDATE'],{windowsHide:true,stdio:'ignore',timeout:60000});
+      assert.equal(ps("if(Test-Path -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY){(Get-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY).GetValue('')}"),manifest,'Update removed its native registration.');
+      execFileSync(resolve(options['--update-installer']),['/S',`/D=${dirname(host)}`],{windowsHide:true,stdio:'ignore',timeout:60000});
+      assert.equal(JSON.parse(await readFile(manifest,'utf8')).path,host);
+      assert.equal((await native({action:'sources'})).ok,true);
+      lifecycleChecks.push('same-path update preserves registration and native reconnect');
+    }
+    let foreignManifest;
+    if(registrationCase==='foreign'){
+      foreignManifest=join(work,'foreign-connector.json');
+      await writeFile(foreignManifest,JSON.stringify({name:'com.127vaults.connector',path:join(work,'different-fixture-host.exe')}));
+      process.env.VAULTS_FIXTURE_FOREIGN=foreignManifest;
+      ps("Set-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY -Value $env:VAULTS_FIXTURE_FOREIGN");
+    }
     execFileSync(uninstaller, ['/S'], { windowsHide: true, stdio: 'ignore', timeout: 60000 });
     const registeredPath = ps("if(Test-Path -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY){(Get-Item -LiteralPath $env:VAULTS_FIXTURE_HOST_KEY).GetValue('')}");
-    assert.notEqual(registeredPath.toLowerCase(), manifest.toLowerCase(), 'Uninstall left its own native-host registration dangling.');
+    if(foreignManifest)assert.equal(registeredPath,foreignManifest,'Uninstall removed another fixture registration.');
+    else assert.notEqual(registeredPath.toLowerCase(), manifest.toLowerCase(), 'Uninstall left its own native-host registration dangling.');
+    lifecycleChecks.push(foreignManifest?'foreign native registration preserved':'owned native registration removed');
   }
-  await writeFile(join(work, 'evidence.json'), JSON.stringify({ id: randomUUID(), date: new Date().toISOString(), status: 'passed', scope: 'Installed Edge extension and packaged native-host API; fictitious profile only', checks: ['sources', 'list/get', 'wrong-origin refusal', 'generic-write refusal', 'lock clearing'], limitations: ['No visible popup/form-fill acceptance.', 'Offline status requires the operator to stop only the fixture server before running.'] }, null, 2) + '\n');
+  await writeFile(join(work, 'evidence.json'), JSON.stringify({ id: randomUUID(), date: new Date().toISOString(), status: 'passed', scope: 'Installed Edge extension and packaged native-host API; fictitious profile only', checks: ['sources', 'list/get', 'wrong-origin refusal', 'generic-write refusal', 'lock clearing',...lifecycleChecks], limitations: ['No visible popup/form-fill acceptance.', 'Offline status requires the operator to stop only the fixture server before running.'] }, null, 2) + '\n');
   console.log('Installed Edge/native-host fixture passed source/read/origin/write/lock checks.');
 } finally {
   try {
