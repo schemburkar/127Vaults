@@ -127,6 +127,9 @@ core budget before consuming either slot, returning an explicit lock/unlock/retr
 message instead of the generic encryption error. Core budget/decrypt regression
 coverage preserves the 1,000-envelope bound and existing ciphertext readability.
 Packaged/UI acceptance of this limit remains open.
+Linux independently opens the same real-server history and reads the final item
+body at cursor 548 and revision 501: `...\history-linux.json`. The fixture searches
+all active vaults instead of assuming that per-profile vault ordering is identical.
 
 Two peer-created checkpoints while the original client was disconnected caused
 fresh native unlock to falsely report a fork. Failed evidence:

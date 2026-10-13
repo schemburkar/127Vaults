@@ -120,11 +120,7 @@ fn checkpoints(profile: &Path, peer: &Path) -> Result<Value, String> {
 }
 fn history_read(profile: &Path) -> Result<Value, String> {
     let mut session = open(profile)?;
-    let vault = session.vault_list()?[0]["vaultId"]
-        .as_str()
-        .ok_or("fixture vault missing")?
-        .to_owned();
-    let list = session.item_list(&vault)?;
+    let list = session.item_list_all()?;
     let row = list
         .as_array()
         .ok_or("fixture list missing")?
@@ -135,12 +131,13 @@ fn history_read(profile: &Path) -> Result<Value, String> {
                 .is_some_and(|title| title.starts_with("History revision "))
         })
         .ok_or("history fixture item missing")?;
+    let vault = row["vaultId"].as_str().ok_or("fixture vault missing")?;
     let item = row["itemId"].as_str().ok_or("fixture item missing")?;
-    if session.item_get(&vault, item, Some("password"))? != "fixture-password" {
+    if session.item_get(vault, item, Some("password"))? != "fixture-password" {
         return Err("verified history body mismatch".to_owned());
     }
     let replica = vaults_cli::replica::ReplicaStore::new(profile)
-        .load(&vault)?
+        .load(vault)?
         .ok_or("fixture replica missing")?;
     if replica.cursor <= 500 {
         return Err("history fixture did not cross the page boundary".to_owned());
