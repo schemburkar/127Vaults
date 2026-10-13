@@ -35,6 +35,14 @@ async function waitForServerReady(){
   let state='';
   try { state=run(podman,['inspect',serverContainer,'--format','{{.State.Status}} {{.State.Health.Status}}'],{capture:true}); } catch {}
   if(state.trim()==='running healthy')return;
+  // A recognized older database needs the explicit migration workflow; waiting
+  // through the restart loop cannot make it ready.
+  if (state) {
+   let logs='';
+   const result=spawnSync(podman,['logs','--tail','20',serverContainer],{cwd:root,env:environment,encoding:'utf8',windowsHide:true});
+   if(result.status===0)logs=`${result.stdout||''}\n${result.stderr||''}`;
+   if(logs.includes('Unknown or changed schema; automatic upgrades are disabled.'))throw Error('The development database schema does not match this server. Preserve a database backup, run pnpm mvp:migrate (which refuses unknown schemas), then retry dev.ps1. Do not reset the database or regenerate the TLS identity.');
+  }
   await new Promise(resolve=>setTimeout(resolve,2000));
  }
  throw Error('The acceptance server did not become healthy. Inspect its logs; if the schema is behind, run pnpm mvp:migrate, then pnpm mvp:dev. Do not reset the database.');
