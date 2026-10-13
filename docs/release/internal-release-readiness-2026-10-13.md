@@ -4,7 +4,7 @@
 The [expanded goal and acceptance matrix](internal-sync-release-plan-2026-10-13.md)
 tracks reported live failures and the remaining end-to-end release gates. Passing
 scenarios below are subset evidence and do not accept the complete sync workflow.
-Installed Windows/Linux queued-conflict review, selected-field resolution and
+Earlier installed Windows/Linux queued-conflict review, selected-field resolution and
 peer-created vault/collection settings review now pass.
 Windows and Linux desktop/CLI, the Chromium extension, web/PWA, self-hosted
 server and admin management writes are selected. This report supersedes the
@@ -151,8 +151,8 @@ verification. [Recorded revisions and checksums](internal-release-artifacts-2026
 are committed; unsigned private-test artifacts remain at `C:\Projects\127Vaults-Releases`.
 
 - Server: `server/internal-20261013-a/linux-amd64`, source `8aeaf9b`, schema 7.
-- Desktop: `desktop/internal-20261013-e/{windows,linux}`, source `8aeaf9b`.
-- CLI: `cli/internal-20261013-c/{windows,linux}`, source `8aeaf9b`.
+- Desktop: `desktop/internal-20261013-g/{windows,linux}`, source `4224086`.
+- CLI: `cli/internal-20261013-e/{windows,linux}`, source `4224086`.
 - Extension: `extension/internal-20261013-b/chromium`, source `8aeaf9b`.
 
 Earlier artifacts remain for reproduction but lack the later queued-rebase fixes.

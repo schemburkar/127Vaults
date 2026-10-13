@@ -152,3 +152,28 @@ encrypted database/identity backup, guarded empty-project restore and owner logi
 with existing encrypted items after restore. Evidence:
 `C:\Projects\127Vaults-sync-server-20261013-a\evidence.json`. Its owned projects were
 stopped afterward; the user's development server was not stopped or reset.
+
+## Latest packaged command evidence
+
+All six candidate directories were verified again and the artifact inventory now
+selects Desktop `internal-20261013-g` and CLI `internal-20261013-e`, both platforms,
+from `4224086`. They include operation pagination, missed-checkpoint catch-up and
+the bounded-session diagnostic. Server `internal-20261013-a` and extension
+`internal-20261013-b` retain their recorded `8aeaf9b` provenance. No public release
+or complete matrix acceptance is claimed.
+
+`scripts/internal-packaged-cli-sync.mjs` drives actual packaged CLI commands and
+owned unlock-agent subprocesses with explicit enrolled fictitious profiles. It
+does not change the active-profile pointer or native-host registration. Windows
+creation, Linux read/edit and Windows return read pass against real TLS/PostgreSQL:
+`C:\Projects\127Vaults-sync-cli-20261013-a\cross-os.json`.
+The offline run confirms two creations plus a chained edit as exactly three durable
+operations, stops the agent, advances the server from Linux, restarts Windows and
+replays with stable item IDs and zero pending/item conflicts. Linux reads both
+recovered IDs and edits the first; Windows verifies the peer edit:
+`...\queue.json`. Both standalone CLI archives and Desktop-shipped CLI executables
+were exercised. These are command/agent acceptance, not Desktop rendering.
+
+Linux's existing fixture requires reviewed vault-settings refresh after peer
+settings changes. Item queues and conflict markers are empty; that settings
+review was preserved rather than silently accepted for a cleaner aggregate status.
