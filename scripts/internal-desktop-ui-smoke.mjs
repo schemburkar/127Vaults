@@ -18,6 +18,8 @@ const conflictTest=process.argv[7]==='conflict';
 const settingsReview=process.argv[7]==='settings-server';
 const queueCreate=process.argv[7]==='queue-create';
 const queueReplay=process.argv[7]==='queue-replay';
+const queueVault=process.env.VAULTS_FIXTURE_QUEUE_VAULT||null;
+assert.ok(!queueVault||/^[a-f0-9-]{36}$/.test(queueVault),'Supply a canonical fixture vault ID');
 assert.ok(!queueCreate||connection==='Offline','Queue creation requires an offline fixture.');
 assert.ok(!queueReplay||connection==='Online','Queue replay requires a connected fixture.');
 assert.ok(!settings||connection==='Online','Vault creation requires online fixture acceptance.');
@@ -40,9 +42,9 @@ try{
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('GUI device identity matches the explicit fixture profile');
   if(${JSON.stringify(queueCreate)}) {
    const input=(node,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}));};
-   const create=async title=>{button('New item').click();await wait(()=>document.querySelector('input[data-editor-title]'));input(document.querySelector('input[data-editor-title]'),title);const password=document.querySelector('main input[type="password"]');if(password)input(password,'synthetic-ui-queue-password');await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&document.querySelector('main')?.innerText.includes(title));};
+   const create=async title=>{button('New item').click();await wait(()=>document.querySelector('input[data-editor-title]'));input(document.querySelector('input[data-editor-title]'),title);await new Promise(resolve=>setTimeout(resolve,50));const password=document.querySelector('main input[type="password"]');if(password)input(password,'synthetic-ui-queue-password');const destination=[...document.querySelectorAll('main label')].find(label=>label.textContent.includes('Destination vault'))?.querySelector('select');if(destination){const value=${JSON.stringify(queueVault)}||[...destination.options].find(option=>option.value)?.value;if(!value||![...destination.options].some(option=>option.value===value))throw Error('Fixture destination vault missing');destination.value=value;destination.dispatchEvent(new Event('change',{bubbles:true}));}await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(title));};
    stage='offline GUI create';await create(${JSON.stringify(expectedTitle)});
-   stage='offline GUI edit';button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));input(document.querySelector('input[data-editor-title]'),${JSON.stringify(nextTitle)});await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&document.querySelector('main')?.innerText.includes(${JSON.stringify(nextTitle)}));
+   stage='offline GUI edit';button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));input(document.querySelector('input[data-editor-title]'),${JSON.stringify(nextTitle)});await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(${JSON.stringify(nextTitle)}));
    stage='second offline GUI create';await create(${JSON.stringify(expectedTitle+' second')});
    await wait(()=>document.body.innerText.includes('3 changes waiting to sync'));checks.push('actual GUI queues two offline creations and a chained edit');
    button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));globalThis.__fixtureUI={done:true,ok:true,checks};return;
@@ -80,7 +82,7 @@ try{
   document.querySelector('button[aria-label="Hide Password"]').click();await wait(()=>!document.querySelector('main')?.innerText.includes('api010-fiction-secret'));checks.push('password hidden');
   stage='edit';button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));
   const title=document.querySelector('input[data-editor-title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(title,${JSON.stringify(nextTitle)});title.dispatchEvent(new Event('input',{bubbles:true}));title.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();
-  await wait(()=>!button('Save')&&document.querySelector('main')?.innerText.includes(${JSON.stringify(nextTitle)}));checks.push('GUI title edit and save');
+  await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(${JSON.stringify(nextTitle)}));checks.push('GUI title edit and save');
   if(${JSON.stringify(connection)}==='Online'){await wait(()=>document.body.innerText.match(/0 pending|0 changes waiting to sync/));checks.push('online save has no pending operations');}
   else {await wait(()=>/[1-9][0-9]* (?:pending|changes? waiting to sync)/.test(document.body.innerText));checks.push('offline save reports durable pending operations');}
   if(${JSON.stringify(settings)}){

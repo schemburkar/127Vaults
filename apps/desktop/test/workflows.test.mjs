@@ -21,3 +21,15 @@ test('desktop confirmed discard restores the saved item and clears the navigatio
   assert.deepEqual(harness.state(), { editing: false, selected: { title: 'Saved' }, dirty: false });
   assert.equal(harness.invoke(), true);
 });
+
+test('save detail reload prevents starting another draft until it finishes', () => {
+  for (const handler of ['beginEditing', 'beginNewItem', 'duplicateItem']) {
+    let changes = 0;
+    const context = vm.createContext({ saving:true, selected:{customFields:[]}, activeVaults:[{}], confirmDiscard:()=>{throw Error('Saving must guard before discarding');}, setSelected:()=>changes++, setEditOriginal:()=>changes++ });
+    const start=source.indexOf(`  const ${handler} = () => {`),end=source.indexOf('\n  };',start)+5;
+    assert.ok(start>=0);
+    vm.runInContext(source.slice(start,end),context);
+    vm.runInContext(`${handler}()`,context);
+    assert.equal(changes,0);
+  }
+});

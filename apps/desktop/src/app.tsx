@@ -975,7 +975,7 @@ export function App() {
     </div>
   </label>;
   const beginEditing = () => {
-    if (!selected) return;
+    if (saving || !selected) return;
     const draft = { ...selected, customFields: completeRelatedFields(selected.customFields) };
     setEditOriginal(structuredClone(draft));
     setSelected(draft);
@@ -983,7 +983,7 @@ export function App() {
     setEditing(true);
   };
   const beginNewItem = () => {
-    if (!activeVaults.length || !confirmDiscard()) return;
+    if (saving || !activeVaults.length || !confirmDiscard()) return;
     setSelected({ itemId: "", title: "", website: "", username: "", password: "", customFields: setItemType([], "login") });
     setEditOriginal(null);
     setItemVaultId(viewMode === "single" ? vaultId : "");
@@ -1092,7 +1092,7 @@ export function App() {
     return result;
   }, [vaults]);
   const duplicateItem = () => {
-    if (!selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || !confirmDiscard()) return;
+    if (saving || !selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || !confirmDiscard()) return;
     setSelected({ ...structuredClone(selected), itemId: "", title: `${selected.title} (copy)`, customFields: setFavorite(selected.customFields, false) });
     setEditOriginal(null); setItemVaultId(vaultId); setRevealed(new Set()); setEditing(true);
   };
@@ -1577,7 +1577,7 @@ export function App() {
           </div>
           <Button
             title={activeVaults.length ? "New item" : "Create or restore a vault before adding items"}
-            disabled={!activeVaults.length}
+            disabled={saving || !activeVaults.length}
             onClick={beginNewItem}
           >
             <Plus size={18} />
@@ -1858,7 +1858,7 @@ export function App() {
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" onClick={beginEditing}>Edit</Button><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" disabled={saving} onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" disabled={saving} onClick={beginEditing}>Edit</Button><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
                       <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
                     </div>
                   </div>

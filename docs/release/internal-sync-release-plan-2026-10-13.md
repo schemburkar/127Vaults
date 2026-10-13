@@ -200,3 +200,15 @@ The sources are actual protocol agents, not a claim that the separately blocked
 Windows Desktop GUI launch or actual unlocked web-tab source has passed.
 Both runs restored the prior registration/profile pointer and stopped their owned
 agents. Physical OS-lock and optional passkey permission/ceremony remain open.
+
+Linux packaged GUI queue acceptance reproduced a save/detail-reload race: the
+first creation is durable, but clicking Edit while save still reloads the detail
+can let that late reload overwrite the new editor. The failed profile remains at
+`/home/vaults-dev/vaults-sync-desktop-20261013-a/profile` with its one queued creation;
+no edit was discarded to pass a test. Evidence:
+`C:\Projects\127Vaults-sync-desktop-linux-20261013-a\offline-create.json.failure-1791907863297.json`.
+Edit, New item and Duplicate now refuse while saving and their buttons are disabled.
+Desktop checks and 19 workflow tests pass, including the actual draft handlers'
+in-flight-save guard. The GUI fixture also explicitly chooses the destination
+vault and waits for the enabled Edit action. A new Desktop package/retest remains
+necessary; existing `internal-20261013-g` packages predate this UI fix.
