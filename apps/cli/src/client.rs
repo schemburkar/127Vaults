@@ -1975,6 +1975,12 @@ impl Session {
             .filter(|journal| journal.choice == "move" && journal.request.is_null());
         for replica in self.replica_store.list()? {
             for conflict in replica.conflicts.clone() {
+                // Earlier operations in this batch may have recreated an item
+                // or advanced its verified body. Review the current snapshot.
+                let replica = self
+                    .replica_store
+                    .load(&replica.vault_id)?
+                    .ok_or("local replica is unavailable")?;
                 let Some(operation_id) = conflict["operationId"].as_str() else {
                     continue;
                 };
@@ -2013,6 +2019,7 @@ impl Session {
                         })?;
                     } else {
                         self.rebase_stale_create(&replica.vault_id, item_id, operation_id)?;
+                        self.hydrate_replicas()?;
                         rebased += 1;
                     }
                     continue;
@@ -2096,6 +2103,7 @@ impl Session {
                                 .ok_or("merged item is invalid")?,
                             fields,
                         )?;
+                        self.hydrate_replicas()?;
                         rebased += 1;
                     }
                 }
@@ -2110,15 +2118,19 @@ impl Session {
         item_id: &str,
         operation_id: &str,
     ) -> Result<(), String> {
+        // A previous rebase in this batch may have advanced both the catalogue
+        // and this device's accepted head. Do not sign against the older snapshot.
+        self.hydrate_replicas()?;
         let draft = self.conflict_draft(vault_id, item_id, operation_id)?;
         let before = self
             .replica_store
             .load(vault_id)?
             .ok_or("local replica is unavailable")?;
         self.discard_conflict(vault_id, item_id, operation_id)?;
-        let result = self.item_upsert(
+        let result = self.item_upsert_at_id(
             vault_id,
             None,
+            Some(item_id),
             draft["title"].as_str().ok_or("pending item is invalid")?,
             draft["website"].as_str().ok_or("pending item is invalid")?,
             draft["username"]
@@ -2978,6 +2990,12 @@ impl Session {
             .pending
             .iter()
             .rev()
+            .filter(|entry| {
+                !current_replica
+                    .conflicts
+                    .iter()
+                    .any(|conflict| conflict["operationId"] == entry.operation["opId"])
+            })
             .map(|entry| &entry.operation)
             .chain(
                 current_replica

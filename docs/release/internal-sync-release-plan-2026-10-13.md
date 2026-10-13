@@ -18,7 +18,8 @@ of the complete workflow. Never discard user edits to make a test pass.
 | Compare resubmits failing queued requests | Dedicated verified read-only comparison; HTTP tests prove no queued POST and unchanged pending request on failure | Actual user queue and successful field resolution, not only synthetic failure tests |
 | Review loses owning vault or operation context | Dialog now captures owning vault and passes it to compare/save/discard; stale missing operation gives an actionable error | Multiple-vault navigation and actual queued operation resolution |
 | Missing server item described as a field conflict | In progress: distinguish unsynced creation from absent edited item; do not offer nonexistent server fields | Classification, preservation, explicit discard and safe stale-create retry |
-| User's two queued requests repeatedly rejected | Open: inspect causal base, device predecessor, catalogue revision, receipts and exact rejection without exposing plaintext | Reproduce under copied fictitious profiles; fix root cause; demonstrate every retained edit reaches its intended outcome |
+| Multiple stale queued creations repeatedly rejected | Reproduced on real schema-7 PostgreSQL/TLS fixture: two rejected creations chose an unaccepted pending predecessor. Fix excludes quarantined operations and refreshes verified heads between rebases. Fresh rerun and preserved failed-queue recovery reach zero pending/conflicts; peer reads both exactly once. | User queue and packaged/client-pair matrix remain open |
+| Offline creation followed by an edit becomes stranded | Reproduced after the first fix: rebase replaced the item ID and reused an old batch snapshot. Fix preserves the ID and refreshes the replica between operations. Exact chained scenario now reaches zero pending/conflicts with edited fields and original ID on peer. | Broaden to field conflicts, lost responses, collision and additional edits |
 
 ## Required acceptance matrix
 
@@ -53,3 +54,20 @@ The October 12/13 evidence reports remain historical subset evidence. The releas
 can be accepted only when this matrix and the intended-host installation/trust/admin
 gates are verified, with every exception explicitly reviewed. Real-secret readiness,
 public distribution and signing remain outside this internal fictitious-data cut.
+
+## New engine evidence
+
+`apps/cli/examples/internal_sync_matrix.rs` accepts only absolute enrolled fictitious
+profiles bound to installation `14725fef-f5b4-4cb8-afe0-77aa3d80b268` and distinct
+devices. It uses actual encrypted requests, TLS, PostgreSQL and peer reads. Linux
+runs use the separate fictitious keyring; no real profile was modified.
+
+| Case | Evidence | Outcome |
+| --- | --- | --- |
+| Two stale creations before fix | `/home/vaults-dev/vaults-sync-matrix-20261013-a` | 409, two pending/conflicts, neither title on peer; both drafts retained |
+| Same scenario after predecessor fix | `...-b/stale-creations-after.json` | Both peer items, zero pending/conflicts |
+| Original failed queue recovered | `...-a/recovered.json` | Both peer items exactly once, zero pending/conflicts |
+| Chained create/edit before identity fix | `...-c/chained-before.json` | One edit stranded; original ID not preserved |
+| Chained create/edit after identity/snapshot fix | `...-d/chained-after.json` | Original ID and edited title preserved; both items on peer; zero pending/conflicts |
+
+These are source-engine evidence, not yet packaged UI or a complete all-client pass.
