@@ -22,14 +22,14 @@ async function fixture(t, files = []) {
   return { directory, identity };
 }
 const required = ['live/server.crt', 'live/server.key', 'ca/ca.crt'];
-const missingMessage = (directory, action) => `Local TLS files are missing in ${directory}. Run pnpm tls:init -- 127.0.0.1 "${directory}" before pnpm mvp:${action}.`;
+const missingMessage = (directory, action, files = required) => `TLS startup preflight failed for pnpm mvp:${action}. Unavailable files:\n${files.map(file => `- ${join(directory, file)} (ENOENT)`).join('\n')}\nCheck VAULTS_TLS_DIR and VAULTS_CA_CERT_FILE in .env and restore matching files from the existing identity backup. Do not initialize a replacement identity for an existing server. For a new installation only, follow docs/release/experimental-development.md.`;
 
 test('TLS preflight explains missing .env configuration', async () => {
   await assert.rejects(ensureTlsReady({}, 'dev'), { message: 'VAULTS_TLS_DIR is missing from .env. Complete the TLS setup in docs/release/experimental-development.md.' });
 });
 
 for (const action of ['dev', 'start']) {
-  test(`${action} reports a missing identity with a quoted recovery path and the correct command`, async t => {
+  test(`${action} reports a missing identity with exact unavailable paths and safe recovery guidance`, async t => {
     const { identity } = await fixture(t);
     await assert.rejects(ensureTlsReady({ VAULTS_TLS_DIR: identity }, action), { message: missingMessage(identity, action) });
   });
@@ -39,7 +39,7 @@ for (const missing of required) {
   test(`TLS preflight rejects a partial identity missing ${missing} without changing its files`, async t => {
     const retained = required.filter(path => path !== missing);
     const { identity } = await fixture(t, [...retained, 'runtime/token.key', 'runtime/checkpoint.key']);
-    await assert.rejects(ensureTlsReady({ VAULTS_TLS_DIR: identity }, 'dev'), { message: missingMessage(identity, 'dev') });
+    await assert.rejects(ensureTlsReady({ VAULTS_TLS_DIR: identity }, 'dev'), { message: missingMessage(identity, 'dev', [missing]) });
     for (const file of [...retained, 'runtime/token.key', 'runtime/checkpoint.key']) assert.equal(await readFile(join(identity, file), 'utf8'), `synthetic fixture: ${file}`);
     await assert.rejects(readFile(join(identity, missing)), { code: 'ENOENT' });
   });
@@ -53,7 +53,7 @@ test('TLS preflight accepts a complete default identity', async t => {
 test('custom CA configuration requires that exact filename rather than falling back to ca.crt', async t => {
   const { identity } = await fixture(t, required);
   const values = { VAULTS_TLS_DIR: identity, VAULTS_CA_CERT_FILE: 'trusted-ca.crt' };
-  await assert.rejects(ensureTlsReady(values, 'dev'), { message: missingMessage(identity, 'dev') });
+  await assert.rejects(ensureTlsReady(values, 'dev'), { message: missingMessage(identity, 'dev', ['ca/trusted-ca.crt']) });
   await writeFile(join(identity, 'ca', 'trusted-ca.crt'), 'synthetic custom CA');
   await ensureTlsReady(values, 'dev');
 });
@@ -67,7 +67,7 @@ test(`actual ${args.join(' ')} exits with the TLS error before creating runtime 
   const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', ...args], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
-  assert.ok(result.stderr.includes(missingMessage(identity, args[0])), result.stderr);
+  assert.ok(result.stderr.replace(/\r\n/g, '\n').includes(missingMessage(identity, args[0], ['live/server.key'])), result.stderr);
   assert.deepEqual((await readdir(identity)).sort(), ['ca', 'live']);
   assert.equal(await readFile(join(identity, 'live', 'server.crt'), 'utf8'), 'synthetic fixture: live/server.crt');
 });
