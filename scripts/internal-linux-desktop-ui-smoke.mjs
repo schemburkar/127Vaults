@@ -58,11 +58,12 @@ try{
   if(${JSON.stringify(conflictTest)}){
    stage='conflict review';button('Sync now').click();await wait(()=>document.querySelector('[aria-labelledby="conflict-title"]'));
    checks.push('durable second-device queued conflict requires explicit GUI review');
+   stage='conflict comparison';
    button('Compare and select fields…').click();await wait(()=>document.querySelector('[aria-labelledby="conflict-title"] [role="radio"]'));
    const dialog=document.querySelector('[aria-labelledby="conflict-title"]');if(!dialog.innerText.includes(${JSON.stringify(expectedTitle)})||!dialog.innerText.includes(${JSON.stringify(nextTitle)}))throw Error('Conflict comparison omitted one fictitious title');
    if(dialog.innerText.includes('api010-fiction-secret'))throw Error('Conflict comparison exposed a password');
    checks.push('GUI compares local and server titles while masking password');
-   const local=[...dialog.querySelectorAll('[role="radio"]')].find(el=>el.textContent.includes(${JSON.stringify(expectedTitle)}));if(!local)throw Error('Missing local title choice');local.click();button('Save selected fields').click();
+   stage='conflict resolution';const local=[...dialog.querySelectorAll('[role="radio"]')].find(el=>el.textContent.includes(${JSON.stringify(expectedTitle)}));if(!local)throw Error('Missing local title choice');local.click();await wait(()=>local.getAttribute('aria-checked')==='true');button('Save selected fields').click();
    await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&document.body.innerText.includes('0 pending')&&document.querySelector('main')?.innerText.includes(${JSON.stringify(expectedTitle)}));checks.push('explicit selected-fields resolution saves local title and clears queue');
    button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));if(document.querySelector('input[aria-label="Master password"]')?.value)throw Error('Lock retained master password');checks.push('lock clears decrypted UI');globalThis.__fixtureUI={done:true,ok:true,checks};return;
   }

@@ -1,8 +1,7 @@
 # Internal release readiness — 2026-10-13
 
 **Decision: internal fictitious-data release candidate; final acceptance remains open.**
-An installed Linux queued-conflict discrepancy discovered near the cutoff is
-an open P1 acceptance gate. See the reproduction below before accepting this candidate.
+Installed Linux queued-conflict review and explicit selected-field resolution now pass.
 Windows and Linux desktop/CLI, the Chromium extension, web/PWA, self-hosted
 server and admin management writes are selected. This report supersedes the
 remaining-work list in the [October 12 report](internal-release-readiness-2026-10-12.md),
@@ -38,34 +37,32 @@ Clean profiles on these existing hosts do not establish clean-machine acceptance
 
 ## Repeatable evidence
 
-### Open P1: packaged Linux queued-conflict review
+### Queued-conflict acceptance
 
-The actual AppImage UI saved a second device's offline title edit and reported
-pending operations. A separate Rust offline read verified that title in the
-encrypted replica. After an explicit competing online GUI edit on device A,
-the packaged device-B UI showed the remote title and zero pending operations,
-without the expected conflict review dialog. Repeated GUI attempts did not pass.
-An additional run verified the displayed device identity against the explicit
-fixture profile. This must be investigated; successful basic save/replay checks
-do not close this gate, and these observations do not yet establish the root cause.
+The AppImage UI saved an offline title edit on enrolled device B and reported
+pending operations. An independent offline read verified the saved title in the
+encrypted replica. Device A made a competing online GUI title edit. After restart
+and reconnect, device B showed the conflict dialog, compared both titles while
+masking the password, and saved the explicitly selected local title with zero
+pending operations. A fresh online read on device A confirmed the resolved title
+and encrypted settings reached the server. Lock cleared the decrypted GUI.
 
-The untouched pending profile is preserved at
+The successful packaged GUI evidence is
+`/home/vaults-dev/vaults-linux-conflict-20261013-h/conflict-evidence.json`.
+The untouched pending fixture remains at
 `/home/vaults-dev/vaults-linux-conflict-20261013-c/preserved-pending-profile`.
-Replaying a copy through the current shared Rust engine produced **pending=1,
-conflicts=1, rebased=0**. The engine retained the same-title edit for explicit
-review. The GUI/packaged-runtime discrepancy remains unresolved; do not claim
-the queued GUI conflict walkthrough passed or that a data-loss cause is proven.
+Shared-engine replay also retained one pending same-field conflict before GUI
+resolution. Earlier failed attempts were a harness timing error: selecting a
+radio and immediately clicking Save in one script turn saved the previous
+selection before React rendered the new choice. The corrected driver waits for
+`aria-checked=true` before Save. This was not a confirmed product data-loss bug.
 
-Reproduction artifacts are outside the checkout under
-`C:\Projects\127Vaults-internal-install-20261013-a\linux-conflict-*.sh` and
-`linux-conflict-*.log`; fixture roots are
-`/home/vaults-dev/vaults-linux-conflict-20261013-{a,b,c,d}` and
-`/home/vaults-dev/vaults-conflict-core-20261013-a`.
-The committed AppImage driver accepts final argument `conflict` and saves failed
-UI diagnostics alongside the requested evidence file. The strictly bounded
-Rust helper's `inspect-title` and `conflict` modes verify preserved encrypted
-state and shared-engine review without printing passwords. Retain the untouched
-pending profile when replaying; use another copy for mutations.
+The committed AppImage driver accepts final argument `conflict` and saves
+failed diagnostics beside its evidence path. The bounded Rust helper's
+`inspect-title`, `conflict` and `settings` modes verify encrypted state and
+peer reads without printing passwords. Replay uses a new copy of the pending
+fixture and a fresh competing server edit; server state has advanced after the
+successful resolution. Windows queued-conflict GUI acceptance remains separate.
 
 ### Additional settings acceptance
 
@@ -129,7 +126,7 @@ Later acceptance-only changes do not alter the selected product binaries.
 
 ## Next work
 
-1. Resolve and rerun the packaged Linux queued-conflict discrepancy above.
+1. Complete the Windows queued-conflict GUI walkthrough and divergent settings cases.
 2. Finish physical idle/OS lock and enabled installed passkey-site acceptance.
 3. Finish clean-machine Windows/Linux installation and Linux package lifecycle.
 4. Complete multi-vault/settings/device and enabled item-type cross-client UI

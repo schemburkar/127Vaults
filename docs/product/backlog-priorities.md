@@ -13,11 +13,7 @@ See the [internal release candidate evidence and remaining gates](../release/int
 
 ## Selected P1 closure order
 
-**Next P1: investigate the installed Linux queued-conflict discrepancy.** The
-AppImage GUI did not show the required review dialog after a durable offline
-edit and competing device edit; the preserved profile produces one pending
-conflict in the shared engine. See the October 13 reproduction. This gate stays
-open despite the passing basic desktop and extension matrices.
+Linux packaged queued-conflict comparison and explicit selected-field resolution now pass, with a fresh peer read confirming the saved choice. Windows queued-conflict GUI and wider settings/device acceptance remain open.
 
 | Order | Component and rows | Evidence and next action |
 | --- | --- | --- |
