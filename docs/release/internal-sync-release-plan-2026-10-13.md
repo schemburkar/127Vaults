@@ -187,3 +187,16 @@ This run is not an autofill pass. The agents are stopped and the previous browse
 registration and profile pointer restored. Active-session rerun is pending; the
 idle policy has not been disabled or spoofed. Earlier short-lived fixture runners
 also let their agents exit; the final runner keeps agents alive during the test.
+
+After the user made the Windows session active, the current extension package
+passed the complete installed popup/form matrix with the current packaged host:
+`...\browser-test-g\evidence.json`. Linux independently passed the same matrix:
+`/home/vaults-dev/vaults-sync-extension-20261013-a/browser-test-a/evidence.json`.
+Coverage includes explicit fill without submit, new-password/ambiguous form refusal,
+same-origin frame selection, shadow roots, React rerender, navigation refusal,
+wrong-origin no match, native Desktop/CLI agent source handoff, browser restart
+and source lock clearing. All native profiles and page credentials are fictitious.
+The sources are actual protocol agents, not a claim that the separately blocked
+Windows Desktop GUI launch or actual unlocked web-tab source has passed.
+Both runs restored the prior registration/profile pointer and stopped their owned
+agents. Physical OS-lock and optional passkey permission/ceremony remain open.
