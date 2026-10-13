@@ -47,9 +47,7 @@ struct Host;
 
 fn profile(source: &str) -> Result<PathBuf, String> {
     match source {
-        "desktop" => dirs::config_dir()
-            .map(|root| root.join("127Vaults"))
-            .ok_or_else(|| "desktop profile is unavailable".to_owned()),
+        "desktop" => crate::desktop_profile_directory(),
         "cli" => {
             let home = dirs::home_dir().ok_or("CLI profile is unavailable")?;
             let pointer = home.join(".127vaults-active");

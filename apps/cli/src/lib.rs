@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod agent;
+mod desktop_profile;
 mod devices;
+pub use desktop_profile::desktop_profile_directory;
 pub use devices::DeviceCommand;
 mod generator;
 pub mod native_passkeys;

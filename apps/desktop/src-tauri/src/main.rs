@@ -144,13 +144,10 @@ fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
 }
 
 fn config_directory() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("VAULTS_CONFIG_DIR") {
-        return Ok(PathBuf::from(path));
+    let destination = vaults_cli::desktop_profile_directory()?;
+    if std::env::var_os("VAULTS_CONFIG_DIR").is_none() {
+        adopt_cli_profile(&destination)?;
     }
-    let destination = dirs::config_dir()
-        .map(|root| root.join("127Vaults"))
-        .ok_or_else(|| "desktop configuration location is unavailable".to_owned())?;
-    adopt_cli_profile(&destination)?;
     Ok(destination)
 }
 
