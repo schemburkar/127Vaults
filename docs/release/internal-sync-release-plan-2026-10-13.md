@@ -33,6 +33,7 @@ ownership rather than decrypting item contents. Tests must preserve that boundar
 | Online create/update and enabled item types | Exact fields read by another client, secrets masked until requested | Subset passed; complete matrix open |
 | Offline edit/create, process restart and reconnect | Durable queue, exact replay, eventual verified peer read | Subset passed; existing-profile and all-pair coverage open |
 | Lost response and repeated retry | Idempotent receipt, no duplicates or dropped changes | Subset passed; broaden to actual clients |
+| Reconnect after multiple peer checkpoints | Verify the intervening checkpoint chain without falsely rejecting valid progress | Reproduced and fixed in native engine; real-server fresh unlock passes after two missed checkpoints, packaged/UI matrix open |
 | Concurrent nonoverlapping changes | Both changes retained after rebase | Engine/subset evidence; UI matrix open |
 | Same-field conflict | Correct item/vault/operation, masked comparison, selected-field save and peer verification | Packaged fictitious subset passed; reported user failure remains open |
 | Server copy and missing server item | Explicit decision, only selected edit retired, other queue unchanged; no invented copy | In progress |
@@ -109,9 +110,28 @@ The source now collects bounded pages before the existing signature/checkpoint
 verification and replica commit. Regression tests cover 502 rows, read-only loading,
 stalled/mismatched cursors and changed device verification keys. Windows library
 checks pass 67 tests with one separately gated live-device test ignored; workspace
-Clippy passes. Real-server 502-write/fresh-unlock acceptance is still running and
-has not yet been counted passed. Existing immutable candidates predate this change
-and must be rebuilt before selection.
+Clippy passes. The real-server stress run reached revision 499 before the core's
+1,000-envelope session budget stopped further encryption. Its queue/data were
+retained. Fresh online unlock and decrypted body read subsequently pass with 546
+verified operations, zero pending and zero conflicts:
+`C:\Projects\127Vaults-sync-matrix-20261013-b\history-read.json`.
+The full 502-write stress scenario is not counted passed. Session-limit messaging
+and recovery acceptance remain open; the fixture now restarts every 100 writes.
+
+Two peer-created checkpoints while the original client was disconnected caused
+fresh native unlock to falsely report a fork. Failed evidence:
+`C:\Projects\127Vaults-sync-matrix-20261013-b\checkpoint-before.json`.
+Hydration now fetches bounded checkpoint-history pages from the pinned anchor,
+verifies every signature, predecessor and operation head, and reaches the latest
+checkpoint before committing. The unchanged real-server reproduction passes:
+`...\checkpoint-after.json`. Signed fork and wrong-head regressions still refuse.
+Windows library checks now pass 68 tests with one live-device test separately
+gated; workspace Clippy passes.
+
+Desktop `internal-20261013-f` and CLI `internal-20261013-d` were rebuilt for both
+platforms from `b7d2bb9`; they contain operation pagination but predate checkpoint
+catch-up. They are intermediate candidates and must not be selected as accepted.
+Rebuild after the remaining production fixes and refresh the selected inventory.
 
 The rebuilt server bundle passed fresh identity/admin setup, verified HTTPS,
 hostile owner/item paths, packaged admin sign-in and audited writes/replay,

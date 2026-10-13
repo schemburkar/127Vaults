@@ -4,7 +4,7 @@ use std::io::Write as _;
 use std::{fs, path::Path};
 
 use crate::{
-    replica::{PendingMutation, Replica, ReplicaItem, ReplicaStore, verify_remote_progress},
+    replica::{PendingMutation, Replica, ReplicaItem, ReplicaStore, verify_remote_cursor_progress},
     sync_transport::{HttpSyncTransport, SyncTransport},
     vault_settings::{self, SettingsData, SettingsRecord, SettingsStore},
 };
@@ -2257,6 +2257,7 @@ impl Session {
                 .as_object()
                 .ok_or("operation verification keys are missing")?;
             let mut operation_head = vaults_protocol::signed_sync::GENESIS_HASH.to_owned();
+            let mut operation_heads = vec![operation_head.clone()];
             let mut device_heads = std::collections::HashMap::<String, String>::new();
             for (expected_cursor, row) in (1_u64..).zip(operations) {
                 if row["cursor"].as_u64() != Some(expected_cursor) {
@@ -2301,6 +2302,7 @@ impl Session {
                 operation_head =
                     vaults_protocol::signed_sync::next_operation_head(&operation_head, operation)
                         .map_err(str::to_owned)?;
+                operation_heads.push(operation_head.clone());
             }
             let checkpoint_response = transport.checkpoint(&vault_id)?;
             let checkpoint_key = checkpoint_response["checkpointPublicKey"]
@@ -2328,7 +2330,7 @@ impl Session {
                             .to_owned(),
                     );
                 }
-                verify_remote_progress(old, checkpoint.as_ref(), cursor)?;
+                verify_remote_cursor_progress(old, checkpoint.as_ref(), cursor)?;
             }
             if let Some(candidate) = checkpoint.as_ref() {
                 vaults_protocol::signed_sync::verify_checkpoint_signature(
@@ -2339,21 +2341,20 @@ impl Session {
                     self.epoch,
                 )
                 .map_err(|error| format!("{error}; local replica was preserved"))?;
-                if let Some(old) = previous
-                    .as_ref()
-                    .and_then(|replica| replica.checkpoint.as_ref())
-                    && candidate != old
-                {
-                    vaults_protocol::signed_sync::verify_checkpoint(
-                        candidate,
-                        &raw_key,
-                        &self.tenant_id,
-                        &vault_id,
-                        self.epoch,
-                        Some(old),
-                    )
-                    .map_err(|error| format!("{error}; local replica was preserved"))?;
-                }
+                crate::sync_transport::verify_checkpoint_history(
+                    transport,
+                    &crate::sync_transport::CheckpointScope {
+                        tenant: &self.tenant_id,
+                        vault: &vault_id,
+                        epoch: self.epoch,
+                        key: &raw_key,
+                        operation_heads: &operation_heads,
+                    },
+                    previous
+                        .as_ref()
+                        .and_then(|replica| replica.checkpoint.as_ref()),
+                    candidate,
+                )?;
                 if candidate["cursor"].as_u64() == Some(cursor)
                     && candidate["operationHeadHash"] != operation_head
                 {

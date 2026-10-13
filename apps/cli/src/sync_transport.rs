@@ -1,5 +1,89 @@
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::{Method, StatusCode, blocking::Client};
 use serde_json::{Value, json};
+
+pub struct CheckpointScope<'a> {
+    pub tenant: &'a str,
+    pub vault: &'a str,
+    pub epoch: u64,
+    pub key: &'a [u8; 32],
+    pub operation_heads: &'a [String],
+}
+
+pub fn verify_checkpoint_history(
+    transport: &impl SyncTransport,
+    scope: &CheckpointScope<'_>,
+    previous: Option<&Value>,
+    latest: &Value,
+) -> Result<(), String> {
+    if previous == Some(latest) {
+        return Ok(());
+    }
+    let mut anchor = previous.cloned();
+    let mut size = 0_u64;
+    loop {
+        let after = anchor
+            .as_ref()
+            .map(vaults_protocol::signed_sync::checkpoint_hash)
+            .transpose()
+            .map_err(str::to_owned)?;
+        let page = transport.checkpoint_history(scope.vault, after.as_deref())?;
+        if page["checkpointPublicKey"] != URL_SAFE_NO_PAD.encode(scope.key) {
+            return Err(
+                "checkpoint verification key changed; local replica was preserved".to_owned(),
+            );
+        }
+        let rows = page["checkpoints"]
+            .as_array()
+            .ok_or("invalid checkpoint history")?;
+        let more = page["hasMore"]
+            .as_bool()
+            .ok_or("invalid checkpoint pagination")?;
+        if rows.is_empty() || rows.len() > 500 {
+            return Err("checkpoint history incomplete; local replica was preserved".to_owned());
+        }
+        size += u64::try_from(
+            serde_json::to_vec(rows)
+                .map_err(|_| "invalid checkpoint history")?
+                .len(),
+        )
+        .map_err(|_| "checkpoint history too large")?;
+        if size > crate::replica::MAX_REPLICA_BYTES {
+            return Err("checkpoint history too large; local replica was preserved".to_owned());
+        }
+        for checkpoint in rows {
+            vaults_protocol::signed_sync::verify_checkpoint(
+                checkpoint,
+                scope.key,
+                scope.tenant,
+                scope.vault,
+                scope.epoch,
+                anchor.as_ref(),
+            )
+            .map_err(|error| format!("{error}; local replica was preserved"))?;
+            let cursor = checkpoint["cursor"]
+                .as_u64()
+                .and_then(|cursor| usize::try_from(cursor).ok())
+                .ok_or("invalid checkpoint cursor")?;
+            if scope
+                .operation_heads
+                .get(cursor)
+                .is_none_or(|head| checkpoint["operationHeadHash"] != *head)
+            {
+                return Err(
+                    "checkpoint operation head mismatch; local replica was preserved".to_owned(),
+                );
+            }
+            if checkpoint == latest {
+                return Ok(());
+            }
+            anchor = Some(checkpoint.clone());
+        }
+        if !more {
+            return Err("checkpoint history incomplete; local replica was preserved".to_owned());
+        }
+    }
+}
 
 fn rejection(status: StatusCode) -> &'static str {
     match status {
@@ -13,6 +97,9 @@ fn rejection(status: StatusCode) -> &'static str {
 pub trait SyncTransport {
     fn pull(&self, vault_id: &str, cursor: u64, limit: u16) -> Result<Value, String>;
     fn checkpoint(&self, vault_id: &str) -> Result<Value, String>;
+    fn checkpoint_history(&self, _vault_id: &str, _after: Option<&str>) -> Result<Value, String> {
+        Err("checkpoint history unavailable; local replica was preserved".to_owned())
+    }
     #[allow(dead_code)]
     fn submit(&self, vault_id: &str, operation: &Value) -> Result<Value, String>;
 }
@@ -115,6 +202,14 @@ impl HttpSyncTransport {
 }
 
 impl SyncTransport for HttpSyncTransport {
+    fn checkpoint_history(&self, vault_id: &str, after: Option<&str>) -> Result<Value, String> {
+        let suffix = after.map_or_else(String::new, |hash| format!("&after={hash}"));
+        self.response(
+            &Method::GET,
+            &format!("/api/v1/vaults/{vault_id}/checkpoint?history=1&limit=500{suffix}"),
+            None,
+        )
+    }
     fn pull(&self, vault_id: &str, cursor: u64, limit: u16) -> Result<Value, String> {
         self.response(
             &Method::GET,
@@ -143,9 +238,86 @@ impl SyncTransport for HttpSyncTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
     use std::cell::RefCell;
 
     struct Pages(RefCell<Vec<Value>>, RefCell<Vec<u64>>);
+
+    struct Checkpoints(Value);
+    impl SyncTransport for Checkpoints {
+        fn pull(&self, _: &str, _: u64, _: u16) -> Result<Value, String> {
+            panic!("checkpoint-only fixture")
+        }
+        fn checkpoint(&self, _: &str) -> Result<Value, String> {
+            panic!("checkpoint-only fixture")
+        }
+        fn submit(&self, _: &str, _: &Value) -> Result<Value, String> {
+            panic!("read-only verification")
+        }
+        fn checkpoint_history(&self, _: &str, after: Option<&str>) -> Result<Value, String> {
+            assert!(after.is_some());
+            Ok(self.0.clone())
+        }
+    }
+
+    fn signed_checkpoint(
+        key: &SigningKey,
+        previous: Option<&Value>,
+        cursor: u64,
+        head: &str,
+    ) -> Value {
+        let prior = previous
+            .map(vaults_protocol::signed_sync::checkpoint_hash)
+            .transpose()
+            .unwrap()
+            .unwrap_or_else(|| vaults_protocol::signed_sync::GENESIS_HASH.to_owned());
+        let mut value = json!({"protocolVersion":1,"tenantId":"tenant","vaultId":"vault","epoch":1,"cursor":cursor,"previousCheckpointHash":prior,"operationHeadHash":head});
+        let signature = key.sign(&vaults_protocol::signed_sync::canonical_bytes(&value).unwrap());
+        value["signature"] = json!(URL_SAFE_NO_PAD.encode(signature.to_bytes()));
+        value
+    }
+
+    #[test]
+    fn missed_checkpoints_verify_the_full_chain_and_refuse_forks_or_wrong_heads() {
+        let key = SigningKey::from_bytes(&[6; 32]);
+        let public = key.verifying_key().to_bytes();
+        let heads = vec![
+            vaults_protocol::signed_sync::GENESIS_HASH.to_owned(),
+            "ab".repeat(32),
+        ];
+        let first = signed_checkpoint(&key, None, 0, &heads[0]);
+        let second = signed_checkpoint(&key, Some(&first), 1, &heads[1]);
+        let third = signed_checkpoint(&key, Some(&second), 1, &heads[1]);
+        let scope = CheckpointScope {
+            tenant: "tenant",
+            vault: "vault",
+            epoch: 1,
+            key: &public,
+            operation_heads: &heads,
+        };
+        let transport = Checkpoints(
+            json!({"checkpoints":[second,third],"hasMore":false,"checkpointPublicKey":URL_SAFE_NO_PAD.encode(public)}),
+        );
+        assert!(verify_checkpoint_history(&transport, &scope, Some(&first), &third).is_ok());
+        let fork = signed_checkpoint(&key, None, 1, &heads[1]);
+        let transport = Checkpoints(
+            json!({"checkpoints":[fork],"hasMore":false,"checkpointPublicKey":URL_SAFE_NO_PAD.encode(public)}),
+        );
+        assert!(
+            verify_checkpoint_history(&transport, &scope, Some(&first), &fork)
+                .unwrap_err()
+                .contains("fork")
+        );
+        let bad_head = signed_checkpoint(&key, Some(&first), 1, &"cd".repeat(32));
+        let transport = Checkpoints(
+            json!({"checkpoints":[bad_head],"hasMore":false,"checkpointPublicKey":URL_SAFE_NO_PAD.encode(public)}),
+        );
+        assert!(
+            verify_checkpoint_history(&transport, &scope, Some(&first), &bad_head)
+                .unwrap_err()
+                .contains("head mismatch")
+        );
+    }
 
     impl SyncTransport for Pages {
         fn pull(&self, _: &str, cursor: u64, limit: u16) -> Result<Value, String> {

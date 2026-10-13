@@ -131,6 +131,23 @@ pub fn verify_remote_progress(
     checkpoint: Option<&Value>,
     cursor: u64,
 ) -> Result<(), String> {
+    verify_remote_cursor_progress(previous, checkpoint, cursor)?;
+    if let (Some(old), Some(next)) = (previous.checkpoint.as_ref(), checkpoint)
+        && next != old
+        && next["previousCheckpointHash"]
+            != vaults_protocol::signed_sync::checkpoint_hash(old).map_err(str::to_owned)?
+    {
+        return Err("checkpoint rollback or fork detected; local replica was preserved".to_owned());
+    }
+    Ok(())
+}
+
+/// Cursor checks only; callers must separately verify the complete checkpoint chain.
+pub fn verify_remote_cursor_progress(
+    previous: &Replica,
+    checkpoint: Option<&Value>,
+    cursor: u64,
+) -> Result<(), String> {
     let checkpoint_cursor = checkpoint
         .and_then(|value| value["cursor"].as_u64())
         .unwrap_or(cursor);
@@ -142,13 +159,6 @@ pub fn verify_remote_progress(
     if cursor < previous.cursor
         || checkpoint_cursor < previous_checkpoint_cursor
         || (previous.checkpoint.is_some() && checkpoint.is_none())
-    {
-        return Err("checkpoint rollback or fork detected; local replica was preserved".to_owned());
-    }
-    if let (Some(old), Some(next)) = (previous.checkpoint.as_ref(), checkpoint)
-        && next != old
-        && next["previousCheckpointHash"]
-            != vaults_protocol::signed_sync::checkpoint_hash(old).map_err(str::to_owned)?
     {
         return Err("checkpoint rollback or fork detected; local replica was preserved".to_owned());
     }

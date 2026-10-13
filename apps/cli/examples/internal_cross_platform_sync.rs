@@ -88,6 +88,8 @@ fn history(profile: &Path) -> Result<Value, String> {
         session.sync_now()?;
         if revision % 100 == 0 {
             println!("Verified history writes: {revision}");
+            drop(session);
+            session = open(profile)?;
         }
     }
     drop(session);
@@ -97,6 +99,54 @@ fn history(profile: &Path) -> Result<Value, String> {
     }
     Ok(
         json!({"fixtureServer":SERVER,"vaultId":vault,"itemId":item,"operationsWritten":502,"freshUnlockFinalRevisionPassed":true,"os":std::env::consts::OS}),
+    )
+}
+fn checkpoints(profile: &Path, peer: &Path) -> Result<Value, String> {
+    let mut original = open(profile)?;
+    let vault = original.vault_list()?[0]["vaultId"]
+        .as_str()
+        .ok_or("fixture vault missing")?
+        .to_owned();
+    original.checkpoint_now(&vault)?;
+    drop(original);
+    let mut other = open(peer)?;
+    other.checkpoint_now(&vault)?;
+    other.checkpoint_now(&vault)?;
+    drop(other);
+    let result = open(profile).map(|_| ());
+    Ok(
+        json!({"fixtureServer":SERVER,"vaultId":vault,"missedPeerCheckpoints":2,"freshUnlockPassed":result.is_ok(),"error":result.err()}),
+    )
+}
+fn history_read(profile: &Path) -> Result<Value, String> {
+    let mut session = open(profile)?;
+    let vault = session.vault_list()?[0]["vaultId"]
+        .as_str()
+        .ok_or("fixture vault missing")?
+        .to_owned();
+    let list = session.item_list(&vault)?;
+    let row = list
+        .as_array()
+        .ok_or("fixture list missing")?
+        .iter()
+        .find(|row| {
+            row["title"]
+                .as_str()
+                .is_some_and(|title| title.starts_with("History revision "))
+        })
+        .ok_or("history fixture item missing")?;
+    let item = row["itemId"].as_str().ok_or("fixture item missing")?;
+    if session.item_get(&vault, item, Some("password"))? != "fixture-password" {
+        return Err("verified history body mismatch".to_owned());
+    }
+    let replica = vaults_cli::replica::ReplicaStore::new(profile)
+        .load(&vault)?
+        .ok_or("fixture replica missing")?;
+    if replica.cursor <= 500 {
+        return Err("history fixture did not cross the page boundary".to_owned());
+    }
+    Ok(
+        json!({"fixtureServer":SERVER,"vaultId":vault,"itemId":item,"verifiedCursor":replica.cursor,"finalTitle":row["title"],"freshUnlockAndBodyReadPassed":true,"status":session.replica_status()?}),
     )
 }
 fn check(profile: &Path, metadata: &mut Value, peer: bool) -> Result<(), String> {
@@ -168,7 +218,14 @@ fn main() -> Result<(), String> {
     if !path.is_absolute() {
         return Err("absolute evidence path required".to_owned());
     }
-    let mut evidence = if mode == "history" {
+    let mut evidence = if mode == "history-read" {
+        history_read(&profile)?
+    } else if mode == "checkpoints" {
+        checkpoints(
+            &profile,
+            &PathBuf::from(args.next().ok_or("explicit peer profile required")?),
+        )?
+    } else if mode == "history" {
         history(&profile)?
     } else if mode == "publish" {
         publish(&profile)?
@@ -177,7 +234,7 @@ fn main() -> Result<(), String> {
             .map_err(|e| e.to_string())?
     };
     match mode.as_str() {
-        "publish" | "history" => {}
+        "publish" | "history" | "history-read" | "checkpoints" => {}
         "peer" => check(&profile, &mut evidence, true)?,
         "verify" => check(&profile, &mut evidence, false)?,
         _ => return Err("unknown fixture phase".to_owned()),
@@ -187,8 +244,11 @@ fn main() -> Result<(), String> {
         serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    if mode == "checkpoints" && evidence["freshUnlockPassed"] != true {
+        return Err("missed-checkpoint acceptance failed; evidence retained".to_owned());
+    }
     println!(
-        "Cross-OS {mode} passed on {} for seven enabled non-passkey types.",
+        "Fictitious fixture {mode} completed on {}.",
         std::env::consts::OS
     );
     Ok(())
