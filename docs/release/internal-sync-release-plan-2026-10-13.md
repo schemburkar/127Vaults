@@ -118,6 +118,16 @@ verified operations, zero pending and zero conflicts:
 The full 502-write stress scenario is not counted passed. Session-limit messaging
 and recovery acceptance remain open; the fixture now restarts every 100 writes.
 
+The retained stress item subsequently completed revisions 500 and 501 after a
+fresh unlock. Fresh verified history/body read sees cursor 548, original item ID,
+revision 501 and zero pending/conflicts: `...\history-resumed.json`. This proves
+502 item operations across sessions, not unlimited encryption within one session.
+Native item writes now check that both index/body encryptions fit the unchanged
+core budget before consuming either slot, returning an explicit lock/unlock/retry
+message instead of the generic encryption error. Core budget/decrypt regression
+coverage preserves the 1,000-envelope bound and existing ciphertext readability.
+Packaged/UI acceptance of this limit remains open.
+
 Two peer-created checkpoints while the original client was disconnected caused
 fresh native unlock to falsely report a fork. Failed evidence:
 `C:\Projects\127Vaults-sync-matrix-20261013-b\checkpoint-before.json`.

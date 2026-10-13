@@ -149,6 +149,37 @@ fn history_read(profile: &Path) -> Result<Value, String> {
         json!({"fixtureServer":SERVER,"vaultId":vault,"itemId":item,"verifiedCursor":replica.cursor,"finalTitle":row["title"],"freshUnlockAndBodyReadPassed":true,"status":session.replica_status()?}),
     )
 }
+fn history_finish(profile: &Path) -> Result<Value, String> {
+    let evidence = history_read(profile)?;
+    if evidence["finalTitle"] != "History revision 499" {
+        return Err("expected the retained session-limit fixture at revision 499".to_owned());
+    }
+    let vault = evidence["vaultId"]
+        .as_str()
+        .ok_or("fixture vault missing")?;
+    let item = evidence["itemId"].as_str().ok_or("fixture item missing")?;
+    let mut session = open(profile)?;
+    for revision in 500..=501 {
+        session.item_upsert(
+            vault,
+            Some(item),
+            &format!("History revision {revision}"),
+            "https://history.invalid",
+            "fixture-user",
+            "fixture-password",
+            &[],
+        )?;
+        session.sync_now()?;
+    }
+    drop(session);
+    let mut completed = history_read(profile)?;
+    if completed["finalTitle"] != "History revision 501" {
+        return Err("final resumed history revision missing".to_owned());
+    }
+    completed["resumedAfterSessionLimit"] = json!(true);
+    completed["fixtureOperationsWrittenAcrossSessions"] = json!(502);
+    Ok(completed)
+}
 fn check(profile: &Path, metadata: &mut Value, peer: bool) -> Result<(), String> {
     if metadata["fixtureServer"] != SERVER {
         return Err("unexpected fixture metadata".to_owned());
@@ -218,7 +249,9 @@ fn main() -> Result<(), String> {
     if !path.is_absolute() {
         return Err("absolute evidence path required".to_owned());
     }
-    let mut evidence = if mode == "history-read" {
+    let mut evidence = if mode == "history-finish" {
+        history_finish(&profile)?
+    } else if mode == "history-read" {
         history_read(&profile)?
     } else if mode == "checkpoints" {
         checkpoints(
@@ -234,7 +267,7 @@ fn main() -> Result<(), String> {
             .map_err(|e| e.to_string())?
     };
     match mode.as_str() {
-        "publish" | "history" | "history-read" | "checkpoints" => {}
+        "publish" | "history" | "history-read" | "history-finish" | "checkpoints" => {}
         "peer" => check(&profile, &mut evidence, true)?,
         "verify" => check(&profile, &mut evidence, false)?,
         _ => return Err("unknown fixture phase".to_owned()),

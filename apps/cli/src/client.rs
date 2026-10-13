@@ -2964,6 +2964,10 @@ impl Session {
             &json!({"username":username,"password":password,"customFields":custom_fields}),
         )
         .map_err(|_| "invalid item")?;
+        // Both index and body must fit before consuming either encryption slot.
+        if self.core.remaining_creation_budget() < 2 {
+            return Err("Encryption session limit reached. Lock and unlock, then retry this edit. Existing queued changes are preserved.".to_owned());
+        }
         let made = if let Some(id) = create_id {
             self.core.upsert_private_item_at_id(
                 vault,

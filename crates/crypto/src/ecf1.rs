@@ -159,6 +159,11 @@ impl Core {
         self.generation = self.generation.wrapping_add(1);
         self.busy = false;
     }
+    /// Remaining encryptions in this core instance's bounded session budget.
+    #[must_use]
+    pub fn remaining_creation_budget(&self) -> u16 {
+        MAX_CREATIONS.saturating_sub(self.creations)
+    }
     /// # Errors
     /// Returns a bounded error for an absent or invalidated handle.
     pub fn release(&mut self, h: KeyHandle) -> Result<(), Error> {
@@ -1074,6 +1079,38 @@ mod tests {
             c.decrypt_item(vh, &item.envelope, &item.context)
                 .unwrap_err(),
             Error::InvalidHandle
+        );
+    }
+    #[test]
+    fn bounded_creation_budget_does_not_invalidate_existing_ciphertext() {
+        let mut core = Core::new();
+        let root = core
+            .create_root(&template(1), b"password", &[9; 32])
+            .unwrap()
+            .handle
+            .unwrap();
+        let vault = core
+            .create_vault(root, &template(2))
+            .unwrap()
+            .handle
+            .unwrap();
+        let saved = core
+            .encrypt_item(vault, &template(3), b"synthetic saved item")
+            .unwrap();
+        while core.remaining_creation_budget() > 0 {
+            core.encrypt_item(vault, &template(3), b"synthetic stress item")
+                .unwrap();
+        }
+        assert_eq!(
+            core.encrypt_item(vault, &template(3), b"new edit")
+                .unwrap_err(),
+            Error::LimitExceeded
+        );
+        assert_eq!(
+            core.decrypt_item(vault, &saved.envelope, &saved.context)
+                .unwrap()
+                .as_slice(),
+            b"synthetic saved item"
         );
     }
     #[test]
