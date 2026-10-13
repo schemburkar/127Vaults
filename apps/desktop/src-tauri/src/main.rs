@@ -419,6 +419,11 @@ fn device_revoke(
 }
 
 #[tauri::command]
+fn vault_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.vault_list())
+}
+
+#[tauri::command]
 fn vault_create(state: tauri::State<'_, DesktopState>, name: String) -> Result<Value, String> {
     with_session(&state, |session| {
         let created = session.vault_create(&name)?;
@@ -828,6 +833,7 @@ fn main() {
             desktop_info,
             unlock,
             item_list,
+            vault_list,
             vault_create,
             device_list,
             license_status,
