@@ -11,6 +11,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::client::{self, Session};
@@ -110,6 +111,22 @@ fn identity(config_dir: &Path) -> Result<String, String> {
 }
 
 fn entry(config_dir: &Path) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(CAPABILITY_SERVICE, &profile_identity(config_dir)?)
+        .map_err(|_| "OS credential storage is unavailable".to_owned())
+}
+
+fn profile_identity(config_dir: &Path) -> Result<String, String> {
+    let canonical =
+        fs::canonicalize(config_dir).map_err(|_| "client profile is unavailable".to_owned())?;
+    let digest = Sha256::digest(canonical.as_os_str().as_encoded_bytes());
+    Ok(format!(
+        "{}:profile-v2:{}",
+        identity(config_dir)?,
+        hex::encode(digest)
+    ))
+}
+
+fn legacy_entry(config_dir: &Path) -> Result<keyring::Entry, String> {
     keyring::Entry::new(CAPABILITY_SERVICE, &identity(config_dir)?)
         .map_err(|_| "OS credential storage is unavailable".to_owned())
 }
@@ -453,7 +470,7 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
     fs::write(
         state_path(config_dir),
         format!(
-            "version=1\nport={}\n",
+            "version=2\nport={}\n",
             listener
                 .local_addr()
                 .map_err(|_| "could not inspect local unlock agent")?
@@ -607,7 +624,13 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
         .find_map(|line| line.strip_prefix("port="))
         .and_then(|value| value.parse::<u16>().ok())
         .ok_or("invalid local agent state")?;
-    let capability = entry(config_dir)?
+    let version = state.lines().find_map(|line| line.strip_prefix("version="));
+    let lease = match version {
+        Some("1") => legacy_entry(config_dir)?,
+        Some("2") => entry(config_dir)?,
+        _ => return Err("unsupported local agent state; lock and unlock the client".to_owned()),
+    };
+    let capability = lease
         .get_password()
         .map_err(|_| "not logged in; run login first".to_owned())?;
     let mut value = fields.as_object().cloned().unwrap_or_default();
@@ -645,6 +668,34 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adopted_profiles_have_independent_capabilities_and_aliases_share_their_identity() {
+        let root = std::env::temp_dir().join(format!("127vaults-agent-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let first = root.join("cli");
+        let second = root.join("desktop");
+        for profile in [&first, &second] {
+            fs::create_dir(profile).unwrap();
+            fs::write(profile.join("trust.conf"), "server_id=fictitious-server\n").unwrap();
+            fs::write(profile.join("device.conf"), "device_id=fictitious-device\n").unwrap();
+        }
+        assert_eq!(identity(&first).unwrap(), identity(&second).unwrap());
+        assert_ne!(
+            profile_identity(&first).unwrap(),
+            profile_identity(&second).unwrap()
+        );
+        assert_eq!(
+            profile_identity(&first).unwrap(),
+            profile_identity(&first.join(".")).unwrap()
+        );
+        for profile in [&first, &second] {
+            fs::remove_file(profile.join("trust.conf")).unwrap();
+            fs::remove_file(profile.join("device.conf")).unwrap();
+            fs::remove_dir(profile).unwrap();
+        }
+        fs::remove_dir(root).unwrap();
+    }
 
     #[test]
     fn connector_agent_denies_all_device_management_before_dispatch() {

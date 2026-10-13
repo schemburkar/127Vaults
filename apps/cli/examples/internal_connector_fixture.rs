@@ -1,33 +1,46 @@
 //! Fictitious-data connector acceptance; never selects a default user profile.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
 
-fn main() -> Result<(), String> {
-    let mut args = std::env::args().skip(1);
-    let action = args.next().ok_or("expected start or stop")?;
-    let profile = PathBuf::from(args.next().ok_or("expected explicit fixture profile")?);
+fn fixture_device(profile: &Path, server_id: &str) -> Result<String, String> {
     if !profile.is_absolute() || !profile.join("device.conf").is_file() {
         return Err("fixture profile must be absolute and enrolled".to_owned());
     }
     let device =
         std::fs::read_to_string(profile.join("device.conf")).map_err(|error| error.to_string())?;
-    let server_id = std::env::var("VAULTS_INTERNAL_SERVER_ID")
-        .map_err(|_| "explicit fictitious fixture server ID is required")?;
-    uuid::Uuid::parse_str(&server_id).map_err(|_| "fixture server ID must be a UUID")?;
     if !device.contains(&format!("server_id={server_id}\n"))
         || !device.contains("username=owner_127\n")
     {
         return Err("this helper only accepts the isolated internal release fixture".to_owned());
     }
+    device
+        .lines()
+        .find_map(|line| line.strip_prefix("device_id=").map(str::to_owned))
+        .ok_or_else(|| "fixture device ID is missing".to_owned())
+}
+
+fn start(executable: &Path, profile: &Path) -> Result<(), String> {
+    vaults_cli::start_connector_agent(
+        executable,
+        profile,
+        "owner_127",
+        &"07".repeat(32),
+        b"fictitious password 127vaults",
+    )
+}
+
+fn main() -> Result<(), String> {
+    let mut args = std::env::args().skip(1);
+    let action = args.next().ok_or("expected start or stop")?;
+    let profile = PathBuf::from(args.next().ok_or("expected explicit fixture profile")?);
+    let server_id = std::env::var("VAULTS_INTERNAL_SERVER_ID")
+        .map_err(|_| "explicit fictitious fixture server ID is required")?;
+    uuid::Uuid::parse_str(&server_id).map_err(|_| "fixture server ID must be a UUID")?;
+    let device_id = fixture_device(&profile, &server_id)?;
     match action.as_str() {
         "start" => {
             let executable = PathBuf::from(args.next().ok_or("expected packaged CLI executable")?);
-            vaults_cli::start_connector_agent(
-                &executable,
-                &profile,
-                "owner_127",
-                &"07".repeat(32),
-                b"fictitious password 127vaults",
-            )?;
+            start(&executable, &profile)?;
             if !vaults_cli::connector_agent_active(&profile) {
                 return Err("fixture agent did not become active".to_owned());
             }
@@ -40,7 +53,52 @@ fn main() -> Result<(), String> {
             }
             println!("Fictitious connector agent locked.");
         }
-        _ => return Err("expected start or stop".to_owned()),
+        "pair" => {
+            let second = PathBuf::from(args.next().ok_or("expected second fixture profile")?);
+            fixture_device(&second, &server_id)?;
+            let executable = PathBuf::from(args.next().ok_or("expected packaged CLI executable")?);
+            let legacy = keyring::Entry::new(
+                "127Vaults CLI unlock lease",
+                &format!("{server_id}:{device_id}"),
+            )
+            .map_err(|_| "fixture legacy keyring is unavailable")?;
+            let mut saved_legacy = None;
+            let result = (|| {
+                start(&executable, &profile)?;
+                if std::fs::read_to_string(profile.join("agent.conf"))
+                    .unwrap_or_default()
+                    .starts_with("version=1\n")
+                {
+                    saved_legacy = Some(Zeroizing::new(
+                        legacy
+                            .get_password()
+                            .map_err(|_| "fixture legacy lease is unavailable")?,
+                    ));
+                }
+                start(&executable, &second)?;
+                if !vaults_cli::connector_agent_active(&profile)
+                    || !vaults_cli::connector_agent_active(&second)
+                {
+                    return Err("concurrent fixture profiles invalidated one another".to_owned());
+                }
+                vaults_cli::stop_connector_agent(&second);
+                if !vaults_cli::connector_agent_active(&profile) {
+                    return Err("locking one fixture profile invalidated the other".to_owned());
+                }
+                Ok(())
+            })();
+            vaults_cli::stop_connector_agent(&second);
+            // Recovery only for this fictitious legacy pair, including a failing baseline.
+            if let Some(capability) = saved_legacy {
+                legacy
+                    .set_password(&capability)
+                    .map_err(|_| "fixture legacy cleanup failed")?;
+            }
+            vaults_cli::stop_connector_agent(&profile);
+            result?;
+            println!("Concurrent fictitious agents stayed independent; both locked cleanly.");
+        }
+        _ => return Err("expected start, stop or pair".to_owned()),
     }
     Ok(())
 }
