@@ -733,6 +733,7 @@ fn discard_conflict(
     operation_id: String,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
+        session.conflict_compare(&vault_id, &item_id, &operation_id)?;
         session.discard_conflict(&vault_id, &item_id, &operation_id)?;
         Ok(json!({"items":session.item_list(&vault_id)?}))
     })
@@ -747,6 +748,18 @@ fn conflict_draft(
 ) -> Result<Value, String> {
     with_session(&state, |session| {
         session.conflict_draft(&vault_id, &item_id, &operation_id)
+    })
+}
+
+#[tauri::command]
+fn conflict_compare(
+    state: tauri::State<'_, DesktopState>,
+    vault_id: String,
+    item_id: String,
+    operation_id: String,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        session.conflict_compare(&vault_id, &item_id, &operation_id)
     })
 }
 
@@ -866,6 +879,7 @@ fn main() {
             discard_local_changes,
             discard_conflict,
             conflict_draft,
+            conflict_compare,
             lock,
             begin_device_enrollment,
             device_enrollment_status,

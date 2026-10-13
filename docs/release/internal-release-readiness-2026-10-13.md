@@ -193,3 +193,12 @@ Actual isolated desktop UI acceptance is recorded at
 item/field review, values withheld, unconfirmed-copy refusal and lock clearing.
 This follow-up is not included in the immutable desktop packages selected above;
 they need rebuilding before accepting this behaviour as packaged release evidence.
+
+Conflict comparison now refreshes verified server state without replaying pending
+mutations. Errors are displayed within the conflict dialog; server-copy selection
+verifies the current server state before retiring the selected operation. Two
+HTTP regression tests verify read-only comparison and unchanged pending ciphertext
+on a failed refresh. Isolated offline UI evidence at
+`C:\Projects\127Vaults-sync-compare-20261013-a\ui-evidence.json` verifies inline
+comparison/server-copy errors and retained queued work. This fixture uses an
+explicit test conflict marker; it does not establish the cause of the user's 409.

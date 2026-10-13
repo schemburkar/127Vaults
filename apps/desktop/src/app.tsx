@@ -213,6 +213,9 @@ export function App() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [conflictError, setConflictError] = useState<string | null>(null);
+  const [conflictBusy, setConflictBusy] = useState(false);
+  useEffect(() => { setConflictError(null); setConflictBusy(false); }, [conflict?.operationId]);
   const [resolvingOperationId, setResolvingOperationId] = useState<string | null>(null);
   const [footerMenu, setFooterMenu] = useState(false);
   const [compactSidebar, setCompactSidebar] = useState(() => window.matchMedia("(max-width: 850px)").matches);
@@ -402,28 +405,21 @@ export function App() {
     }
   };
   const prepareMerge = async () => {
-    if (!conflict?.draft.itemId) return;
+    if (!conflict?.draft.itemId || !conflict.operationId || conflictBusy) return;
+    const generation = syncReviewGeneration.current;
+    setConflictBusy(true);
+    setConflictError(null);
     try {
-      const result = await synchronize();
-      const summary = result?.items.find((item) => item.itemId === conflict.draft.itemId);
-      const engineConflict = result?.conflicts.find((row) => row.itemId === conflict.draft.itemId);
-      const operationId = engineConflict?.operationId;
-      if (engineConflict?.kind === "delete-edit-divergence") {
-        setConflict({ ...conflict, kind: engineConflict.kind, operationId, message: "This item was deleted on another device. The queued edit is preserved until you discard it." });
-        return;
+      const result = await invoke<{ deleted: boolean; server: Item | null; conflict: EngineConflict }>("conflict_compare", { vaultId, itemId: conflict.draft.itemId, operationId: conflict.operationId });
+      if (generation !== syncReviewGeneration.current) return;
+      if (result.deleted) {
+        setConflict({ ...conflict, kind: "delete-edit-divergence", message: "This item is absent from the verified server state. Your queued edit is preserved until you explicitly discard it." });
+      } else if (result.server) {
+        setConflict({ ...conflict, server: result.server, choices: choicesForConflict(result.conflict) });
       }
-      if (!summary) throw Error("The server item no longer exists.");
-      if (!operationId) {
-        setConflict(null);
-        await openItem(summary);
-        notify("success", "Changes merged", "The changes touched different fields and were saved together.");
-        return;
-      }
-      const server = await loadItem(summary);
-      setConflict({ ...conflict, operationId, server, choices: choicesForConflict(engineConflict ?? {}) });
     } catch (error) {
-      notify("error", "Could not prepare the merge", friendlyError(error));
-    }
+      if (generation === syncReviewGeneration.current) setConflictError("Could not load the verified server version: " + friendlyError(error) + ". Your queued edit has not been discarded. Retry comparison or reconnect.");
+    } finally { if (generation === syncReviewGeneration.current) setConflictBusy(false); }
   };
   const applyMerge = () => {
     if (!conflict?.server || !conflict.choices) return;
@@ -893,6 +889,9 @@ export function App() {
     } finally { syncInFlight.current = false; }
   };
   const useServerVersion = async (itemId: string, operationId: string) => {
+    if (conflictBusy) return;
+    setConflictBusy(true);
+    setConflictError(null);
     try {
       const result = await invoke<{ items: Summary[] }>("discard_conflict", { vaultId, itemId, operationId });
       setItems(viewMode === "single" ? result.items : await listVisibleItems());
@@ -905,18 +904,15 @@ export function App() {
       const summary = result.items.find((item) => item.itemId === itemId);
       if (summary) await openItem(summary);
       else setSelected(null);
+      setConflict(null);
       notify(
         "success",
         "Server version restored",
         "The selected local edit was discarded.",
       );
     } catch (error) {
-      notify(
-        "error",
-        "Could not load the server version",
-        friendlyError(error),
-      );
-    }
+      setConflictError(`Could not use the server version: ${friendlyError(error)}. The queued edit is retained if server verification failed.`);
+    } finally { setConflictBusy(false); }
   };
   const copyValue = async (value: string) => {
     if (!value) return;
@@ -2188,6 +2184,7 @@ export function App() {
             <p className="mt-2 text-sm leading-6 text-slate-400">
               {conflict.message} Compare each field and select the value to save.
             </p>
+            {conflictError && <p role="alert" className="mt-4 rounded-lg border border-red-300/30 bg-red-300/10 p-3 text-sm text-red-200">{conflictError}</p>}
             {conflict.server && conflict.choices && (
               <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
                 <div className="desktop-conflict-row grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-white/10 bg-white/5 p-3 text-xs font-bold uppercase tracking-wider text-slate-400"><span>Field</span><span>Mine</span><span>Theirs</span></div>
@@ -2198,7 +2195,7 @@ export function App() {
               </div>
             )}
             <div className="ui-dialog-actions ui-dialog-actions-stack">
-              {conflict.kind !== "delete-edit-divergence" && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button onClick={() => void prepareMerge()}>Compare and select fields…</Button>)}
+              {conflict.kind !== "delete-edit-divergence" && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button disabled={conflictBusy} onClick={() => void prepareMerge()}>{conflictBusy ? "Loading server version…" : "Compare and select fields…"}</Button>)}
               {conflict.kind !== "delete-edit-divergence" && (
               <Button
                 onClick={() => {
@@ -2217,10 +2214,10 @@ export function App() {
               )}
               <Button
                 variant="secondary"
+                disabled={conflictBusy}
                 onClick={() => {
                   const itemId = conflict.draft.itemId;
                   if (itemId && conflict.operationId) {
-                    setConflict(null);
                     void useServerVersion(itemId, conflict.operationId);
                   } else {
                     void prepareMerge();

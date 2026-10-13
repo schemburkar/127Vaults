@@ -1771,6 +1771,46 @@ impl Session {
         self.decrypt_item_parts(vault_id, item_id, &catalogue, &index, &body)
     }
 
+    /// Refresh verified server state for comparison without submitting queued work.
+    pub fn conflict_compare(
+        &mut self,
+        vault_id: &str,
+        item_id: &str,
+        operation_id: &str,
+    ) -> Result<Value, String> {
+        let (_, pending_item) = self.conflict_item_id(vault_id, operation_id)?;
+        if pending_item != item_id {
+            return Err("pending conflict item does not match".to_owned());
+        }
+        if !self.online {
+            return Err(
+                "Reconnect to load the verified server version. Your queued edit is preserved."
+                    .to_owned(),
+            );
+        }
+        self.hydrate_replicas()?;
+        let replica = self
+            .replica_store
+            .load(vault_id)?
+            .ok_or("local replica unavailable")?;
+        let conflict = replica
+            .conflicts
+            .iter()
+            .find(|row| row["operationId"] == operation_id)
+            .ok_or("pending conflict is unavailable")?;
+        let Some(item) = replica.items.iter().find(|row| row.item_id == item_id) else {
+            return Ok(json!({"deleted":true,"conflict":conflict,"server":null}));
+        };
+        let server = self.decrypt_item_parts(
+            vault_id,
+            item_id,
+            &replica.catalogue,
+            &item.index,
+            &item.body,
+        )?;
+        Ok(json!({"deleted":false,"conflict":conflict,"server":server}))
+    }
+
     fn decrypt_item_parts(
         &mut self,
         vault_id: &str,
