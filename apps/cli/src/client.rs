@@ -1799,7 +1799,12 @@ impl Session {
             .find(|row| row["operationId"] == operation_id)
             .ok_or("pending conflict is unavailable")?;
         let Some(item) = replica.items.iter().find(|row| row.item_id == item_id) else {
-            return Ok(json!({"deleted":true,"conflict":conflict,"server":null}));
+            let queued_create = replica.pending.iter().any(|entry| {
+                entry.operation["opId"] == operation_id && entry.operation["kind"] == "item.create"
+            });
+            return Ok(
+                json!({"deleted":true,"queuedCreate":queued_create,"conflict":conflict,"server":null}),
+            );
         };
         let server = self.decrypt_item_parts(
             vault_id,

@@ -1,6 +1,9 @@
 # Internal release readiness — 2026-10-13
 
-**Decision: internal fictitious-data release candidate; final acceptance remains open.**
+**Decision: not accepted for internal release; expanded sync verification is open.**
+The [expanded goal and acceptance matrix](internal-sync-release-plan-2026-10-13.md)
+tracks reported live failures and the remaining end-to-end release gates. Passing
+scenarios below are subset evidence and do not accept the complete sync workflow.
 Installed Windows/Linux queued-conflict review, selected-field resolution and
 peer-created vault/collection settings review now pass.
 Windows and Linux desktop/CLI, the Chromium extension, web/PWA, self-hosted

@@ -13,6 +13,11 @@ See the [internal release candidate evidence and remaining gates](../release/int
 
 ## Selected P1 closure order
 
+**Blocking gate: complete cross-client sync verification.** The user's reported
+queued-operation, comparison and source-connection failures supersede acceptance
+claims based on isolated passing scenarios. Track the expanded scope and each
+open case in the [sync release matrix](../release/internal-sync-release-plan-2026-10-13.md).
+
 Windows/Linux packaged queued-conflict comparison and explicit selected-field resolution pass, with peer reads confirming the saved choice. Both platforms also pass peer-created settings review with immediate vault/collection view refresh. Wider default-view/device/interruption and clean-machine acceptance remain open.
 
 | Order | Component and rows | Evidence and next action |

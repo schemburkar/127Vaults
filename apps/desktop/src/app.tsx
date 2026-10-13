@@ -414,10 +414,10 @@ export function App() {
     setConflictBusy(true);
     setConflictError(null);
     try {
-      const result = await invoke<{ deleted: boolean; server: Item | null; conflict: EngineConflict }>("conflict_compare", { vaultId: conflict.vaultId ?? vaultId, itemId: conflict.draft.itemId, operationId: conflict.operationId });
+      const result = await invoke<{ deleted: boolean; queuedCreate?: boolean; server: Item | null; conflict: EngineConflict }>("conflict_compare", { vaultId: conflict.vaultId ?? vaultId, itemId: conflict.draft.itemId, operationId: conflict.operationId });
       if (generation !== syncReviewGeneration.current) return;
       if (result.deleted) {
-        setConflict({ ...conflict, kind: "delete-edit-divergence", message: "This item is absent from the verified server state. Your queued edit is preserved until you explicitly discard it." });
+        setConflict({ ...conflict, server: undefined, choices: undefined, kind: result.queuedCreate ? "unsynced-create" : "delete-edit-divergence", message: result.queuedCreate ? "This new item has not reached the server. There is no server copy to compare. Your encrypted local creation remains queued; close this dialog to keep it, or explicitly discard the queued creation." : "This edited item is absent from the verified server state. There is no server copy to compare. Close this dialog to keep your queued edit, or explicitly discard that edit." });
       } else if (result.server) {
         setConflict({ ...conflict, server: result.server, choices: choicesForConflict(result.conflict) });
       }
@@ -2188,7 +2188,7 @@ export function App() {
             </h2>
             <p className="mt-2 font-semibold">{conflict.draft.title || "Untitled item"}</p>
             <p className="mt-2 text-sm leading-6 text-slate-400">
-              {conflict.message} Compare each field and select the value to save.
+              {conflict.message}{conflict.server && " Compare each field and select the value to save."}
             </p>
             {conflictError && <p role="alert" className="mt-4 rounded-lg border border-red-300/30 bg-red-300/10 p-3 text-sm text-red-200">{conflictError}</p>}
             {conflict.server && conflict.choices && (
@@ -2201,8 +2201,8 @@ export function App() {
               </div>
             )}
             <div className="ui-dialog-actions ui-dialog-actions-stack">
-              {conflict.kind !== "delete-edit-divergence" && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button disabled={conflictBusy} onClick={() => void prepareMerge()}>{conflictBusy ? "Loading server version…" : "Compare and select fields…"}</Button>)}
-              {conflict.kind !== "delete-edit-divergence" && (
+              {!["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button disabled={conflictBusy} onClick={() => void prepareMerge()}>{conflictBusy ? "Loading server version…" : "Compare and select fields…"}</Button>)}
+              {!["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && (
               <Button
                 onClick={() => {
                   if (conflict.server) {
@@ -2224,16 +2224,17 @@ export function App() {
                 onClick={() => {
                   const itemId = conflict.draft.itemId;
                   if (itemId && conflict.operationId) {
+                    if (["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && !window.confirm(conflict.kind === "unsynced-create" ? "Discard this queued creation? It has no server copy. This removes the selected queued creation from this device." : "Discard this queued edit? The item is absent on the server. Other queued changes will remain.")) return;
                     void useServerVersion(itemId, conflict.operationId, conflict.vaultId ?? vaultId);
                   } else {
                     void prepareMerge();
                   }
                 }}
               >
-                Use server version
+                {conflict.kind === "unsynced-create" ? "Discard queued creation…" : conflict.kind === "delete-edit-divergence" ? "Discard queued edit…" : "Use server version"}
               </Button>
               <Button variant="ghost" onClick={() => { setConflict(null); if (conflict.kind === "delete-edit-divergence") setEditing(false); }}>
-                {conflict.kind === "delete-edit-divergence" ? "Close" : "Cancel and keep editing"}
+                {["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") ? "Keep queued change and close" : "Cancel and keep editing"}
               </Button>
             </div>
           </section>

@@ -136,6 +136,81 @@ fn fixture(responses: Vec<(u16, Value)>) -> (String, JoinHandle<Vec<Request>>) {
 }
 
 #[test]
+fn missing_server_item_distinguishes_a_queued_creation_from_an_edit() {
+    for kind in ["item.create", "item.update"] {
+        let mut session = session("http://127.0.0.1:1");
+        let directory = session.core.create_empty_directory(session.root).unwrap();
+        let vault = session
+            .core
+            .create_private_vault(session.root, &directory)
+            .unwrap();
+        let vault_id =
+            uuid::Uuid::from_bytes(vault.vault.context[33..49].try_into().unwrap()).to_string();
+        let item_id = uuid::Uuid::new_v4().to_string();
+        let operation_id = uuid::Uuid::new_v4().to_string();
+        let mut replica =
+            crate::replica::Replica::new(session.tenant_id.clone(), vault_id.clone(), 1);
+        replica.directory = URL_SAFE_NO_PAD.encode(&vault.directory);
+        replica.vault_envelope = URL_SAFE_NO_PAD.encode(&vault.vault.envelope);
+        replica.catalogue = URL_SAFE_NO_PAD.encode(&vault.catalogue);
+        let operation = json!({"opId":operation_id,"itemId":item_id,"kind":kind});
+        replica.pending.push(crate::replica::PendingMutation {
+            operation: operation.clone(),
+            request: json!({"ciphertext":"retained"}),
+            base_catalogue: None,
+            base_item: None,
+        });
+        replica.mark_stale(&operation, &item_id);
+        session.replica_store.commit(&replica).unwrap();
+        let (origin, worker) = fixture(vec![
+            (
+                200,
+                json!({"directory":replica.directory,"vaultEnvelopes":[{"vaultId":vault_id,"envelope":replica.vault_envelope}]}),
+            ),
+            (200, json!({"catalogue":replica.catalogue,"indices":[]})),
+            (
+                200,
+                json!({"cursor":0,"hasMore":false,"operations":[],"devicePublicKeys":{}}),
+            ),
+            (
+                200,
+                json!({"checkpoint":null,"checkpointPublicKey":URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&[6;32]).verifying_key().to_bytes())}),
+            ),
+        ]);
+        session.origin.clone_from(&origin);
+        session.sync_transport = Some(HttpSyncTransport::new(
+            session.client.clone(),
+            origin,
+            session.cookie.clone(),
+            session.csrf.clone(),
+        ));
+        let result = session
+            .conflict_compare(&vault_id, &item_id, &operation_id)
+            .unwrap();
+        assert_eq!(result["queuedCreate"], kind == "item.create");
+        assert!(result["server"].is_null());
+        assert_eq!(
+            session
+                .replica_store
+                .load(&vault_id)
+                .unwrap()
+                .unwrap()
+                .pending,
+            replica.pending
+        );
+        assert!(
+            worker
+                .join()
+                .unwrap()
+                .iter()
+                .all(|request| request.line.starts_with("GET "))
+        );
+        session.online = false;
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
+#[test]
 fn conflict_comparison_reads_verified_server_fields_without_sending_the_queue() {
     let mut session = session("http://127.0.0.1:1");
     let directory = session.core.create_empty_directory(session.root).unwrap();
