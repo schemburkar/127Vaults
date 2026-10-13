@@ -177,3 +177,13 @@ were exercised. These are command/agent acceptance, not Desktop rendering.
 Linux's existing fixture requires reviewed vault-settings refresh after peer
 settings changes. Item queues and conflict markers are empty; that settings
 review was preserved rather than silently accepted for a cleaner aggregate status.
+
+The current Windows extension fixture reaches both unlocked native sources, but
+the real Chromium idle API reports `idle` and the background's 30-minute policy
+then sends lock requests before item listing. Failed popup diagnostics retain
+request/response timings and that OS state:
+`C:\Projects\127Vaults-sync-extension-20261013-a\browser-test-f\popup-failure.json`.
+This run is not an autofill pass. The agents are stopped and the previous browser
+registration and profile pointer restored. Active-session rerun is pending; the
+idle policy has not been disabled or spoofed. Earlier short-lived fixture runners
+also let their agents exit; the final runner keeps agents alive during the test.

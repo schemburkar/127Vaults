@@ -161,7 +161,7 @@ acceptance is tracked in the expanded matrix and remains open.
 
 `pnpm check`, `pnpm test`, `cargo fmt --check`, workspace Clippy with warnings
 denied and `cargo test --workspace` passed in the earlier run. Latest CLI library:
-65 pass, one intentionally
+68 pass, one intentionally
 ignored live fixture test; its separate live acceptance evidence is listed above
 and in the October 12 report. New harness syntax and Git whitespace checks pass.
 Later acceptance-only changes do not alter the selected product binaries.

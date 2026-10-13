@@ -79,10 +79,13 @@ async function launch() {
   extensionId = new URL(worker.url()).host;
   await worker.evaluate(() => {
     globalThis.fixtureNativeActions = [];
+    globalThis.fixtureNativeResponses = [];
+    const starts=new Map();
     const original = chrome.runtime.connectNative.bind(chrome.runtime);
     chrome.runtime.connectNative = name => {
       const port = original(name), post = port.postMessage.bind(port);
-      port.postMessage = request => { globalThis.fixtureNativeActions.push({ action: request.action, source: request.source }); post(request); };
+      port.onMessage.addListener(response=>{const start=starts.get(response.id);globalThis.fixtureNativeResponses.push({id:response.id,action:start?.action,source:start?.source,elapsedMs:start?Date.now()-start.time:null,ok:response.ok,itemCount:Array.isArray(response.value)?response.value.length:null,error:response.ok?null:String(response.value)});});
+      port.postMessage = request => { starts.set(request.id,{action:request.action,source:request.source,time:Date.now()});globalThis.fixtureNativeActions.push({ action: request.action, source: request.source }); post(request); };
       return port;
     };
   });
@@ -110,7 +113,11 @@ async function popup(page) {
 async function selectedPopup(page, source = 'cli') {
   const view = await popup(page);
   await view.locator('#source-select').selectOption(source);
-  await view.locator('#items .item').first().waitFor({ state: 'visible' });
+  try { await view.locator('#items .item').first().waitFor({ state: 'visible' }); }
+  catch(error) {
+    await writeFile(join(work,'popup-failure.json'),JSON.stringify({date:new Date().toISOString(),source,fixtureServer:serverId,popup:await view.snapshot(),nativeTrace:await worker.evaluate(async()=>({requests:globalThis.fixtureNativeActions,responses:globalThis.fixtureNativeResponses,idleState:await new Promise(resolve=>chrome.idle.queryState(30*60,resolve))}))},null,2)+'\n');
+    throw Error('Fixture popup did not show matching items; diagnostic retained in popup-failure.json',{cause:error});
+  }
   return view;
 }
 async function assertFilled(page, field, expected) {
