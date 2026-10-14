@@ -49,3 +49,13 @@ requires reviewing all remaining evidence gaps and explicit exceptions against
 the original scope. Do not mark the goal complete from aggregate green checks.
 Commit completed changes to local main, preserve existing data and exact queued
 requests, and do not push.
+
+## Latest source versus selected packages
+
+Source commit `a65ab45` adds authenticated review revalidation before either vault
+settings conflict choice. CLI source checks now pass 78 tests (one live fixture
+ignored), strict workspace Clippy and formatting. Selected CLI-g/Desktop-i still
+contain `fba2cb2`, so refreshed native builds and packaged resolve-time refusal /
+changed-review acceptance are required. See the
+[stop checkpoint](internal-release-stop-2026-10-14.md) for the exact next actions.
+Work is paused at the user's request; the decision above remains unaccepted.

@@ -677,3 +677,17 @@ This closes the confirmed false-online authorization bug. Internal release remai
 unaccepted; human-dependent and other recorded matrix gates remain open. Completed
 fixes, helpers, selected manifests and evidence are committed to local main without
 pushing.
+
+## User-requested stop checkpoint
+
+The user asked to stop within ten minutes because usage may run out. A final
+settings resolution P1 was reproduced and fixed in source commit `a65ab45`:
+both choices authenticate and revalidate the reviewed server settings before
+changing the encrypted pending record; access refusal and changed review retain
+local work. Final source checks: CLI 78 passed/1 separately gated live test
+ignored; workspace strict Clippy and formatting passed. Selected native packages
+remain CLI-g/Desktop-i at `fba2cb2` and need fresh builds and actual packaged
+resolve-time race/refusal evidence. Full reproduction, next actions and remaining
+seven-surface/manual gates are saved in
+[the stop checkpoint](internal-release-stop-2026-10-14.md). Internal release is
+not accepted. Work pauses at the user's request, with no push.
