@@ -6,6 +6,29 @@ All implementation and evidence tracking through `caee58d` are committed on loca
 `main`. This checkpoint is the next commit. Preserve existing fixtures and user
 data when resuming.
 
+## Resumed work after this checkpoint
+
+Four additional real-server scenarios passed on the selected Windows/Linux CLI
+packages: archive/restore propagation with archived-write refusal, durable
+overlapping-edit review followed by explicit server-copy recovery, explicit
+local-copy resubmission, and automatic merge of a local username change with a
+peer title change. All final queues/conflict lists were empty. The fixture vault
+was restored, original data retained, and owned server/database restarted healthy.
+Repeatable lifecycle/native phases are now in the packaged CLI helper. Details
+and exact limits are appended to the expanded evidence matrix.
+
+Evidence is retained under `C:\Projects\127Vaults-sync-web-20261014-a`:
+`lifecycle-native-server-copy.json`, `lifecycle-native-local-copy.json` and current
+`lifecycle-native.json` (automatic merge). Runner `linux-lifecycle.sh` explicitly
+uses WSL distribution `Ubuntu-24.04` and the isolated keyring. Commits through
+`65fbe25` cover the first three scenarios; the next commit records automatic merge.
+
+Windows GUI manual-launch status and isolated web-extension origin permission
+were surfaced again during resumed work and remain unanswered at this update.
+They remain pending acceptance gates. New-vault creation hit the retained fixture's
+five-vault cap before mutation; the generic CLI `vault encryption failed` capacity
+message remains an issue. No limit or user data was changed to make tests pass.
+
 ## Completed since the previous checkpoint
 
 - Fixed real PostgreSQL PWA conflicts: HTTP 409 `base_changed` is normalized at

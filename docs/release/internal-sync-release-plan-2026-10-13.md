@@ -508,3 +508,13 @@ is retained separately as `lifecycle-native-server-copy.json`; current
 distinct round titles, clears prior dependent pass flags before each new round and
 records the chosen resolution. `VAULTS_FIXTURE_CONFLICT_KEEP=local` selects that
 explicit test action; its default is server.
+
+A third round passed automatic non-overlapping rebase on the selected packages:
+Windows changed only the username while offline; Linux changed only the title
+while preserving the baseline username. Windows `sync` reported at least one
+rebase, no conflicts and zero pending operations. Windows and Linux read back
+the peer title plus local username, and Linux verified the unchanged password.
+`VAULTS_FIXTURE_CONFLICT_MODE=nonoverlap` selects this case; the helper reads the
+actual baseline and gives each local username a distinct round value to ensure
+the edit is real. Current `lifecycle-native.json` records this pass; the preceding
+local-copy evidence remains in `lifecycle-native-local-copy.json`.
