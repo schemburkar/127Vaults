@@ -297,3 +297,37 @@ Internal release remains unaccepted. Latest Windows GUI, physical installation,
 OS-lock/keyring/CA ceremonies, broader cross-client lifecycle/type/queue cases,
 and actual extension web-source acceptance remain separate open gates. Completed
 changes are committed to local main; no remote push or public deployment occurs.
+
+## Actual packaged desktop and web archive/restore
+
+Desktop-g Linux (`762296c`) now passes actual Settings → Vaults archive/restore
+against the original retained TLS/PostgreSQL fixture (server source `103da5b`).
+The helper identifies the exact controlled vault by its stable displayed code,
+checks its fixture name and explicit archive choice, then verifies its Restore
+action. It reviews current server settings only after proving there is no local
+pending settings draft. Windows CLI-f independently observes the archived flag,
+refuses an item write, and after GUI restoration verifies the original title,
+username, website, masked password and explicit password. Both GUI phases lock
+normally; the item and settings queues finish empty. Evidence:
+`C:\Projects\127Vaults-desktop-lifecycle-20261014-a\evidence.json`, with separate
+`archive.json`, `restore.json` and `native-evidence.json`.
+
+The selected server/web-e runtime image (`ee83e2d`, image ID
+`8caae90f069a8d91d29a29b520f7c22b722bb08a80e3b177bf0b7f2bf448eddc`)
+also passes actual Chromium settings archive/restore with independent Windows
+CLI-f archived-write refusal and restored field/password verification. This
+uses the existing owned database and installation identity, and a separately
+copied enrolled browser profile. It does not enroll a new installation, reset
+history or remove the original browser profile. Evidence:
+`C:\Projects\127Vaults-web-lifecycle-20261014-b\evidence.json`, with web phase
+records and native peer records.
+
+The first web runner's source bundle listened internally on 12894 while the
+retained browser authority is 12892; authority validation correctly returned
+forbidden before unlock. That failure is retained in workspace-a. Workspace-b
+copies the selected bundle and changes only fixture Compose listener/mapping
+12894→12892, recording the override and recomputed fixture Compose checksum.
+The selected immutable image and release inventory are unchanged. The original
+owned server bundle/image and bundle environments were restored after the test.
+These passes establish this controlled archive/restore client pairing; Windows
+GUI, move/ownership, interrupted lifecycle and physical acceptance remain open.

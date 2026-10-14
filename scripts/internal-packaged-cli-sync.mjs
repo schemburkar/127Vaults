@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -36,7 +36,12 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase.startsWith('ack-')){
+ if(['gui-archive-peer','gui-restore-peer'].includes(phase)){
+  assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');await command(['sync']);
+  const vault=JSON.parse(await command(['vault','list'])).find(row=>row.vaultId===evidence.vaultId);assert.ok(vault);assert.equal(vault.retired,phase==='gui-archive-peer');
+  if(phase==='gui-archive-peer')await assert.rejects(command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:'must not mutate archived fixture'})+'\n'),/retired vault is read-only/);
+  else{const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));for(const [field,value]of Object.entries(evidence.ackBaseline))assert.equal(item[field],value);assert.equal(item.password,'[redacted]');assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');}
+ }else if(phase.startsWith('ack-')){
   assert.equal(evidence['lifecycle-restored-peerPassed'],true);
   const replicaPath=profile+'/replicas/'+evidence.vaultId+'.json';
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');

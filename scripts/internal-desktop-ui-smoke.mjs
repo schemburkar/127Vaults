@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { openDesktopFixtureInspector } from './desktop-fixture-inspector.mjs';
 const profile=process.env.VAULTS_CONFIG_DIR;
 assert.ok(profile&&isAbsolute(profile),'Supply the explicit absolute fictitious desktop profile.');
@@ -29,6 +30,14 @@ const restoreTitle=process.env.VAULTS_FIXTURE_RESTORE_TITLE||null;
 assert.ok(!restoreTitle||onlineExisting&&restoreTitle.startsWith('Linux packaged online '));
 assert.ok(!offlineVerify||connection==='Offline'&&expectedTitle.startsWith('Linux packaged online '));
 const typedRoundtrip=process.argv[7]==='typed-roundtrip';
+const lifecycleArchive=process.argv[7]==='lifecycle-archive',lifecycleRestore=process.argv[7]==='lifecycle-restore';
+let lifecycle=null;
+if(lifecycleArchive||lifecycleRestore){
+ const path=process.env.VAULTS_FIXTURE_LIFECYCLE_EVIDENCE;assert.ok(path&&isAbsolute(path));
+ lifecycle=JSON.parse(await readFile(path,'utf8'));assert.equal(lifecycle.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(lifecycle.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');assert.equal(lifecycle.writerDevice,expectedDevice);assert.ok(lifecycle.vaultName.startsWith('Fixture Work '));assert.equal(connection,'Online');
+ const settings=JSON.parse(await readFile(join(profile,'vault-settings.json'),'utf8'));assert.equal(settings.pending,null,'Never discard a local settings draft');
+ lifecycle.code='V-'+createHash('sha256').update(lifecycle.vaultId).digest('hex').slice(0,10).toUpperCase();
+}
 let typedItems=null;
 if(typedRoundtrip){
  const path=process.env.VAULTS_FIXTURE_TYPES_EVIDENCE;assert.ok(path&&isAbsolute(path));
@@ -64,6 +73,25 @@ try{
   await new Promise(resolve=>setTimeout(resolve,50));button('Unlock encrypted replica').click();
   await wait(()=>document.body.innerText.includes('All items'));
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));const profileLines=document.querySelector('#desktop-settings-panel').innerText.split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);const connectionLabel=profileLines.indexOf('Connection');if(connectionLabel<0||profileLines[connectionLabel+1]!==${JSON.stringify(connection)})throw Error('Fixture connection is not '+${JSON.stringify(connection)});document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('real GUI '+${JSON.stringify(connection)}+' unlock');checks.push('GUI device identity matches the explicit fixture profile');
+  if(${JSON.stringify(lifecycleArchive||lifecycleRestore)}){
+   const fixture=${JSON.stringify(lifecycle)};
+   if(button('Review vault settings conflict')){
+    stage='lifecycle settings review';button('Review vault settings conflict').click();await wait(()=>document.querySelector('[aria-labelledby="settings-review-title"] pre'));
+    const versions=[...document.querySelectorAll('[aria-labelledby="settings-review-title"] pre')].map(node=>JSON.parse(node.innerText));if(versions.length!==2||versions[1].names[fixture.vaultId]!==fixture.vaultName)throw Error('Unexpected server fixture settings');button('Keep server').click();await wait(()=>!document.querySelector('[aria-labelledby="settings-review-title"]'));checks.push('reviewed current server settings with no local draft');
+   }
+   stage='lifecycle vault settings';button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Vaults').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(fixture.code));
+   const row=[...document.querySelectorAll('#desktop-settings-panel span')].find(node=>node.textContent.trim()===fixture.code)?.parentElement;if(!row||!row.innerText.includes(fixture.vaultName))throw Error('Controlled lifecycle vault row unavailable');
+   if(${JSON.stringify(lifecycleArchive)}){
+    stage='lifecycle archive';const remove=[...row.querySelectorAll('button')].find(node=>node.textContent.trim()==='Remove…');if(!remove||remove.disabled)throw Error('Controlled vault removal unavailable');remove.click();await wait(()=>document.querySelector('[aria-labelledby="removal-dialog-title"]'));
+    const dialog=document.querySelector('[aria-labelledby="removal-dialog-title"]');if(dialog.querySelector('h2')?.textContent.trim()!=='Remove '+fixture.vaultName)throw Error('Wrong vault removal dialog');dialog.querySelectorAll('input[name="removal-choice"]')[0].click();await wait(()=>button('Archive vault'));button('Archive vault').click();await wait(()=>!document.querySelector('[aria-labelledby="removal-dialog-title"]')&&document.body.innerText.includes('Vault archived'));
+    button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Vaults').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes('Archived vaults'));
+    const archived=[...document.querySelectorAll('#desktop-settings-panel span')].find(node=>node.textContent.trim()===fixture.code)?.parentElement;if(!archived?.querySelector('button')||archived.querySelector('button').textContent.trim()!=='Restore')throw Error('Archived vault missing recoverable restore action');checks.push('actual GUI archives controlled vault and exposes recoverable restore action');
+   }else{
+    stage='lifecycle restore';const restore=[...row.querySelectorAll('button')].find(node=>node.textContent.trim()==='Restore');if(!restore||restore.disabled)throw Error('Controlled archived vault restore unavailable');restore.click();await wait(()=>document.body.innerText.includes('Archived vault restored'));document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));
+    const summary=[...document.querySelectorAll('button strong')].find(node=>node.textContent.trim()===fixture.ackBaseline.title);if(!summary)throw Error('Restored item missing');summary.closest('button').click();await wait(()=>document.querySelector('main h2')?.textContent.trim()===fixture.ackBaseline.title&&button('Edit')&&!button('Edit').disabled);if(document.querySelector('main')?.innerText.includes('fictitious-lifecycle-password'))throw Error('Restored GUI leaked secret');checks.push('actual GUI restores archived vault and reads original item with secret masked');
+   }
+   document.querySelector('button[aria-label="Close settings"]')?.click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));checks.push('lifecycle GUI lock clears decrypted view');globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
   if(${JSON.stringify(onlineExisting||onlineVerify||offlineVerify)}){
    const native=window.__TAURI_INTERNALS__,originalInvoke=native?.invoke;
    if(originalInvoke)native.invoke=function(command,args,...rest){if(command==='item_save')saveTrace.push({title:args?.title});return originalInvoke.call(native,command,args,...rest);};

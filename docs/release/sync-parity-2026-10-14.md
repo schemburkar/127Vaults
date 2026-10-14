@@ -15,7 +15,7 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Keep server/local | Packaged server-copy pass | Engine/UI subsets | CLI-e verifies server before retirement; two-conflict independent server/local decisions pass both directions | Latest Windows GUI and broader UI multi-queue isolation |
 | Selected-field merge | Packaged real-server pass | Implemented, engine subset pass | New Windows/Linux packages pass both directions | GUI combinations; CLI selects custom-fields array as a group |
 | Missing item / stale creation | Classification and replay implemented | Shared native engine and retained queues | Shared native engine | Deleted-item and collision matrix across UIs |
-| Vault archive/restore | Isolated browser subset | Shared native engine/UI subsets | Packaged Windows/Linux propagation and read-only refusal pass | Real packaged web/Desktop lifecycle matrix |
+| Vault archive/restore | Selected packaged server/web actual settings archive/restore passes with Windows CLI peer | Desktop-g Linux actual settings archive/restore passes with Windows CLI peer | Packaged Windows/Linux propagation and read-only refusal pass | Windows GUI; move/ownership and interrupted lifecycle combinations |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
 Latest native candidates are CLI `internal-20261014-f`, source `1a00c62`, and Desktop
