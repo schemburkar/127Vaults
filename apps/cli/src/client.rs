@@ -41,6 +41,10 @@ pub struct Session {
     online: bool,
     offline_reason: Option<String>,
     vault_handles: std::collections::HashMap<String, KeyHandle>,
+    // Successful TLS receipts advance signing continuity without changing the
+    // encrypted item baseline that the editor reviewed. Verified hydration
+    // replaces these in-memory hints with the actual server device heads.
+    accepted_device_heads: std::collections::HashMap<String, String>,
 }
 
 fn verified_cached_item_body(
@@ -382,6 +386,7 @@ pub fn unlock_offline(
         online: false,
         offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
+        accepted_device_heads: std::collections::HashMap::new(),
     })
 }
 
@@ -786,6 +791,7 @@ pub fn unlock(
         online: true,
         offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
+        accepted_device_heads: std::collections::HashMap::new(),
     };
     session.hydrate_replicas()?;
     session.sync_vault_settings()?;
@@ -2398,6 +2404,18 @@ impl Session {
                 .release(handle)
                 .map_err(|_| "vault key could not be released")?;
             self.replica_store.commit(&replica)?;
+            if let Some(head) = replica
+                .operations
+                .iter()
+                .rev()
+                .map(|row| &row["operation"])
+                .find(|operation| operation["deviceId"] == self.device_id)
+                .and_then(|operation| operation["opId"].as_str())
+            {
+                self.accepted_device_heads.insert(vault_id, head.to_owned());
+            } else {
+                self.accepted_device_heads.remove(&vault_id);
+            }
         }
         Ok(())
     }
@@ -3026,15 +3044,22 @@ impl Session {
                     .any(|conflict| conflict["operationId"] == entry.operation["opId"])
             })
             .map(|entry| &entry.operation)
-            .chain(
+            .find(|operation| operation["deviceId"] == self.device_id)
+            .and_then(|operation| operation["opId"].as_str())
+            .or_else(|| {
+                self.accepted_device_heads
+                    .get(&vault_id)
+                    .map(String::as_str)
+            })
+            .or_else(|| {
                 current_replica
                     .operations
                     .iter()
                     .rev()
-                    .map(|row| &row["operation"]),
-            )
-            .find(|operation| operation["deviceId"] == self.device_id)
-            .and_then(|operation| operation["opId"].as_str());
+                    .map(|row| &row["operation"])
+                    .find(|operation| operation["deviceId"] == self.device_id)
+                    .and_then(|operation| operation["opId"].as_str())
+            });
         let mut payload = Vec::new();
         for part in [&made.catalogue, &made.index, &made.body] {
             payload.extend_from_slice(
@@ -3117,6 +3142,13 @@ impl Session {
         );
         match result {
             Ok(mut response) => {
+                self.accepted_device_heads.insert(
+                    vault_id.clone(),
+                    operation["opId"]
+                        .as_str()
+                        .ok_or("invalid accepted operation")?
+                        .to_owned(),
+                );
                 self.replica_store.update(&vault_id, |replica| {
                     replica
                         .pending
