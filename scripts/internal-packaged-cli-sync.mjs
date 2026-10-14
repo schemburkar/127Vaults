@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -20,7 +20,7 @@ async function command(args,input=''){
   child.on('error',reject);child.on('close',code=>{clearTimeout(timer);if(code!==0)reject(Error(`Fixture CLI ${args[0]} failed: ${error.trim()}`));else resolve(output.trim());});child.stdin.end(input);
  });
 }
-let evidence=['write','queue','types-write'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
+let evidence=['write','queue','types-write','lifecycle-create'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
 assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||phase==='ui-online-peer'&&evidence.title.startsWith('Linux packaged online ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
 if(['peer','ui-peer','ui-online-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
@@ -36,7 +36,43 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase==='types-write'){
+ if(phase.startsWith('lifecycle-')){
+  if(phase==='lifecycle-create'){
+   const available=JSON.parse(await command(['vault','list']));
+   console.log('Fixture vault capacity:',available.length);
+   const existing=process.env.VAULTS_FIXTURE_LIFECYCLE_VAULT;
+   assert.ok(existing||available.length<5,'Fixture directory is full; explicitly select a disposable Fixture Work vault: '+JSON.stringify(available.map(({vaultId,name,retired})=>({vaultId,name,retired}))));
+   const selected=existing?available.find(row=>row.vaultId===existing&&row.retired!==true&&row.name.startsWith('Fixture Work ')):null;
+   assert.ok(!existing||selected,'Only an explicitly selected disposable Fixture Work vault may be reused');
+   const vault=selected||JSON.parse(await command(['vault','create',evidence.title]));
+   evidence.vaultName=selected?.name||evidence.title;
+   evidence.vaultId=vault.vaultId;assert.match(evidence.vaultId,/^[a-f0-9-]{36}$/);
+   await writeFile(evidencePath,JSON.stringify(evidence,null,2)+'\n');
+   const item=JSON.parse(await command(['item','create','--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title,username:'lifecycle-fixture',password:'fictitious-lifecycle-password'})+'\n'));
+   evidence.itemId=item.itemId;assert.ok(evidence.itemId);
+  }else if(phase==='lifecycle-archive'||phase==='lifecycle-restore'){
+   assert.equal(deviceId,evidence.writerDevice,'Only the owning fixture writer may change this test vault');
+   assert.equal(evidence['lifecycle-createPassed'],true);
+   if(phase==='lifecycle-restore')assert.equal(evidence['lifecycle-retired-peerPassed'],true);
+   await command(['vault',phase==='lifecycle-archive'?'archive':'restore',evidence.vaultId]);
+  }else{
+   assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
+   assert.equal(evidence[phase==='lifecycle-retired-peer'?'lifecycle-archivePassed':'lifecycle-restorePassed'],true);
+   await command(['sync']);
+   const vaults=JSON.parse(await command(['vault','list']));
+   const vault=vaults.find(row=>row.vaultId===evidence.vaultId);assert.ok(vault);
+   assert.equal(vault.retired,phase==='lifecycle-retired-peer');
+   assert.equal(vault.name,evidence.vaultName);
+   if(phase==='lifecycle-retired-peer'){
+    await assert.rejects(command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:'must not mutate archived fixture'})+'\n'),/retired vault is read-only/);
+   }else{
+    const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
+    assert.equal(item.title,evidence.title);assert.equal(item.username,'lifecycle-fixture');assert.equal(item.password,'[redacted]');
+    assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
+   }
+   evidence.lifecyclePeerOS=process.platform;
+  }
+ }else if(phase==='types-write'){
   const before=JSON.parse(await command(['sync']));assert.equal(before.pending,0);assert.equal(before.conflicts.length,0);
   evidence.vaultId='66031b92-58ad-4114-b967-dcbf0541be24';evidence.items=[];
   await writeFile(evidencePath,JSON.stringify(evidence,null,2)+'\n');

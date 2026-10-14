@@ -453,3 +453,29 @@ by the agent. Automatic review still blocks that Windows GUI launch. Web-origin
 permission for the isolated web-source extension gate remains unanswered; no grant
 was inferred. Real development TLS preflight still passes after these changes:
 `node scripts/mvp-acceptance.mjs dev --check`; this does not claim a new dev GUI run.
+# October 14 resumed: packaged native vault lifecycle
+
+Current selected Windows/Linux CLI `internal-20261014-a` passed a real TLS/server
+archive/restore round trip. Windows created a synthetic item in explicitly
+selected disposable fixture vault `ba855503-c52c-435c-8c0f-d46b6254ae51`, archived
+that vault, and Linux observed the same encrypted name and retired state. Linux
+attempted an edit through its packaged CLI and was refused as read-only. Windows
+restored the vault; Linux verified the original title, username, redacted default
+password and explicit password output. Each successful phase finished with zero
+pending changes/conflicts. The vault is restored and no existing items discarded.
+
+Repeatable phases are `lifecycle-create`, `lifecycle-archive`,
+`lifecycle-retired-peer`, `lifecycle-restore`, `lifecycle-restored-peer` in
+`scripts/internal-packaged-cli-sync.mjs`. Existing vault reuse requires explicit
+`VAULTS_FIXTURE_LIFECYCLE_VAULT` and an available `Fixture Work ` name. Evidence:
+`C:\Projects\127Vaults-sync-web-20261014-a\lifecycle-native.json`; Linux runner
+`linux-lifecycle.sh` uses `Ubuntu-24.04`, `vaults-dev` and the isolated keyring.
+
+Initial new-vault creation failed before mutation because the retained fixture
+directory already contains five vaults, the crypto implementation's current cap;
+the CLI reported only `vault encryption failed`. No cap was raised and no vault
+removed to force the test. Clearer capacity diagnostics remain a usability issue.
+This is a native lifecycle subset, not item-delete, GUI lifecycle or full release
+acceptance. Windows GUI/manual launch and web-extension permission gates remain
+pending as documented in the restart checkpoint.
+
