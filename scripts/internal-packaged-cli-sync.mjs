@@ -89,7 +89,8 @@ try{
   evidence.peerOS=process.platform;evidence.peerDevice=deviceId;
  }else if(['write','queue'].includes(phase)){
   const vaults=JSON.parse(await command(['vault','list']));
-  evidence.vaultId=vaults.find(row=>row.retired!==true).vaultId;
+  evidence.vaultId=process.env.VAULTS_FIXTURE_WRITE_VAULT||vaults.find(row=>row.retired!==true).vaultId;
+  assert.ok(vaults.some(row=>row.vaultId===evidence.vaultId&&row.retired!==true),'Selected fixture vault must be available');
   const made=JSON.parse(await command(['item','create','--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title,website:'https://packaged-cli.invalid',username:'fixture-writer',password:'fixture-packaged-password'})+'\n'));
   evidence.itemId=made.itemId;assert.ok(evidence.itemId);
   if(phase==='queue'){

@@ -1,6 +1,8 @@
 // Chrome exposes toolbar popups as CDP "other" targets, not Playwright Pages.
 // Attach to that actual popup; do not replace its DOM or its Chrome APIs.
 export async function attachExtensionPopup(browserSession, targetId) {
+  const timeoutMs=Number(process.env.VAULTS_FIXTURE_POPUP_TIMEOUT_MS||10000);
+  if(!Number.isInteger(timeoutMs)||timeoutMs<1000||timeoutMs>60000)throw Error('Fixture popup timeout must be 1000–60000 ms');
   const { sessionId } = await browserSession.send('Target.attachToTarget', { targetId, flatten: false });
   let sequence = 0;
   const pending = new Map();
@@ -26,7 +28,7 @@ export async function attachExtensionPopup(browserSession, targetId) {
     return result.result?.value;
   }
   async function wait(check, label) {
-    const until=Date.now()+10000;
+    const until=Date.now()+timeoutMs;
     while(Date.now()<until){if(await check())return;await new Promise(resolve=>setTimeout(resolve,50));}
     throw Error('Popup condition timeout: '+label);
   }

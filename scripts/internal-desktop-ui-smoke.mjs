@@ -19,6 +19,7 @@ const settingsReview=process.argv[7]==='settings-server';
 const queueCreate=process.argv[7]==='queue-create';
 const onlineCreate=process.argv[7]==='online-create';
 const queueReplay=process.argv[7]==='queue-replay';
+const unlockHold=process.argv[7]==='unlock-hold';
 const queueVault=process.env.VAULTS_FIXTURE_QUEUE_VAULT||null;
 assert.ok(!queueVault||/^[a-f0-9-]{36}$/.test(queueVault),'Supply a canonical fixture vault ID');
 assert.ok(!queueCreate||connection==='Offline','Queue creation requires an offline fixture.');
@@ -42,6 +43,7 @@ try{
   await new Promise(resolve=>setTimeout(resolve,50));button('Unlock encrypted replica').click();
   await wait(()=>document.body.innerText.includes('All items'));
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));const profileLines=document.querySelector('#desktop-settings-panel').innerText.split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);const connectionLabel=profileLines.indexOf('Connection');if(connectionLabel<0||profileLines[connectionLabel+1]!==${JSON.stringify(connection)})throw Error('Fixture connection is not '+${JSON.stringify(connection)});document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('real GUI '+${JSON.stringify(connection)}+' unlock');checks.push('GUI device identity matches the explicit fixture profile');
+  if(${JSON.stringify(unlockHold)}){checks.push('actual GUI remains unlocked for the live connector handoff test');globalThis.__fixtureUI={done:true,ok:true,checks};return;}
   if(${JSON.stringify(queueCreate||onlineCreate)}) {
    const input=(node,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}));};
    const create=async title=>{button('New item').click();await wait(()=>document.querySelector('input[data-editor-title]'));input(document.querySelector('input[data-editor-title]'),title);await new Promise(resolve=>setTimeout(resolve,50));const password=document.querySelector('main input[type="password"]');if(password)input(password,'synthetic-ui-queue-password');const destination=[...document.querySelectorAll('main label')].find(label=>label.textContent.includes('Destination vault'))?.querySelector('select');if(destination){const value=${JSON.stringify(queueVault)}||[...destination.options].find(option=>option.value)?.value;if(!value||![...destination.options].some(option=>option.value===value))throw Error('Fixture destination vault missing');destination.value=value;destination.dispatchEvent(new Event('change',{bubbles:true}));}await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(title));};

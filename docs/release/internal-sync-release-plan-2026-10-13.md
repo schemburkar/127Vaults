@@ -392,3 +392,38 @@ unlock/detail rendering. Intermediate UI failures remain on disk and are not gre
 acceptance. Broader native offline/restart, latest extension-source matrix and
 Windows new GUI manual launch still remain, together with lifecycle/authorization,
 PWA update UX, passkey permission and physical/intended-host gates.
+
+### Latest replay, device lifecycle and extension source review
+
+New Linux Desktop passes offline unlock, two creations plus a chained edit across
+process restart. After Windows new CLI advances the same vault, GUI reconnect/replay
+clears all three operations. Windows new CLI validates both original IDs exactly
+once and their final fields/passwords: `...sync-desktop-linux-20261014-a\offline.json`,
+`replay.json`, `queue-identity.json` and `peer-advance.json`.
+`pnpm test:device-management --rust` also passes its separately gated real pinned-CA
+HTTPS / production handlers / PostgreSQL enrollment, reviewed approval, possession,
+replay, revocation, account isolation, sessions and audit fixture on the current core.
+
+The latest Linux installed extension/native-agent matrix passes with new CLI/host:
+`/home/vaults-dev/vaults-sync-extension-20261013-a/browser-test-20261014-a/evidence.json`.
+Windows new-host rerun observes genuine OS idle, locks both agents and refuses fill;
+registration and profile pointer restored. Its active-session gate remains pending.
+`...sync-extension-20261013-a\browser-test-20261014-a\popup-failure.json` records it.
+
+The actual GUI-owned Desktop connector test is a further gate, distinct from
+protocol-agent substitutes. Its initial run times out at the fixture's 10-second
+popup deadline: serialized native lists take ~9/14 seconds and remain authenticated,
+OS state active. That is not evidence of a locked GUI or a passing complete matrix.
+A separate real-popup-handler regression reproduces late Desktop items overwriting
+selected CLI items. Source loads now carry a revision guard, so stale results and
+errors cannot overwrite the newly selected source; web-tab awaits are guarded too.
+28 extension tests and checks pass. New extension packaging/live retest remain.
+The popup fixture supports an explicitly bounded longer timeout for this GUI test;
+production timeouts/security/idle behavior are unchanged.
+
+Real PostgreSQL/TLS lost-reply acceptance also passes: server accepts a PWA creation,
+its reply is dropped, Windows new CLI reads and edits the same original ID before
+PWA retries its old request. Receipt replay clears the pending request without
+replacing the newer peer title/username: `...sync-web-20261014-a\web-native.json`
+(and the retained per-item file, `acceptedReplyLost`/`acceptedReplyReplayPassed`).
+This is a real native-peer scenario, separate from the isolated HTTP regression.

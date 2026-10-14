@@ -12,9 +12,10 @@ const {chromium}=createRequire(import.meta.url)(process.env.VAULTS_PLAYWRIGHT_MO
 const origin='https://127.0.0.1:12892';
 const offline=process.argv[3]==='--offline';
 const conflict=['--merge-conflict','--server-conflict'].includes(process.argv[3]);
-assert.ok(!process.argv[3]||offline||conflict,'Optional mode is --offline, --merge-conflict or --server-conflict');
+const lostResponse=process.argv[3]==='--lost-response';
+assert.ok(!process.argv[3]||offline||conflict||lostResponse,'Optional mode is --offline, --merge-conflict, --server-conflict or --lost-response');
 const browser=await chromium.launchPersistentContext(join(work,'browser-profile'),{executablePath:process.env.VAULTS_CHROME_PATH||'/fixture/chrome/chrome',headless:true,viewport:{width:1440,height:1000}});
-if(offline||conflict)await browser.addInitScript(()=>{
+if(offline||conflict||lostResponse)await browser.addInitScript(()=>{
  const original=window.matchMedia.bind(window);
  window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};
 });
@@ -30,6 +31,11 @@ try{
  await page.waitForFunction(()=>document.body.getAttribute('aria-busy')==='false');
  stage='select empty fixture vault';const target=await page.evaluate(()=>window.__vaultsSnapshot.find(row=>row.vaultId==='66031b92-58ad-4114-b967-dcbf0541be24'));assert.ok(target);await page.getByRole('button',{name:target.name,exact:true}).first().click();
  await page.waitForFunction(()=>window.__vaultsSnapshot?.some(row=>row.selected&&row.vaultId==='66031b92-58ad-4114-b967-dcbf0541be24'));
+ let dropped=false;
+ if(lostResponse)await browser.route('**/api/v1/vaults/66031b92-58ad-4114-b967-dcbf0541be24/items',async route=>{
+  if(route.request().method()==='POST'&&!dropped){const response=await route.fetch();assert.equal(response.status(),200,'The real server must accept before losing its reply');dropped=true;await route.abort('failed');}
+  else await route.continue();
+ });
  if(offline){await page.waitForFunction(()=>!!navigator.serviceWorker.controller);await browser.setOffline(true);}
  stage='create web item';const title='Web-native fixture '+randomUUID();
  await page.locator('#new-item').click();await page.locator('#title').fill(title);await page.locator('#url').fill('https://web-native.invalid');await page.locator('#item-username').fill('web-fixture-user');await page.locator('#item-password').fill('fictitious-web-native-password');await page.locator('#save').click();
@@ -37,6 +43,7 @@ try{
  const row=page.locator('#items [data-item-id]').filter({hasText:title});await row.waitFor();
  const itemId=await row.getAttribute('data-item-id');assert.match(itemId,/^[a-f0-9-]{36}$/);
  const evidence={fixtureServer:'14725fef-f5b4-4cb8-afe0-77aa3d80b268',vaultId:'66031b92-58ad-4114-b967-dcbf0541be24',itemId,title,expectedPeerTitle:title+' native edit',verifiedHTTPS:true,webCreatePassed:true};
+ if(lostResponse){assert.equal(dropped,true);await page.waitForFunction(()=>document.querySelector('#session-dates')?.textContent.includes('pending change'));evidence.acceptedReplyLost=true;evidence.installedModeEmulated=true;}
  if(conflict){
   await browser.setOffline(true);await row.click();await page.locator('#edit-item').click();
   await page.locator('#title').fill(title+' local edit');await page.locator('#item-username').fill('local-fixture-user');await page.locator('#save').click();
@@ -52,6 +59,11 @@ try{
  }
  await writeFile(join(work,'web-native.json'),JSON.stringify(evidence,null,2)+'\n');console.log('Real packaged web UI created an encrypted item; waiting for native peer edit.');
  stage='wait for native peer';let edited=false;for(let i=0;i<240;i++){try{edited=JSON.parse(await readFile(join(work,'native-peer-edited.json'),'utf8')).itemId===itemId;}catch{}if(edited)break;await new Promise(resolve=>setTimeout(resolve,1000));}assert.ok(edited,'Native peer edit not received');
+ if(lostResponse){
+  stage='replay accepted request after peer edit';await page.locator('#reload').click();
+  await page.waitForFunction(()=>document.querySelector('#session-dates')?.textContent.includes('Up to date')&&!document.querySelector('#session-dates')?.textContent.includes('pending'),null,{timeout:60000});
+  evidence.acceptedReplyReplayPassed=true;
+ }
  if(conflict){
   stage='resolve concurrent edit';await browser.setOffline(false);
   await page.waitForFunction(()=>document.querySelector('#session-dates')?.textContent.includes('Sync needs attention')&&document.body.getAttribute('aria-busy')==='false',null,{timeout:60000});

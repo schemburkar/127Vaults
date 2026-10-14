@@ -16,6 +16,7 @@ let localSources = [];
 let sourceSignature = '';
 let refreshInProgress = false;
 let userSelectedSource = false;
+let sourceLoadRevision = 0;
 const passkeys = setupPasskeyPopup({ getTab: () => targetTab, getSource: () => selectedSource, status, onSavedPasskeys: entries => { savedPasskeyEntries = entries; renderItems(); }, listSavedPasskeys: async origin => {
   if (selectedSource !== 'web') return native({ action: 'passkey.list', source: selectedSource, siteOrigin: origin });
   if (!vaultTab?.id) return [];
@@ -95,10 +96,13 @@ function licenseNotice(license) {
   return license.expiresAt ? ` License active until ${license.expiresAt.slice(0, 10)}.` : '';
 }
 async function loadSelectedSource() {
+  const revision = ++sourceLoadRevision, sourceId = $('source-select').value;
+  const current = () => revision === sourceLoadRevision && selectedSource === sourceId;
   $('results').hidden = true;
   $('native-unlock').hidden = true;
   $('lock-vault').hidden = true;
-  selectedSource = $('source-select').value;
+  selectedSource = sourceId;
+  try {
   const source = localSources.find(row => row.id === selectedSource);
   const license = source?.license;
   $('source-state').textContent = selectedSource === 'web' ? 'Web tab session; requires the web app to be open and unlocked.'
@@ -108,12 +112,14 @@ async function loadSelectedSource() {
   if (selectedSource !== 'web') {
     try {
       const listed = await native({ action: 'list', source: selectedSource, siteOrigin: originOf(targetTab.url) });
+      if (!current()) return;
       items = Array.isArray(listed) ? listed : [];
       $('results').hidden = false;
       $('lock-vault').hidden = false;
       renderItems();
       await passkeys.refreshSaved();
     } catch (error) {
+      if (!current()) return;
       if (source?.active || source?.localUnlocked) {
         status(`Could not read ${selectedSource} logins: ${errorMessage(error)} Refresh or lock and unlock the client.`, true);
       } else {
@@ -123,21 +129,27 @@ async function loadSelectedSource() {
     }
     return;
   }
-  if (!vaultOrigin || !(await chrome.permissions.contains({ origins: [permissionPattern(vaultOrigin)] }))) {
+  const allowed = vaultOrigin && await chrome.permissions.contains({ origins: [permissionPattern(vaultOrigin)] });
+  if (!current()) return;
+  if (!allowed) {
     $('setup').hidden = false;
     status('Connect your vault web address.');
     return;
   }
-  vaultTab = await findVaultTab();
+  const found = await findVaultTab();
+  if (!current()) return;
+  vaultTab = found;
   if (!vaultTab) { status('Open and unlock the vault web tab, or choose a local source.'); return; }
   try {
     const license = (await script(vaultTab.id, async () => {
       const response = await fetch('/api/v1/license', { credentials: 'same-origin' });
       return response.ok ? response.json() : null;
     }, [], {}, 'MAIN'))[0]?.result;
+    if (!current()) return;
     $('source-state').textContent += licenseNotice(license);
   } catch { /* Older server or unavailable status. */ }
   const result = (await script(vaultTab.id, site => window.__vaultsExtensionActions?.list(site), [originOf(targetTab.url)], {}, 'MAIN'))[0]?.result;
+  if (!current()) return;
   if (!result || result.locked) { status('Unlock the vault web tab, or choose a local source.'); return; }
   vaultId = result.vaultId;
   items = Array.isArray(result.items) ? result.items : [];
@@ -145,10 +157,12 @@ async function loadSelectedSource() {
   $('lock-vault').hidden = false;
   renderItems();
   await passkeys.refreshSaved();
+  } catch (error) { if (current()) throw error; }
 }
 async function refresh() {
   if (refreshInProgress || pending) return;
   refreshInProgress = true;
+  sourceLoadRevision++;
   const previousSource = $('source-select').value;
   try {
   $('setup').hidden = true;
