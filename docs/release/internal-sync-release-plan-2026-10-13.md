@@ -276,3 +276,13 @@ Remaining: Windows packaged GUI manual launch/test; live unlocked web-tab extens
 source including multiple tabs; web/PWA-native offline/conflict/type/settings matrix;
 wider authorization/lifecycle/revocation; optional passkey ceremony; physical OS-lock
 and intended-host acceptance. The full internal release remains unaccepted.
+
+The trusted PostgreSQL/TLS web/native fixture also passes an offline PWA creation:
+Chromium network is disabled, the UI reports a pending encrypted edit, reconnection
+replays it, Windows packaged CLI reads the original UUID and password and edits it,
+and the browser reads the peer edit. `internal-web-native-sync.mjs --offline`
+retains a per-item evidence file as well as the current coordination file. The
+installed display mode is emulated; this is not physical PWA installation or
+process-restart/conflict acceptance. Initial evidence is retained separately in
+`...sync-web-20261014-a\pwa-native-first.json`; the repeated committed-helper run
+writes `web-native-<itemId>.json`. The broader offline/conflict matrix remains open.
