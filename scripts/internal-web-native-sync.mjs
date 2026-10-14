@@ -27,6 +27,7 @@ try{
  if(await page.locator('#secret').isVisible())await page.locator('#secret').fill('07'.repeat(32));
  await page.locator('#master').fill('fictitious password 127vaults');await page.locator('#login').click();
  await page.waitForFunction(()=>window.__vaultsExtensionActions?.status?.().locked===false,null,{timeout:60000});
+ await page.waitForFunction(()=>document.body.getAttribute('aria-busy')==='false');
  stage='select empty fixture vault';const target=await page.evaluate(()=>window.__vaultsSnapshot.find(row=>row.vaultId==='66031b92-58ad-4114-b967-dcbf0541be24'));assert.ok(target);await page.getByRole('button',{name:target.name,exact:true}).first().click();
  await page.waitForFunction(()=>window.__vaultsSnapshot?.some(row=>row.selected&&row.vaultId==='66031b92-58ad-4114-b967-dcbf0541be24'));
  if(offline){await page.waitForFunction(()=>!!navigator.serviceWorker.controller);await browser.setOffline(true);}

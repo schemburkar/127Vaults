@@ -337,3 +337,29 @@ upgrade UX, all enabled item/custom-field types, lost responses with independent
 native peers and physical OS lock remain separate gates. The browser fixture now
 returns the live lower-case item-conflict code so its larger regression scenario
 cannot hide this mismatch again. Full internal release acceptance remains open.
+
+### Seven-type gate findings — source fixes, packaging/retest pending
+
+The live native-to-web type round trip found two more gaps:
+
+- Consecutive native online creations sign against cached pre-save operation history
+  after their accepted request leaves the queue. The next creation returns 409.
+  Fresh creations with no pending target-vault drafts now verify the current server
+  head before encryption; existing edit baselines and queued drafts are preserved.
+  Connectivity loss retains the old durable queue path; TLS/signature failures
+  refuse. The rebuilt Windows binary completes seven consecutive creations without
+  intermediate sync. Earlier failed creations `b41d4b4a-1ff0-473a-b9e0-6fe24c8f1cbf`
+  and `6cb682dc-cb28-48e5-897a-68271d7ae7fa` recovered with their original IDs exactly
+  once, zero pending/conflicts: `...sync-web-20261014-a\native-create-recovery.json`.
+- Web card fields were inside the sign-in section, hidden for cards. Custom/related
+  detail fields now render outside sign-in, independently of item type. The failed
+  browser run preserves the seven original items and partial title edits; no
+  duplicate set is needed for its retest.
+
+68 native tests pass (one separate live lifecycle test remains gated), Rust format
+and strict CLI Clippy pass; 63 web tests and web type/build checks pass. New native
+packages and a new server/web package plus the actual seven-type UI retest are
+required before selecting these changes as the release candidate. The test helpers
+are `internal-web-typed-sync.mjs` and native `types-write`/`types-verify` phases.
+The broader Edge/PWA lower-case wire-code regression passed completely at
+`C:\Projects\127Vaults-pwa-wire-conflict-20261014-a\evidence.json`.

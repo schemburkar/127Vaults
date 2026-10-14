@@ -334,7 +334,7 @@ function CustomFieldsView() {
   const security = fields.find((field) => field.id === "wifi_security")?.value || "WPA";
   const escapeWifi = (value: string) => value.replace(/([\\;,:"])/g, "\\$1");
   return (
-    <div id="view-custom-fields">
+    <div id="view-custom-fields" className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-black/5 empty:hidden">
       <PasskeyDetails fields={fields} />
       {fields.find(f => f.id === TOTP_ID)?.value && <AuthenticatorCode value={fields.find(f => f.id === TOTP_ID)!.value} copy={copy} />}
       {primaryFields(fields).length > 0 && <h4 className="border-t border-white/10 px-3 py-2 text-xs font-bold uppercase text-[#E0BB95]">{ITEM_TYPES[itemType(fields)].label}</h4>}
@@ -798,9 +798,9 @@ function ItemDetail() {
                 </IconButton>
               </div>
             </div>
-            <CustomFieldsView />
           </div>
         </section>
+        <CustomFieldsView />
       </article>
       <form
         id="item-form"

@@ -2874,6 +2874,25 @@ impl Session {
             return Err("item operation is invalid".to_owned());
         }
         let target_vault = self.resolve_vault_id(vault_selector)?;
+        // A successful online write removes its pending request, but the cached
+        // operation history still predates it. Fresh creations must verify the
+        // current server head before choosing their device predecessor. Do not
+        // refresh over a queued draft or change an edit's reviewed baseline.
+        if self.online
+            && item_selector.is_none()
+            && create_id.is_none()
+            && self
+                .replica_store
+                .load(&target_vault)?
+                .is_some_and(|replica| replica.pending.is_empty())
+            && let Err(error) = self.hydrate_replicas()
+            && error != "server connection failed"
+            && error != "server request timed out"
+        {
+            return Err(error);
+        }
+        // Connectivity failures retain the durable queue path; TLS and
+        // verification failures above must refuse before creating a request.
         if self
             .replica_store
             .load(&target_vault)?
