@@ -169,7 +169,9 @@ const server=createServer(async(req,res)=>{
       const item=row.items.get(route[3]);if(!item)return send(404,{error:'NOT_FOUND'});return send(200,{envelope:item.body,catalogueRevision:revision,itemId:item.itemId});
     }
     if(row.retired)return send(409,{error:'VAULT_RETIRED'});
-    if(body.baseCatalogueRevision!==revision)return send(409,{error:'BASE_CHANGED'});
+    // Match the live HTTP boundary's lower-case wire code, rather than the
+    // internal VaultError name; otherwise conflict recovery regressions hide.
+    if(body.baseCatalogueRevision!==revision)return send(409,{error:'base_changed'});
     const op=body.signedOperation,{signature,...unsigned}=op;
     assert.equal(op.deviceId,session.deviceId);assert.equal(op.tenantId,tenantId);assert.equal(op.vaultId,row.vaultId);
     assert.ok(verify(null,Buffer.from(canonical(unsigned)),publicKey(devices.get(session.deviceId)),un(signature)));

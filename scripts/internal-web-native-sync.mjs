@@ -53,6 +53,7 @@ try{
  stage='wait for native peer';let edited=false;for(let i=0;i<240;i++){try{edited=JSON.parse(await readFile(join(work,'native-peer-edited.json'),'utf8')).itemId===itemId;}catch{}if(edited)break;await new Promise(resolve=>setTimeout(resolve,1000));}assert.ok(edited,'Native peer edit not received');
  if(conflict){
   stage='resolve concurrent edit';await browser.setOffline(false);
+  await page.waitForFunction(()=>document.querySelector('#session-dates')?.textContent.includes('Sync needs attention')&&document.body.getAttribute('aria-busy')==='false',null,{timeout:60000});
   await page.waitForFunction(()=>document.body.getAttribute('aria-busy')==='false');await page.locator('#reload').click();
   await page.locator('#conflict-dialog').waitFor({state:'visible',timeout:60000});
   if(process.argv[3]==='--merge-conflict'){

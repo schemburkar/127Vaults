@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','web-peer'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','web-peer','web-verify'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -21,7 +21,7 @@ async function command(args,input=''){
  });
 }
 let evidence=['write','queue'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
-assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||phase==='web-peer'&&evidence.title.startsWith('Web-native fixture '));
+assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
 if(['peer','ui-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
 let agentReady=false,agentError='';
@@ -36,7 +36,12 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase==='web-peer'){
+ if(phase==='web-verify'){
+  assert.equal(evidence.webReverseReadPassed,true);
+  const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
+  assert.equal(value.title,evidence.expectedPeerTitle);assert.equal(value.username,evidence.expectedUsername||'native-fixture-user');assert.equal(value.password,'[redacted]');
+  assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-web-native-password');
+ }else if(phase==='web-peer'){
   assert.equal(evidence.verifiedHTTPS,true);
   assert.equal(evidence.webCreatePassed,true);
   assert.equal(evidence.expectedPeerTitle,evidence.title+' native edit');

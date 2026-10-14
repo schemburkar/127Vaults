@@ -308,3 +308,32 @@ The original pending item `6027e4b8-bd0a-4c1c-a1a2-cad8f0f31531` and its browser
 profile remain preserved in `...sync-web-20261014-a`. Recovery validation is still
 open because another pre-review error remains after this normalization. Do not
 accept this gate or discard its queue to force a passing result.
+
+### Concurrent PWA edit recovery verified on the rebuilt package
+
+The apparent additional pre-review failure was the fixture's existing service worker
+still serving the old browser module. A source diagnostic confirmed loading the
+updated module, then recovered the original preserved queue by merging the server
+title with the local username. No item/identity/replica database was removed. This
+intermediate source-only check is superseded by the packaged reruns below.
+
+Server `internal-20261014-c`, clean source `1c244ad`, immutable image
+`release-6540e03233c5047b`, includes the wire-error fix. It replaces `b` in the
+verified inventory. Only the owned cross-client fixture was upgraded; its existing
+installation ID, database and TLS identity remained. Without source replacement,
+actual PWA UI / real PostgreSQL-TLS / Windows packaged CLI now pass:
+
+- Concurrent offline edit → Merge field by field → server title + local username,
+  zero pending; original item `94adf452-661a-4f30-95d9-cc0dff8b89fb`. Windows and
+  Linux packaged CLI independently validate the merged fields, redaction and the
+  explicitly requested fictitious password.
+- Concurrent offline edit → Use server version, zero pending; original item
+  `afb5dcb9-ff8a-4150-9369-0884370fdeea`. Linux packaged CLI validates server fields
+  and password. Per-item files `...sync-web-20261014-a\web-native-<itemId>.json`
+  retain the browser outcome; the CLI `web-verify` phase records peer verification.
+
+These PWA tests emulate installed display mode. Actual PWA installation, cache
+upgrade UX, all enabled item/custom-field types, lost responses with independent
+native peers and physical OS lock remain separate gates. The browser fixture now
+returns the live lower-case item-conflict code so its larger regression scenario
+cannot hide this mismatch again. Full internal release acceptance remains open.
