@@ -479,3 +479,22 @@ This is a native lifecycle subset, not item-delete, GUI lifecycle or full releas
 acceptance. Windows GUI/manual launch and web-extension permission gates remain
 pending as documented in the restart checkpoint.
 
+## Packaged native overlapping-edit conflict recovery
+
+The same synthetic lifecycle item passed a second real-server scenario on the
+selected Windows/Linux CLI packages. Only the owned fixture server was stopped;
+Windows saved an offline edit, and its agent was closed with exactly one durable
+pending operation. The original fixture identity/database were restarted. Linux
+changed the same title and username online. Windows reconnect/sync preserved the
+original queued operation ID and exposed a conflict. `conflict show` included the
+local title while withholding the fictitious password. Explicit `--keep server`
+resolution cleared the queue, and Linux verified the newer server title/username,
+default password redaction and explicit unchanged password output. Both final
+queues/conflict lists were empty; the owned server/database are healthy again.
+
+Repeatable phases: `native-queue`, `native-peer`, `native-review`, `native-resolve`,
+`native-verify` in the packaged CLI helper, using the same external
+`lifecycle-native.json` evidence. This establishes overlapping edits and explicit
+server-copy recovery through the actual CLI. Field-level GUI selection, native
+lost-response, item-delete divergence and all-client combinations remain separate
+gates. No user's development service, profile or queued edit was changed.

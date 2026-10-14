@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','native-queue','native-peer','native-review','native-resolve','native-verify'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -36,7 +36,37 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase.startsWith('lifecycle-')){
+ if(phase.startsWith('native-')){
+  assert.equal(evidence['lifecycle-restored-peerPassed'],true,'Use only the restored synthetic lifecycle item');
+  if(phase==='native-queue'){
+   assert.equal(deviceId,evidence.writerDevice);
+   const result=JSON.parse(await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title+' local conflict',username:'local-conflict-user',password:'fictitious-lifecycle-password'})+'\n'));
+   assert.equal(result.queued,true,'The edit must genuinely be offline');
+   const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
+   assert.equal(replica.pending.length,1);evidence.conflictOperationId=replica.pending[0].operation.opId;
+   assert.equal(replica.pending[0].operation.itemId,evidence.itemId);
+  }else if(phase==='native-peer'){
+   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['native-queuePassed'],true);
+   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title+' server conflict',username:'server-conflict-user',password:'fictitious-lifecycle-password'})+'\n');
+  }else if(phase==='native-review'){
+   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['native-peerPassed'],true);
+   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,1);
+   const conflicts=JSON.parse(await command(['conflict','list','--vault',evidence.vaultId]));
+   assert.ok(JSON.stringify(conflicts).includes(evidence.conflictOperationId));
+   const shown=await command(['conflict','show',evidence.conflictOperationId,'--vault',evidence.vaultId]);
+   assert.ok(shown.includes('local conflict'));assert.ok(!shown.includes('fictitious-lifecycle-password'),'Conflict review must redact the password');
+   const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
+   assert.equal(replica.pending.length,1);assert.equal(replica.pending[0].operation.opId,evidence.conflictOperationId);
+  }else if(phase==='native-resolve'){
+   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['native-reviewPassed'],true);
+   await command(['conflict','resolve',evidence.conflictOperationId,'--vault',evidence.vaultId,'--keep','server']);
+  }else{
+   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['native-resolvePassed'],true);
+   const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
+   assert.equal(value.title,evidence.title+' server conflict');assert.equal(value.username,'server-conflict-user');assert.equal(value.password,'[redacted]');
+   assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
+  }
+ }else if(phase.startsWith('lifecycle-')){
   if(phase==='lifecycle-create'){
    const available=JSON.parse(await command(['vault','list']));
    console.log('Fixture vault capacity:',available.length);
@@ -155,7 +185,7 @@ try{
    assert.equal(second.title,evidence.secondTitle);
   }
  }
- if(phase!=='queue'){
+ if(!['queue','native-queue','native-review'].includes(phase)){
   const synced=JSON.parse(await command(['sync']));
   assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
   evidence[phase+'ItemQueueEmpty']=true;
