@@ -886,10 +886,7 @@ impl Session {
         error
     }
 
-    pub fn sync_vault_settings(&mut self) -> Result<Value, String> {
-        if !self.online {
-            return Err("vault settings sync unavailable while offline".to_owned());
-        }
+    fn fetch_vault_settings(&mut self) -> Result<(Option<String>, Option<String>), String> {
         let remote = self
             .get("/api/v1/vault-settings")
             .map_err(|error| self.settings_sync_error(error))?;
@@ -904,6 +901,14 @@ impl Session {
             }
             vault_settings::decrypt(&self.core, self.root, value)?;
         }
+        Ok((revision, envelope))
+    }
+
+    pub fn sync_vault_settings(&mut self) -> Result<Value, String> {
+        if !self.online {
+            return Err("vault settings sync unavailable while offline".to_owned());
+        }
+        let (revision, envelope) = self.fetch_vault_settings()?;
         if let Some(pending) = self.settings_record.pending.clone() {
             if pending.base_revision != revision {
                 self.settings_conflict = true;
@@ -941,6 +946,9 @@ impl Session {
     }
 
     pub fn resolve_vault_settings_conflict(&mut self, keep: &str) -> Result<Value, String> {
+        if !matches!(keep, "server" | "local") {
+            return Err("choose server or local".to_owned());
+        }
         if !self.online || !self.settings_conflict {
             return Err("vault settings conflict is unavailable".to_owned());
         }
@@ -948,6 +956,11 @@ impl Session {
             .settings_remote
             .clone()
             .ok_or("vault settings conflict is unavailable")?;
+        let current = self.fetch_vault_settings()?;
+        if current != (revision.clone(), envelope.clone()) {
+            self.settings_remote = Some(current);
+            return Err("server vault settings changed; review the conflict again".to_owned());
+        }
         match keep {
             "server" => {
                 self.settings_data = match envelope.as_ref() {

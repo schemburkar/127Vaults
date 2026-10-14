@@ -14,6 +14,118 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn unchanged_settings_review_allows_both_explicit_choices() {
+    for keep in ["server", "local"] {
+        let mut session = session("http://127.0.0.1:1");
+        let mut local = SettingsData::empty();
+        local
+            .names
+            .insert(CURRENT.to_owned(), "Local pending".to_owned());
+        let sealed = vault_settings::encrypt(&session.core, session.root, &local).unwrap();
+        session.settings_data = local;
+        session.settings_record.pending = Some(vault_settings::PendingSettings {
+            base_revision: None,
+            envelope: sealed,
+        });
+        session
+            .settings_store
+            .commit(&session.settings_record)
+            .unwrap();
+        let mut server = SettingsData::empty();
+        server
+            .names
+            .insert(CURRENT.to_owned(), "Reviewed server".to_owned());
+        let sealed = vault_settings::encrypt(&session.core, session.root, &server).unwrap();
+        let revision = vault_settings::revision(&sealed).unwrap();
+        session.settings_remote = Some((Some(revision.clone()), Some(sealed.clone())));
+        session.settings_conflict = true;
+        let remote = json!({"revision":revision,"envelope":sealed});
+        let mut responses = vec![(200, remote.clone())];
+        if keep == "local" {
+            responses.extend([(200, remote), (200, json!({}))]);
+        }
+        let (origin, worker) = fixture(responses);
+        session.origin = origin;
+        session.resolve_vault_settings_conflict(keep).unwrap();
+        assert!(!session.settings_conflict);
+        assert!(session.settings_record.pending.is_none());
+        assert_eq!(
+            session.settings_data.names[CURRENT],
+            if keep == "local" {
+                "Local pending"
+            } else {
+                "Reviewed server"
+            }
+        );
+        let requests = worker.join().unwrap();
+        assert_eq!(requests.len(), if keep == "local" { 3 } else { 1 });
+        assert!(requests[0].line.starts_with("GET /api/v1/vault-settings "));
+        if keep == "local" {
+            assert!(requests[2].line.starts_with("PUT /api/v1/vault-settings "));
+        }
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
+#[test]
+fn settings_choice_rechecks_authorization_and_reviewed_revision_before_discard() {
+    for keep in ["server", "local"] {
+        for status in [401, 403, 200] {
+            let mut session = session("http://127.0.0.1:1");
+            let mut local = SettingsData::empty();
+            local
+                .names
+                .insert(CURRENT.to_owned(), "Local pending".to_owned());
+            let local_envelope =
+                vault_settings::encrypt(&session.core, session.root, &local).unwrap();
+            session.settings_data = local;
+            session.settings_record.pending = Some(vault_settings::PendingSettings {
+                base_revision: None,
+                envelope: local_envelope,
+            });
+            session
+                .settings_store
+                .commit(&session.settings_record)
+                .unwrap();
+            let mut reviewed = SettingsData::empty();
+            reviewed
+                .names
+                .insert(CURRENT.to_owned(), "Reviewed server".to_owned());
+            let reviewed = vault_settings::encrypt(&session.core, session.root, &reviewed).unwrap();
+            session.settings_conflict = true;
+            session.settings_remote = Some((
+                Some(vault_settings::revision(&reviewed).unwrap()),
+                Some(reviewed),
+            ));
+            let mut newer = SettingsData::empty();
+            newer
+                .names
+                .insert(CURRENT.to_owned(), "Newer server".to_owned());
+            let newer = vault_settings::encrypt(&session.core, session.root, &newer).unwrap();
+            let response = if status == 200 {
+                json!({"revision":vault_settings::revision(&newer).unwrap(),"envelope":newer})
+            } else {
+                json!({"error":"unauthorized"})
+            };
+            let file = session.profile_dir.join("vault-settings.json");
+            let preserved = std::fs::read(&file).unwrap();
+            let (origin, worker) = fixture(vec![(status, response)]);
+            session.origin = origin;
+            let result = session.resolve_vault_settings_conflict(keep);
+            assert!(
+                result.is_err(),
+                "stale settings choice must fail: {result:?}"
+            );
+            assert_eq!(std::fs::read(file).unwrap(), preserved);
+            assert!(session.settings_conflict);
+            assert_eq!(session.is_online(), status == 200);
+            assert_eq!(worker.join().unwrap().len(), 1);
+            std::fs::remove_dir_all(&session.profile_dir).unwrap();
+        }
+    }
+}
+
+#[test]
 fn settings_authorization_failure_after_item_refresh_does_not_claim_online_sync() {
     for (status, reject_write) in [
         (401, false),
