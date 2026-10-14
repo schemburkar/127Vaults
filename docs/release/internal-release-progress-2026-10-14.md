@@ -239,3 +239,61 @@ Repeatable checked-in helpers now include
 Saved external runners select the exact original identities and keyring setup.
 The broader sync/type/lifecycle/authorization, actual extension web source,
 latest Windows GUI and physical acceptance gates remain open. Nothing was pushed.
+
+## Durable acknowledged writes and latest native candidates
+
+CLI-f (`1a00c62`) and Desktop-g (`762296c`) supersede the earlier native
+candidates. All six selected artifact file sets passed manifest, size and SHA256
+verification; the inventory records each product's actual source revision.
+Server/web/admin and extension candidates are unchanged.
+
+Native replicas now retain a durable acknowledged-operation pin until a verified
+server history includes that operation. Hydration rejects missing acknowledged
+operations, rewrites of previously verified history and a mismatched local-device
+signing key before replacing the local encrypted replica. Verified hydration
+clears pins. CLI status reports actual online/authenticated state and the safe
+verification-refusal reason. Desktop presents verification failures and retained
+acknowledgements without suggesting an acknowledged copy can be discarded.
+
+A delayed item read could overwrite an editor opened before that read completed.
+All edit/new/duplicate entry points now invalidate the old request. Actual-handler
+regressions cover those three draft races and save verification feedback.
+CLI library checks passed (75 plus one deliberately ignored separate live test),
+strict workspace Clippy/Rustfmt passed, Desktop build/type/native checks and all
+24 Desktop tests passed. The separate Rust device-management HTTPS/PostgreSQL
+fixture passed enrollment, approval, possession, replay, revocation, isolation,
+session and audit checks. Windows/Linux package build and framing gates passed.
+
+Packaged CLI acknowledgement acceptance passes both OS writer directions at
+`C:\Projects\127Vaults-acknowledgement-20261014-a\evidence.json`. The owned TLS
+proxy captures genuine authorized encrypted bodies, operations and checkpoints
+before a real successful write, then replays that older snapshot. It never rolls
+back the database or forges signatures. Both clients refuse the missing operation,
+keep the encrypted replica byte-for-byte across process restart, expose the
+acknowledged item offline and recover when current history resumes. Independent
+peer reads pass; original fixture values are restored.
+
+Actual Desktop-g Linux DOM/React/native-backend acceptance passes at
+`C:\Projects\127Vaults-desktop-acknowledgement-20261014-c\evidence.json`:
+verification failure remains visible, sync review reports one retained
+acknowledgement without a discard choice, lock/offline restart preserves the
+exact replica, current history clears the pin, and original title is restored.
+The original owned server mapping was restored. Earlier failed runners are
+retained separately and are not counted as passes. The GUI helper now waits for
+the selected item's loaded heading before editing and waits for initial rendering.
+An earlier helper edited another controlled lifecycle fixture before its requested
+item loaded; that fixture was restored and independently verified by Windows CLI.
+
+Seven typed items (login, password, bank, card, Wi-Fi, router, SSH) passed actual
+Linux GUI edit/restore at
+`C:\Projects\127Vaults-sync-desktop-linux-20261014-c\typed.json` (Desktop-f).
+`typed-peer.json` independently verifies the original IDs, types, title/ordinary
+fields and masked/explicit standard, custom and related secrets through Windows
+CLI-f. This is an existing-item roundtrip, not full typed creation/lifecycle or
+Windows GUI acceptance. Earlier untargeted repeated-item results are superseded
+by the corrected Desktop-g roundtrip in the acknowledgement matrix.
+
+Internal release remains unaccepted. Latest Windows GUI, physical installation,
+OS-lock/keyring/CA ceremonies, broader cross-client lifecycle/type/queue cases,
+and actual extension web-source acceptance remain separate open gates. Completed
+changes are committed to local main; no remote push or public deployment occurs.

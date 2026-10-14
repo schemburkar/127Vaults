@@ -21,19 +21,39 @@ const onlineConsecutive=process.argv[7]==='online-consecutive';
 const onlineCreate=process.argv[7]==='online-create'||onlineConsecutive;
 const queueReplay=process.argv[7]==='queue-replay';
 const unlockHold=process.argv[7]==='unlock-hold';
+const onlineExisting=process.argv[7]==='online-repeat-existing';
+const onlineVerify=process.argv[7]==='online-verify-lock';
+const acknowledgementError=process.argv[7]==='acknowledgement-error';
+const offlineVerify=process.argv[7]==='offline-ack-read';
+const restoreTitle=process.env.VAULTS_FIXTURE_RESTORE_TITLE||null;
+assert.ok(!restoreTitle||onlineExisting&&restoreTitle.startsWith('Linux packaged online '));
+assert.ok(!offlineVerify||connection==='Offline'&&expectedTitle.startsWith('Linux packaged online '));
+const typedRoundtrip=process.argv[7]==='typed-roundtrip';
+let typedItems=null;
+if(typedRoundtrip){
+ const path=process.env.VAULTS_FIXTURE_TYPES_EVIDENCE;assert.ok(path&&isAbsolute(path));
+ const typed=JSON.parse(await readFile(path,'utf8'));assert.equal(typed.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(typed.vaultId,'66031b92-58ad-4114-b967-dcbf0541be24');assert.equal(typed.items.length,7);
+ assert.deepEqual(new Set(typed.items.map(row=>row.type)),new Set(['login','password','bank','card','wifi','router','ssh']));assert.ok(typed.items.every(row=>row.title.startsWith('Packaged CLI cross-OS ')));
+ typedItems=typed.items;
+}
 const queueVault=process.env.VAULTS_FIXTURE_QUEUE_VAULT||null;
 assert.ok(!queueVault||/^[a-f0-9-]{36}$/.test(queueVault),'Supply a canonical fixture vault ID');
 assert.ok(!queueCreate||connection==='Offline','Queue creation requires an offline fixture.');
 assert.ok(!onlineCreate||connection==='Online','Online creation requires a connected fixture.');
+assert.ok(!(onlineExisting||onlineVerify)||connection==='Online','Online edit/restart verification requires a connected fixture.');
+assert.ok(!typedRoundtrip||connection==='Online');
+assert.ok(!onlineExisting||expectedTitle.startsWith('Linux packaged online '),'Only the retained synthetic GUI item is accepted.');
+assert.ok(!acknowledgementError||connection==='Online'&&expectedTitle.startsWith('Linux packaged online '));
 assert.ok(!queueReplay||connection==='Online','Queue replay requires a connected fixture.');
 assert.ok(!settings||connection==='Online','Vault creation requires online fixture acceptance.');
 const fixtureVault='Fixture Work '+Date.now(),fixtureCollection='Fixture collection '+Date.now();
 if(!origin||!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)||!evidencePath)throw Error('Supply loopback inspector origin and external evidence path.');
 const {evaluate,close}=await openDesktopFixtureInspector(origin);
 try{
- assert.match(await evaluate('document.body.innerText'),/Unlock 127Vaults/);
+ let initialText='';for(let attempt=0;attempt<80;attempt++){initialText=await evaluate('document.body.innerText');if(initialText.includes('Unlock 127Vaults'))break;await new Promise(resolve=>setTimeout(resolve,250));}
+ assert.match(initialText,/Unlock 127Vaults/);
  await evaluate(`globalThis.__fixtureUI={done:false};(async()=>{
- const checks=[];let stage='unlock';
+ const checks=[],saveTrace=[];let stage='unlock';
  const wait=async predicate=>{for(let i=0;i<200;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('UI condition timed out at '+stage);};
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===text);
  const set=(label,value)=>{const input=document.querySelector('input[aria-label="'+label+'"]');if(!input)throw Error('Missing fixture input '+label);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};
@@ -44,6 +64,48 @@ try{
   await new Promise(resolve=>setTimeout(resolve,50));button('Unlock encrypted replica').click();
   await wait(()=>document.body.innerText.includes('All items'));
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));const profileLines=document.querySelector('#desktop-settings-panel').innerText.split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);const connectionLabel=profileLines.indexOf('Connection');if(connectionLabel<0||profileLines[connectionLabel+1]!==${JSON.stringify(connection)})throw Error('Fixture connection is not '+${JSON.stringify(connection)});document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('real GUI '+${JSON.stringify(connection)}+' unlock');checks.push('GUI device identity matches the explicit fixture profile');
+  if(${JSON.stringify(onlineExisting||onlineVerify||offlineVerify)}){
+   const native=window.__TAURI_INTERNALS__,originalInvoke=native?.invoke;
+   if(originalInvoke)native.invoke=function(command,args,...rest){if(command==='item_save')saveTrace.push({title:args?.title});return originalInvoke.call(native,command,args,...rest);};
+   stage='retained GUI item';await wait(()=>[...document.querySelectorAll('button strong')].some(label=>label.textContent.trim()===${JSON.stringify(expectedTitle)}));
+   [...document.querySelectorAll('button strong')].find(label=>label.textContent.trim()===${JSON.stringify(expectedTitle)}).closest('button').click();await wait(()=>document.querySelector('main h2')?.textContent.trim()===${JSON.stringify(expectedTitle)}&&button('Edit')&&!button('Edit').disabled);
+   if(${JSON.stringify(onlineExisting)})for(const suffix of [' repeat one',' repeat two','']){
+    stage='existing GUI repeated edit '+suffix;button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));
+    const title=document.querySelector('input[data-editor-title]'),expected=suffix===''&&${JSON.stringify(restoreTitle)}?${JSON.stringify(restoreTitle)}:${JSON.stringify(expectedTitle)}+suffix;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(title,expected);title.dispatchEvent(new Event('input',{bubbles:true}));title.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();
+    await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(expected));
+   }
+   await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));checks.push(${JSON.stringify(onlineExisting?'actual GUI repeats existing-item edits and restores title without adding fixtures':offlineVerify?'actual GUI offline restart retains the acknowledged item after server verification refusal':'actual GUI restarts online and reads the retained acknowledged item')});
+   button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
+  if(${JSON.stringify(typedRoundtrip)}){
+   const rows=${JSON.stringify(typedItems)},labels={login:'Login',password:'Password only',bank:'Bank account',card:'Payment card',wifi:'Wi-Fi network',router:'Router',ssh:'SSH / device'};
+   for(const row of rows){
+    stage='typed GUI open '+row.type;const summary=[...document.querySelectorAll('button strong')].find(label=>label.textContent.trim()===row.title);if(!summary)throw Error('Missing typed fixture '+row.type);summary.closest('button').click();
+    await wait(()=>document.querySelector('main h2')?.textContent.trim()===row.title&&button('Edit')&&!button('Edit').disabled);
+    if(!document.querySelector('main').innerText.toLowerCase().includes(labels[row.type].toLowerCase()))throw Error('Missing type presentation '+row.type);
+    for(const secret of ['fictitious-typed-password','fictitious-typed-secret','fictitious-related-secret'])if(document.querySelector('main').innerText.includes(secret))throw Error('Typed detail revealed a secret before explicit action');
+    for(const expected of [row.title+' desktop reviewed',row.title]){
+     stage='typed GUI save '+row.type;button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));const title=document.querySelector('input[data-editor-title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(title,expected);title.dispatchEvent(new Event('input',{bubbles:true}));title.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();
+     await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main h2')?.textContent.trim()===expected);
+    }
+    checks.push('actual GUI '+row.type+' detail/edit/save/restore with default secret masking');
+   }
+   await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
+  if(${JSON.stringify(acknowledgementError)}){
+   stage='acknowledgement GUI item';const summary=[...document.querySelectorAll('button strong')].find(label=>label.textContent.trim()===${JSON.stringify(expectedTitle)});if(!summary)throw Error('Missing retained acknowledgement GUI item');summary.closest('button').click();
+   await wait(()=>document.querySelector('main h2')?.textContent.trim()===${JSON.stringify(expectedTitle)}&&button('Edit')&&!button('Edit').disabled);
+   button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));const title=document.querySelector('input[data-editor-title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(title,${JSON.stringify(nextTitle)});title.dispatchEvent(new Event('input',{bubbles:true}));title.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();
+   stage='acknowledgement GUI verification failure';await wait(()=>document.body.innerText.includes('Server verification failed')&&document.querySelector('footer')?.innerText.includes('Sync failed'));
+   button('Review sync').click();await wait(()=>document.querySelector('[aria-labelledby="sync-review-title"]')?.innerText.includes('server acknowledged 1 operation'));
+   const review=document.querySelector('[aria-labelledby="sync-review-title"]');if(!review.innerText.includes('encrypted copy is retained')||review.innerText.includes('Review item and choose version'))throw Error('Unverified acknowledgement review is misleading or discardable');
+   [...review.querySelectorAll('button')].find(button=>button.textContent.trim()==='Close').click();await wait(()=>!document.querySelector('[aria-labelledby="sync-review-title"]'));
+   checks.push('actual GUI keeps verification failure visible with retained acknowledged copy and no draft-discard action');
+   // This fixture's new title is already retained in the encrypted acknowledged
+   // replica. Confirm closing only its redundant unsaved editor state at lock.
+   window.confirm=message=>/discard.*unsaved/i.test(message);button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));
+   checks.push('fixture lock clears decrypted GUI while durable acknowledgement remains');globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
   if(${JSON.stringify(unlockHold)}){checks.push('actual GUI remains unlocked for the live connector handoff test');globalThis.__fixtureUI={done:true,ok:true,checks};return;}
   if(${JSON.stringify(queueCreate||onlineCreate)}) {
    const input=(node,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}));};
@@ -114,9 +176,9 @@ try{
   stage='lock';button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));
   if(document.body.innerText.includes(${JSON.stringify(nextTitle)})||document.querySelector('input[aria-label="Master password"]')?.value)throw Error('Lock retained decrypted UI state');
   checks.push('lock clears decrypted UI and password input');globalThis.__fixtureUI={done:true,ok:true,checks};
- }catch(error){globalThis.__fixtureUI={done:true,ok:false,stage,error:String(error),diagnostic:document.body.innerText.replaceAll('api010-fiction-secret','[fixture password omitted]').slice(0,8000)};}
+ }catch(error){globalThis.__fixtureUI={done:true,ok:false,stage,error:String(error),saveTrace,controls:{saveDisabled:button('Save')?.disabled,editDisabled:button('Edit')?.disabled,editorTitle:document.querySelector('input[data-editor-title]')?.value,detail:document.querySelector('main')?.innerText.replaceAll('api010-fiction-secret','[fixture password omitted]').slice(-3000)},diagnostic:document.body.innerText.replaceAll('api010-fiction-secret','[fixture password omitted]').slice(0,8000)};}
 })();undefined`);
- let result;for(let i=0;i<160;i++){result=await evaluate('globalThis.__fixtureUI');if(result.done)break;await new Promise(resolve=>setTimeout(resolve,250));}
+ let result;for(let i=0;i<(typedRoundtrip?400:160);i++){result=await evaluate('globalThis.__fixtureUI');if(result.done)break;await new Promise(resolve=>setTimeout(resolve,250));}
  if(result?.ok!==true)await writeFile(evidencePath+'.failure-'+Date.now()+'.json',JSON.stringify(result,null,2)+'\n',{flag:'wx'});
  assert.equal(result?.ok,true,result?.error||'Desktop GUI fixture timed out');
  await writeFile(evidencePath,JSON.stringify({date:new Date().toISOString(),status:'passed',platform:process.platform,scope:'Real packaged desktop UI; DOM events and React handlers with actual native backend; fictitious data',checks:result.checks,...(settings?{fixtureVault,fixtureCollection}:{}),limitations:['Physical keyboard/screen-reader and OS-lock matrix remain separate.']},null,2)+'\n',{flag:'wx'});

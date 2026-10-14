@@ -18,13 +18,17 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Vault archive/restore | Isolated browser subset | Shared native engine/UI subsets | Packaged Windows/Linux propagation and read-only refusal pass | Real packaged web/Desktop lifecycle matrix |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
-Latest native candidates are CLI `internal-20261014-e` and Desktop
-`internal-20261014-d`, source `aca13d8`; server/web remains `internal-20261014-e`,
+Latest native candidates are CLI `internal-20261014-f`, source `1a00c62`, and Desktop
+`internal-20261014-g`, source `762296c`; server/web remains `internal-20261014-e`,
 source `ee83e2d`. The [October 14 continuation](internal-release-progress-2026-10-14.md)
 records four packaged settings-choice cases preserving an unrelated item queue,
 two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI
 repeated edits with Windows peer reads and latest-package reply-loss retests.
-Broader acknowledgement/checkpoint-window rollback acceptance is still open.
+Authenticated older-history replay after a real acknowledgement now passes on
+both packaged CLI operating systems and the actual Linux Desktop GUI, including
+durable preservation, restart and recovery. Broader checkpoint-window rollback
+and Windows GUI acceptance remain open. Seven native item types also passed Linux
+GUI edit/restore with independent Windows CLI masked and explicit secret reads.
 
 CLI now supports `conflict compare` and `conflict merge` with an explicit base and
 field-source choices. Comparison redacts built-in/custom/related passwords and

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -36,7 +36,43 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase==='ui-consecutive-peer'){
+ if(phase.startsWith('ack-')){
+  assert.equal(evidence['lifecycle-restored-peerPassed'],true);
+  const replicaPath=profile+'/replicas/'+evidence.vaultId+'.json';
+  const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+  if(phase==='ack-write'){
+   assert.equal(deviceId,evidence.writerDevice);await command(['device','list']);
+   const original=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));assert.deepEqual(original.customFields,[]);
+   assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
+   evidence.ackBaseline={title:original.title,website:original.website,username:original.username};evidence.ackTitle='Packaged acknowledgement '+randomUUID();
+   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({...evidence.ackBaseline,title:evidence.ackTitle,password:'fictitious-lifecycle-password'})+'\n');
+   const bytes=await readFile(replicaPath),r=JSON.parse(bytes);assert.equal(r.pending.length,0);assert.equal(r.acknowledged_operations.length,1);
+   evidence.ackOperationId=r.acknowledged_operations[0];evidence.ackReplicaHash=hash(bytes);
+   const review=JSON.parse(await command(['sync-review']));assert.equal(review.unverifiedAcknowledgements,1);assert.equal(review.items.length,0);
+  }else if(phase==='ack-refused'){
+   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['ack-writePassed'],true);
+   const status=JSON.parse(await command(['status','--json']));assert.equal(status.online,false);assert.equal(status.authenticated,false);assert.equal(status.unlocked,true);
+   assert.match(status.offlineReason,/acknowledged operation missing from server history/);assert.equal(hash(await readFile(replicaPath)),evidence.ackReplicaHash);
+   const review=JSON.parse(await command(['sync-review']));assert.equal(review.unverifiedAcknowledgements,1);assert.equal(review.items.length,0);
+   assert.equal(JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId])).title,evidence.ackTitle);
+   evidence.ackRollbackRefusalPreservedCiphertext=true;
+  }else if(phase==='ack-recovered'){
+   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['ack-refusedPassed'],true);await command(['device','list']);
+   const r=JSON.parse(await readFile(replicaPath,'utf8'));assert.equal((r.acknowledged_operations||[]).length,0);assert.ok(r.operations.some(row=>row.operation.opId===evidence.ackOperationId));
+   assert.equal(JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId])).title,evidence.ackTitle);
+  }else if(phase==='ack-peer'){
+   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['ack-recoveredPassed'],true);
+   const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));assert.equal(item.title,evidence.ackTitle);assert.equal(item.password,'[redacted]');
+   assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
+  }else if(phase==='ack-restore'){
+   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['ack-peerPassed'],true);
+   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({...evidence.ackBaseline,password:'fictitious-lifecycle-password'})+'\n');
+  }else{
+   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['ack-restorePassed'],true);
+   const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));for(const [field,value]of Object.entries(evidence.ackBaseline))assert.equal(item[field],value);
+   evidence.ackFixtureRestored=true;
+  }
+ }else if(phase==='ui-consecutive-peer'){
   const listed=JSON.parse(await command(['item','list','--all']));
   evidence.items=[];
   for(const title of [evidence.guiFirstTitle,evidence.guiSecondTitle]){
@@ -274,7 +310,7 @@ try{
    assert.equal(second.title,evidence.secondTitle);
   }
  }
- if(!['queue','native-queue','native-review','lost-write','capacity-check'].includes(phase)){
+ if(!['queue','native-queue','native-review','lost-write','capacity-check','ack-write','ack-refused'].includes(phase)){
   const synced=JSON.parse(await command(['sync']));
   assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
   evidence[phase+'ItemQueueEmpty']=true;

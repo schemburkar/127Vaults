@@ -3,7 +3,8 @@
 Subsequent work and newer selected packages are recorded in
 [October 14 progress](internal-release-progress-2026-10-14.md). It supersedes the
 candidate labels below: server `internal-20261014-e` (source `ee83e2d`), Desktop
-`internal-20261014-d` and CLI `internal-20261014-e` (source `aca13d8`); extension
+`internal-20261014-g` (source `762296c`) and CLI `internal-20261014-f` (source
+`1a00c62`); extension
 is unchanged. Native lost-reply recovery now passes in both OS writer directions,
 as do independent two-conflict choices. Four settings-choice cases preserve
 queued items; actual latest Linux GUI consecutive edits reach the Windows peer.
