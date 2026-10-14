@@ -440,3 +440,32 @@ Windows GUI creation, physical trust/keyring acceptance, passkey ceremonies,
 offline typed combinations or every other client pairing. Internal release
 remains unaccepted; completed checks/evidence are committed to local main without
 pushing or publicly deploying.
+
+## Actual Desktop selected-field merge with another queued conflict
+
+Desktop-g Linux (`762296c`) now passes explicit per-field choices while a second
+conflict remains queued. In a separately copied profile, packaged Linux CLI-f
+queues title/username edits on two controlled items; Windows CLI-f independently
+writes different titles/usernames. Actual GUI review compares both versions
+without changing either pending signed request and masks passwords.
+
+For the first item, the driver clicks the server Title and local Username radio
+options, waits for their actual `aria-checked` states, then clicks Save selected
+fields. The GUI shows the server title plus local username. The second pending
+request and its conflict remain byte-for-byte unchanged. A fresh GUI process
+explicitly chooses the remaining local version after verified comparison, ending
+with zero item queue/conflicts. Windows CLI independently checks both resulting
+titles, usernames, unchanged websites, default redaction and explicit password.
+The original fields of both synthetic items are restored and independently read.
+
+Evidence:
+`C:\Projects\127Vaults-desktop-field-merge-20261014-a\evidence.json`, with actual
+GUI `compare.json`, `server.json` (selected-field phase), `local.json`, native peer
+records and before/reviewed/selected/local/restored encrypted replicas. Native
+packages are CLI-f/source `1a00c62`; retained fixture server is source `103da5b`.
+Queue creation uses packaged CLI; choices/save use actual packaged Linux
+DOM/React/native handlers. Helper syntax and Git whitespace checks pass.
+Original server/database remain healthy. This closes the selected-field Linux
+GUI/Windows CLI case, not Windows GUI, multiple-vault queues or other pairings.
+Internal release remains unaccepted, with completed changes committed on local
+main and no remote push.

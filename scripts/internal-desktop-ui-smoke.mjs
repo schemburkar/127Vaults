@@ -37,7 +37,7 @@ if(typedCreate||typedCreatedRead){
 }
 const lifecycleArchive=process.argv[7]==='lifecycle-archive',lifecycleRestore=process.argv[7]==='lifecycle-restore';
 const nonoverlapEdit=process.argv[7]==='nonoverlap-edit',nonoverlapRead=['nonoverlap-read','checkpoint-read'].includes(process.argv[7]);
-const multiMode=['multi-compare','multi-server','multi-local'].includes(process.argv[7])?process.argv[7]:null;
+const multiMode=['multi-compare','multi-server','multi-local','multi-field-first'].includes(process.argv[7])?process.argv[7]:null;
 let multi=null;
 if(multiMode){
  const path=process.env.VAULTS_FIXTURE_MULTI_EVIDENCE;assert.ok(path&&isAbsolute(path));multi=JSON.parse(await readFile(path,'utf8'));assert.equal(multi.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(multi.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');assert.equal(multi.writerDevice,expectedDevice);assert.equal(connection,'Online');assert.equal(multi.multiItems.length,2);assert.deepEqual(new Set(multi.multiItems.map(row=>row.itemId)),new Set(['09313354-3b85-4d56-97b1-2f1cb16ba0a7','ff01aefe-6754-4253-8f4c-0af9b03cd9f9']));assert.ok(multi.multiItems.every(row=>row.localTitle.startsWith('Multi-conflict local ')&&row.serverTitle.startsWith('Multi-conflict server ')));
@@ -114,9 +114,15 @@ try{
     for(const row of fixture.multiItems){stage='multi GUI compare '+row.itemId;await review(row);await compare(row);await closeConflict();}
     await wait(()=>/2 changes? waiting to sync/.test(document.body.innerText));checks.push('actual GUI reviews both correct item/vault drafts and server versions with password masked; both stay queued');
    }else{
-    const row=fixture.multiItems[mode==='multi-server'?0:1];stage='multi GUI selected decision';await review(row);
+    const row=fixture.multiItems[mode==='multi-local'?1:0];stage='multi GUI selected decision';await review(row);
     if(mode==='multi-server'){button('Use server version').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&/1 changes? waiting to sync/.test(document.body.innerText)&&document.querySelector('main h2')?.textContent.trim()===row.serverTitle);checks.push('actual GUI accepts selected verified server version while other conflict stays queued');}
-    else{await compare(row);button('Use mine').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&document.body.innerText.includes('0 changes waiting to sync')&&document.querySelector('main h2')?.textContent.trim()===row.localTitle);checks.push('actual GUI selects remaining local version after verified comparison and empties item queue');}
+    else if(mode==='multi-field-first'){
+     if(!fixture.multiFieldMerge||!row.localUsername?.startsWith('field-local-')||!row.serverUsername?.startsWith('field-server-'))throw Error('Only controlled field-merge fixture accepted');await compare(row);
+     const field=name=>[...document.querySelectorAll('[aria-labelledby="conflict-title"] .desktop-conflict-row')].find(node=>node.querySelector('b')?.textContent.trim()===name);
+     const serverTitle=field('title')?.querySelectorAll('[role="radio"]')[1];if(serverTitle?.textContent.trim()!==row.serverTitle)throw Error('Wrong server title option');serverTitle.click();await wait(()=>field('title')?.querySelectorAll('[role="radio"]')[1]?.getAttribute('aria-checked')==='true');
+     const localUsername=field('username')?.querySelectorAll('[role="radio"]')[0];if(localUsername?.textContent.trim()!==row.localUsername)throw Error('Wrong local username option');localUsername.click();await wait(()=>field('username')?.querySelectorAll('[role="radio"]')[0]?.getAttribute('aria-checked')==='true');button('Save selected fields').click();
+     await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&/1 changes? waiting to sync/.test(document.body.innerText)&&document.querySelector('main h2')?.textContent.trim()===row.serverTitle&&document.querySelector('main')?.innerText.includes(row.localUsername));checks.push('actual GUI saves explicitly selected server title and local username while other conflict stays queued');
+    }else{await compare(row);button('Use mine').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&document.body.innerText.includes('0 changes waiting to sync')&&document.querySelector('main h2')?.textContent.trim()===row.localTitle);checks.push('actual GUI selects remaining local version after verified comparison and empties item queue');}
    }
    button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));checks.push('multi-conflict GUI lock clears decrypted view');globalThis.__fixtureUI={done:true,ok:true,checks};return;
   }

@@ -31,7 +31,7 @@ async function acceptUndraftedSettings(){
  const settings=await json(['vault','settings']);assert.equal(settings.pending,false);
  if(settings.conflict){const review=await json(['vault','settings-review']);assert.equal(review.localPending,false);assert.equal(review.server.names[evidence.vaultId],evidence.vaultName);await command(['vault','settings-resolve','--keep','server']);}
 }
-async function edit(row,title){return JSON.parse(await command(['item','edit',row.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title,website:row.website,username:row.username,password:'fictitious-lifecycle-password'})+'\n'));}
+async function edit(row,title,username=row.username){return JSON.parse(await command(['item','edit',row.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title,website:row.website,username,password:'fictitious-lifecycle-password'})+'\n'));}
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});let ready=false;
 try{
  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Multi-conflict fixture agent timed out')),60000);agent.stdout.on('data',bytes=>{if(String(bytes).includes('ready')){ready=true;clearTimeout(timer);resolve();}});agent.stderr.resume();agent.on('error',reject);agent.on('close',()=>{clearTimeout(timer);if(!ready)reject(Error('Multi-conflict fixture agent failed'));});agent.stdin.end(JSON.stringify({account_secret:'07'.repeat(32),master_password:'fictitious password 127vaults'})+'\n');});
@@ -42,20 +42,20 @@ try{
   for(const itemId of evidence.itemIds){
    const item=await json(['item','get',itemId,'--vault',evidence.vaultId]);assert.ok(item.title.startsWith('Packaged CLI cross-OS '));assert.deepEqual(item.customFields,[]);
    assert.equal(await command(['item','get',itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
-   evidence.multiItems.push({itemId,title:item.title,website:item.website,username:item.username,localTitle:'Multi-conflict local '+run+' '+itemId,serverTitle:'Multi-conflict server '+run+' '+itemId});
+   evidence.multiItems.push({itemId,title:item.title,website:item.website,username:item.username,localTitle:'Multi-conflict local '+run+' '+itemId,serverTitle:'Multi-conflict server '+run+' '+itemId,...(evidence.multiFieldMerge?{localUsername:'field-local-'+run,serverUsername:'field-server-'+run}:{})});
   }
  }else if(phase==='peer-ready'){
   assert.notEqual(deviceId,evidence.writerDevice);await acceptUndraftedSettings();assert.equal((await replica()).pending.length,0);
   for(const row of evidence.multiItems)assert.equal((await json(['item','get',row.itemId,'--vault',evidence.vaultId])).title,row.title);
  }else if(phase==='queue'){
   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['multi-peer-readyPassed'],true);
-  for(const row of evidence.multiItems)assert.equal((await edit(row,row.localTitle)).queued,true);
+  for(const row of evidence.multiItems)assert.equal((await edit(row,row.localTitle,row.localUsername??row.username)).queued,true);
   const pending=(await replica()).pending;assert.equal(pending.length,2);
   evidence.multiPending=pending.map(entry=>({itemId:entry.operation.itemId,operationId:entry.operation.opId,hash:fingerprint(entry)}));
   evidence.multiQueueHash=fingerprint(pending);
  }else if(phase==='peer'){
   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['multi-queuePassed'],true);await acceptUndraftedSettings();
-  for(const row of evidence.multiItems)await edit(row,row.serverTitle);
+  for(const row of evidence.multiItems)await edit(row,row.serverTitle,row.serverUsername??row.username);
  }else if(phase==='recover-peer'){
   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['multi-queuePassed'],true);
   const pending=(await replica()).pending;assert.equal(pending.length,1);assert.equal(pending[0].operation.itemId,evidence.multiItems[1].itemId);
@@ -89,7 +89,7 @@ try{
   const synced=await json(['sync']);assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }else if(phase==='verify'){
   assert.notEqual(deviceId,evidence.writerDevice);assert.ok(evidence['multi-local-copyPassed']===true||evidence['gui-multi-localPassed']===true);
-  for(let i=0;i<2;i++){const row=evidence.multiItems[i],item=await json(['item','get',row.itemId,'--vault',evidence.vaultId]);assert.equal(item.title,i===0?row.serverTitle:row.localTitle);assert.equal(item.password,'[redacted]');assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');}
+  for(let i=0;i<2;i++){const row=evidence.multiItems[i],item=await json(['item','get',row.itemId,'--vault',evidence.vaultId]);assert.equal(item.title,i===0?row.serverTitle:row.localTitle);assert.equal(item.username,row.localUsername??row.username);assert.equal(item.website,row.website);assert.equal(item.password,'[redacted]');assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');}
  }else if(phase==='restore'){
   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['multi-verifyPassed'],true);
   for(const row of evidence.multiItems)await edit(row,row.title);
