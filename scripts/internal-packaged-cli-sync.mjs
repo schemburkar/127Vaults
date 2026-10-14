@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer','gui-nonoverlap-peer','gui-nonoverlap-verify','gui-nonoverlap-restore','gui-nonoverlap-restored','gui-checkpoint-advance'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -36,7 +36,24 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(['gui-archive-peer','gui-restore-peer'].includes(phase)){
+ if(phase==='gui-checkpoint-advance'){
+  assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');
+  await command(['vault','settings-sync']);const settings=JSON.parse(await command(['vault','settings']));assert.equal(settings.pending,false);
+  if(settings.conflict){const review=JSON.parse(await command(['vault','settings-review']));assert.equal(review.localPending,false);assert.equal(review.server.names[evidence.vaultId],evidence.vaultName);await command(['vault','settings-resolve','--keep','server']);}
+  const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));for(const [field,value]of Object.entries(evidence.ackBaseline))assert.equal(item[field],value);
+  const replicaPath=profile+'/replicas/'+evidence.vaultId+'.json';evidence.checkpointBefore=JSON.parse(await readFile(replicaPath,'utf8')).checkpoint;
+  await command(['vault','archive',evidence.vaultId]);evidence.checkpointArchived=JSON.parse(await readFile(replicaPath,'utf8')).checkpoint;
+  await command(['vault','restore',evidence.vaultId]);
+  await command(['vault','archive',evidence.vaultId]);evidence.checkpointSecondArchive=JSON.parse(await readFile(replicaPath,'utf8')).checkpoint;
+  await command(['vault','restore',evidence.vaultId]);evidence.checkpointRestored=JSON.parse(await readFile(replicaPath,'utf8')).checkpoint;
+  assert.notDeepEqual(evidence.checkpointArchived,evidence.checkpointBefore);assert.notDeepEqual(evidence.checkpointRestored,evidence.checkpointArchived);assert.ok(evidence.checkpointRestored.cursor>=evidence.checkpointBefore.cursor);
+ }else if(phase.startsWith('gui-nonoverlap-')){
+  assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');assert.equal(evidence.itemId,'09313354-3b85-4d56-97b1-2f1cb16ba0a7');
+  const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));assert.equal(item.password,'[redacted]');assert.deepEqual(item.customFields,[]);assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
+  if(phase==='gui-nonoverlap-peer'){for(const [field,value]of Object.entries(evidence.ackBaseline))assert.equal(item[field],value);await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({...evidence.ackBaseline,username:evidence.nonoverlapUsername,password:'fictitious-lifecycle-password'})+'\n');}
+  else if(phase==='gui-nonoverlap-restored'){for(const [field,value]of Object.entries(evidence.ackBaseline))assert.equal(item[field],value);}
+  else{assert.equal(item.title,evidence.nonoverlapTitle);assert.equal(item.username,evidence.nonoverlapUsername);assert.equal(item.website,evidence.ackBaseline.website);if(phase==='gui-nonoverlap-restore')await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({...evidence.ackBaseline,password:'fictitious-lifecycle-password'})+'\n');}
+ }else if(['gui-archive-peer','gui-restore-peer'].includes(phase)){
   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');await command(['sync']);
   const vault=JSON.parse(await command(['vault','list'])).find(row=>row.vaultId===evidence.vaultId);assert.ok(vault);assert.equal(vault.retired,phase==='gui-archive-peer');
   if(phase==='gui-archive-peer')await assert.rejects(command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:'must not mutate archived fixture'})+'\n'),/retired vault is read-only/);

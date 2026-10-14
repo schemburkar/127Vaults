@@ -31,6 +31,11 @@ assert.ok(!restoreTitle||onlineExisting&&restoreTitle.startsWith('Linux packaged
 assert.ok(!offlineVerify||connection==='Offline'&&expectedTitle.startsWith('Linux packaged online '));
 const typedRoundtrip=process.argv[7]==='typed-roundtrip';
 const lifecycleArchive=process.argv[7]==='lifecycle-archive',lifecycleRestore=process.argv[7]==='lifecycle-restore';
+const nonoverlapEdit=process.argv[7]==='nonoverlap-edit',nonoverlapRead=['nonoverlap-read','checkpoint-read'].includes(process.argv[7]);
+let nonoverlap=null;
+if(nonoverlapEdit||nonoverlapRead){
+ const path=process.env.VAULTS_FIXTURE_NONOVERLAP_EVIDENCE;assert.ok(path&&isAbsolute(path));nonoverlap=JSON.parse(await readFile(path,'utf8'));assert.equal(nonoverlap.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(nonoverlap.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');assert.equal(nonoverlap.writerDevice,expectedDevice);assert.equal(nonoverlap.itemId,'09313354-3b85-4d56-97b1-2f1cb16ba0a7');assert.equal(connection,nonoverlapEdit?'Offline':'Online');assert.ok(expectedTitle.startsWith('Packaged CLI cross-OS '));
+}
 let lifecycle=null;
 if(lifecycleArchive||lifecycleRestore){
  const path=process.env.VAULTS_FIXTURE_LIFECYCLE_EVIDENCE;assert.ok(path&&isAbsolute(path));
@@ -73,6 +78,16 @@ try{
   await new Promise(resolve=>setTimeout(resolve,50));button('Unlock encrypted replica').click();
   await wait(()=>document.body.innerText.includes('All items'));
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));const profileLines=document.querySelector('#desktop-settings-panel').innerText.split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);const connectionLabel=profileLines.indexOf('Connection');if(connectionLabel<0||profileLines[connectionLabel+1]!==${JSON.stringify(connection)})throw Error('Fixture connection is not '+${JSON.stringify(connection)});document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('real GUI '+${JSON.stringify(connection)}+' unlock');checks.push('GUI device identity matches the explicit fixture profile');
+  if(${JSON.stringify(nonoverlapEdit||nonoverlapRead)}){
+   stage='nonoverlap reconnect sync';if(${JSON.stringify(nonoverlapRead)}){button('Sync now').click();await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));}
+   stage='nonoverlap selected fixture';await wait(()=>[...document.querySelectorAll('button strong')].some(node=>node.textContent.trim()===${JSON.stringify(expectedTitle)}));const summary=[...document.querySelectorAll('button strong')].find(node=>node.textContent.trim()===${JSON.stringify(expectedTitle)});summary.closest('button').click();await wait(()=>document.querySelector('main h2')?.textContent.trim()===${JSON.stringify(expectedTitle)}&&button('Edit')&&!button('Edit').disabled);
+   if(${JSON.stringify(nonoverlapEdit)}){
+    button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));const title=document.querySelector('input[data-editor-title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(title,${JSON.stringify(nextTitle)});title.dispatchEvent(new Event('input',{bubbles:true}));title.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();stage='nonoverlap durable queue';await wait(()=>!button('Save')&&document.querySelector('main h2')?.textContent.trim()===${JSON.stringify(nextTitle)}&&/1 changes? waiting to sync/.test(document.body.innerText));checks.push('actual GUI queues offline title-only edit and preserves it at lock');
+   }else{
+    await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));if(document.querySelector('[aria-labelledby="conflict-title"]'))throw Error('Nonoverlap unexpectedly requires conflict review');const expectedUsername=${JSON.stringify(process.env.VAULTS_FIXTURE_EXPECTED_USERNAME||null)};if(!expectedUsername||!document.querySelector('main')?.innerText.includes(expectedUsername))throw Error('Nonoverlap read omitted expected username');if(document.querySelector('main')?.innerText.includes('fictitious-lifecycle-password'))throw Error('Nonoverlap exposed masked secret');checks.push('actual GUI reconnect reads expected title and username with zero queued edits and no conflict; secret stays masked');
+   }
+   button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
   if(${JSON.stringify(lifecycleArchive||lifecycleRestore)}){
    const fixture=${JSON.stringify(lifecycle)};
    if(button('Review vault settings conflict')){

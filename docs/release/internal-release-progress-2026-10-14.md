@@ -331,3 +331,41 @@ The selected immutable image and release inventory are unchanged. The original
 owned server bundle/image and bundle environments were restored after the test.
 These passes establish this controlled archive/restore client pairing; Windows
 GUI, move/ownership, interrupted lifecycle and physical acceptance remain open.
+
+## Packaged Desktop concurrent merge and missed checkpoints
+
+Desktop-g Linux (`762296c`) now passes an actual offline title-only edit,
+process exit/lock, competing Windows CLI-f (`1a00c62`) username edit, then
+online restart and explicit GUI **Sync now**. Both edits survive without a
+conflict, the item queue is empty, the secret stays masked, and the independent
+Windows peer verifies both fields and explicit password. Original fields are
+restored and checked independently by both clients. Evidence:
+`C:\Projects\127Vaults-desktop-nonoverlap-20261014-a\evidence.json` and separate
+GUI phase/CLI records. The first read attempt assumed unlock itself replayed
+queued writes; its retained failure does not establish a product defect.
+The corrected step explicitly clicks Sync now and preserves the original queue.
+Settings flags are recorded separately: the peer had no pending settings draft
+but did report a settings conflict during this test; item convergence does not
+establish settings acceptance.
+
+A separately cloned stale Desktop-g profile also passes real online restart
+and GUI sync after missing three genuine server checkpoints. The Windows
+packaged peer creates checkpoints via controlled vault archive/restore, accepts
+reviewed server settings only after proving no local draft, and restores the
+vault. PostgreSQL read-only metadata proves the stale checkpoint was sequence
+4 and latest sequence 7 (cursor 70). GUI hydration advances to the latest verified
+checkpoint; original title/username remain readable with secret masked, and
+pending/conflict/acknowledgement lists are empty. Evidence:
+`C:\Projects\127Vaults-desktop-checkpoints-20261014-a\evidence.json`, original
+`replica-before.json`, resulting `replica-after.json`, `reconnected.json` and
+signed checkpoint records in `native-evidence.json`. Source fixture server is
+`103da5b`; this is not a claim about a different server package or Windows GUI.
+The first producer assertion incorrectly expected restore to sign a checkpoint;
+only archive does. It left the controlled vault restored. The corrected producer
+uses two archive/restore cycles; the stale profile misses those two plus the
+checkpoint created before that failed assertion. Existing history is preserved.
+
+These actual UI checks close the selected Linux GUI concurrent non-overlap and
+multiple-missed-checkpoint cases. Windows GUI, other client pairings and broader
+history/lifecycle/queue cases remain open. Original server/database are healthy;
+no external account, remote push or public deployment is involved.

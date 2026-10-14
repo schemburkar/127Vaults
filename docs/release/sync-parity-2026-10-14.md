@@ -9,13 +9,14 @@ unlocked source; admin manages authorization without decrypting vault items.
 | --- | --- | --- | --- | --- |
 | Durable create/edit and reconnect | Implemented; real-server offline subset passes | Linux package restart/replay passes | Windows/Linux packaged queue subsets pass | Latest Windows GUI; all-pair/type combinations |
 | Retry/lost reply | Real-server accepted-write/lost-reply/peer-edit passes | Shared native engine | New Windows/Linux packages pass both writer directions with exact retry and newer peer edit retained | Latest GUI and broader multi-queue combinations |
-| Non-overlapping changes | Implemented | Shared native engine | Packaged Windows/Linux automatic merge passes | GUI combinations |
+| Non-overlapping changes | Implemented | Desktop-g Linux offline title + Windows CLI username converge through actual GUI Sync now; peer verifies both | Packaged Windows/Linux automatic merge passes | Windows GUI and other UI pairings |
 | Review pending item/changed fields | Implemented | Implemented | Packaged `sync-review` reads durable queued metadata, masks values and preserves requests on both OSs | Broader multi-queue UI |
 | Verified read-only comparison | Packaged real-server pass | Engine/read-only UI regressions; latest Windows GUI pending | New Windows/Linux packages pass both directions | Latest Windows GUI and multi-queue UI |
 | Keep server/local | Packaged server-copy pass | Engine/UI subsets | CLI-e verifies server before retirement; two-conflict independent server/local decisions pass both directions | Latest Windows GUI and broader UI multi-queue isolation |
 | Selected-field merge | Packaged real-server pass | Implemented, engine subset pass | New Windows/Linux packages pass both directions | GUI combinations; CLI selects custom-fields array as a group |
 | Missing item / stale creation | Classification and replay implemented | Shared native engine and retained queues | Shared native engine | Deleted-item and collision matrix across UIs |
 | Vault archive/restore | Selected packaged server/web actual settings archive/restore passes with Windows CLI peer | Desktop-g Linux actual settings archive/restore passes with Windows CLI peer | Packaged Windows/Linux propagation and read-only refusal pass | Windows GUI; move/ownership and interrupted lifecycle combinations |
+| Multiple missed checkpoints | Engine and source subsets | Desktop-g Linux stale process restart verifies three intervening real signed checkpoints from Windows CLI-f; PostgreSQL sequence proof | Packaged peer creates checkpoints and ends settled | Windows GUI; other pairings and larger chains |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
 Latest native candidates are CLI `internal-20261014-f`, source `1a00c62`, and Desktop
