@@ -879,8 +879,7 @@ export function App() {
       );
       const pendingConflict = result.conflicts.find((row) => viewMode !== "single" || row.vaultId === vaultId);
       if (pendingConflict && !conflict) {
-        setVaultId(pendingConflict.vaultId);
-        setItemVaultId(pendingConflict.vaultId);
+        // Opening review must not rebind the item still displayed underneath it.
         const draft = await invoke<Item>("conflict_draft", { vaultId: pendingConflict.vaultId, itemId: pendingConflict.itemId, operationId: pendingConflict.operationId });
         setConflict({ vaultId: pendingConflict.vaultId, draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
       }
@@ -911,7 +910,7 @@ export function App() {
       setSyncFailure(null);
       await refreshSyncStatus();
       const summary = result.items.find((item) => item.itemId === itemId);
-      if (summary) await openItem(summary);
+      if (summary) await openItem(summary, ownerVaultId);
       else setSelected(null);
       setConflict(null);
       notify(
@@ -1048,8 +1047,6 @@ export function App() {
     try {
       const draft = await invoke<Item>("conflict_draft", { vaultId: row.vaultId, itemId: row.itemId, operationId: row.operationId });
       if (generation !== syncReviewGeneration.current) return;
-      setVaultId(row.vaultId);
-      setItemVaultId(row.vaultId);
       setSyncReviewOpen(false);
       setConflict({ vaultId: row.vaultId, draft, operationId: row.operationId, kind: row.conflict.kind,
         message: row.conflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. Your queued edit is still saved locally." : `Review queued changes to ${row.title || "Untitled item"}. Changed fields: ${row.fields.join(", ") || "not determined"}.` });
