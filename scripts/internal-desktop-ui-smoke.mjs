@@ -30,6 +30,11 @@ const restoreTitle=process.env.VAULTS_FIXTURE_RESTORE_TITLE||null;
 assert.ok(!restoreTitle||onlineExisting&&restoreTitle.startsWith('Linux packaged online '));
 assert.ok(!offlineVerify||connection==='Offline'&&expectedTitle.startsWith('Linux packaged online '));
 const typedRoundtrip=process.argv[7]==='typed-roundtrip';
+const typedCreate=process.argv[7]==='typed-create',typedCreatedRead=process.argv[7]==='typed-created-read';
+let createdTypes=null;
+if(typedCreate||typedCreatedRead){
+ const path=process.env.VAULTS_FIXTURE_CREATED_TYPES;assert.ok(path&&isAbsolute(path));createdTypes=JSON.parse(await readFile(path,'utf8'));assert.equal(createdTypes.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(createdTypes.writerDevice,expectedDevice);assert.equal(createdTypes.vaultId,'66031b92-58ad-4114-b967-dcbf0541be24');assert.ok(createdTypes.title.startsWith('Linux packaged typed '));assert.equal(connection,'Online');assert.deepEqual(createdTypes.items.map(row=>row.type),['login','password','bank','card','wifi','router','ssh']);assert.ok(createdTypes.items.every(row=>row.title===createdTypes.title+' '+row.type&&row.password===(row.type==='card'?'':'fictitious-gui-typed-password')));
+}
 const lifecycleArchive=process.argv[7]==='lifecycle-archive',lifecycleRestore=process.argv[7]==='lifecycle-restore';
 const nonoverlapEdit=process.argv[7]==='nonoverlap-edit',nonoverlapRead=['nonoverlap-read','checkpoint-read'].includes(process.argv[7]);
 const multiMode=['multi-compare','multi-server','multi-local'].includes(process.argv[7])?process.argv[7]:null;
@@ -83,6 +88,22 @@ try{
   await new Promise(resolve=>setTimeout(resolve,50));button('Unlock encrypted replica').click();
   await wait(()=>document.body.innerText.includes('All items'));
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));const profileLines=document.querySelector('#desktop-settings-panel').innerText.split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);const connectionLabel=profileLines.indexOf('Connection');if(connectionLabel<0||profileLines[connectionLabel+1]!==${JSON.stringify(connection)})throw Error('Fixture connection is not '+${JSON.stringify(connection)});document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('real GUI '+${JSON.stringify(connection)}+' unlock');checks.push('GUI device identity matches the explicit fixture profile');
+  if(${JSON.stringify(typedCreate||typedCreatedRead)}){
+   const fixture=${JSON.stringify(createdTypes)};
+   const setInput=async(node,value)=>{if(!node)throw Error('Missing typed creation field');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));};
+   const named=name=>[...document.querySelectorAll('main label')].find(node=>[...node.childNodes].filter(child=>child.nodeType===Node.TEXT_NODE).map(child=>child.textContent).join('').trim()===name)?.querySelector('input');
+   for(const row of fixture.items){
+    if(${JSON.stringify(typedCreate)}){
+     stage='GUI typed create '+row.type;button('New item').click();await wait(()=>document.querySelector('input[data-editor-title]'));const picker=document.querySelector('main details');picker.querySelector('summary').click();[...picker.querySelectorAll('button')].find(node=>node.querySelector('strong')?.textContent.trim()===row.label).click();await wait(()=>picker.querySelector('summary')?.textContent.includes(row.label));
+     await setInput(document.querySelector('input[data-editor-title]'),row.title);if(row.website)await setInput(named('Website'),row.website);if(row.username)await setInput(named('Username'),row.username);if(row.password)await setInput(named('Password'),row.password);for(const field of row.fields)await setInput(named(field.label),field.value);
+     const destination=[...document.querySelectorAll('main label')].find(node=>node.textContent.includes('Destination vault'))?.querySelector('select');if(!destination)throw Error('Typed fixture must explicitly select its destination');destination.value=fixture.vaultId;destination.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main h2')?.textContent.trim()===row.title);
+    }else{
+     stage='GUI typed peer read '+row.type;await wait(()=>[...document.querySelectorAll('button strong')].some(node=>node.textContent.trim()===row.expectedTitle));[...document.querySelectorAll('button strong')].find(node=>node.textContent.trim()===row.expectedTitle).closest('button').click();await wait(()=>document.querySelector('main h2')?.textContent.trim()===row.expectedTitle&&button('Edit')&&!button('Edit').disabled);
+    }
+    const text=document.querySelector('main').innerText;if(!text.toLowerCase().includes(row.label.toLowerCase()))throw Error('Wrong typed presentation');for(const field of row.fields){if(field.type==='password'){if(text.includes(field.value))throw Error('Typed custom secret exposed before reveal');}else if(!text.includes(field.value))throw Error('Typed ordinary field missing');}if(row.password&&text.includes(row.password))throw Error('Typed password exposed before reveal');if(row.username&&!text.includes(row.username))throw Error('Typed username omitted');if(row.website&&!text.includes(row.website))throw Error('Typed website omitted');checks.push('actual GUI '+row.type+' '+${JSON.stringify(typedCreate?'creation':'peer edit read')}+' preserves expected fields and masks secrets');
+   }
+   await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
   if(${JSON.stringify(!!multiMode)}){
    const fixture=${JSON.stringify(multi)},mode=${JSON.stringify(multiMode)};
    const closeConflict=async()=>{if(document.querySelector('[aria-labelledby="conflict-title"]')){button('Cancel and keep editing').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]'));}};
@@ -242,7 +263,7 @@ try{
   checks.push('lock clears decrypted UI and password input');globalThis.__fixtureUI={done:true,ok:true,checks};
  }catch(error){globalThis.__fixtureUI={done:true,ok:false,stage,error:String(error),saveTrace,controls:{saveDisabled:button('Save')?.disabled,editDisabled:button('Edit')?.disabled,editorTitle:document.querySelector('input[data-editor-title]')?.value,detail:document.querySelector('main')?.innerText.replaceAll('api010-fiction-secret','[fixture password omitted]').slice(-3000)},diagnostic:document.body.innerText.replaceAll('api010-fiction-secret','[fixture password omitted]').slice(0,8000)};}
 })();undefined`);
- let result;for(let i=0;i<(typedRoundtrip?400:160);i++){result=await evaluate('globalThis.__fixtureUI');if(result.done)break;await new Promise(resolve=>setTimeout(resolve,250));}
+ let result;for(let i=0;i<(typedRoundtrip||typedCreate||typedCreatedRead?400:160);i++){result=await evaluate('globalThis.__fixtureUI');if(result.done)break;await new Promise(resolve=>setTimeout(resolve,250));}
  if(result?.ok!==true)await writeFile(evidencePath+'.failure-'+Date.now()+'.json',JSON.stringify(result,null,2)+'\n',{flag:'wx'});
  assert.equal(result?.ok,true,result?.error||'Desktop GUI fixture timed out');
  await writeFile(evidencePath,JSON.stringify({date:new Date().toISOString(),status:'passed',platform:process.platform,scope:'Real packaged desktop UI; DOM events and React handlers with actual native backend; fictitious data',checks:result.checks,...(settings?{fixtureVault,fixtureCollection}:{}),limitations:['Physical keyboard/screen-reader and OS-lock matrix remain separate.']},null,2)+'\n',{flag:'wx'});

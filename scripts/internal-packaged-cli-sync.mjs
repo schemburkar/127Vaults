@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer','gui-nonoverlap-peer','gui-nonoverlap-verify','gui-nonoverlap-restore','gui-nonoverlap-restored','gui-checkpoint-advance'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer','gui-nonoverlap-peer','gui-nonoverlap-verify','gui-nonoverlap-restore','gui-nonoverlap-restored','gui-checkpoint-advance','gui-types-peer','gui-types-restore'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -21,7 +21,7 @@ async function command(args,input=''){
  });
 }
 let evidence=['write','queue','types-write','lifecycle-create'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
-assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||['ui-online-peer','ui-consecutive-peer'].includes(phase)&&evidence.title.startsWith('Linux packaged online ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
+assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||['ui-online-peer','ui-consecutive-peer'].includes(phase)&&evidence.title.startsWith('Linux packaged online ')||['gui-types-peer','gui-types-restore'].includes(phase)&&evidence.title.startsWith('Linux packaged typed ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
 if(['peer','ui-peer','ui-online-peer','ui-consecutive-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
 let agentReady=false,agentError='';
@@ -36,7 +36,19 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase==='gui-checkpoint-advance'){
+ if(['gui-types-peer','gui-types-restore'].includes(phase)){
+  assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'66031b92-58ad-4114-b967-dcbf0541be24');assert.deepEqual(evidence.items.map(row=>row.type),['login','password','bank','card','wifi','router','ssh']);
+  if(phase==='gui-types-restore')assert.equal(evidence.guiTypedPeerReadPassed,true);
+  const listed=JSON.parse(await command(['item','list','--vault',evidence.vaultId]));
+  for(const row of evidence.items){
+   const expected=phase==='gui-types-peer'?row.title:row.expectedTitle;const matches=listed.filter(item=>item.title===expected);assert.equal(matches.length,1);if(row.itemId)assert.equal(matches[0].itemId,row.itemId);row.itemId=matches[0].itemId;
+   const item=JSON.parse(await command(['item','get',row.itemId,'--vault',evidence.vaultId]));assert.equal(item.title,expected);assert.equal(item.username,row.username);assert.equal(item.website,row.website);assert.equal(item.password,'[redacted]');assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),row.password);
+   assert.equal(item.customFields.find(field=>field.id==='__127vaults_item_type')?.value,row.type);assert.equal(item.customFields.length,row.fields.length+1);
+   for(const expectedField of row.fields){const field=item.customFields.find(field=>field.id===expectedField.id);assert.ok(field);assert.equal(field.type,expectedField.type);assert.equal(field.value,field.type==='password'?'[redacted]':expectedField.value);if(field.type==='password')assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password',field.id]),expectedField.value);}
+   const customFields=item.customFields.map(field=>({...field,value:row.fields.find(expectedField=>expectedField.id===field.id)?.value??field.value}));
+   await command(['item','edit',row.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:phase==='gui-types-peer'?row.expectedTitle:row.title,username:row.username,website:row.website,password:row.password,customFields})+'\n');
+  }
+ }else if(phase==='gui-checkpoint-advance'){
   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');
   await command(['vault','settings-sync']);const settings=JSON.parse(await command(['vault','settings']));assert.equal(settings.pending,false);
   if(settings.conflict){const review=JSON.parse(await command(['vault','settings-review']));assert.equal(review.localPending,false);assert.equal(review.server.names[evidence.vaultId],evidence.vaultName);await command(['vault','settings-resolve','--keep','server']);}

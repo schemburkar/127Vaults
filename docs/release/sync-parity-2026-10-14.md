@@ -7,7 +7,7 @@ unlocked source; admin manages authorization without decrypting vault items.
 
 | Flow | Web/PWA | Desktop | CLI | Remaining gate |
 | --- | --- | --- | --- | --- |
-| Durable create/edit and reconnect | Implemented; real-server offline subset passes | Linux package restart/replay passes | Windows/Linux packaged queue subsets pass | Latest Windows GUI; all-pair/type combinations |
+| Durable create/edit and reconnect | Selected web reads all seven Desktop-created types; real-server offline subset passes | Desktop-g Linux creates seven enabled types and reads Windows CLI peer edits; restart/replay subsets pass | CLI-f Windows verifies all seven GUI-created types and masked/explicit primary secrets; packaged queue subsets pass | Latest Windows GUI; other pair/type/offline combinations |
 | Retry/lost reply | Real-server accepted-write/lost-reply/peer-edit passes | Shared native engine | New Windows/Linux packages pass both writer directions with exact retry and newer peer edit retained | Latest GUI and broader multi-queue combinations |
 | Non-overlapping changes | Implemented | Desktop-g Linux offline title + Windows CLI username converge through actual GUI Sync now; peer verifies both | Packaged Windows/Linux automatic merge passes | Windows GUI and other UI pairings |
 | Review pending item/changed fields | Implemented | Desktop-g Linux actual two-conflict review identifies both item/vault versions and preserves exact requests | Packaged `sync-review` reads durable queued metadata, masks values and preserves requests on both OSs | Windows GUI; multiple-vault and broader queue UI |

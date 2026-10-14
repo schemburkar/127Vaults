@@ -398,3 +398,45 @@ Linux DOM/React/native handlers. This does not establish GUI queue creation,
 Windows GUI or multiple-vault navigation/queue acceptance. Helper syntax checks
 and Git whitespace checks pass. Original server/database remain healthy. These
 completed evidence changes are committed to local main without a remote push.
+
+## Seven enabled types created through the packaged Desktop UI
+
+Actual Desktop-g Linux (`762296c`) now creates login, password-only, bank,
+card, Wi-Fi, router and SSH items through New item, the type picker, the explicit
+fixture destination selector, field controls and Save. The test fills every
+primary ordinary/secret field, including bank account/PIN, card number/CVV/PIN,
+network settings and SSH host/port, plus supported username/website/password
+fields. After each save the actual detail view shows the expected type and
+ordinary fields and masks all secrets; the final queue is empty and Lock clears
+the decrypted session. No direct native invocation or fabricated item is used.
+
+Windows CLI-f (`1a00c62`) independently discovers each unique original item ID,
+verifies the exact type marker and field set, default secret redaction and
+explicit standard/primary-secret outputs. It edits all seven titles. A fresh
+packaged GUI process reads every peer-edited item with unchanged fields and
+secret masking. Windows CLI then verifies those versions and restores baseline
+titles. Item and settings queues/conflicts are empty in both CLI phase records.
+The seven newly created synthetic fixtures are retained for later acceptance.
+Evidence: `C:\Projects\127Vaults-desktop-typed-create-20261014-a\evidence.json`,
+separate GUI `create.json`/`read.json`, original IDs and native phase records in
+`native-evidence.json`. Source fixture server for this native pairing is `103da5b`.
+
+Selected packaged server/web-e (`ee83e2d`, unchanged immutable runtime image)
+independently reads all seven original Desktop-created IDs after restoration.
+Actual Chromium DOM checks prove the correct displayed type, exact ordinary
+fields, usernames/websites and masking of standard/primary custom secrets;
+Lock clears the browser session. Evidence:
+`C:\Projects\127Vaults-web-desktop-types-20261014-b\evidence.json` and
+`web-gui-created-read.json`. Workspace-a retains the first field/masking pass;
+workspace-b adds explicit displayed-type assertions. This uses separately copied
+enrolled browser profiles and the existing trusted identity/database. The retained
+fixture bundle only adjusts its listener/mapping 12894→12892; the selected image
+is unchanged. Original bundle/image and environment were restored after each run.
+
+Helper syntax and Git whitespace checks pass. These passes establish actual
+Linux GUI creation → Windows CLI read/edit → Linux GUI read, and Desktop-created
+items → selected packaged web read, for these seven types. They do not establish
+Windows GUI creation, physical trust/keyring acceptance, passkey ceremonies,
+offline typed combinations or every other client pairing. Internal release
+remains unaccepted; completed checks/evidence are committed to local main without
+pushing or publicly deploying.
