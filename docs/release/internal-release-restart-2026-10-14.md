@@ -126,9 +126,10 @@ approval review still rejected agent GUI launch as **"blocked by policy"**, with
 no further reason. Do not bypass the rejection through another launcher or UI.
 The pending manual instruction is to run
 `C:\Projects\127Vaults-sync-desktop-20261013-a\start-isolated-desktop.ps1`, leave
-the app at its unlock screen and reply "Opened". The starter now selects `app-i`,
-copied fictitious `profile-h`, `webview-i`, inspector port 12915 and
-`app-i-pid.txt`. No manual-launch reply/PID has been received.
+the app at its unlock screen and reply "Opened". The starter now selects `app-k`,
+copied fictitious `profile-j`, `webview-k`, inspector port 12915 and
+`app-k-pid.txt`, using Desktop-h (`68b16ea`). The earlier starter and app/profile
+remain preserved separately. No manual-launch reply/PID has been received.
 
 Permission to grant the isolated test extension access to the fictitious vault
 origin `https://127.0.0.1:12892` is also unanswered. Do not grant it, broaden

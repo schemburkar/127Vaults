@@ -601,3 +601,29 @@ healthy after restoration. This closes the selected PWA acknowledged-history
 case; broader checkpoint/fork windows, physical trust/permission and other
 recorded release gates remain open. Internal release remains unaccepted.
 Completed evidence/helper changes are committed to local main without a push.
+
+## Latest Windows manual fixture preparation and seven-surface audit
+
+The pending Windows manual starter was still selecting an older package. The new
+`scripts/prepare-windows-desktop-fixture.mjs` verifies the selected immutable
+Desktop-h Windows release (`68b16ea`), statically extracts its installer with
+7-Zip, copies the guarded fictitious profile and prepares the human-run starter.
+It never launches/installs Desktop or changes native registration. The starter
+pins extracted binary SHA256, `app-k`, `profile-j`, `webview-k`, inspector12915 and
+`app-k-pid.txt`. Original app/profile and starter are preserved separately.
+All 12 copied profile files match their originals; generated PowerShell syntax
+passes and the new PID file is absent. Evidence:
+`C:\Projects\127Vaults-sync-desktop-20261013-a\manual-preparation-20261014-h.json`.
+The first helper attempt created only empty staging directories before its strict
+copy rejected a precreated destination; those directories are retained, and the
+corrected helper uses fresh names without deleting or overwriting them.
+
+[Seven-surface gate audit](internal-release-gate-audit-2026-10-14.md) consolidates
+current evidence, selected revisions and missing acceptance. It does not convert
+source, headless, container or Linux DOM/native-handler checks into Windows GUI
+or physical acceptance. The manual Windows launch remains pending after automatic
+approval review's earlier blocked-by-policy rejection. Fixture-origin web-source
+extension permission and actual active Windows session are also unresolved.
+The goal remains active and internal release unaccepted; other recorded automated
+matrix cases remain applicable. Preparation/helper syntax and whitespace checks
+pass; completed work is committed locally without pushing.
