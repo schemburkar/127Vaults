@@ -211,6 +211,59 @@ fn missing_server_item_distinguishes_a_queued_creation_from_an_edit() {
 }
 
 #[test]
+fn sync_review_reads_durable_queue_without_network_values_or_mutation() {
+    let mut session = session("http://127.0.0.1:1");
+    let directory = session.core.create_empty_directory(session.root).unwrap();
+    let vault = session
+        .core
+        .create_private_vault(session.root, &directory)
+        .unwrap();
+    let vault_id =
+        uuid::Uuid::from_bytes(vault.vault.context[33..49].try_into().unwrap()).to_string();
+    let item = session.core.upsert_private_item(
+        vault.vault.handle.unwrap(), &vault.catalogue, None,
+        br#"{"title":"Queued fixture","website":"https://private.invalid"}"#,
+        br#"{"username":"private-user","password":"private-password","customFields":[{"label":"Private custom","value":"private-custom-secret"}]}"#,
+    ).unwrap();
+    let item_id = uuid::Uuid::from_bytes(item.item).to_string();
+    let operation_id = uuid::Uuid::new_v4().to_string();
+    let mut replica = crate::replica::Replica::new(session.tenant_id.clone(), vault_id.clone(), 1);
+    replica.directory = URL_SAFE_NO_PAD.encode(&vault.directory);
+    replica.vault_envelope = URL_SAFE_NO_PAD.encode(&vault.vault.envelope);
+    replica.catalogue = URL_SAFE_NO_PAD.encode(&item.catalogue);
+    replica.pending.push(crate::replica::PendingMutation {
+        operation: json!({"opId":operation_id,"itemId":item_id,"kind":"item.create"}),
+        request: json!({"catalogue":replica.catalogue,"index":URL_SAFE_NO_PAD.encode(&item.index),"body":URL_SAFE_NO_PAD.encode(&item.body)}),
+        base_catalogue: None, base_item: None,
+    });
+    session.replica_store.commit(&replica).unwrap();
+    let path = session
+        .profile_dir
+        .join("replicas")
+        .join(format!("{vault_id}.json"));
+    let before = std::fs::read(&path).unwrap();
+    let review = session.sync_review().unwrap();
+    assert_eq!(review["items"][0]["operationId"], operation_id);
+    assert_eq!(review["items"][0]["title"], "Queued fixture");
+    assert_eq!(
+        review["items"][0]["fields"],
+        json!(["title", "website", "username", "password", "customFields"])
+    );
+    for value in [
+        "private.invalid",
+        "private-user",
+        "private-password",
+        "Private custom",
+        "private-custom-secret",
+    ] {
+        assert!(!review.to_string().contains(value));
+    }
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    session.online = false;
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn conflict_comparison_reads_verified_server_fields_without_sending_the_queue() {
     let mut session = session("http://127.0.0.1:1");
     let directory = session.core.create_empty_directory(session.root).unwrap();

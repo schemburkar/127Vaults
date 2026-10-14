@@ -67,6 +67,8 @@ const auth=new AuthService({store,opaque});
 const types={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.webmanifest':'application/manifest+json'};
 const failures=[];
 const chainedQueue = process.env.VAULTS_TEST_CHAINED_QUEUE === '1';
+const cacheUpgrade = process.env.VAULTS_TEST_CACHE_UPGRADE === '1';
+let upgradedShell = false;
 const extraQueueItems = Number(chainedQueue);
 let queuedCreationId;
 const server=createServer(async(req,res)=>{
@@ -77,7 +79,8 @@ const server=createServer(async(req,res)=>{
     if(!path.startsWith('/api/')) {
       const asset=path==='/'?'index.html':path.slice(1);
       if(asset.includes('..'))return send(404,{error:'not_found'});
-      const bytes=await readFile(new URL(`../apps/web/dist/${asset}`,import.meta.url));
+      let bytes=await readFile(new URL(`../apps/web/dist/${asset}`,import.meta.url));
+      if (asset === 'sw.js' && upgradedShell) bytes = Buffer.from(bytes.toString().replace("'127vaults-shell-'", "'127vaults-shell-upgrade-'"));
       res.writeHead(200,{'Content-Type':types[asset.slice(asset.lastIndexOf('.'))]||'application/octet-stream','Cache-Control':'no-store',
         'Content-Security-Policy':"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; manifest-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"});res.end(bytes);return;
     }
@@ -199,7 +202,7 @@ try {
     const original=window.matchMedia.bind(window);
     window.matchMedia=query=>query==='(display-mode: standalone)'?{...original(query),matches:true,addEventListener(){},removeEventListener(){}}:original(query);
   });
-  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  let page=await context.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
   page.on('console',message=>{if(message.text().startsWith('acceptance-error:'))console.error(message.text())});
   await page.goto(`${origin}/?pwa=1`);await page.locator('#register-browser-device').waitFor({state:'visible'});
   await page.locator('#username').fill(username);await page.locator('#register-browser-device').click();await page.locator('#browser-enrollment-code').waitFor({state:'visible'});
@@ -215,6 +218,18 @@ try {
     await exerciseItemWorkspace(page, { firstItem, firstVault, secondVault, master });
   }
   console.log('Verified device enrollment, authenticated unlock and offline shell preparation.');
+  let oldShell;
+  if (cacheUpgrade) {
+    oldShell = await page.evaluate(async () => (await caches.keys()).find(key => key.startsWith('127vaults-shell-')));
+    assert.ok(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL));
+    upgradedShell = true;
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    await page.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting);
+    await page.waitForFunction(() => document.body.textContent.includes('Update ready'));
+    assert.equal(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).active === navigator.serviceWorker.controller), true);
+    assert.ok((await page.evaluate(() => caches.keys())).includes(oldShell));
+    console.log('Downloaded update remains waiting; active client and its offline shell are retained.');
+  }
   await page.evaluate(async()=>{
     const name=(await caches.keys()).find(name=>name.startsWith('127vaults-shell-')),cache=await caches.open(name);
     await cache.delete('/wasm/vaults_browser_fixture_bg.wasm');
@@ -236,7 +251,22 @@ try {
   await row().click();await page.locator('#edit-item').click();await page.locator('#item-password').fill('synthetic-offline-update');await page.locator('#save').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
   if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.getByLabel('Toggle navigation').click();await page.locator('#lock-app').click();await page.locator('#master').waitFor({state:'visible'});
-  await page.reload();await page.locator('#master').waitFor({state:'visible'});assert.equal(await page.locator('#legacy-secret-field').isVisible(),false);
+  if (cacheUpgrade) {
+    await page.close();
+    // No old controlled windows remain. Let the browser activate normally.
+    await context.serviceWorkers().at(-1).evaluate(async () => {
+      for (let i = 0; i < 100; i++) {
+        const keys = await caches.keys();
+        if (keys.some(key => key.startsWith('127vaults-shell-upgrade-')) && keys.length === 1) return;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      throw Error('waiting release did not retire the old shell');
+    });
+    page = await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(`${origin}/?pwa=1`);
+    assert.ok(!(await page.evaluate(() => caches.keys())).includes(oldShell));
+  } else await page.reload();
+  await page.locator('#master').waitFor({state:'visible'});assert.equal(await page.locator('#legacy-secret-field').isVisible(),false);
   await page.locator('#master').fill('incorrect-disposable-password');await page.locator('#login').click();await page.waitForFunction(()=>document.querySelector('#login-status').textContent.includes('Unlock failed'));
   assert.equal(await page.locator('#vault').isVisible(),false);
   // A correct password must not make a corrupted local signed queue trusted.
@@ -283,7 +313,7 @@ try {
   changeItem(firstVault,firstItem,{title:'Server fixture update',website:'https://example.invalid',favorite:false},{username:'synthetic-user',password:'synthetic-server-update',customFields:[]});
   addVault('Concurrent fixture');
   await context.setOffline(false);
-  await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'),{timeout:20000});
+  if (!cacheUpgrade) await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'),{timeout:20000});
   await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#conflict-dialog').waitFor({state:'visible'});
   await page.locator('#conflict-keep').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'),{timeout:20000});
@@ -353,6 +383,7 @@ try {
   assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);
   const ordinary=await browser.newContext({serviceWorkers:'allow'}),tab=await ordinary.newPage();await tab.goto(origin);await tab.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration())?.active);await ordinary.setOffline(true);await assert.rejects(tab.reload());await ordinary.close();
   const evidence={ok:true,enrollment:true,offlineReload:true,passwordOnlyUnlock:true,offlineWrites:true,multipleVaults:true,collections:true,defaultView:true,archiveRestoreMove:true,conflictReview:true,lostResponseReplay:true,signedHistoryAndCheckpoints:true,tamperedQueueRejected:true,concurrentStorageWrites:true,retiredVaultRecovery:true,ordinaryBrowserOnlineOnly:true,mobileAndDesktop:true,chainedOfflineCreateEdit:chainedQueue,scope:'Actual browser/WASM/UI with isolated HTTP fixture; separate from PostgreSQL/TLS acceptance'};
+  evidence.cacheUpgradeWithQueuedWrite = cacheUpgrade;
   await writeFile(resolve(output,'evidence.json'),JSON.stringify(evidence,null,2)+'\n');
   console.log(JSON.stringify(evidence));
 } catch (error) {

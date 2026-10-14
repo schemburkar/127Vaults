@@ -144,6 +144,11 @@ pub enum Command {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    /// List queued item labels and changed field names without replaying writes or revealing values.
+    SyncReview {
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     /// Review and resolve quarantined local edits.
     Conflict {
         #[command(subcommand)]
@@ -1545,6 +1550,12 @@ pub fn run(cli: Cli) -> Result<String, String> {
             serde_json::json!({}),
         )?)
         .map_err(|_| "could not encode sync result".to_owned()),
+        Command::SyncReview { config_dir } => serde_json::to_string_pretty(&agent::call(
+            &effective_config_dir(&config_dir),
+            "sync.review",
+            serde_json::json!({}),
+        )?)
+        .map_err(|_| "could not encode sync review".to_owned()),
         Command::Conflict { command } => {
             let (config_dir, action, body) = match command {
                 ConflictCommand::Merge {

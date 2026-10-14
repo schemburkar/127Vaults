@@ -19,6 +19,13 @@ CLI profile (`--config-dir PATH` when needed). The current device cannot revoke
 itself. Revocation affects online trust and sessions; it does not remotely erase
 an offline replica. These commands require an online unlocked CLI agent.
 
+`127vaults sync-review` lists queued item titles, operation identifiers and changed
+field names, with separate settings pending/conflict flags. It reads the durable
+local queue without uploading changes or printing usernames, websites, passwords
+or custom-field values. Use `sync` to retry, or `conflict compare` to review a
+confirmed conflict with secret values redacted before choosing a resolution.
+All these commands accept `--config-dir PATH` and require an unlocked CLI agent.
+
 For the separately downloaded Chrome/Edge extension, load its extracted folder
 unpacked, copy its ID from the extensions page, and register this archive's host:
 

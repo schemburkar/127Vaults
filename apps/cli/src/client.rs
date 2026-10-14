@@ -2611,7 +2611,11 @@ impl Session {
         let made = self
             .core
             .create_private_vault(self.root, &directory)
-            .map_err(|_| "vault encryption failed".to_owned())?;
+            .map_err(|error| match error {
+                vaults_crypto::ecf1::Error::LimitExceeded =>
+                    "private vault limit reached (maximum 5); existing vaults and items are unchanged".to_owned(),
+                _ => "vault encryption failed".to_owned(),
+            })?;
         let vault_id = uuid::Uuid::from_bytes(
             made.vault
                 .context

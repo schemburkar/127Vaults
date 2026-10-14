@@ -277,7 +277,7 @@ impl Core {
         let old = Directory::decode(current_directory, &r.bytes, tenant, account)
             .map_err(record_error)?;
         if old.entries.len() >= 5 {
-            return Err(Error::InvalidInput);
+            return Err(Error::LimitExceeded);
         }
         let vault_id = random_revision().map_err(record_error)?;
         let mut t = [0u8; 77];
@@ -1212,6 +1212,32 @@ mod tests {
             core.open_private_vault(handle, &second.directory, second_id, &second.vault.envelope)
                 .is_ok()
         );
+    }
+    #[test]
+    fn private_vault_capacity_refuses_without_invalidating_existing_vaults() {
+        let mut core = Core::new();
+        let root = core
+            .create_root(&template(1), b"password", &[9; 32])
+            .unwrap();
+        let handle = root.handle.unwrap();
+        let mut directory = core.create_empty_directory(handle).unwrap();
+        let mut vaults = Vec::new();
+        for _ in 0..5 {
+            let made = core.create_private_vault(handle, &directory).unwrap();
+            directory = made.directory;
+            vaults.push(made.vault);
+        }
+        assert_eq!(
+            core.create_private_vault(handle, &directory).err(),
+            Some(Error::LimitExceeded)
+        );
+        for vault in vaults {
+            let id = vault.context[33..49].try_into().unwrap();
+            assert!(
+                core.open_private_vault(handle, &directory, id, &vault.envelope)
+                    .is_ok()
+            );
+        }
     }
     #[test]
     fn account_settings_are_root_scoped_and_authenticated() {

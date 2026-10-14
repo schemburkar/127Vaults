@@ -275,6 +275,7 @@ fn dispatch(
                 .ok_or("device ID is required")?,
         ),
         "sync" => session.sync_now(),
+        "sync.review" => session.sync_review(),
         "conflict.list" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
             session.conflict_list(&vault)
@@ -843,6 +844,7 @@ mod tests {
             "device.revoke",
             "conflict.compare",
             "conflict.merge",
+            "sync.review",
         ] {
             let mut request: Request = serde_json::from_value(
                 json!({"capability":"fixture","action":action,"password":"synthetic-secret"}),
