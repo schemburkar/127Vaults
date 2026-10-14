@@ -433,7 +433,7 @@ export function App() {
     setEditOriginal(conflict.server);
     setResolvingOperationId(conflict.operationId ?? null);
     setItemVaultId(conflict.vaultId ?? vaultId);
-    setEditing(true);
+    beginDraft();
     setConflict(null);
     void save(merged, conflict.operationId ?? null, conflict.vaultId);
   };
@@ -974,13 +974,18 @@ export function App() {
       {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
     </div>
   </label>;
+  const beginDraft = () => {
+    // A late read must not replace an editor the user has started meanwhile.
+    openRequest.current++;
+    setEditing(true);
+  };
   const beginEditing = () => {
     if (saving || !selected) return;
     const draft = { ...selected, customFields: completeRelatedFields(selected.customFields) };
     setEditOriginal(structuredClone(draft));
     setSelected(draft);
     setExpandedRelatedId(null);
-    setEditing(true);
+    beginDraft();
   };
   const beginNewItem = () => {
     if (saving || !activeVaults.length || !confirmDiscard()) return;
@@ -988,7 +993,7 @@ export function App() {
     setEditOriginal(null);
     setItemVaultId(viewMode === "single" ? vaultId : "");
     setRevealed(new Set());
-    setEditing(true);
+    beginDraft();
   };
   const cancelEditing = () => {
     if (!confirmDiscard()) return;
@@ -1094,7 +1099,7 @@ export function App() {
   const duplicateItem = () => {
     if (saving || !selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || !confirmDiscard()) return;
     setSelected({ ...structuredClone(selected), itemId: "", title: `${selected.title} (copy)`, customFields: setFavorite(selected.customFields, false) });
-    setEditOriginal(null); setItemVaultId(vaultId); setRevealed(new Set()); setEditing(true);
+    setEditOriginal(null); setItemVaultId(vaultId); setRevealed(new Set()); beginDraft();
   };
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -1233,7 +1238,7 @@ export function App() {
         customFields: [],
       });
       setEditOriginal(null);
-      setEditing(true);
+      beginDraft();
     }
     if (id === "edit-item" && selected) beginEditing();
     if (id === "sync") void synchronize();
