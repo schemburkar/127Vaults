@@ -222,3 +222,16 @@ Conflict dialogs now retain their owning vault for comparison, selected-field sa
 and server-copy actions rather than relying on the changing main view. Desktop and
 web checks pass. The user's live Edge popup and specific remaining conflict require
 confirmation after extension reload and app unlock; no user edit was discarded.
+
+## October 14 expanded verification
+
+Selected server/web `internal-20261014-d` and Windows/Linux Desktop/CLI
+`internal-20261014-a` include fixes for real PWA conflict-code mismatch, stale
+native creation predecessors and hidden web card fields. The
+[expanded evidence matrix](internal-sync-release-plan-2026-10-13.md) records trusted
+browser enrollment, online/offline web/native round trips, field merge/server-copy
+recovery, seven enabled types with related/custom secrets and new Linux GUI
+consecutive saves. Latest checksums/provenance are in the
+[artifact inventory](internal-release-artifacts-2026-10-13.json). Full release
+acceptance is still open, especially Windows GUI and actual web-source extension,
+broader lifecycle/authorization, cache-update and physical-host gates.

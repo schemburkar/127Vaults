@@ -363,3 +363,32 @@ required before selecting these changes as the release candidate. The test helpe
 are `internal-web-typed-sync.mjs` and native `types-write`/`types-verify` phases.
 The broader Edge/PWA lower-case wire-code regression passed completely at
 `C:\Projects\127Vaults-pwa-wire-conflict-20261014-a\evidence.json`.
+
+### Rebuilt native/server packages and seven-type GUI round trips passed
+
+Selected candidates now use server `internal-20261014-d` and Windows/Linux Desktop
+and standalone CLI `internal-20261014-a`, all built from clean `103da5b`. Extension
+`internal-20261013-b` remains unchanged. All six complete file sets and SHA256 values
+verify; the server fixture now runs image `release-4497166804580e4a` with its original
+installation ID/database/identity. New packages include fresh-create head verification
+and web card/detail visibility fixes. They remain unsigned private-test candidates.
+
+- New Windows CLI: seven consecutive online creations, zero pending/conflicts;
+  Linux new CLI reads all types, ordinary fields, related/custom secret values and
+  default redaction: `...sync-web-20261014-a\types-packaged-windows.json`.
+- New Linux CLI: seven consecutive online creations; packaged web UI reads and
+  edits those exact seven original IDs; new Windows CLI validates ordinary fields,
+  all secret values/redaction, related section and type markers after web saves:
+  `...\types-native.json` (writer is Linux), and `types-packaged-linux.json` keeps
+  the original creation metadata. The earlier rebuilt-Windows-binary set also
+  passes web edits and both new CLI peer readers: `types-original-roundtrip.json`.
+- New Linux Desktop: actual React GUI online unlock/explicit profile identity,
+  two consecutive creations plus an edit without intermediate sync, zero waiting
+  changes. Windows new CLI sees both exactly once and validates fields/passwords:
+  `C:\Projects\127Vaults-sync-desktop-linux-20261014-a\online.json` and `peer.json`.
+
+The typed harness resumes partial edits on original IDs and waits for completed
+unlock/detail rendering. Intermediate UI failures remain on disk and are not green
+acceptance. Broader native offline/restart, latest extension-source matrix and
+Windows new GUI manual launch still remain, together with lifecycle/authorization,
+PWA update UX, passkey permission and physical/intended-host gates.

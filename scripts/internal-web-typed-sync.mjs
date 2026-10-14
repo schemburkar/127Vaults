@@ -1,6 +1,5 @@
 import {createRequire} from 'node:module';
 import {writeFile,readFile} from 'node:fs/promises';
-import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {resolve,join,isAbsolute,relative,sep} from 'node:path';
 const work=process.argv[2];assert.ok(work&&isAbsolute(work),'Explicit absolute fixture workspace required');
@@ -10,14 +9,8 @@ const enrollment=JSON.parse(await readFile(join(work,'enrolled-browser.json'),'u
 assert.equal(enrollment.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(enrollment.verifiedHTTPS,true);
 const {chromium}=createRequire(import.meta.url)(process.env.VAULTS_PLAYWRIGHT_MODULE||'playwright');
 const origin='https://127.0.0.1:12892';
-const offline=false;
-const conflict=false;
-assert.ok(!process.argv[3]||offline||conflict,'Optional mode is --offline, --merge-conflict or --server-conflict');
+assert.ok(!process.argv[3],'Supply only the explicit fixture workspace');
 const browser=await chromium.launchPersistentContext(join(work,'browser-profile'),{executablePath:process.env.VAULTS_CHROME_PATH||'/fixture/chrome/chrome',headless:true,viewport:{width:1440,height:1000}});
-if(offline||conflict)await browser.addInitScript(()=>{
- const original=window.matchMedia.bind(window);
- window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};
-});
 let page,stage='login';
 try{
  await browser.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
@@ -34,7 +27,7 @@ try{
  for(const item of evidence.items){
   stage='read '+item.type;
   const row=page.locator('#items [data-item-id]').filter({hasText:item.title});await row.waitFor();assert.equal(await row.getAttribute('data-item-id'),item.itemId);await row.click();
-  await page.waitForFunction(title=>document.querySelector('#view-title')?.textContent===title,item.title);
+  await page.waitForFunction(titles=>titles.includes(document.querySelector('#view-title')?.textContent),[item.title,item.expectedTitle]);
   await page.locator('#view-custom-fields').getByText('fixture ordinary field',{exact:true}).waitFor({state:'visible'});
   const detail=await page.locator('#item-view').innerText();assert.ok(detail.includes('fixture ordinary field'));assert.ok(!detail.includes('fictitious-typed-secret')&&!detail.includes('fictitious-related-secret'));
   stage='edit '+item.type;await page.locator('#edit-item').click();await page.locator('#title').fill(item.expectedTitle);await page.locator('#save').click();

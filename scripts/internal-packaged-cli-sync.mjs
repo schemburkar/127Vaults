@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','web-peer','web-verify','types-write','types-verify'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -21,8 +21,8 @@ async function command(args,input=''){
  });
 }
 let evidence=['write','queue','types-write'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
-assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
-if(['peer','ui-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
+assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||phase==='ui-online-peer'&&evidence.title.startsWith('Linux packaged online ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
+if(['peer','ui-peer','ui-online-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
 let agentReady=false,agentError='';
 try{
@@ -47,13 +47,15 @@ try{
    evidence.items.push({type,title,itemId:made.itemId,expectedTitle:title+' web edit'});
    await writeFile(evidencePath,JSON.stringify(evidence,null,2)+'\n');
   }
- }else if(phase==='types-verify'){
-  assert.equal(evidence.webTypesReadAndEditPassed,true);assert.equal(evidence.items.length,7);
+ }else if(['types-verify','types-check'].includes(phase)){
+  if(phase==='types-verify')assert.equal(evidence.webTypesReadAndEditPassed,true);assert.equal(evidence.items.length,7);
   for(const row of evidence.items){
    const value=JSON.parse(await command(['item','get',row.itemId,'--vault',evidence.vaultId]));
-   assert.equal(value.title,row.expectedTitle);assert.equal(value.password,'[redacted]');
+   assert.equal(value.title,phase==='types-verify'?row.expectedTitle:row.title);assert.equal(value.password,'[redacted]');
+   assert.equal(value.username,'typed-fixture-user');assert.equal(value.website,'https://typed-web-native.invalid/');
    assert.ok(value.customFields.some(field=>field.id==='__127vaults_item_type'&&field.value===row.type)||row.type==='login');
    assert.ok(value.customFields.some(field=>field.id==='fixture_note'&&field.value==='fixture ordinary field'));
+   assert.ok(value.customFields.some(field=>field.id==='fixture_secret'&&field.value==='[redacted]'));
    assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-typed-password');
    assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','fixture_secret']),'fictitious-typed-secret');
    assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','__127vaults_field:fixture:answer']),'fictitious-related-secret');
@@ -73,12 +75,13 @@ try{
   assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-web-native-password');
   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.expectedPeerTitle,website:'https://web-native.invalid/',username:'native-fixture-user',password:'fictitious-web-native-password'})+'\n');
   evidence.nativeReadAndEditPassed=true;
- }else if(phase==='ui-peer'){
+ }else if(['ui-peer','ui-online-peer'].includes(phase)){
   assert.equal(evidence.items.length,2);
   const listed=JSON.parse(await command(['item','list','--all']));
   for(const row of evidence.items){
-   assert.ok(row.title.startsWith('Linux packaged queue '));
+   assert.ok(row.title.startsWith(phase==='ui-peer'?'Linux packaged queue ':'Linux packaged online '));
    assert.equal(listed.filter(item=>item.title===row.title).length,1);
+   if(phase==='ui-online-peer')row.itemId=listed.find(item=>item.title===row.title).itemId;
    const value=JSON.parse(await command(['item','get',row.itemId,'--vault',evidence.vaultId]));
    assert.equal(value.title,row.title);assert.equal(value.username,'');assert.equal(value.website,'');assert.equal(value.password,'[redacted]');
    assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'synthetic-ui-queue-password');
