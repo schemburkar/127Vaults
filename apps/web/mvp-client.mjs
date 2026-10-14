@@ -10,6 +10,7 @@ import { VaultLifecycleClient } from '/app/vault-lifecycle.mjs';
 import { verifySyncHistory, verifyLatestPayload, verifyCheckpoints, checkpointHash, verifyQueuedOperation } from '/app/signed-sync.mjs';
 const installedApp = isInstalledApp();
 let replica = null, reconnectCredentials = null, serverAuthenticated = false, snapshotBusy = false;
+let startupReady = false;
 let sessionGeneration = 0, lockDeadline = 0;
 const replicaChanged = () => {
   window.dispatchEvent(new CustomEvent('vaults:pwa-status', { detail: { ready: !!replica?.state.snapshotAt, at: replica?.state.snapshotAt } }));
@@ -2298,6 +2299,7 @@ function showLogin() {
   $("username").focus();
 }
 function showLoginPassword() {
+  if (!startupReady) return;
   let username = $("username").value.trim();
   if (!username) {
     $("username").focus();
@@ -2397,7 +2399,7 @@ function setBusy(v) {
   busy = v;
   document.body.setAttribute("aria-busy", String(v));
   for (let b of document.querySelectorAll(
-    "#save,#new-item,#create-vault,#web-create-vault-submit,#login,#setup,#begin-enrollment,#complete-enrollment,#reload,#mobile-sync,#register-browser-device,#browser-enrollment-check",
+    "#save,#new-item,#create-vault,#web-create-vault-submit,#login-next,#login,#setup,#begin-enrollment,#complete-enrollment,#reload,#mobile-sync,#register-browser-device,#browser-enrollment-check",
   ))
     b.disabled =
       v ||
@@ -2642,6 +2644,7 @@ if ($('web-collection-form')) {
   $('web-collection-cancel').onclick = () => $('web-collection-dialog').close();
 }
 try {
+  setBusy(true);
   await init();
   window.addEventListener("vaults:generate-secret", (event) => {
     try {
@@ -2668,6 +2671,8 @@ try {
   $("setup-guidance").textContent = setupState.licenseMode === "active"
     ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."
     : "Run install bootstrap on the server and enter its one-time code below. This test server has no active license yet.";
+  startupReady = true;
+  setBusy(false);
   if (ownerSetupRequired) showRegistration();
   else showLogin();
   msg(ownerSetupRequired ? "Create the first owner for this server." : identity ? "Ready to sign in." : "This browser needs device enrollment from an existing user.");

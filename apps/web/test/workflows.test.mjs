@@ -4,6 +4,18 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
+test('login waits for saved identity initialization and still opens after enrollment', () => {
+  const elements = Object.fromEntries(['username','login-account-name','legacy-secret-field','login-username-step','login-password-step','master'].map(id => [id,{value:'owner_127',hidden:false,focus(){}}]));
+  let messages = 0;
+  const context = vm.createContext({$:id=>elements[id],startupReady:false,identity:null,busy:true,status:()=>messages++,reusableSecret:()=>false});
+  vm.runInContext(source.slice(source.indexOf('function showLoginPassword()'),source.indexOf('function showRegistration()')),context);
+  vm.runInContext('showLoginPassword()',context);
+  assert.equal(messages,0);
+  assert.equal(elements['login-username-step'].hidden,false);
+  vm.runInContext('startupReady=true; identity={username:"owner_127"}; showLoginPassword()',context);
+  assert.equal(elements['login-username-step'].hidden,true);
+  assert.equal(elements['login-password-step'].hidden,false);
+});
 function editorHarness() {
   const elements = Object.fromEntries(['item-form','item-id','title','url','item-username','item-password','cancel-edit','items'].map(id => [id, { value: '', hidden: false }]));
   elements.title.value = 'Original';

@@ -241,3 +241,38 @@ optional passkey permission/ceremony and physical OS-lock/intended-host acceptan
 Windows fixture launch was explicitly approved but automatic review rejected it
 as "blocked by policy" without a further reason. Do not bypass that rejection or
 claim the full internal release accepted.
+
+### Trusted browser enrollment and web/native round trip — October 14
+
+The current packaged server (`release-89b4c7bf9bce5a15`, source `8aeaf9b`) is now
+running against the owned fixture's existing PostgreSQL volume and TLS identity,
+installation `14725fef-f5b4-4cb8-afe0-77aa3d80b268`, at HTTPS port 12892. Only
+fixture bundle port/manifest metadata changed. The original runtime bundle remains
+retained; the user's installation and Windows trust store were untouched.
+
+A fresh Chromium browser enrolled through the actual web UI. The packaged Windows
+CLI owner approved its exact device ID/public-key fingerprint; browser approval
+and OPAQUE unlock passed. The fixture CA is trusted only inside an isolated Linux
+browser container, with no HTTPS bypass. Its enrolled nonextractable identity
+survives browser restart.
+
+`scripts/internal-web-native-sync.mjs` and the `web-peer` phase of
+`scripts/internal-packaged-cli-sync.mjs` pass the actual online round trip:
+web UI creates an encrypted item; Windows packaged CLI reads its original UUID,
+checks ordinary fields, redaction and explicitly requested fictitious password,
+edits title/username; web UI reloads, displays those values with password masking,
+and locks. Evidence: `C:\Projects\127Vaults-sync-web-20261014-a\web-native.json`,
+item `3909498f-1da1-43df-9b97-dfb8d8a3d2dd`. This is an online login-item pair,
+not acceptance of PWA offline replay, all enabled types or conflict resolution.
+
+An initial test clicked Next before asynchronous identity initialization completed.
+The identity itself was retained. Startup now disables account actions, and the
+Next handler waits for readiness; the regression also checks that enrollment can
+still open the password step while its completion is busy. All 62 web tests and
+web build/type checks pass. This startup fix is source-level evidence and still
+requires a new server/web package before replacing the selected inventory.
+
+Remaining: Windows packaged GUI manual launch/test; live unlocked web-tab extension
+source including multiple tabs; web/PWA-native offline/conflict/type/settings matrix;
+wider authorization/lifecycle/revocation; optional passkey ceremony; physical OS-lock
+and intended-host acceptance. The full internal release remains unaccepted.

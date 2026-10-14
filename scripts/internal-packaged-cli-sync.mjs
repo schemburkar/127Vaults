@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','web-peer'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -21,7 +21,7 @@ async function command(args,input=''){
  });
 }
 let evidence=['write','queue'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
-assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue '));
+assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||phase==='web-peer'&&evidence.title.startsWith('Web-native fixture '));
 if(['peer','ui-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
 let agentReady=false,agentError='';
@@ -36,7 +36,16 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase==='ui-peer'){
+ if(phase==='web-peer'){
+  assert.equal(evidence.verifiedHTTPS,true);
+  assert.equal(evidence.webCreatePassed,true);
+  assert.equal(evidence.expectedPeerTitle,evidence.title+' native edit');
+  const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
+  assert.equal(value.title,evidence.title);assert.equal(value.username,'web-fixture-user');assert.equal(value.password,'[redacted]');
+  assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-web-native-password');
+  await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.expectedPeerTitle,website:'https://web-native.invalid/',username:'native-fixture-user',password:'fictitious-web-native-password'})+'\n');
+  evidence.nativeReadAndEditPassed=true;
+ }else if(phase==='ui-peer'){
   assert.equal(evidence.items.length,2);
   const listed=JSON.parse(await command(['item','list','--all']));
   for(const row of evidence.items){
@@ -85,6 +94,10 @@ try{
  }
  evidence[phase+'Passed']=true;evidence.lastRunAt=new Date().toISOString();
  await writeFile(evidencePath,JSON.stringify(evidence,null,2)+'\n');
+ if(phase==='web-peer'){
+  assert.ok(evidencePath.endsWith('web-native.json'));
+  await writeFile(evidencePath.slice(0,-'web-native.json'.length)+'native-peer-edited.json',JSON.stringify({itemId:evidence.itemId})+'\n');
+ }
  console.log(`Packaged CLI ${phase} passed on ${process.platform}; fixture evidence retained.`);
 }finally{
  if(agentReady)await command(['lock']).catch(()=>{});
