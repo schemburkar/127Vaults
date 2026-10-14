@@ -71,6 +71,17 @@ try{
    assert.ok(JSON.stringify(conflicts).includes(evidence.conflictOperationId));
    const shown=await command(['conflict','show',evidence.conflictOperationId,'--vault',evidence.vaultId]);
    assert.ok(shown.includes('local conflict'));assert.ok(!shown.includes('fictitious-lifecycle-password'),'Conflict review must redact the password');
+   if(process.env.VAULTS_FIXTURE_COMPARE==='1'){
+    const before=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8')).pending;
+    const compared=JSON.parse(await command(['conflict','compare',evidence.conflictOperationId,'--vault',evidence.vaultId]));
+    assert.equal(compared.operationId,evidence.conflictOperationId);assert.equal(compared.itemId,evidence.itemId);assert.equal(compared.vaultId,evidence.vaultId);
+    assert.equal(compared.draft.title,evidence.localConflictTitle);assert.equal(compared.server.title,evidence.serverConflictTitle);
+    assert.equal(compared.draft.password,'[redacted]');assert.equal(compared.server.password,'[redacted]');
+    assert.ok(!JSON.stringify(compared).includes('fictitious-lifecycle-password'));
+    const after=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8')).pending;
+    assert.deepEqual(after,before,'Comparison must preserve the exact pending request');
+    evidence.cliVerifiedComparisonPassed=true;
+   }
    const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
    assert.equal(replica.pending.length,1);assert.equal(replica.pending[0].operation.opId,evidence.conflictOperationId);
    }

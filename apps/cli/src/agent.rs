@@ -24,6 +24,17 @@ fn passkey_session() -> &'static str {
 const IDLE_TTL: Duration = Duration::from_mins(30);
 const CAPABILITY_SERVICE: &str = "127Vaults CLI unlock lease";
 
+fn redact_conflict_fields(item: &mut Value) {
+    item["password"] = json!("[redacted]");
+    if let Some(fields) = item["customFields"].as_array_mut() {
+        for field in fields {
+            if field["type"] == "password" {
+                field["value"] = json!("[redacted]");
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct Startup {
     account_secret: String,
@@ -247,15 +258,27 @@ fn dispatch(
                 .ok_or("operation ID is required")?;
             let (vault_id, item_id) = session.conflict_item_id(&vault, operation)?;
             let mut draft = session.conflict_draft(&vault_id, &item_id, operation)?;
-            draft["password"] = json!("[redacted]");
-            if let Some(fields) = draft["customFields"].as_array_mut() {
-                for field in fields {
-                    if field["type"] == "password" {
-                        field["value"] = json!("[redacted]");
-                    }
-                }
-            }
+            redact_conflict_fields(&mut draft);
             Ok(json!({"operationId":operation,"draft":draft}))
+        }
+        "conflict.compare" => {
+            let vault = vault_selector(session, request.vault.as_deref())?;
+            let operation = request
+                .operation_id
+                .as_deref()
+                .ok_or("operation ID is required")?;
+            let (vault_id, item_id) = session.conflict_item_id(&vault, operation)?;
+            let mut comparison = session.conflict_compare(&vault_id, &item_id, operation)?;
+            let mut draft = session.conflict_draft(&vault_id, &item_id, operation)?;
+            redact_conflict_fields(&mut draft);
+            if comparison["server"].is_object() {
+                redact_conflict_fields(&mut comparison["server"]);
+            }
+            comparison["operationId"] = json!(operation);
+            comparison["vaultId"] = json!(vault_id);
+            comparison["itemId"] = json!(item_id);
+            comparison["draft"] = draft;
+            Ok(comparison)
         }
         "conflict.resolve" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
@@ -667,6 +690,21 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn conflict_comparison_masks_builtin_custom_and_related_passwords() {
+        let mut item = serde_json::json!({"title":"visible title","username":"visible user","password":"builtin secret","customFields":[
+            {"id":"ordinary","type":"text","value":"visible note"},
+            {"id":"custom","type":"password","value":"custom secret"},
+            {"id":"__127vaults_field:section:answer","type":"password","value":"related secret"}
+        ]});
+        super::redact_conflict_fields(&mut item);
+        assert_eq!(item["password"], "[redacted]");
+        assert_eq!(item["customFields"][0]["value"], "visible note");
+        assert_eq!(item["customFields"][1]["value"], "[redacted]");
+        assert_eq!(item["customFields"][2]["value"], "[redacted]");
+        assert_eq!(item["title"], "visible title");
+        assert_eq!(item["username"], "visible user");
+    }
     use super::*;
 
     #[test]

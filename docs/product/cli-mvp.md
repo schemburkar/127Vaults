@@ -164,6 +164,10 @@ move commands still require an explicit source and move requires a destination.
 many operations remain pending. Conflicts keep their signed local request until
 an explicit choice. `conflict list` shows operation IDs and field names;
 `conflict show <operation-id>` shows the local draft with password fields redacted.
+`conflict compare <operation-id>` refreshes verified server state without submitting
+the queue and returns both versions with built-in, custom and related password
+fields redacted. It includes the owning vault/item/operation IDs and reports an
+absent server item explicitly. Failed/offline comparison preserves the queued edit.
 Use `conflict resolve <operation-id> --keep server` to discard only that queued
 operation, or `--keep local` to encrypt and queue the local draft against the
 current verified item. Add `--vault` when multiple vaults are available. A

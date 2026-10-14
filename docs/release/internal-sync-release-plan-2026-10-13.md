@@ -518,3 +518,31 @@ the peer title plus local username, and Linux verified the unchanged password.
 actual baseline and gives each local username a distinct round value to ensure
 the edit is real. Current `lifecycle-native.json` records this pass; the preceding
 local-copy evidence remains in `lifecycle-native-local-copy.json`.
+
+## CLI comparison parity follow-up
+
+The CLI now exposes `conflict compare <operation-id> [--vault ...]`, using the
+same verified read-only engine as Desktop rather than replaying pending edits.
+Both draft/server values redact built-in, custom and related password fields;
+the result carries owning vault/item/operation IDs and missing-item classification.
+The existing connector's read-only action allowlist is unchanged.
+
+Validation: native library 69 passed/one separately gated live test ignored,
+Rustfmt, strict CLI all-target Clippy and debug executable build pass. The new
+redaction regression covers ordinary text, built-in/custom/related passwords;
+existing transport regressions prove read-only comparison and queue preservation
+on refresh failure. Actual Windows rebuilt CLI against the retained TLS/PostgreSQL
+server compared an overlapping offline edit with a newer packaged Linux edit,
+verified both titles and exact pending request preservation, then resolved server
+copy with zero pending/conflicts. Linux packaged CLI verified the resulting item.
+Evidence: current `lifecycle-native.json` (`cliVerifiedComparisonPassed=true`);
+prior packaged automatic-merge evidence is retained as
+`lifecycle-native-auto-merge.json`. The helper's optional
+`VAULTS_FIXTURE_COMPARE=1` checks the new command.
+
+This new command's real-server evidence uses a rebuilt debug CLI, not the selected
+immutable CLI candidate. Updated packaging is still required. Whole-version
+choices exist on CLI; selected-field merge is still a CLI parity gap. Extension
+delegates item editing/sync to its selected source; admin manages authorization
+and does not decrypt or merge vault items. These roles must remain explicit in
+the parity matrix rather than requiring secret editing on every surface.

@@ -370,6 +370,14 @@ pub enum ItemCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ConflictCommand {
+    /// Compare the queued draft with verified server fields without submitting it.
+    Compare {
+        operation_id: String,
+        #[arg(long)]
+        vault: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     List {
         #[arg(long)]
         vault: Option<String>,
@@ -1526,6 +1534,15 @@ pub fn run(cli: Cli) -> Result<String, String> {
         .map_err(|_| "could not encode sync result".to_owned()),
         Command::Conflict { command } => {
             let (config_dir, action, body) = match command {
+                ConflictCommand::Compare {
+                    operation_id,
+                    vault,
+                    config_dir,
+                } => (
+                    config_dir,
+                    "conflict.compare",
+                    serde_json::json!({"vault":vault,"operation_id":operation_id}),
+                ),
                 ConflictCommand::List { vault, config_dir } => (
                     config_dir,
                     "conflict.list",
@@ -1877,6 +1894,8 @@ mod tests {
         assert!(Cli::try_parse_from(["127vaults", "sync"]).is_ok());
         assert!(Cli::try_parse_from(["127vaults", "conflict", "list"]).is_ok());
         assert!(Cli::try_parse_from(["127vaults", "conflict", "show", "operation-id"]).is_ok());
+        assert!(Cli::try_parse_from(["127vaults", "conflict", "compare", "operation-id"]).is_ok());
+        assert!(Cli::try_parse_from(["127vaults", "conflict", "compare"]).is_err());
         assert!(
             Cli::try_parse_from([
                 "127vaults",
