@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','native-queue','native-peer','native-review','native-resolve','native-verify'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -99,7 +99,14 @@ try{
    assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
   }
  }else if(phase.startsWith('lifecycle-')){
-  if(phase==='lifecycle-create'){
+  if(phase==='lifecycle-settings-accept'){
+   await command(['vault','settings-sync']);
+   const review=JSON.parse(await command(['vault','settings-review']));
+   assert.equal(review.localPending,false,'Never discard an unreviewed fixture settings draft');
+   assert.equal(review.server.names[evidence.vaultId],evidence.vaultName);
+   await command(['vault','settings-resolve','--keep','server']);
+   const settings=JSON.parse(await command(['vault','settings']));assert.equal(settings.conflict,false);assert.equal(settings.pending,false);
+  }else if(phase==='lifecycle-create'){
    const available=JSON.parse(await command(['vault','list']));
    console.log('Fixture vault capacity:',available.length);
    const existing=process.env.VAULTS_FIXTURE_LIFECYCLE_VAULT;
@@ -221,6 +228,7 @@ try{
   const synced=JSON.parse(await command(['sync']));
   assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
   evidence[phase+'ItemQueueEmpty']=true;
+  evidence[phase+'SettingsState']={pending:synced.vaultSettings?.pending,conflict:synced.vaultSettings?.conflict};
  }
  evidence[phase+'Passed']=true;evidence.lastRunAt=new Date().toISOString();
  if(phase==='native-verify'){

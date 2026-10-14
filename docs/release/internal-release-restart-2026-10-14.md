@@ -72,13 +72,22 @@ checks were verified. Use these candidates, not retained reproduction packages.
 | --- | --- | --- |
 | Server/web/admin | `internal-20261014-d/linux-amd64` | `103da5b24e9e5a5a00366ad731a8efb7b9ca4b12` |
 | Desktop | `internal-20261014-a/windows`, `linux` | `103da5b24e9e5a5a00366ad731a8efb7b9ca4b12` |
-| CLI | `internal-20261014-a/windows`, `linux` | `103da5b24e9e5a5a00366ad731a8efb7b9ca4b12` |
+| CLI | `internal-20261014-b/windows`, `linux` | `b63e6e539653fa25b50a1e73cbb6b2cfef5691c3` |
 | Chromium extension | `internal-20261014-a/chromium` | `07fdca56a281f786b18c639347d86c631bc64585` |
 
 Server image: `localhost/127vaults-server:release-4497166804580e4a`.
 These are unsigned private test candidates, not evidence of real-secret readiness.
 
 ## Remaining work, in restart order
+
+Follow-up after the resumed scenarios: CLI verified comparison and explicit field
+selection are implemented and pass on both new immutable CLI packages, with
+opposite-OS reads. The [sync parity tracker](sync-parity-2026-10-14.md) records the
+new capabilities, package selection, reverse-direction lifecycle/settings review
+and exact evidence paths. New CLI extraction roots end in `sync-cli-20261014-b`;
+profiles remain the existing guarded `20261013-a` fixtures. All six selected
+artifact sets were reverified. Item queues and settings decisions are tracked
+separately. The broader remaining gates below still apply.
 
 1. Latest Windows packaged Desktop GUI: online creation/editing, offline queued
    edits plus process restart/replay, field comparison/server copy and extension

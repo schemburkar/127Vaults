@@ -235,3 +235,12 @@ consecutive saves. Latest checksums/provenance are in the
 [artifact inventory](internal-release-artifacts-2026-10-13.json). Full release
 acceptance is still open, especially Windows GUI and actual web-source extension,
 broader lifecycle/authorization, cache-update and physical-host gates.
+
+Further October 14 work closes CLI read-only comparison and selected-field merge
+capability gaps. Selected Windows/Linux CLI `internal-20261014-b` packages pass
+both directions against the real TLS/PostgreSQL fixture; explicit whole-version
+choices, automatic non-overlapping merge and archive/restore subsets also pass.
+See the [sync parity tracker](sync-parity-2026-10-14.md). CLI custom fields are
+selected as one array; finer custom-field choices remain a difference. Item-queue
+success is recorded separately from pending/conflicting vault settings. These
+results do not close the remaining GUI, extension-web and full release gates.
