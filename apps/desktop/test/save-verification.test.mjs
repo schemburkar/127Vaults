@@ -7,7 +7,7 @@ const source=await readFile(new URL('../src/app.tsx',import.meta.url),'utf8');
 const save=source.slice(source.indexOf('  const save = async'),source.indexOf('  const synchronize = async'));
 function harness(failure){
  const values={},notices=[];const item={itemId:'fixture-item',title:'Fixture edit',username:'',website:'',password:'synthetic',customFields:[]};
- const context=vm.createContext({selected:item,saving:false,resolvingOperationId:null,itemVaultId:'fixture-vault',vaultId:'fixture-vault',viewMode:'single',Date,visibleFields:()=>[],parseTotp:()=>{},friendlyError:String,structuredClone,
+ const context=vm.createContext({selected:item,saving:false,dirtyRef:{current:true},resolvingOperationId:null,itemVaultId:'fixture-vault',vaultId:'fixture-vault',viewMode:'single',Date,visibleFields:()=>[],parseTotp:()=>{},friendlyError:String,structuredClone,
   invoke:async()=>{if(failure)throw Error(failure);return{result:{itemId:item.itemId},items:[item]};},
   refreshSyncStatus:async()=>{},openItem:async()=>{},listVisibleItems:async()=>[item],notify:(...notice)=>notices.push(notice),
  });
