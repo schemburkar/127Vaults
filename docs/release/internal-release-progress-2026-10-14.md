@@ -519,3 +519,38 @@ This closes the selected Linux GUI cross-vault review/isolation case and the
 confirmed owner-binding bug. Windows GUI and other recorded release gates remain
 open; internal release is not accepted. Original server/database remain healthy.
 Completed changes are committed to local main without a remote push.
+
+## Latest packaged Desktop accepted-write reply loss
+
+Actual Desktop-h Linux (`68b16ea`) now passes save/lock/process restart and receipt
+replay after a real server accepts the GUI write but its TLS reply is lost. The
+owned response-loss proxy forwards/authenticates against the original trusted
+HTTPS/PostgreSQL fixture and destroys only the first successful selected PUT
+reply. The GUI retains one encrypted pending signed request. Lock closes only
+the fixture-created redundant editor state; it does not discard the durable queue.
+
+Before GUI reconnect, Windows CLI-f (`1a00c62`) independently reads the accepted
+GUI title and writes a newer title/username. A fresh actual GUI process explicitly
+syncs the original request, ends with zero pending/conflicts/acknowledgements and
+reads the newer peer title/username with password masked. Proxy evidence records
+three successful PUTs: original GUI write, distinct peer write and receipt replay.
+The third request's complete body SHA256, request ID and operation ID exactly
+match the first. It does not generate a replacement write or overwrite the peer.
+Windows CLI independently verifies the newer version and explicit password.
+Packaged Linux CLI restores original title/username/website, and Windows peer
+verifies restoration. Final queues are empty.
+
+Evidence: `C:\Projects\127Vaults-desktop-loss-20261014-b\evidence.json`, actual
+GUI `write.json`/`replay.json`, `proxy-evidence.json`, original encrypted queued and
+replayed replicas and native peer/restoration records. Source fixture server is
+`103da5b`; all product/package/client identities are recorded. The initial runner
+in workspace-a failed its fixture guard before editing because it lacked the
+baseline record. Workspace-b uses the previously verified restored item record;
+the failed attempt is retained and is not counted as a pass. Original server
+mapping, database and identity were restored after both attempts and are healthy.
+
+Helper syntax and Git whitespace checks pass. This closes the selected latest
+Linux GUI lost-response/restart/peer preservation case. Windows GUI, broader
+multi-queue/pair loss cases and other recorded gates remain open. Internal release
+remains unaccepted. Completed checks/evidence are committed to local main without
+pushing or publicly deploying.

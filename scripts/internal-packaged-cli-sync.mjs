@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer','gui-nonoverlap-peer','gui-nonoverlap-verify','gui-nonoverlap-restore','gui-nonoverlap-restored','gui-checkpoint-advance','gui-types-peer','gui-types-restore'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check','ack-write','ack-refused','ack-recovered','ack-peer','ack-restore','ack-restored-peer','gui-archive-peer','gui-restore-peer','gui-nonoverlap-peer','gui-nonoverlap-verify','gui-nonoverlap-restore','gui-nonoverlap-restored','gui-checkpoint-advance','gui-types-peer','gui-types-restore','gui-lost-restore','gui-lost-restored'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -36,7 +36,11 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(['gui-types-peer','gui-types-restore'].includes(phase)){
+ if(['gui-lost-restore','gui-lost-restored'].includes(phase)){
+  assert.equal(evidence.guiLostReplayPassed,true);await command(['device','list']);const item=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));assert.equal(item.password,'[redacted]');assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
+  if(phase==='gui-lost-restore'){assert.equal(deviceId,evidence.writerDevice);assert.equal(item.title,evidence.newerPeerTitle);assert.equal(item.username,'newer-peer-fixture');await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({...evidence.ackBaseline,password:'fictitious-lifecycle-password'})+'\n');}
+  else{assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['gui-lost-restorePassed'],true);for(const [field,value]of Object.entries(evidence.ackBaseline))assert.equal(item[field],value);}
+ }else if(['gui-types-peer','gui-types-restore'].includes(phase)){
   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence.vaultId,'66031b92-58ad-4114-b967-dcbf0541be24');assert.deepEqual(evidence.items.map(row=>row.type),['login','password','bank','card','wifi','router','ssh']);
   if(phase==='gui-types-restore')assert.equal(evidence.guiTypedPeerReadPassed,true);
   const listed=JSON.parse(await command(['item','list','--vault',evidence.vaultId]));
@@ -141,7 +145,7 @@ try{
    assert.deepEqual(JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8')).pending,replica.pending);
    evidence.packagedPendingReviewPassed=true;
   }else if(phase==='lost-peer'){
-   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['lost-writePassed'],true);
+   assert.notEqual(deviceId,evidence.writerDevice);assert.ok(evidence['lost-writePassed']===true||evidence.guiLostWritePassed===true);
    assert.equal(JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId])).title,evidence.lostReplyTitle);
    await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.newerPeerTitle,username:'newer-peer-fixture',password:'fictitious-lifecycle-password'})+'\n');
   }else{
@@ -151,9 +155,10 @@ try{
     const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
     assert.equal(replica.pending.length,1);assert.deepEqual(replica.pending[0].request,evidence.lostRequest);
     const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
-   }else{assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['lost-replayPassed'],true);}
+   }else{assert.notEqual(deviceId,evidence.writerDevice);assert.ok(evidence['lost-replayPassed']===true||evidence.guiLostReplayPassed===true);}
    const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
    assert.equal(value.title,evidence.newerPeerTitle);assert.equal(value.username,'newer-peer-fixture');assert.equal(value.password,'[redacted]');
+   assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
    delete evidence.lostRequest; // Do not duplicate encrypted queue bodies in final evidence.
   }
  }else if(phase.startsWith('native-')){
