@@ -19,8 +19,8 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Multiple missed checkpoints | Engine and source subsets | Desktop-g Linux stale process restart verifies three intervening real signed checkpoints from Windows CLI-f; PostgreSQL sequence proof | Packaged peer creates checkpoints and ends settled | Windows GUI; other pairings and larger chains |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
-Latest native candidates are CLI `internal-20261014-f`, source `1a00c62`, and Desktop
-`internal-20261014-h`, source `68b16ea`; server/web remains `internal-20261014-e`,
+Latest native candidates are CLI `internal-20261014-g` and Desktop
+`internal-20261014-i`, source `fba2cb2`; server/web remains `internal-20261014-e`,
 source `ee83e2d`. The [October 14 continuation](internal-release-progress-2026-10-14.md)
 records four packaged settings-choice cases preserving an unrelated item queue,
 two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI

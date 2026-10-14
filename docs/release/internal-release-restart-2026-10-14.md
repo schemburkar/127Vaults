@@ -3,8 +3,8 @@
 Subsequent work and newer selected packages are recorded in
 [October 14 progress](internal-release-progress-2026-10-14.md). It supersedes the
 candidate labels below: server `internal-20261014-e` (source `ee83e2d`), Desktop
-`internal-20261014-h` (source `68b16ea`) and CLI `internal-20261014-f` (source
-`1a00c62`); extension
+`internal-20261014-i` and CLI `internal-20261014-g` (source
+`fba2cb2`); extension
 is unchanged. Native lost-reply recovery now passes in both OS writer directions,
 as do independent two-conflict choices. Four settings-choice cases preserve
 queued items; actual latest Linux GUI consecutive edits reach the Windows peer.
@@ -126,9 +126,9 @@ approval review still rejected agent GUI launch as **"blocked by policy"**, with
 no further reason. Do not bypass the rejection through another launcher or UI.
 The pending manual instruction is to run
 `C:\Projects\127Vaults-sync-desktop-20261013-a\start-isolated-desktop.ps1`, leave
-the app at its unlock screen and reply "Opened". The starter now selects `app-k`,
-copied fictitious `profile-j`, `webview-k`, inspector port 12915 and
-`app-k-pid.txt`, using Desktop-h (`68b16ea`). The earlier starter and app/profile
+the app at its unlock screen and reply "Opened". The starter now selects `app-l`,
+copied fictitious `profile-k`, `webview-l`, inspector port 12915 and
+`app-l-pid.txt`, using Desktop-i (`fba2cb2`). The earlier starter and app/profile
 remain preserved separately. No manual-launch reply/PID has been received.
 
 Permission to grant the isolated test extension access to the fictitious vault

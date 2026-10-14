@@ -627,3 +627,53 @@ extension permission and actual active Windows session are also unresolved.
 The goal remains active and internal release unaccepted; other recorded automated
 matrix cases remain applicable. Preparation/helper syntax and whitespace checks
 pass; completed work is committed locally without pushing.
+
+## Settings authorization refusal cannot report a successful online sync
+
+A reproduced P1 native-state bug returned a successful `online: true` sync result
+when item hydration succeeded but the subsequent encrypted settings read returned
+401/403. Its settings error was wrapped as a partial pending result; the session
+still claimed online/authenticated. The real Session/local HTTP regression failed
+with that exact successful JSON result on the original code.
+
+Commit `fba2cb203cbcfc4c81008c871def05ab37da4e52` marks the native session offline
+on settings read/upload authorization refusal, retains the safe refusal reason,
+and makes overall sync fail instead of claiming online success. Encrypted local
+copies and pending drafts are retained. Replica status exposes the reason, and
+Desktop applies its authoritative connection fields with generation checks.
+Legacy responses without those fields do not invent an offline state.
+
+The real encrypted HTTP transport regression covers read and upload 401/403,
+compares the pending settings file byte-for-byte and distinguishes a 503 partial
+settings failure from authorization loss. Three actual Desktop-handler tests
+cover live offline status/pending count, stale-session isolation and legacy
+response compatibility. All 76 CLI library tests (plus one intentionally ignored
+separate live fixture), 30 Desktop tests, strict workspace Clippy, Rustfmt and
+Desktop type/frontend/native checks pass.
+
+New immutable CLI-g and Desktop-i Windows/Linux packages are built from the
+committed fix. All build/test/native-host framing gates pass, and all six selected
+artifact file sets/sizes/SHA256 sums verify. The inventory now selects those
+native packages; server/web/admin-e and extension-a are unchanged. The reviewed
+Windows manual starter now pins Desktop-i `app-l`, copied `profile-k` and
+`webview-l`; old package/profile/starters are preserved and no GUI is launched.
+Preparation and generated PowerShell syntax checks pass.
+
+Actual packaged Windows CLI-g and Linux Desktop-i also pass mid-session refusal
+over the retained pinned TLS/PostgreSQL fixture. A guarded proxy first verifies
+upstream authorization, then injects 401/403 only for settings. Healthy CLI agents
+become offline/unauthenticated, remain locally unlocked and keep their settings
+file exactly unchanged. Actual Linux GUI Sync shows the offline reason and sync
+failure; Lock clears the decrypted session. Evidence:
+`C:\Projects\127Vaults-settings-authorization-20261014-a\evidence.json`, separate
+`cli-401.json`, `cli-403.json`, `gui.json` and authorized refusal metadata.
+No permanent fixture device was revoked and no settings write was forwarded by
+the injected-denial branch. This proves packaged response handling, not actual
+administrative revocation or physical Windows GUI acceptance. Pending encrypted
+draft preservation is established separately by the transport regression.
+Original server/database/identity and loopback mapping are restored and healthy.
+
+This closes the confirmed false-online authorization bug. Internal release remains
+unaccepted; human-dependent and other recorded matrix gates remain open. Completed
+fixes, helpers, selected manifests and evidence are committed to local main without
+pushing.

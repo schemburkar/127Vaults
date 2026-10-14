@@ -8,8 +8,8 @@ gates or treat source tests as physical or installed-user acceptance.
 | --- | --- | --- |
 | Server | Selected server-e, source `ee83e2d`, verified bundle/image and real HTTPS/PostgreSQL startup, hostile authorization, encrypted backup/restore and current-schema checks | Intended-host installation/trust, unrelated-host deployment and remaining operational acceptance |
 | Web/PWA | Selected server/web-e: seven Desktop-created type reads, real archive/restore, acknowledged-history rollback refusal and recovery; prior real-server queue/conflict/reply-loss and installed-mode cache-upgrade evidence | Physical PWA/CA enrollment and update acceptance; other recorded pairing/lifecycle/fork cases |
-| Desktop | Selected Desktop-h, source `68b16ea`: Windows/Linux package gates, 27 tests, fixed displayed-item owner binding; actual Linux cross-vault review/isolation and receipt replay with independent Windows CLI; earlier seven-type creation/read and lifecycle cases | Latest Windows GUI, clean physical installation/keyring/lock and remaining UI pairings/operations |
-| CLI | Selected CLI-f, source `1a00c62`: both OS packages, 75 library passes plus separately exercised live fixture, actual signing/retry, acknowledgement preservation, queued review, field merge and peer reads | Physical terminal/clean-host acceptance and other recorded device/lifecycle combinations |
+| Desktop | Selected Desktop-i, source `fba2cb2`: Windows/Linux package gates, 30 tests, fixed displayed-item owner binding; actual Linux cross-vault review/isolation and receipt replay with independent Windows CLI; earlier seven-type creation/read and lifecycle cases | Latest Windows GUI, clean physical installation/keyring/lock and remaining UI pairings/operations |
+| CLI | Selected CLI-g, source `fba2cb2`: both OS packages, 76 library passes plus separately exercised live fixture, actual signing/retry, acknowledgement preservation, queued review, field merge and peer reads | Physical terminal/clean-host acceptance and other recorded device/lifecycle combinations |
 | Browser extension | Selected extension-a: real installed native messaging, guarded form filling, Linux GUI-owned source handoff/lock/restart and prior Windows installed subsets | Current active Windows session, actual web-source permission/selection/reconnect, physical idle/lock and optional passkey ceremonies |
 | Admin console | Selected server/admin-e: real authenticated, audited invitation create/replay/revoke/sign-out; earlier browser usability, permission, ownership and failure subsets | Intended-host operator acceptance and remaining management/client integration cases |
 | Public site | All 11 local pages exercised in actual Chromium at desktop/mobile widths; local links/images/overflow checked, intake closed and no public downloads exposed | Public deployment is not performed; deployment/signing/real-secret readiness are outside this private fictitious-data cut |
@@ -26,7 +26,7 @@ settings convergence; those flags are recorded separately.
 
 The latest reviewed Windows fixture is prepared at
 `C:\Projects\127Vaults-sync-desktop-20261013-a\start-isolated-desktop.ps1`.
-It selects extracted Desktop-h `app-k`, copied `profile-j`, separate `webview-k`
+It selects extracted Desktop-i `app-l`, copied `profile-k`, separate `webview-l`
 and inspector 12915. It validates the fictitious profile and extracted executable
 SHA256 before launching. Original app/profile/starter are retained. Static
 extraction, copied-file hashes and script syntax pass; no app launch, installation
