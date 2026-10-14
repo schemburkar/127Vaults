@@ -498,3 +498,13 @@ Repeatable phases: `native-queue`, `native-peer`, `native-review`, `native-resol
 server-copy recovery through the actual CLI. Field-level GUI selection, native
 lost-response, item-delete divergence and all-client combinations remain separate
 gates. No user's development service, profile or queued edit was changed.
+
+A second overlapping-edit round also passed explicit `--keep local`: the original
+Windows offline draft survived reconnect/review, was resubmitted against the
+verified newer state and was read back on Linux with its local title/username and
+unchanged password. Both final queues were empty. The initial server-copy evidence
+is retained separately as `lifecycle-native-server-copy.json`; current
+`lifecycle-native.json` records the local-copy round. The helper now assigns
+distinct round titles, clears prior dependent pass flags before each new round and
+records the chosen resolution. `VAULTS_FIXTURE_CONFLICT_KEEP=local` selects that
+explicit test action; its default is server.

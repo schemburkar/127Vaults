@@ -40,14 +40,18 @@ try{
   assert.equal(evidence['lifecycle-restored-peerPassed'],true,'Use only the restored synthetic lifecycle item');
   if(phase==='native-queue'){
    assert.equal(deviceId,evidence.writerDevice);
-   const result=JSON.parse(await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title+' local conflict',username:'local-conflict-user',password:'fictitious-lifecycle-password'})+'\n'));
+   evidence.conflictRound=(evidence.conflictRound||0)+1;
+   evidence.localConflictTitle=evidence.title+' local conflict '+evidence.conflictRound;
+   evidence.serverConflictTitle=evidence.title+' server conflict '+evidence.conflictRound;
+   for(const step of ['native-peer','native-review','native-resolve','native-verify'])delete evidence[step+'Passed'];
+   const result=JSON.parse(await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.localConflictTitle,username:'local-conflict-user',password:'fictitious-lifecycle-password'})+'\n'));
    assert.equal(result.queued,true,'The edit must genuinely be offline');
    const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
    assert.equal(replica.pending.length,1);evidence.conflictOperationId=replica.pending[0].operation.opId;
    assert.equal(replica.pending[0].operation.itemId,evidence.itemId);
   }else if(phase==='native-peer'){
    assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['native-queuePassed'],true);
-   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title+' server conflict',username:'server-conflict-user',password:'fictitious-lifecycle-password'})+'\n');
+   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.serverConflictTitle,username:'server-conflict-user',password:'fictitious-lifecycle-password'})+'\n');
   }else if(phase==='native-review'){
    assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['native-peerPassed'],true);
    const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,1);
@@ -59,11 +63,13 @@ try{
    assert.equal(replica.pending.length,1);assert.equal(replica.pending[0].operation.opId,evidence.conflictOperationId);
   }else if(phase==='native-resolve'){
    assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['native-reviewPassed'],true);
-   await command(['conflict','resolve',evidence.conflictOperationId,'--vault',evidence.vaultId,'--keep','server']);
+   evidence.conflictChoice=process.env.VAULTS_FIXTURE_CONFLICT_KEEP||'server';
+   assert.ok(['server','local'].includes(evidence.conflictChoice));
+   await command(['conflict','resolve',evidence.conflictOperationId,'--vault',evidence.vaultId,'--keep',evidence.conflictChoice]);
   }else{
    assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['native-resolvePassed'],true);
    const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
-   assert.equal(value.title,evidence.title+' server conflict');assert.equal(value.username,'server-conflict-user');assert.equal(value.password,'[redacted]');
+   assert.equal(value.title,evidence.conflictChoice==='local'?evidence.localConflictTitle:evidence.serverConflictTitle);assert.equal(value.username,evidence.conflictChoice==='local'?'local-conflict-user':'server-conflict-user');assert.equal(value.password,'[redacted]');
    assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
   }
  }else if(phase.startsWith('lifecycle-')){
@@ -191,6 +197,10 @@ try{
   evidence[phase+'ItemQueueEmpty']=true;
  }
  evidence[phase+'Passed']=true;evidence.lastRunAt=new Date().toISOString();
+ if(phase==='native-verify'){
+  evidence.conflictRounds||=[];
+  evidence.conflictRounds.push({round:evidence.conflictRound,choice:evidence.conflictChoice,operationId:evidence.conflictOperationId,verifiedAt:evidence.lastRunAt});
+ }
  await writeFile(evidencePath,JSON.stringify(evidence,null,2)+'\n');
  if(phase==='web-peer'){
   assert.ok(evidencePath.endsWith('web-native.json'));
