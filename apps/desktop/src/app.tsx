@@ -79,7 +79,7 @@ type Notice = {
 type Conflict = { vaultId?: string; draft: Item; message: string; operationId?: string; kind?: string; server?: Item; choices?: Record<string, "local" | "server"> };
 type EngineConflict = { operationId: string; itemId: string; vaultId: string; kind: string; localFields?: string[]; remoteFields?: string[] };
 type SyncReviewItem = { operationId: string; itemId: string; vaultId: string; title: string; fields: string[]; conflict: EngineConflict | null; error: string | null };
-type SyncReview = { items: SyncReviewItem[]; settingsPending: boolean; settingsConflict: boolean };
+type SyncReview = { items: SyncReviewItem[]; settingsPending: boolean; settingsConflict: boolean; unverifiedAcknowledgements?: number };
 const dragSession = createDragSession();
 const generateSecret = (options: GeneratorOptions) => invoke<string>("generate_secret", { options });
 function DesktopSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
@@ -797,6 +797,7 @@ export function App() {
       setResolvingOperationId(null);
       await refreshSyncStatus();
       if (response.result.queued) setOnline(false);
+      else { setSyncState("idle"); setSyncFailure(null); }
       setLastLocalChange(new Date());
       setStatus(
         response.result.queued
@@ -826,7 +827,9 @@ export function App() {
       } else {
         const detail = friendlyError(e);
         setStatus(detail);
-        notify("error", "Item was not saved", detail);
+        const verificationFailed = message.includes("local replica was preserved");
+        if (verificationFailed) { setSyncState("error"); setSyncFailure(detail); }
+        notify("error", verificationFailed ? "Server verification failed" : "Item was not saved", detail);
       }
     } finally { setSaving(false); }
   };
@@ -1998,11 +2001,11 @@ export function App() {
         <span
           className={cn(
             "size-2 rounded-full",
-            syncState === "error" ? "bg-red-400" : syncConflicts || !online ? "bg-amber-400" : "bg-emerald-400",
+            syncState === "error" ? "bg-red-400" : syncConflicts || syncReview?.unverifiedAcknowledgements || !online ? "bg-amber-400" : "bg-emerald-400",
           )}
         ></span>
-        <strong>{syncState === "syncing" ? "Syncing…" : syncState === "error" ? "Sync failed" : syncConflicts || syncReview?.items.some(row => row.error) ? "Needs review" : online ? "Online" : "Offline"}</strong><span>{pendingChanges === null ? "Pending changes unknown" : `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} waiting to sync`}</span><Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs" disabled={syncState === "syncing"} onClick={() => void synchronize().catch(() => {})}>{syncState === "error" ? "Retry sync" : "Sync now"}</Button>
-        {(syncState === "error" || syncConflicts > 0 || (pendingChanges ?? 0) > 0) && <Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs text-amber-200" onClick={() => { setSyncReviewOpen(true); void refreshSyncStatus(); }}>Review sync</Button>}
+        <strong>{syncState === "syncing" ? "Syncing…" : syncState === "error" ? "Sync failed" : syncReview?.unverifiedAcknowledgements ? "Needs verification" : syncConflicts || syncReview?.items.some(row => row.error) ? "Needs review" : online ? "Online" : "Offline"}</strong><span>{pendingChanges === null ? "Pending changes unknown" : `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} waiting to sync`}</span><Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs" disabled={syncState === "syncing"} onClick={() => void synchronize().catch(() => {})}>{syncState === "error" ? "Retry sync" : "Sync now"}</Button>
+        {(syncState === "error" || syncConflicts > 0 || (pendingChanges ?? 0) > 0 || (syncReview?.unverifiedAcknowledgements ?? 0) > 0) && <Button size="sm" variant="ghost" className="!h-6 !min-h-6 px-2 text-xs text-amber-200" onClick={() => { setSyncReviewOpen(true); void refreshSyncStatus(); }}>Review sync</Button>}
         <span className="ml-auto">
           Local change{" "}
           {lastLocalChange
@@ -2165,6 +2168,7 @@ export function App() {
           <section className="ui-dialog ui-dialog-wide max-h-[85vh] overflow-y-auto border border-amber-300/20 bg-[#11162b]">
             <h2 id="sync-review-title" className="text-xl font-bold">Review changes waiting to sync</h2>
             <p className="mt-3 text-sm text-slate-300">{syncFailure || "Queued changes are saved in the encrypted local replica. Review confirmed conflicts before choosing which version to keep."}</p>
+            {!!syncReview?.unverifiedAcknowledgements && <p className="mt-3 text-sm text-amber-200" role="status">The server acknowledged {syncReview.unverifiedAcknowledgements} operation{syncReview.unverifiedAcknowledgements === 1 ? "" : "s"}, but verified history has not confirmed {syncReview.unverifiedAcknowledgements === 1 ? "it" : "them"} yet. This device’s encrypted copy is retained. Reconnect to the current verified server before continuing.</p>}
             <p className="mt-2 text-xs text-slate-400">Field values stay hidden here. Taking the server version discards only the selected queued edit; other pending changes remain.</p>
             {!syncReview && <p className="mt-4 text-amber-200">The pending-item details could not be loaded. Retry sync or reconnect; no queued changes were discarded.</p>}
             {syncReview?.items.map(row => <article key={row.operationId} className="mt-4 rounded-lg border border-white/10 p-4">
