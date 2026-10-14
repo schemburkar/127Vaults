@@ -46,7 +46,7 @@ export async function attachExtensionPopup(browserSession, targetId) {
     async selectFirstOption(){await wait(()=>evaluate(`!!${this.elements()}[0]?.options?.length`),'popup choices');const value=await evaluate(`${this.elements()}[0].options[0].value`);await this.selectOption(value);}
     async waitForEnabled(){await wait(()=>evaluate(`(()=>{const el=${this.elements()}[0];return !!el&&!el.disabled&&el.getClientRects().length>0;})()`),'enabled '+this.css);}
     async click(){
-      const point=await evaluate(`(()=>{const el=${this.elements()}[0];if(!el)throw Error('Missing popup action');const rect=el.getBoundingClientRect();return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};})()`);
+      const point=await evaluate(`(()=>{const el=${this.elements()}[0];if(!el)throw Error('Missing popup action');el.scrollIntoView({block:'center'});const rect=el.getBoundingClientRect();return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};})()`);
       await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});
       await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point});
     }

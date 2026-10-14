@@ -46,6 +46,7 @@ if (oldRegistry) await writeFile(join(work, 'prior-registration.json'), JSON.str
 if (oldPointer) await writeFile(join(work, 'prior-profile-pointer.txt'), oldPointer);
 const { chromium } = createRequire(import.meta.url)(process.env.VAULTS_PLAYWRIGHT_MODULE || 'playwright');
 let context, worker, extensionId, registered = false, pointerChanged = false;
+let lastPopup = null;
 const origin = 'https://offline-remote.invalid';
 const checks = [];
 const reactFixture=options['--react-fixture']&&await readFile(resolve(options['--react-fixture']),'utf8');
@@ -106,6 +107,7 @@ async function popup(page) {
   if(!popupTarget)console.log('Action target observations:',(await browserSession.send('Target.getTargets',{filter:[{}]})).targetInfos.map(info=>({type:info.type,url:info.url})));
   assert.ok(popupTarget,'Real action popup did not expose a target.');
   const result = await attachExtensionPopup(browserSession,popupTarget.targetId);
+  lastPopup = result;
   await result.waitForURL(`chrome-extension://${extensionId}/popup.html`);
   await result.locator('#source-select').waitFor({ state: 'visible' });
   return result;
@@ -221,6 +223,11 @@ try {
   const version=context.browser().version();
   await writeFile(join(work,'evidence.json'),JSON.stringify({date:new Date().toISOString(),status:'passed',browserVersion:version,platform:process.platform,scope:'Real installed extension popup, activeTab and native host; synthetic sites and fictitious profiles',checks,limitations:['No physical OS-lock acceptance.','No external website account or real credentials used.']},null,2)+'\n');
   console.log('Installed extension popup and native form checks passed: '+checks.join('; '));
+} catch(error) {
+  const popupState=lastPopup&&await lastPopup.snapshot().catch(()=>null);
+  const nativeTrace=worker&&await worker.evaluate(async()=>({requests:globalThis.fixtureNativeActions,responses:globalThis.fixtureNativeResponses,idleState:await new Promise(resolve=>chrome.idle.queryState(30*60,resolve))})).catch(()=>null);
+  await writeFile(join(work,'failure.json'),JSON.stringify({date:new Date().toISOString(),fixtureServer:serverId,error:String(error),checks,popup:popupState,nativeTrace},null,2)+'\n');
+  throw error;
 } finally {
   try { if(context)await context.close(); }
   finally {

@@ -18,7 +18,7 @@ of the complete workflow. Never discard user edits to make a test pass.
 | Compare resubmits failing queued requests | Dedicated verified read-only comparison; HTTP tests prove no queued POST and unchanged pending request on failure | Actual user queue and successful field resolution, not only synthetic failure tests |
 | Review loses owning vault or operation context | Dialog now captures owning vault and passes it to compare/save/discard; stale missing operation gives an actionable error | Multiple-vault navigation and actual queued operation resolution |
 | Missing server item described as a field conflict | In progress: distinguish unsynced creation from absent edited item; do not offer nonexistent server fields | Classification, preservation, explicit discard and safe stale-create retry |
-| Multiple stale queued creations repeatedly rejected | Reproduced on real schema-7 PostgreSQL/TLS fixture: two rejected creations chose an unaccepted pending predecessor. Fix excludes quarantined operations and refreshes verified heads between rebases. Fresh rerun and preserved failed-queue recovery reach zero pending/conflicts; peer reads both exactly once. | User queue and packaged/client-pair matrix remain open |
+| Multiple stale queued creations repeatedly rejected | Native fixes preserve IDs and rebuild verified predecessors. The user confirms both original queued edits sync. Latest Linux packaged GUI replay after a Windows peer save clears three operations; Windows reads both original IDs exactly once. | Windows latest GUI and broader collision/queue matrix |
 | Offline creation followed by an edit becomes stranded | Reproduced after the first fix: rebase replaced the item ID and reused an old batch snapshot. Fix preserves the ID and refreshes the replica between operations. Exact chained scenario now reaches zero pending/conflicts with edited fields and original ID on peer. | Broaden to field conflicts, lost responses, collision and additional edits |
 
 ## Required acceptance matrix
@@ -30,17 +30,17 @@ ownership rather than decrypting item contents. Tests must preserve that boundar
 
 | Scenario | Release requirement | Current state |
 | --- | --- | --- |
-| Online create/update and enabled item types | Exact fields read by another client, secrets masked until requested | Subset passed; complete matrix open |
-| Offline edit/create, process restart and reconnect | Durable queue, exact replay, eventual verified peer read | Subset passed; existing-profile and all-pair coverage open |
-| Lost response and repeated retry | Idempotent receipt, no duplicates or dropped changes | Subset passed; broaden to actual clients |
+| Online create/update and enabled item types | Exact fields read by another client, secrets masked until requested | Seven types Windows/Linux CLI ↔ packaged web pass with custom/related secrets; latest Linux Desktop consecutive saves and Windows peer read pass. Full Desktop/type matrix open |
+| Offline edit/create, process restart and reconnect | Durable queue, exact replay, eventual verified peer read | Latest Linux GUI restart/replay after Windows advances the same vault passes original IDs; PWA/native replay subset passes. Windows GUI and all-pair coverage open |
+| Lost response and repeated retry | Idempotent receipt, no duplicates or dropped changes | Real TLS/PostgreSQL accepted PWA write, lost reply, native peer edit before receipt replay pass without overwriting the peer. Other native/pair loss cases open |
 | Reconnect after multiple peer checkpoints | Verify the intervening checkpoint chain without falsely rejecting valid progress | Reproduced and fixed in native engine; real-server fresh unlock passes after two missed checkpoints, packaged/UI matrix open |
 | Concurrent nonoverlapping changes | Both changes retained after rebase | Engine/subset evidence; UI matrix open |
-| Same-field conflict | Correct item/vault/operation, masked comparison, selected-field save and peer verification | Packaged fictitious subset passed; reported user failure remains open |
-| Server copy and missing server item | Explicit decision, only selected edit retired, other queue unchanged; no invented copy | In progress |
-| Stale create, create-ID collision and chained pending edits | New item remains recoverable; predecessor chain and new causal base valid | Root-cause investigation open |
+| Same-field conflict | Correct item/vault/operation, masked comparison, selected-field save and peer verification | Packaged PWA field merge passes with Windows/Linux CLI verification; latest Windows Desktop/manual user review remains open |
+| Server copy and missing server item | Explicit decision, only selected edit retired, other queue unchanged; no invented copy | Packaged PWA server-copy recovery passes with Linux CLI verification; missing-item/multiple-queue decisions still need broader GUI coverage |
+| Stale create, create-ID collision and chained pending edits | New item remains recoverable; predecessor chain and new causal base valid | Stale/chained creation and consecutive online creation fixes pass on latest native packages; original failed queues retained/recovered. Collision/all-pair coverage open |
 | Vault/collection/default-view changes | Reviewed divergence refreshes all clients without losing pending items | Vault/collection subset passed; full settings matrix open |
 | Archive/restore/move/ownership changes | Correct visibility and queue behavior after peer/admin changes | Subset passed; full client matrix open |
-| Revocation/expiry/OS lock and extension source handoff | Clear reason, no secret exposure or false unlocked state; pending work preserved | Subset passed; physical and live-source cases open |
+| Revocation/expiry/OS lock and extension source handoff | Clear reason, no secret exposure or false unlocked state; pending work preserved | Live Rust/TLS/PostgreSQL device lifecycle passes. Latest Linux native-agent extension passes; actual GUI-owned Linux source matrix passes; Windows active session, web source and physical cases remain open |
 | Upgrade and selected release packages | Existing encrypted profiles survive; all components use compatible versions | Critical installed-host mismatch found; full upgrade acceptance open |
 
 ## Evidence and completion rules
@@ -427,3 +427,29 @@ PWA retries its old request. Receipt replay clears the pending request without
 replacing the newer peer title/username: `...sync-web-20261014-a\web-native.json`
 (and the retained per-item file, `acceptedReplyLost`/`acceptedReplyReplayPassed`).
 This is a real native-peer scenario, separate from the isolated HTTP regression.
+
+### Actual GUI-owned Desktop extension handoff passed
+
+New extension `internal-20261014-a`, clean source `07fdca5`, passes the full installed
+Linux browser/native matrix while the actual new Desktop GUI is unlocked. This
+uses the GUI-started connector, not a standalone agent pretending to be Desktop.
+Evidence: `/home/vaults-dev/vaults-sync-extension-20261013-a/browser-test-gui-20261014-c/evidence.json`
+and `...sync-desktop-linux-20261014-a\connector-unlock-c.json`. CLI remains a
+separate guarded fictitious source. Both registrations/profile pointers restore,
+owned agents stop and the owned GUI exits afterward.
+
+The intermediate frame-selection timeout came from the custom CDP fixture driver
+clicking a button below the popup viewport without scrolling. The driver now
+scrolls like a normal UI click and retains general failure diagnostics, including
+native timings and the public popup state. No fill/origin/idle protection was
+relaxed. A bounded 30-second fixture wait accommodates this GUI/keyring run; slow
+native source reads remain a usability limitation to measure separately.
+
+The selected six artifact inventories now include this new extension and verify
+complete file sets/checksums. The pending manual Windows launcher at
+`C:\Projects\127Vaults-sync-desktop-20261013-a\start-isolated-desktop.ps1` now selects
+new package `app-i` with isolated `profile-h`/WebView storage; no app was launched
+by the agent. Automatic review still blocks that Windows GUI launch. Web-origin
+permission for the isolated web-source extension gate remains unanswered; no grant
+was inferred. Real development TLS preflight still passes after these changes:
+`node scripts/mvp-acceptance.mjs dev --check`; this does not claim a new dev GUI run.

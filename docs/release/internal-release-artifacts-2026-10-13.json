@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-14T06:15:14.582Z",
+  "verifiedAt": "2026-10-14T06:45:55.383Z",
   "acceptance": "candidate only; cross-client sync release matrix remains open",
   "artifacts": [
     {
@@ -148,15 +148,15 @@
       ]
     },
     {
-      "path": "extension/internal-20261013-b/chromium",
+      "path": "extension/internal-20261014-a/chromium",
       "product": "extension",
       "platform": "chromium",
-      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
+      "sourceRevision": "07fdca56a281f786b18c639347d86c631bc64585",
       "files": [
         {
           "name": "127vaults-extension-0.1.0.zip",
-          "sizeBytes": 28454,
-          "sha256": "084d9f584b8aa0ac1e0de2f5e65cb6f34e077c09ae975409e96eca377d370177"
+          "sizeBytes": 28558,
+          "sha256": "622cbc13e83d3e6361c82074f07fe6f3a4196a54a7d8a59e548d8392ad08484d"
         },
         {
           "name": "LICENSE-POLICY.md",
