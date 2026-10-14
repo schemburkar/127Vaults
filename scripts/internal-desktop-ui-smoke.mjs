@@ -32,6 +32,11 @@ assert.ok(!offlineVerify||connection==='Offline'&&expectedTitle.startsWith('Linu
 const typedRoundtrip=process.argv[7]==='typed-roundtrip';
 const lifecycleArchive=process.argv[7]==='lifecycle-archive',lifecycleRestore=process.argv[7]==='lifecycle-restore';
 const nonoverlapEdit=process.argv[7]==='nonoverlap-edit',nonoverlapRead=['nonoverlap-read','checkpoint-read'].includes(process.argv[7]);
+const multiMode=['multi-compare','multi-server','multi-local'].includes(process.argv[7])?process.argv[7]:null;
+let multi=null;
+if(multiMode){
+ const path=process.env.VAULTS_FIXTURE_MULTI_EVIDENCE;assert.ok(path&&isAbsolute(path));multi=JSON.parse(await readFile(path,'utf8'));assert.equal(multi.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(multi.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');assert.equal(multi.writerDevice,expectedDevice);assert.equal(connection,'Online');assert.equal(multi.multiItems.length,2);assert.deepEqual(new Set(multi.multiItems.map(row=>row.itemId)),new Set(['09313354-3b85-4d56-97b1-2f1cb16ba0a7','ff01aefe-6754-4253-8f4c-0af9b03cd9f9']));assert.ok(multi.multiItems.every(row=>row.localTitle.startsWith('Multi-conflict local ')&&row.serverTitle.startsWith('Multi-conflict server ')));
+}
 let nonoverlap=null;
 if(nonoverlapEdit||nonoverlapRead){
  const path=process.env.VAULTS_FIXTURE_NONOVERLAP_EVIDENCE;assert.ok(path&&isAbsolute(path));nonoverlap=JSON.parse(await readFile(path,'utf8'));assert.equal(nonoverlap.fixtureServer,'14725fef-f5b4-4cb8-afe0-77aa3d80b268');assert.equal(nonoverlap.vaultId,'ba855503-c52c-435c-8c0f-d46b6254ae51');assert.equal(nonoverlap.writerDevice,expectedDevice);assert.equal(nonoverlap.itemId,'09313354-3b85-4d56-97b1-2f1cb16ba0a7');assert.equal(connection,nonoverlapEdit?'Offline':'Online');assert.ok(expectedTitle.startsWith('Packaged CLI cross-OS '));
@@ -78,6 +83,22 @@ try{
   await new Promise(resolve=>setTimeout(resolve,50));button('Unlock encrypted replica').click();
   await wait(()=>document.body.innerText.includes('All items'));
   button('Settings').click();await wait(()=>document.querySelector('[aria-labelledby="desktop-settings-title"]'));button('Profile').click();await wait(()=>document.querySelector('#desktop-settings-panel')?.innerText.includes(${JSON.stringify(expectedDevice)}));const profileLines=document.querySelector('#desktop-settings-panel').innerText.split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);const connectionLabel=profileLines.indexOf('Connection');if(connectionLabel<0||profileLines[connectionLabel+1]!==${JSON.stringify(connection)})throw Error('Fixture connection is not '+${JSON.stringify(connection)});document.querySelector('button[aria-label="Close settings"]').click();await wait(()=>!document.querySelector('[aria-labelledby="desktop-settings-title"]'));checks.push('real GUI '+${JSON.stringify(connection)}+' unlock');checks.push('GUI device identity matches the explicit fixture profile');
+  if(${JSON.stringify(!!multiMode)}){
+   const fixture=${JSON.stringify(multi)},mode=${JSON.stringify(multiMode)};
+   const closeConflict=async()=>{if(document.querySelector('[aria-labelledby="conflict-title"]')){button('Cancel and keep editing').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]'));}};
+   const review=async row=>{button('Review sync').click();await wait(()=>document.querySelector('[aria-labelledby="sync-review-title"]'));const article=[...document.querySelectorAll('[aria-labelledby="sync-review-title"] article')].find(node=>node.querySelector('h3')?.textContent.trim()===row.localTitle);if(!article||!article.innerText.includes(fixture.vaultName))throw Error('Wrong pending item/vault in multi-review');[...article.querySelectorAll('button')].find(node=>node.textContent.trim()==='Review item and choose version').click();await wait(()=>document.querySelector('[aria-labelledby="conflict-title"]')?.innerText.includes(row.localTitle));};
+   const compare=async row=>{button('Compare and select fields…').click();await wait(()=>document.querySelector('[aria-labelledby="conflict-title"] [role="radio"]'));const text=document.querySelector('[aria-labelledby="conflict-title"]').innerText;if(!text.includes(row.localTitle)||!text.includes(row.serverTitle)||text.includes('fictitious-lifecycle-password'))throw Error('Multi-review omitted a version or revealed password');};
+   if(mode==='multi-compare'){
+    stage='two-conflict GUI sync';button('Sync now').click();await wait(()=>document.querySelector('[aria-labelledby="conflict-title"]'));await closeConflict();
+    for(const row of fixture.multiItems){stage='multi GUI compare '+row.itemId;await review(row);await compare(row);await closeConflict();}
+    await wait(()=>/2 changes? waiting to sync/.test(document.body.innerText));checks.push('actual GUI reviews both correct item/vault drafts and server versions with password masked; both stay queued');
+   }else{
+    const row=fixture.multiItems[mode==='multi-server'?0:1];stage='multi GUI selected decision';await review(row);
+    if(mode==='multi-server'){button('Use server version').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&/1 changes? waiting to sync/.test(document.body.innerText)&&document.querySelector('main h2')?.textContent.trim()===row.serverTitle);checks.push('actual GUI accepts selected verified server version while other conflict stays queued');}
+    else{await compare(row);button('Use mine').click();await wait(()=>!document.querySelector('[aria-labelledby="conflict-title"]')&&document.body.innerText.includes('0 changes waiting to sync')&&document.querySelector('main h2')?.textContent.trim()===row.localTitle);checks.push('actual GUI selects remaining local version after verified comparison and empties item queue');}
+   }
+   button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));checks.push('multi-conflict GUI lock clears decrypted view');globalThis.__fixtureUI={done:true,ok:true,checks};return;
+  }
   if(${JSON.stringify(nonoverlapEdit||nonoverlapRead)}){
    stage='nonoverlap reconnect sync';if(${JSON.stringify(nonoverlapRead)}){button('Sync now').click();await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));}
    stage='nonoverlap selected fixture';await wait(()=>[...document.querySelectorAll('button strong')].some(node=>node.textContent.trim()===${JSON.stringify(expectedTitle)}));const summary=[...document.querySelectorAll('button strong')].find(node=>node.textContent.trim()===${JSON.stringify(expectedTitle)});summary.closest('button').click();await wait(()=>document.querySelector('main h2')?.textContent.trim()===${JSON.stringify(expectedTitle)}&&button('Edit')&&!button('Edit').disabled);

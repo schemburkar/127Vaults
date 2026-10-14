@@ -88,7 +88,7 @@ try{
   await command(['conflict','resolve',evidence.multiPending[1].operationId,'--vault',evidence.vaultId,'--keep','local']);
   const synced=await json(['sync']);assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }else if(phase==='verify'){
-  assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['multi-local-copyPassed'],true);
+  assert.notEqual(deviceId,evidence.writerDevice);assert.ok(evidence['multi-local-copyPassed']===true||evidence['gui-multi-localPassed']===true);
   for(let i=0;i<2;i++){const row=evidence.multiItems[i],item=await json(['item','get',row.itemId,'--vault',evidence.vaultId]);assert.equal(item.title,i===0?row.serverTitle:row.localTitle);assert.equal(item.password,'[redacted]');assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');}
  }else if(phase==='restore'){
   assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['multi-verifyPassed'],true);

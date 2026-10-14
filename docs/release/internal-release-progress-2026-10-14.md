@@ -369,3 +369,32 @@ These actual UI checks close the selected Linux GUI concurrent non-overlap and
 multiple-missed-checkpoint cases. Windows GUI, other client pairings and broader
 history/lifecycle/queue cases remain open. Original server/database are healthy;
 no external account, remote push or public deployment is involved.
+
+## Packaged Desktop independent two-conflict decisions
+
+Desktop-g Linux (`762296c`) now passes actual GUI review and independent choices
+for two overlapping conflicts in one controlled vault. Packaged Linux CLI-f
+(`1a00c62`) produces the two genuine offline drafts in a separately copied GUI
+profile; Windows CLI-f independently changes both corresponding server items.
+The original profiles and earlier fixture evidence are preserved.
+
+The actual GUI Sync now classifies both conflicts. Review sync identifies each
+correct title and owning vault; Compare and select fields shows both local/server
+versions while masking the password. Lock/process exit leaves both pending signed
+requests byte-for-byte unchanged. A fresh GUI process chooses Use server version
+for the first item. The second pending request, operation ID and conflict remain
+unchanged exactly. Another GUI restart explicitly chooses Use mine for the second
+item after verified comparison, ending with zero pending item operations and
+conflicts. Windows CLI independently verifies the selected first server title and
+second local title, default password redaction and unchanged explicit password.
+Both original synthetic items are restored and independently checked.
+
+Evidence: `C:\Projects\127Vaults-desktop-multi-conflict-20261014-a\evidence.json`,
+with separate `compare.json`, `server.json`, `local.json`, CLI phase records and
+before/reviewed/server/local/restored encrypted replica snapshots. Server fixture
+source is `103da5b`; the source/package/UI scopes are recorded explicitly. Queue
+creation uses the real packaged CLI, while review/resolution uses actual packaged
+Linux DOM/React/native handlers. This does not establish GUI queue creation,
+Windows GUI or multiple-vault navigation/queue acceptance. Helper syntax checks
+and Git whitespace checks pass. Original server/database remain healthy. These
+completed evidence changes are committed to local main without a remote push.
