@@ -28,6 +28,13 @@ All these commands accept `--config-dir PATH` and require an unlocked CLI agent.
 `conflict resolve --keep server` refreshes and verifies the server state before
 retiring the selected edit. A failed refresh preserves every queued request;
 unrelated edits remain queued after a successful choice.
+`status` distinguishes an unlocked offline replica from a currently authenticated
+server session and explains a failed connection or verification. `sync-review`
+also reports unverified server acknowledgements separately from queued edits.
+Acknowledged operation IDs are retained locally until verified signed history
+contains them. Missing or changed history preserves the encrypted local copy.
+Older clients refuse records with these acknowledgement pins; complete verified
+sync using the new client before downgrading.
 
 For the separately downloaded Chrome/Edge extension, load its extracted folder
 unpacked, copy its ID from the extensions page, and register this archive's host:

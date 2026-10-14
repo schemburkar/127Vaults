@@ -1486,29 +1486,35 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Server {
             command: ServerCommand::Trust(args),
         } => establish_trust(&args),
-        Command::Status {
-            json: true,
-            config_dir,
-        } => {
+        Command::Status { json, config_dir } => {
             let config_dir = effective_config_dir(&config_dir);
-            let active = agent::call(&config_dir, "status", serde_json::json!({})).is_ok();
-            Ok(format!(
-                r#"{{"configured":{},"authenticated":{active},"unlocked":{active},"secrets":"redacted"}}"#,
-                configured(&config_dir)
-            ))
-        }
-        Command::Status {
-            json: false,
-            config_dir,
-        } => {
-            let config_dir = effective_config_dir(&config_dir);
-            let active = agent::call(&config_dir, "status", serde_json::json!({})).is_ok();
-            Ok(format!(
-                "configured: {}\nauthenticated: {}\nunlocked: {}\nsecrets: [redacted]",
+            let status = agent::call(&config_dir, "status", serde_json::json!({})).ok();
+            let authenticated = status
+                .as_ref()
+                .is_some_and(|value| value["authenticated"] == true);
+            let unlocked = status
+                .as_ref()
+                .is_some_and(|value| value["unlocked"] == true);
+            let online = status.as_ref().is_some_and(|value| value["online"] == true);
+            let reason = status
+                .as_ref()
+                .and_then(|value| value["offlineReason"].as_str());
+            if json {
+                return serde_json::to_string(&serde_json::json!({"configured":configured(&config_dir),"authenticated":authenticated,"unlocked":unlocked,"online":online,"offlineReason":reason,"secrets":"redacted"}))
+                    .map_err(|_| "could not encode status".to_owned());
+            }
+            let mut output = format!(
+                "configured: {}\nauthenticated: {}\nunlocked: {}\nonline: {}\nsecrets: [redacted]",
                 if configured(&config_dir) { "yes" } else { "no" },
-                if active { "yes" } else { "no" },
-                if active { "yes" } else { "no" }
-            ))
+                if authenticated { "yes" } else { "no" },
+                if unlocked { "yes" } else { "no" },
+                if online { "yes" } else { "no" }
+            );
+            if let Some(reason) = reason {
+                write!(output, "\noffline reason: {reason}")
+                    .map_err(|_| "could not encode status")?;
+            }
+            Ok(output)
         }
         Command::Device { command } => devices::run(command),
         Command::Login {

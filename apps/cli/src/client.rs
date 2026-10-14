@@ -1925,6 +1925,8 @@ impl Session {
                         let op_id = pending.operation["opId"].clone();
                         self.replica_store.update(&replica.vault_id, |current| {
                             current
+                                .acknowledge(op_id.as_str().ok_or("invalid accepted operation")?)?;
+                            current
                                 .pending
                                 .retain(|candidate| candidate.operation["opId"] != op_id);
                             current.sync_error = None;
@@ -2288,6 +2290,12 @@ impl Session {
                     .map_err(|_| "operation verification key is invalid")?
                     .try_into()
                     .map_err(|_| "operation verification key is invalid")?;
+                if actor == self.device_id && key != self.signing.verifying_key().to_bytes() {
+                    return Err(
+                        "current device verification key changed; local replica was preserved"
+                            .to_owned(),
+                    );
+                }
                 vaults_protocol::signed_sync::verify_operation(
                     operation,
                     &key,
@@ -2341,6 +2349,21 @@ impl Session {
                     );
                 }
                 verify_remote_cursor_progress(old, checkpoint.as_ref(), cursor)?;
+                if operations.len() < old.operations.len()
+                    || operations[..old.operations.len()] != old.operations
+                {
+                    return Err(
+                        "verified operation history changed; local replica was preserved"
+                            .to_owned(),
+                    );
+                }
+                if old
+                    .acknowledged_operations
+                    .iter()
+                    .any(|id| !operations.iter().any(|row| row["operation"]["opId"] == *id))
+                {
+                    return Err("acknowledged operation missing from server history; local replica was preserved".to_owned());
+                }
             }
             if let Some(candidate) = checkpoint.as_ref() {
                 vaults_protocol::signed_sync::verify_checkpoint_signature(
@@ -2556,7 +2579,8 @@ impl Session {
             }
         }
         Ok(
-            json!({"items":rows,"settingsPending":self.settings_record.pending.is_some(),"settingsConflict":self.settings_conflict}),
+            json!({"items":rows,"settingsPending":self.settings_record.pending.is_some(),"settingsConflict":self.settings_conflict,
+                "unverifiedAcknowledgements":self.replica_store.list()?.iter().map(|replica|replica.acknowledged_operations.len()).sum::<usize>()}),
         )
     }
 
@@ -3150,6 +3174,11 @@ impl Session {
                         .to_owned(),
                 );
                 self.replica_store.update(&vault_id, |replica| {
+                    replica.acknowledge(
+                        operation["opId"]
+                            .as_str()
+                            .ok_or("invalid accepted operation")?,
+                    )?;
                     replica
                         .pending
                         .retain(|entry| entry.operation["opId"] != operation["opId"]);

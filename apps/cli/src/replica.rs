@@ -56,6 +56,9 @@ pub struct Replica {
     #[serde(default)]
     pub checkpoint_public_key: Option<String>,
     pub operations: Vec<Value>,
+    /// TLS-acknowledged operation IDs not yet pinned by verified server history.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub acknowledged_operations: Vec<String>,
     pub items: Vec<ReplicaItem>,
     pub pending: Vec<PendingMutation>,
     pub conflicts: Vec<Value>,
@@ -79,6 +82,7 @@ impl Replica {
             checkpoint: None,
             checkpoint_public_key: None,
             operations: Vec::new(),
+            acknowledged_operations: Vec::new(),
             items: Vec::new(),
             pending: Vec::new(),
             conflicts: Vec::new(),
@@ -105,6 +109,24 @@ impl Replica {
         }));
     }
 
+    pub fn acknowledge(&mut self, operation_id: &str) -> Result<(), String> {
+        if operation_id.len() != 64
+            || !operation_id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("invalid acknowledged operation".to_owned());
+        }
+        if !self
+            .acknowledged_operations
+            .iter()
+            .any(|id| id == operation_id)
+        {
+            self.acknowledged_operations.push(operation_id.to_owned());
+        }
+        Ok(())
+    }
+
     fn validate(&self, expected_vault: &str) -> Result<(), String> {
         if self.version != FORMAT_VERSION {
             return Err("replica version is unsupported".to_owned());
@@ -114,6 +136,14 @@ impl Replica {
         }
         if uuid::Uuid::parse_str(&self.tenant_id).is_err() || self.epoch == 0 {
             return Err("replica identity is invalid".to_owned());
+        }
+        if self.acknowledged_operations.iter().any(|id| {
+            id.len() != 64
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        }) {
+            return Err("replica acknowledgement is invalid".to_owned());
         }
         if self
             .items
@@ -267,6 +297,49 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("127vaults-replica-test-{}", uuid::Uuid::new_v4()));
         (root.clone(), ReplicaStore::new(&root))
+    }
+
+    #[test]
+    fn acknowledgement_pins_survive_reopen_and_legacy_records_default_to_empty() {
+        let (root, store) = temporary_store();
+        let vault = uuid::Uuid::new_v4().to_string();
+        let mut replica = Replica::new(uuid::Uuid::new_v4().to_string(), vault.clone(), 1);
+        assert!(
+            !serde_json::to_value(&replica)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("acknowledged_operations")
+        );
+        store.commit(&replica).unwrap();
+        assert!(
+            store
+                .load(&vault)
+                .unwrap()
+                .unwrap()
+                .acknowledged_operations
+                .is_empty()
+        );
+        let operation = "ab".repeat(32);
+        replica.acknowledge(&operation).unwrap();
+        replica.acknowledge(&operation).unwrap();
+        store.commit(&replica).unwrap();
+        assert_eq!(
+            store.load(&vault).unwrap().unwrap().acknowledged_operations,
+            vec![operation]
+        );
+        replica.acknowledged_operations.push("invalid".to_owned());
+        assert!(store.commit(&replica).is_err());
+        assert_eq!(
+            store
+                .load(&vault)
+                .unwrap()
+                .unwrap()
+                .acknowledged_operations
+                .len(),
+            1
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

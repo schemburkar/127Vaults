@@ -512,6 +512,136 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
 }
 
 #[test]
+fn acknowledged_write_cannot_be_replaced_by_pre_acknowledgement_server_history() {
+    let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
+    let old = session.replica_store.load(&vault_id).unwrap().unwrap();
+    let mut responses = initial_snapshot_responses(&old);
+    responses.insert(2, (200, json!({"envelope":old.items[0].body})));
+    responses.insert(0, (200, json!({"accepted":true})));
+    let (origin, worker) = fixture(responses);
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    session
+        .item_upsert(
+            &vault_id,
+            Some(&item_id),
+            "Acknowledged edit",
+            "https://fixture.invalid",
+            "fixture-user",
+            "fixture-password",
+            &[],
+        )
+        .unwrap();
+    let acknowledged = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert!(acknowledged.pending.is_empty());
+    session.accepted_device_heads.clear(); // Process restart loses in-memory signing hints.
+    let result = session.hydrate_replicas();
+    worker.join().unwrap();
+    assert!(
+        result.is_err(),
+        "Acknowledged local edit was replaced by pre-write server history"
+    );
+    assert_eq!(
+        session.replica_store.load(&vault_id).unwrap().unwrap(),
+        acknowledged
+    );
+    session.online = false;
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
+fn acknowledged_write_is_pinned_by_verified_history_before_acknowledgement_is_cleared() {
+    let (origin, receipt_worker) = fixture(vec![(200, json!({"accepted":true}))]);
+    let (mut session, vault_id, item_id) = session_with_editable_item(&origin);
+    session
+        .item_upsert(
+            &vault_id,
+            Some(&item_id),
+            "Acknowledged edit",
+            "https://fixture.invalid",
+            "fixture-user",
+            "fixture-password",
+            &[],
+        )
+        .unwrap();
+    let request = receipt_worker.join().unwrap().pop().unwrap();
+    let operation = request.body["signedOperation"].clone();
+    let acknowledged = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(
+        acknowledged.acknowledged_operations,
+        vec![operation["opId"].as_str().unwrap().to_owned()]
+    );
+    let mut responses = initial_snapshot_responses(&acknowledged);
+    responses[2] = (
+        200,
+        json!({"cursor":1,"hasMore":false,"operations":[{"cursor":1,"operation":operation}],"devicePublicKeys":{CURRENT:URL_SAFE_NO_PAD.encode(session.signing.verifying_key().to_bytes())}}),
+    );
+    let (origin, history_worker) = fixture(responses);
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    session.accepted_device_heads.clear();
+    session.hydrate_replicas().unwrap();
+    history_worker.join().unwrap();
+    let verified = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert!(verified.acknowledged_operations.is_empty());
+    assert_eq!(verified.operations.len(), 1);
+    let mut alternative = operation.as_object().unwrap().clone();
+    alternative.remove("opId");
+    alternative.remove("signature");
+    alternative.insert("payloadHash".to_owned(), json!("ac".repeat(32)));
+    let op_id = hex::encode(Sha256::digest(
+        vaults_protocol::signed_sync::canonical_bytes(&Value::Object(alternative.clone())).unwrap(),
+    ));
+    alternative.insert("opId".to_owned(), json!(op_id));
+    let signature = URL_SAFE_NO_PAD.encode(
+        session
+            .signing
+            .sign(
+                &vaults_protocol::signed_sync::canonical_bytes(&Value::Object(alternative.clone()))
+                    .unwrap(),
+            )
+            .to_bytes(),
+    );
+    alternative.insert("signature".to_owned(), json!(signature));
+    let mut responses = initial_snapshot_responses(&verified);
+    responses[2] = (
+        200,
+        json!({"cursor":1,"hasMore":false,"operations":[{"cursor":1,"operation":alternative}],"devicePublicKeys":{CURRENT:URL_SAFE_NO_PAD.encode(session.signing.verifying_key().to_bytes())}}),
+    );
+    let (origin, fork_worker) = fixture(responses);
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    assert!(
+        session
+            .hydrate_replicas()
+            .unwrap_err()
+            .contains("verified operation history changed")
+    );
+    fork_worker.join().unwrap();
+    assert_eq!(
+        session.replica_store.load(&vault_id).unwrap().unwrap(),
+        verified
+    );
+    session.online = false;
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn comparison_and_server_choice_preserve_all_pending_work_when_refresh_fails() {
     let (origin, worker) = fixture(vec![
         (409, json!({"error":"BASE_CHANGED"})),
