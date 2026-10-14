@@ -134,3 +134,108 @@ These runs add concrete local evidence while leaving latest Windows GUI,
 actual extension web-source, broader settings/type/multi-queue UI and physical
 acceptance gates open. Selected Desktop GUI code is unchanged; fresh package
 startup does not replace the enrolled Windows/Linux walkthrough.
+
+## Settings, multiple conflicts and consecutive edits continuation
+
+**Internal release remains unaccepted.** New selected CLI
+`internal-20261014-e/{windows,linux}` and Desktop
+`internal-20261014-d/{windows,linux}` are built from
+`aca13d81224b2719f9e3df7db7ca3d2cdf3dc176`. These supersede the native labels
+in the preceding table. Server/web/admin `internal-20261014-e`, source `ee83e2d`,
+and extension `internal-20261014-a`, source `07fdca5`, are unchanged. All six
+complete artifact sets/SHA256 checks were reverified in the committed inventory.
+Intermediate CLI-d/Desktop-c packages lack the consecutive-edit fix and remain
+reproduction artifacts rather than selected candidates.
+
+Two applicable native blockers were found and fixed:
+
+- `370b554`: CLI server-copy resolution now refreshes verified server state
+  before retiring the selected draft. Failed refresh and offline refusal retain
+  both selected and unrelated queues. Success retires only the selected conflict.
+  Desktop already used this sequence. HTTP regressions cover read-only refresh,
+  two preserved drafts, offline refusal and independent retirement.
+- `aca13d8`: consecutive online native edits previously reused the cached
+  device predecessor after a successful write. The second peer edit in a real
+  two-item scenario returned HTTP 409 and remained queued. Successful TLS
+  receipts now update an in-memory signing-head hint; verified hydration
+  replaces it from server history. Pending non-conflicted operations still take
+  precedence. The item baseline is not refreshed underneath a reviewed edit,
+  and no checkpoint history is fabricated. HTTP regression verifies consecutive
+  PUT predecessors with no intervening GET, then verifies a later 409 retains
+  the reviewed catalogue/item baseline. Broader acknowledgement/rollback and
+  checkpoint-window acceptance remains an audit gate.
+
+Strict workspace Clippy, Rustfmt and CLI library checks pass (72 tests plus the
+separately gated live test). Windows/Linux CLI and Desktop immutable builds run
+their relevant library/frontend/native framing gates. Later test/harness-only
+changes do not alter the selected `aca13d8` production source.
+
+### Settings and pending-item isolation
+
+`C:\Projects\127Vaults-settings-matrix-20261014-b\evidence.json` verifies
+four cases: each OS writer with explicit server or local settings choice. Each
+case passes ten phases through CLI-c/source `ee83e2d`, real keyrings and the
+retained TLS/PostgreSQL fixture. An offline default-view change and one existing
+synthetic item edit survive an agent restart. A peer default-view change creates
+real settings divergence. Read-only review and either settings resolution leave
+the exact item request unchanged; explicit Sync later sends that item, and the
+peer verifies both decisions. Original view behavior and item fields are restored.
+Names, collections and removal preference remain intact. This does not close
+GUI settings/default-view or all collection/removal cases.
+
+The first harness cleanup compared unset default versus explicit All literally;
+both select all items. The retained `...-a` attempt was corrected and restored,
+then the four-case `...-b` matrix completed. An intermediate case hit the real
+10-logins/minute account limit and safely fell back offline before mutation.
+Remaining phases were paced within that limit; no rate limit was changed.
+
+### Independent real conflicts and recovery
+
+`C:\Projects\127Vaults-multi-conflict-20261014-a\evidence.json` verifies
+both OS writer directions using CLI-e/source `aca13d8`. Two offline overlapping
+edits produce two real conflicts after competing peer writes. Comparison retains
+both drafts, an offline server-copy attempt refuses with both intact, verified
+server-copy resolution retires one while preserving the other's exact encrypted
+pending record/conflict, and explicit local-copy resolution sends the second.
+Peer reads verify the independent choices and unchanged password. Both synthetic
+items are restored; final queues/conflict lists are empty.
+
+The initial Windows-writer queue was produced by CLI-d/source `370b554`; that
+package's Linux peer hit the consecutive-edit defect. Its pending ciphertext was
+saved as `windows.json.peer-pending-before-recovery.json`, synced intact, and
+the preserved Windows queue was completed with CLI-e. `windows-before-aca.json`
+retains the intermediate evidence. The reverse Linux-writer case is fresh on
+CLI-e throughout. No test marker was inserted and no draft discarded to pass.
+
+Latest-package reply-loss retests pass at
+`C:\Projects\127Vaults-native-lost-response-20261014-e` (Windows writer) and
+`...-f` (Linux writer): exact retry hashes/IDs, peer's newer title retained and
+empty item queues/conflicts. They supersede the earlier native package evidence
+for this specific scenario. Every owned proxy/server-port change was restored;
+the original bundle-d server/database are healthy on 12892.
+
+### Actual Linux GUI and public site
+
+Latest Desktop-d passed actual Linux WebKit DOM/React/native-backend online
+unlock, two creations and repeated existing-item edits without intermediate Sync.
+Windows CLI-e reads the final two items exactly once and verifies masked and
+explicit password output. Evidence:
+`C:\Projects\127Vaults-sync-desktop-linux-20261014-b\online.json` and
+`peer.json`. The separate Linux GUI profile is copied from the retained fixture;
+the original profile/package and user development installation are preserved.
+The GUI was locked and only its owned process stopped. Windows GUI launch and
+physical keyboard/screen-reader acceptance remain pending.
+
+`C:\Projects\127Vaults-public-site-20261014-a\evidence.json` records actual
+Chromium rendering of all 11 static pages at widths 1440 and 390, local-link and
+image checks, no document overflow, closed intake controls, cloud-seat estimates
+and no published download links. All API responses are locally closed; no write,
+contact request, email, payment, account or publication occurs. Physical
+accessibility, public hosting and commercial/legal gates remain separate.
+
+Repeatable checked-in helpers now include
+`internal-packaged-settings-sync.mjs`, `internal-packaged-multi-conflict.mjs`,
+`internal-public-site-smoke.mjs`, and Desktop driver's `online-consecutive` mode.
+Saved external runners select the exact original identities and keyring setup.
+The broader sync/type/lifecycle/authorization, actual extension web source,
+latest Windows GUI and physical acceptance gates remain open. Nothing was pushed.

@@ -2,9 +2,11 @@
 
 Subsequent work and newer selected packages are recorded in
 [October 14 progress](internal-release-progress-2026-10-14.md). It supersedes the
-candidate labels below: server `internal-20261014-e`, Desktop
-`internal-20261014-b`, CLI `internal-20261014-c`, all source `ee83e2d`; extension
-is unchanged. Native lost-reply recovery now passes in both OS writer directions.
+candidate labels below: server `internal-20261014-e` (source `ee83e2d`), Desktop
+`internal-20261014-d` and CLI `internal-20261014-e` (source `aca13d8`); extension
+is unchanged. Native lost-reply recovery now passes in both OS writer directions,
+as do independent two-conflict choices. Four settings-choice cases preserve
+queued items; actual latest Linux GUI consecutive edits reach the Windows peer.
 Internal release is still unaccepted. The 12892 fixture still uses bundle-d.
 
 Saved at the user's request before further work. **Internal release remains not

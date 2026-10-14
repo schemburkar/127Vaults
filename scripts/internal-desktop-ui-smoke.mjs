@@ -17,7 +17,8 @@ const settings=process.argv[7]==='settings';
 const conflictTest=process.argv[7]==='conflict';
 const settingsReview=process.argv[7]==='settings-server';
 const queueCreate=process.argv[7]==='queue-create';
-const onlineCreate=process.argv[7]==='online-create';
+const onlineConsecutive=process.argv[7]==='online-consecutive';
+const onlineCreate=process.argv[7]==='online-create'||onlineConsecutive;
 const queueReplay=process.argv[7]==='queue-replay';
 const unlockHold=process.argv[7]==='unlock-hold';
 const queueVault=process.env.VAULTS_FIXTURE_QUEUE_VAULT||null;
@@ -50,6 +51,15 @@ try{
    stage='offline GUI create';await create(${JSON.stringify(expectedTitle)});
    stage='offline GUI edit';button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));input(document.querySelector('input[data-editor-title]'),${JSON.stringify(nextTitle)});await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(${JSON.stringify(nextTitle)}));
    stage='second offline GUI create';await create(${JSON.stringify(expectedTitle+' second')});
+   if(${JSON.stringify(onlineConsecutive)}){
+    for(const suffix of [' edited once',' edited twice']){
+     stage='consecutive online GUI edit';button('Edit').click();await wait(()=>document.querySelector('input[data-editor-title]'));
+     const expected=${JSON.stringify(expectedTitle+' second')}+suffix;input(document.querySelector('input[data-editor-title]'),expected);await new Promise(resolve=>setTimeout(resolve,50));button('Save').click();
+     await wait(()=>!button('Save')&&button('Edit')&&!button('Edit').disabled&&document.querySelector('main')?.innerText.includes(expected));
+     if(document.querySelector('[aria-labelledby="conflict-title"]'))throw Error('Consecutive edit stranded in conflict review');
+    }
+    checks.push('actual GUI saves two consecutive existing-item edits without intermediate sync');
+   }
    if(${JSON.stringify(onlineCreate)}){await wait(()=>document.body.innerText.includes('0 changes waiting to sync'));checks.push('actual GUI saves two consecutive online creations and an edit without intermediate sync');}
    else{await wait(()=>document.body.innerText.includes('3 changes waiting to sync'));checks.push('actual GUI queues two offline creations and a chained edit');}
    button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));globalThis.__fixtureUI={done:true,ok:true,checks};return;

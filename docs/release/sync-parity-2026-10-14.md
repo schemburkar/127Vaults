@@ -12,11 +12,19 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Non-overlapping changes | Implemented | Shared native engine | Packaged Windows/Linux automatic merge passes | GUI combinations |
 | Review pending item/changed fields | Implemented | Implemented | Packaged `sync-review` reads durable queued metadata, masks values and preserves requests on both OSs | Broader multi-queue UI |
 | Verified read-only comparison | Packaged real-server pass | Engine/read-only UI regressions; latest Windows GUI pending | New Windows/Linux packages pass both directions | Latest Windows GUI and multi-queue UI |
-| Keep server/local | Packaged server-copy pass | Engine/UI subsets | Both packaged Windows/Linux choices pass | Latest Windows GUI and multi-queue isolation |
+| Keep server/local | Packaged server-copy pass | Engine/UI subsets | CLI-e verifies server before retirement; two-conflict independent server/local decisions pass both directions | Latest Windows GUI and broader UI multi-queue isolation |
 | Selected-field merge | Packaged real-server pass | Implemented, engine subset pass | New Windows/Linux packages pass both directions | GUI combinations; CLI selects custom-fields array as a group |
 | Missing item / stale creation | Classification and replay implemented | Shared native engine and retained queues | Shared native engine | Deleted-item and collision matrix across UIs |
 | Vault archive/restore | Isolated browser subset | Shared native engine/UI subsets | Packaged Windows/Linux propagation and read-only refusal pass | Real packaged web/Desktop lifecycle matrix |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
+
+Latest native candidates are CLI `internal-20261014-e` and Desktop
+`internal-20261014-d`, source `aca13d8`; server/web remains `internal-20261014-e`,
+source `ee83e2d`. The [October 14 continuation](internal-release-progress-2026-10-14.md)
+records four packaged settings-choice cases preserving an unrelated item queue,
+two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI
+repeated edits with Windows peer reads and latest-package reply-loss retests.
+Broader acknowledgement/checkpoint-window rollback acceptance is still open.
 
 CLI now supports `conflict compare` and `conflict merge` with an explicit base and
 field-source choices. Comparison redacts built-in/custom/related passwords and

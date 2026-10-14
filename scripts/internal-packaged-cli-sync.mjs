@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','ui-consecutive-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -21,8 +21,8 @@ async function command(args,input=''){
  });
 }
 let evidence=['write','queue','types-write','lifecycle-create'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
-assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||phase==='ui-online-peer'&&evidence.title.startsWith('Linux packaged online ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
-if(['peer','ui-peer','ui-online-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
+assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue ')||['ui-online-peer','ui-consecutive-peer'].includes(phase)&&evidence.title.startsWith('Linux packaged online ')||['web-peer','web-verify'].includes(phase)&&evidence.title.startsWith('Web-native fixture '));
+if(['peer','ui-peer','ui-online-peer','ui-consecutive-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
 let agentReady=false,agentError='';
 try{
@@ -36,7 +36,18 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase==='capacity-check'){
+ if(phase==='ui-consecutive-peer'){
+  const listed=JSON.parse(await command(['item','list','--all']));
+  evidence.items=[];
+  for(const title of [evidence.guiFirstTitle,evidence.guiSecondTitle]){
+   assert.ok(title.startsWith('Linux packaged online '));const rows=listed.filter(item=>item.title===title);assert.equal(rows.length,1);
+   const row=rows[0],value=JSON.parse(await command(['item','get',row.itemId,'--vault',evidence.vaultId]));
+   assert.equal(value.title,title);assert.equal(value.username,'');assert.equal(value.password,'[redacted]');
+   assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'synthetic-ui-queue-password');
+   evidence.items.push({itemId:row.itemId,title});
+  }
+  evidence.guiConsecutivePeerOS=process.platform;
+ }else if(phase==='capacity-check'){
   await command(['device','list']);
   const before=JSON.parse(await command(['vault','list']));assert.equal(before.length,5,'Only the retained full fixture directory is accepted');
   const queued=JSON.parse(await command(['sync-review']));

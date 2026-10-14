@@ -387,13 +387,8 @@ fn initial_snapshot_responses(replica: &crate::replica::Replica) -> Vec<(u16, Va
     ]
 }
 
-#[test]
-fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselines() {
-    let (origin, worker) = fixture(vec![
-        (200, json!({"accepted":true})),
-        (200, json!({"accepted":true})),
-    ]);
-    let mut session = session(&origin);
+fn session_with_editable_item(origin: &str) -> (Session, String, String) {
+    let mut session = session(origin);
     let directory = session.core.create_empty_directory(session.root).unwrap();
     let vault = session
         .core
@@ -425,6 +420,17 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
         updated_at: None,
     });
     session.replica_store.commit(&replica).unwrap();
+    (session, vault_id, item_id)
+}
+
+#[test]
+fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselines() {
+    let (origin, worker) = fixture(vec![
+        (200, json!({"accepted":true})),
+        (200, json!({"accepted":true})),
+        (409, json!({"error":"BASE_CHANGED"})),
+    ]);
+    let (mut session, vault_id, item_id) = session_with_editable_item(&origin);
     session
         .item_upsert(
             &vault_id,
@@ -448,8 +454,23 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
             &[],
         )
         .unwrap();
+    let reviewed = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert!(
+        session
+            .item_upsert(
+                &vault_id,
+                Some(&item_id),
+                "Stale reviewed edit",
+                "https://fixture.invalid",
+                "fixture-user",
+                "fixture-password",
+                &[]
+            )
+            .unwrap_err()
+            .contains("409")
+    );
     let requests = worker.join().unwrap();
-    assert_eq!(requests.len(), 2);
+    assert_eq!(requests.len(), 3);
     assert!(
         requests
             .iter()
@@ -472,7 +493,16 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
         .to_string()
     );
     let final_replica = session.replica_store.load(&vault_id).unwrap().unwrap();
-    assert!(final_replica.pending.is_empty());
+    assert_eq!(final_replica.pending.len(), 1);
+    assert_eq!(
+        final_replica.pending[0].base_catalogue.as_ref(),
+        Some(&reviewed.catalogue)
+    );
+    assert_eq!(
+        final_replica.pending[0].base_item.as_ref(),
+        Some(&reviewed.items[0])
+    );
+    assert_eq!(final_replica.conflicts.len(), 1);
     assert!(
         final_replica.operations.is_empty(),
         "TLS acceptance is not fabricated verified checkpoint history"

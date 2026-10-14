@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-14T10:17:38.357Z",
+  "verifiedAt": "2026-10-14T10:50:00.679Z",
   "acceptance": "candidate only; cross-client sync release matrix remains open",
   "artifacts": [
     {
@@ -31,15 +31,15 @@
       ]
     },
     {
-      "path": "desktop/internal-20261014-b/windows",
+      "path": "desktop/internal-20261014-d/windows",
       "product": "desktop",
       "platform": "windows",
-      "sourceRevision": "ee83e2d1363fccdd4d031e6cf3cd928b1ef7d361",
+      "sourceRevision": "aca13d81224b2719f9e3df7db7ca3d2cdf3dc176",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-windows-x64.exe",
-          "sizeBytes": 5128354,
-          "sha256": "21baf2fdb7cf898e71959ad1dee7360dfc614c91e85c7eb56ab9374ecdf3a36b"
+          "sizeBytes": 5130084,
+          "sha256": "ed0481816544809cc92d9826544fd217204107ba1633650af7f63b612effdd12"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -59,20 +59,20 @@
       ]
     },
     {
-      "path": "desktop/internal-20261014-b/linux",
+      "path": "desktop/internal-20261014-d/linux",
       "product": "desktop",
       "platform": "linux",
-      "sourceRevision": "ee83e2d1363fccdd4d031e6cf3cd928b1ef7d361",
+      "sourceRevision": "aca13d81224b2719f9e3df7db7ca3d2cdf3dc176",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.AppImage",
-          "sizeBytes": 85993976,
-          "sha256": "5819fbee7841eabae6fe7e269b458fa6d1277540a2f8ff7a97ad781de8674c98"
+          "sizeBytes": 85998072,
+          "sha256": "6b572d6afc92c79e5da17b52a5aab912aa4e77564af8c13e7b7fbda6798cd0f9"
         },
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.deb",
-          "sizeBytes": 11188148,
-          "sha256": "ccc16d5104e8bc3ac23103688c016eb6c44e746837e92456fab90661d801f87d"
+          "sizeBytes": 11191644,
+          "sha256": "db06c307bf4f120f323fbad3e1f2675a2efea8f49a1be6af3dbfef4cba83c218"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -92,15 +92,15 @@
       ]
     },
     {
-      "path": "cli/internal-20261014-c/windows",
+      "path": "cli/internal-20261014-e/windows",
       "product": "cli",
       "platform": "windows",
-      "sourceRevision": "ee83e2d1363fccdd4d031e6cf3cd928b1ef7d361",
+      "sourceRevision": "aca13d81224b2719f9e3df7db7ca3d2cdf3dc176",
       "files": [
         {
           "name": "127vaults-cli-0.0.0-windows-x64.zip",
-          "sizeBytes": 3134115,
-          "sha256": "d7d0be3c39b8ff19b0392a8dd71e0c752dde22dfabec445a69fbed4f59f8e7bb"
+          "sizeBytes": 3136517,
+          "sha256": "5e3138ffaa2a3a4feb0bd1cb6c423600fbc72e08382f03e7b804c7774f0b8851"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -109,8 +109,8 @@
         },
         {
           "name": "README.md",
-          "sizeBytes": 2724,
-          "sha256": "d54a0a0ded453ec4e92f27732936329a4f9477c33b2980b51659f80a85890e7a"
+          "sizeBytes": 2941,
+          "sha256": "d48104d20d88f02cd24d5f3fa3d5d123aa9e2fa991515e0918aff98422f9712c"
         },
         {
           "name": "verify-release.mjs",
@@ -120,15 +120,15 @@
       ]
     },
     {
-      "path": "cli/internal-20261014-c/linux",
+      "path": "cli/internal-20261014-e/linux",
       "product": "cli",
       "platform": "linux",
-      "sourceRevision": "ee83e2d1363fccdd4d031e6cf3cd928b1ef7d361",
+      "sourceRevision": "aca13d81224b2719f9e3df7db7ca3d2cdf3dc176",
       "files": [
         {
           "name": "127vaults-cli-0.0.0-linux-x64.tar.gz",
-          "sizeBytes": 4294813,
-          "sha256": "f2f4706bbfc91d2b8ae651ee1e8687d6a9aa45b1d5385ca1523b6afbf195c5b6"
+          "sizeBytes": 4295109,
+          "sha256": "51b8fa58cc4db3de5afae71eaa5183ea119c9ce717deb15269b3891fe09992db"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -137,8 +137,8 @@
         },
         {
           "name": "README.md",
-          "sizeBytes": 2677,
-          "sha256": "8e8ba1c369ff988319ab2381902b42cb7fed751a88760573d1e9891e3e9dad48"
+          "sizeBytes": 2891,
+          "sha256": "28f246d43be94292bbc47db23f3782ba1024b931a916dcc2dd189e98cc29787e"
         },
         {
           "name": "verify-release.mjs",
