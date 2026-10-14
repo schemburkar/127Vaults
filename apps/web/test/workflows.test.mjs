@@ -4,6 +4,14 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
+test('real server base_changed errors enter conflict recovery without widening other refusals', async () => {
+  let responseCode = 'base_changed';
+  const context = vm.createContext({installedApp:false,csrf:null,AbortSignal,fetch:async()=>({ok:false,status:409,json:async()=>({error:responseCode})})});
+  vm.runInContext(source.slice(source.indexOf('async function remoteCall('),source.indexOf('async function call(')),context);
+  await assert.rejects(vm.runInContext('remoteCall("/api/v1/fixture")',context),error=>error.message==='BASE_CHANGED'&&error.status===409);
+  responseCode='device_revoked';
+  await assert.rejects(vm.runInContext('remoteCall("/api/v1/fixture")',context),error=>error.message==='device_revoked'&&error.status===409);
+});
 test('login waits for saved identity initialization and still opens after enrollment', () => {
   const elements = Object.fromEntries(['username','login-account-name','legacy-secret-field','login-username-step','login-password-step','master'].map(id => [id,{value:'owner_127',hidden:false,focus(){}}]));
   let messages = 0;

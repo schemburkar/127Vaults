@@ -174,7 +174,7 @@ async function remoteCall(path, { method = "GET", body, token = csrf } = {}) {
   } catch {
     throw Error("INVALID_SERVER_RESPONSE");
   }
-  if (!r.ok) { const error = Error(v.error ?? `HTTP_${r.status}`); error.status = r.status; throw error; }
+  if (!r.ok) { const error = Error(v.error === 'base_changed' ? 'BASE_CHANGED' : v.error ?? `HTTP_${r.status}`); error.status = r.status; throw error; }
   return v;
 }
 async function call(path, options = {}) {
@@ -258,6 +258,7 @@ const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storage is fu
     INVALID_USERNAME: "Enter your username (5–64 letters, digits, dots, hyphens, or underscores).",
     SYNC_REVIEW_PENDING: "Your offline changes are preserved. Choose Sync to finish reviewing the conflict.",
     LOCAL_QUEUE_CHANGED: "Another app window saved a change. Sync again to include it.",
+    BASE_CHANGED: "This item changed on another device. Your queued edit is preserved. Choose Sync to review both versions.",
     VAULT_RETIRED: "This vault was removed on another device. Your offline changes are preserved for review.",
     SERVER_IDENTITY_CHANGED: "The server identity changed. Your local copy and pending changes are preserved; verify the server before registering again.",
     PENDING_REMOVAL: "Resume or cancel the pending vault removal before starting another.",

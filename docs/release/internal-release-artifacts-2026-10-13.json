@@ -1,17 +1,17 @@
 {
-  "verifiedAt": "2026-10-14T04:56:31.077Z",
+  "verifiedAt": "2026-10-14T05:41:25.666Z",
   "acceptance": "candidate only; cross-client sync release matrix remains open",
   "artifacts": [
     {
-      "path": "server/internal-20261013-a/linux-amd64",
+      "path": "server/internal-20261014-b/linux-amd64",
       "product": "server",
       "platform": "linux-amd64",
-      "sourceRevision": "8aeaf9b26289e193a9b7676b70bc8289de00557b",
+      "sourceRevision": "de3f8545add6004a12b16c2c55443f8e0c6862a5",
       "files": [
         {
           "name": "127vaults-server-0.0.0-linux-amd64.tar",
-          "sizeBytes": 834729984,
-          "sha256": "231c1f015a421d8c31fe40c024b09a5e5e2f0da8db1bbd1929c9be39ac00f7cf"
+          "sizeBytes": 834731008,
+          "sha256": "cc741063b33f68a3c7d9fa2b2fb51fdab1a6255fd274e8aceae9fc1820c47cc4"
         },
         {
           "name": "LICENSE-POLICY.md",

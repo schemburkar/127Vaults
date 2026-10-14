@@ -286,3 +286,25 @@ installed display mode is emulated; this is not physical PWA installation or
 process-restart/conflict acceptance. Initial evidence is retained separately in
 `...sync-web-20261014-a\pwa-native-first.json`; the repeated committed-helper run
 writes `web-native-<itemId>.json`. The broader offline/conflict matrix remains open.
+
+### New packaged server/admin and concurrent PWA conflict finding
+
+Server `internal-20261014-b` is built from clean committed `de3f854`, immutable
+image `localhost/127vaults-server:release-ba261b5e3bcebf00`; all six selected release
+file sets/checksums are verified. The mutable legacy `internal-20261014-a` bundle
+is retained as a build experiment and is not selected. The new immutable package
+passes fresh installation, trusted HTTPS, owner/hostile item paths, packaged admin
+sign-in/audited writes/replay/sign-out, encrypted database and identity backup,
+guarded restore into a new empty project and pre-backup owner/item read after
+restore: `C:\Projects\127Vaults-sync-server-20261014-b\evidence.json`. Its own
+containers stopped; original cross-client fixture remains running separately.
+
+The live PWA/native concurrent-edit gate reproduced a product bug: PostgreSQL sync
+returns HTTP 409 `base_changed`, while PWA conflict recovery recognized only
+`BASE_CHANGED`. The local edit survives restart but review does not open. The wire
+code is now normalized at the browser API boundary without widening other 409
+refusals; 63 web tests and checks pass. This newer fix is not in package `b`.
+The original pending item `6027e4b8-bd0a-4c1c-a1a2-cad8f0f31531` and its browser
+profile remain preserved in `...sync-web-20261014-a`. Recovery validation is still
+open because another pre-review error remains after this normalization. Do not
+accept this gate or discard its queue to force a passing result.
