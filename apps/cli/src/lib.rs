@@ -370,6 +370,19 @@ pub enum ItemCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ConflictCommand {
+    /// Merge verified versions using an explicit base and field source choices.
+    Merge {
+        operation_id: String,
+        #[arg(long, value_parser = ["local", "server"], required = true)]
+        base: String,
+        /// Repeat FIELD=local or FIELD=server (title, website, username, password, customFields).
+        #[arg(long = "field-source")]
+        field_sources: Vec<String>,
+        #[arg(long)]
+        vault: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     /// Compare the queued draft with verified server fields without submitting it.
     Compare {
         operation_id: String,
@@ -1534,6 +1547,17 @@ pub fn run(cli: Cli) -> Result<String, String> {
         .map_err(|_| "could not encode sync result".to_owned()),
         Command::Conflict { command } => {
             let (config_dir, action, body) = match command {
+                ConflictCommand::Merge {
+                    operation_id,
+                    base,
+                    field_sources,
+                    vault,
+                    config_dir,
+                } => (
+                    config_dir,
+                    "conflict.merge",
+                    serde_json::json!({"vault":vault,"operation_id":operation_id,"keep":base,"field_sources":field_sources}),
+                ),
                 ConflictCommand::Compare {
                     operation_id,
                     vault,
@@ -1896,6 +1920,20 @@ mod tests {
         assert!(Cli::try_parse_from(["127vaults", "conflict", "show", "operation-id"]).is_ok());
         assert!(Cli::try_parse_from(["127vaults", "conflict", "compare", "operation-id"]).is_ok());
         assert!(Cli::try_parse_from(["127vaults", "conflict", "compare"]).is_err());
+        assert!(Cli::try_parse_from(["127vaults", "conflict", "merge", "operation-id"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "127vaults",
+                "conflict",
+                "merge",
+                "operation-id",
+                "--base",
+                "local",
+                "--field-source",
+                "title=server"
+            ])
+            .is_ok()
+        );
         assert!(
             Cli::try_parse_from([
                 "127vaults",

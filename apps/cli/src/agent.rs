@@ -35,6 +35,33 @@ fn redact_conflict_fields(item: &mut Value) {
     }
 }
 
+fn conflict_field_choices(
+    base: &str,
+    choices: &[String],
+) -> Result<Vec<(&'static str, bool)>, String> {
+    if !matches!(base, "local" | "server") {
+        return Err("explicit local or server merge base is required".to_owned());
+    }
+    let mut result = ["title", "website", "username", "password", "customFields"]
+        .map(|field| (field, base == "local"))
+        .to_vec();
+    let mut seen = std::collections::HashSet::new();
+    for choice in choices {
+        let (field, source) = choice
+            .split_once('=')
+            .ok_or("field source must be FIELD=local or FIELD=server")?;
+        if !seen.insert(field) || !matches!(source, "local" | "server") {
+            return Err("duplicate field or invalid field source".to_owned());
+        }
+        let target = result
+            .iter_mut()
+            .find(|(name, _)| *name == field)
+            .ok_or("unknown merge field")?;
+        target.1 = source == "local";
+    }
+    Ok(result)
+}
+
 #[derive(Serialize, Deserialize)]
 struct Startup {
     account_secret: String,
@@ -75,6 +102,8 @@ struct Request {
     operation_id: Option<String>,
     #[serde(default)]
     keep: Option<String>,
+    #[serde(default)]
+    field_sources: Vec<String>,
     #[serde(default)]
     password_field: Option<String>,
     #[serde(default)]
@@ -279,6 +308,47 @@ fn dispatch(
             comparison["itemId"] = json!(item_id);
             comparison["draft"] = draft;
             Ok(comparison)
+        }
+        "conflict.merge" => {
+            let choices = conflict_field_choices(
+                request.keep.as_deref().unwrap_or(""),
+                &request.field_sources,
+            )?;
+            let vault = vault_selector(session, request.vault.as_deref())?;
+            let operation = request
+                .operation_id
+                .as_deref()
+                .ok_or("operation ID is required")?;
+            let (vault_id, item_id) = session.conflict_item_id(&vault, operation)?;
+            let comparison = session.conflict_compare(&vault_id, &item_id, operation)?;
+            if !comparison["server"].is_object() {
+                return Err("server item is absent; queued edit preserved; choose explicit whole-version recovery".to_owned());
+            }
+            let draft = session.conflict_draft(&vault_id, &item_id, operation)?;
+            let mut merged = json!({});
+            for (field, local) in choices {
+                merged[field] = if local {
+                    draft[field].clone()
+                } else {
+                    comparison["server"][field].clone()
+                };
+            }
+            session.item_upsert_resolving(
+                &vault_id,
+                &item_id,
+                operation,
+                merged["title"].as_str().ok_or("invalid merge title")?,
+                merged["website"].as_str().ok_or("invalid merge website")?,
+                merged["username"]
+                    .as_str()
+                    .ok_or("invalid merge username")?,
+                merged["password"]
+                    .as_str()
+                    .ok_or("invalid merge password")?,
+                merged["customFields"]
+                    .as_array()
+                    .ok_or("invalid merge custom fields")?,
+            )
         }
         "conflict.resolve" => {
             let vault = vault_selector(session, request.vault.as_deref())?;
@@ -691,6 +761,34 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
 #[cfg(test)]
 mod tests {
     #[test]
+    fn conflict_merge_requires_explicit_known_unique_field_sources() {
+        assert!(super::conflict_field_choices("", &[]).is_err());
+        assert!(super::conflict_field_choices("local", &["unknown=server".to_owned()]).is_err());
+        assert!(
+            super::conflict_field_choices(
+                "local",
+                &["title=server".to_owned(), "title=local".to_owned()]
+            )
+            .is_err()
+        );
+        assert!(super::conflict_field_choices("server", &["password=both".to_owned()]).is_err());
+        let choices = super::conflict_field_choices(
+            "local",
+            &["title=server".to_owned(), "customFields=server".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(
+            choices,
+            vec![
+                ("title", false),
+                ("website", true),
+                ("username", true),
+                ("password", true),
+                ("customFields", false)
+            ]
+        );
+    }
+    #[test]
     fn conflict_comparison_masks_builtin_custom_and_related_passwords() {
         let mut item = serde_json::json!({"title":"visible title","username":"visible user","password":"builtin secret","customFields":[
             {"id":"ordinary","type":"text","value":"visible note"},
@@ -743,6 +841,8 @@ mod tests {
             "device.inspect",
             "device.approve",
             "device.revoke",
+            "conflict.compare",
+            "conflict.merge",
         ] {
             let mut request: Request = serde_json::from_value(
                 json!({"capability":"fixture","action":action,"password":"synthetic-secret"}),

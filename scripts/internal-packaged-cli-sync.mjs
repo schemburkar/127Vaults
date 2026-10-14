@@ -49,6 +49,7 @@ try{
    if(evidence.conflictMode==='nonoverlap')evidence.localConflictTitle=baseline.title;
    evidence.serverConflictTitle=evidence.title+' server conflict '+evidence.conflictRound;
    for(const step of ['native-peer','native-review','native-resolve','native-verify'])delete evidence[step+'Passed'];
+   delete evidence.cliVerifiedComparisonPassed;
    const result=JSON.parse(await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.localConflictTitle,username:evidence.localConflictUsername,password:'fictitious-lifecycle-password'})+'\n'));
    assert.equal(result.queued,true,'The edit must genuinely be offline');
    const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
@@ -88,12 +89,13 @@ try{
   }else if(phase==='native-resolve'){
    assert.equal(deviceId,evidence.writerDevice);assert.equal(evidence['native-reviewPassed'],true);
    evidence.conflictChoice=process.env.VAULTS_FIXTURE_CONFLICT_KEEP||'server';
-   assert.ok(['server','local'].includes(evidence.conflictChoice));
-   await command(['conflict','resolve',evidence.conflictOperationId,'--vault',evidence.vaultId,'--keep',evidence.conflictChoice]);
+   assert.ok(['server','local','fields'].includes(evidence.conflictChoice));
+   if(evidence.conflictChoice==='fields')await command(['conflict','merge',evidence.conflictOperationId,'--vault',evidence.vaultId,'--base','local','--field-source','title=server']);
+   else await command(['conflict','resolve',evidence.conflictOperationId,'--vault',evidence.vaultId,'--keep',evidence.conflictChoice]);
   }else{
    assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['native-resolvePassed'],true);
    const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
-   assert.equal(value.title,evidence.conflictChoice==='local'?evidence.localConflictTitle:evidence.serverConflictTitle);assert.equal(value.username,['local','automatic-nonoverlap'].includes(evidence.conflictChoice)?evidence.localConflictUsername:'server-conflict-user');assert.equal(value.password,'[redacted]');
+   assert.equal(value.title,evidence.conflictChoice==='local'?evidence.localConflictTitle:evidence.serverConflictTitle);assert.equal(value.username,['local','fields','automatic-nonoverlap'].includes(evidence.conflictChoice)?evidence.localConflictUsername:'server-conflict-user');assert.equal(value.password,'[redacted]');
    assert.equal(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId,'--password','password']),'fictitious-lifecycle-password');
   }
  }else if(phase.startsWith('lifecycle-')){

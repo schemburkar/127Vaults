@@ -173,6 +173,15 @@ operation, or `--keep local` to encrypt and queue the local draft against the
 current verified item. Add `--vault` when multiple vaults are available. A
 remote deletion cannot be overwritten by `--keep local` through this command.
 
+`conflict merge <operation-id> --base local --field-source title=server` saves
+the local version's fields with the verified server title. The base is required;
+repeat `--field-source FIELD=local|server` for `title`, `website`, `username`,
+`password`, or `customFields`. Custom fields are selected as one complete array,
+including type metadata and related sections. Unknown or repeated field choices
+are refused. The command retrieves secret values internally, without requiring
+passwords in command arguments or printing them. An absent server item is refused
+and its queued edit is retained.
+
 Create and edit are noninteractive by default. They accept an inline JSON object,
 JSON from stdin (`--json -`), JSON from a file (`--json @path`), or repeatable
 `--field KEY=VALUE` arguments. Use `--interactive` to request terminal prompts.
