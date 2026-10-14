@@ -25,6 +25,9 @@ local queue without uploading changes or printing usernames, websites, passwords
 or custom-field values. Use `sync` to retry, or `conflict compare` to review a
 confirmed conflict with secret values redacted before choosing a resolution.
 All these commands accept `--config-dir PATH` and require an unlocked CLI agent.
+`conflict resolve --keep server` refreshes and verifies the server state before
+retiring the selected edit. A failed refresh preserves every queued request;
+unrelated edits remain queued after a successful choice.
 
 For the separately downloaded Chrome/Edge extension, load its extracted folder
 unpacked, copy its ID from the extensions page, and register this archive's host:

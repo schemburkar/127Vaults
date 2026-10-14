@@ -304,25 +304,20 @@ fn conflict_comparison_reads_verified_server_fields_without_sending_the_queue() 
         base_item: None,
     });
     replica.mark_stale(&operation, &item_id);
+    let other_item_id = uuid::Uuid::new_v4().to_string();
+    let other_operation =
+        json!({"opId":uuid::Uuid::new_v4(),"itemId":other_item_id,"kind":"item.update"});
+    let other_pending = crate::replica::PendingMutation {
+        operation: other_operation.clone(),
+        request: json!({"ciphertext":"unrelated pending bytes"}),
+        base_catalogue: None,
+        base_item: None,
+    };
+    replica.pending.push(other_pending.clone());
+    replica.mark_stale(&other_operation, &other_item_id);
     session.replica_store.commit(&replica).unwrap();
-    let (origin, worker) = fixture(vec![
-        (
-            200,
-            json!({"directory":replica.directory,"vaultEnvelopes":[{"vaultId":vault_id,"envelope":replica.vault_envelope}]}),
-        ),
-        (
-            200,
-            json!({"catalogue":replica.catalogue,"indices":[{"itemId":item_id,"envelope":URL_SAFE_NO_PAD.encode(&item.index)}]}),
-        ),
-        (
-            200,
-            json!({"cursor":0,"hasMore":false,"operations":[],"devicePublicKeys":{}}),
-        ),
-        (
-            200,
-            json!({"checkpoint":null,"checkpointPublicKey":URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&[6;32]).verifying_key().to_bytes())}),
-        ),
-    ]);
+    let responses = initial_snapshot_responses(&replica);
+    let (origin, worker) = fixture([responses.clone(), responses].concat());
     session.origin.clone_from(&origin);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
@@ -344,6 +339,16 @@ fn conflict_comparison_reads_verified_server_fields_without_sending_the_queue() 
             .pending,
         replica.pending
     );
+    session
+        .resolve_conflict(&vault_id, &operation_id, "server")
+        .unwrap();
+    let resolved = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(resolved.pending, vec![other_pending]);
+    assert_eq!(resolved.conflicts.len(), 1);
+    assert_eq!(
+        resolved.conflicts[0]["operationId"],
+        other_operation["opId"]
+    );
     assert!(
         worker
             .join()
@@ -355,9 +360,38 @@ fn conflict_comparison_reads_verified_server_fields_without_sending_the_queue() 
     std::fs::remove_dir_all(&session.profile_dir).unwrap();
 }
 
+fn initial_snapshot_responses(replica: &crate::replica::Replica) -> Vec<(u16, Value)> {
+    let indices: Vec<_> = replica
+        .items
+        .iter()
+        .map(|item| json!({"itemId":item.item_id,"envelope":item.index}))
+        .collect();
+    vec![
+        (
+            200,
+            json!({"directory":replica.directory,"vaultEnvelopes":[{"vaultId":replica.vault_id,"envelope":replica.vault_envelope}]}),
+        ),
+        (
+            200,
+            json!({"catalogue":replica.catalogue,"indices":indices}),
+        ),
+        (
+            200,
+            json!({"cursor":0,"hasMore":false,"operations":[],"devicePublicKeys":{}}),
+        ),
+        (
+            200,
+            json!({"checkpoint":null,"checkpointPublicKey":URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&[6;32]).verifying_key().to_bytes())}),
+        ),
+    ]
+}
+
 #[test]
-fn conflict_comparison_does_not_submit_or_discard_pending_work_when_refresh_fails() {
-    let (origin, worker) = fixture(vec![(409, json!({"error":"BASE_CHANGED"}))]);
+fn comparison_and_server_choice_preserve_all_pending_work_when_refresh_fails() {
+    let (origin, worker) = fixture(vec![
+        (409, json!({"error":"BASE_CHANGED"})),
+        (503, json!({"error":"unavailable"})),
+    ]);
     let mut session = session(&origin);
     let directory = session.core.create_empty_directory(session.root).unwrap();
     let vault = session
@@ -380,6 +414,15 @@ fn conflict_comparison_does_not_submit_or_discard_pending_work_when_refresh_fail
         base_item: None,
     });
     replica.mark_stale(&operation, &item_id);
+    let unrelated_id = uuid::Uuid::new_v4().to_string();
+    let unrelated = json!({"opId":uuid::Uuid::new_v4(),"itemId":unrelated_id,"kind":"item.update"});
+    replica.pending.push(crate::replica::PendingMutation {
+        operation: unrelated.clone(),
+        request: json!({"ciphertext":"preserve unrelated draft"}),
+        base_catalogue: None,
+        base_item: None,
+    });
+    replica.mark_stale(&unrelated, &unrelated_id);
     session.replica_store.commit(&replica).unwrap();
     assert!(
         session
@@ -391,9 +434,34 @@ fn conflict_comparison_does_not_submit_or_discard_pending_work_when_refresh_fail
         session.replica_store.load(&vault_id).unwrap().unwrap(),
         replica
     );
+    assert!(
+        session
+            .resolve_conflict(&vault_id, &operation_id, "server")
+            .unwrap_err()
+            .contains("503")
+    );
+    assert_eq!(
+        session.replica_store.load(&vault_id).unwrap().unwrap(),
+        replica
+    );
+    session.online = false;
+    assert!(
+        session
+            .resolve_conflict(&vault_id, &operation_id, "server")
+            .unwrap_err()
+            .contains("Reconnect")
+    );
+    assert_eq!(
+        session.replica_store.load(&vault_id).unwrap().unwrap(),
+        replica
+    );
     let requests = worker.join().unwrap();
-    assert_eq!(requests.len(), 1);
-    assert!(requests[0].line.starts_with("GET /api/v1/vaults "));
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.line.starts_with("GET /api/v1/vaults "))
+    );
     session.online = false;
     std::fs::remove_dir_all(&session.profile_dir).unwrap();
 }

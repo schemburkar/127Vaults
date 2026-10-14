@@ -1704,6 +1704,10 @@ impl Session {
     ) -> Result<Value, String> {
         let (vault_id, item_id) = self.conflict_item_id(vault_selector, operation_id)?;
         if keep == "server" {
+            // An online agent may have lost its connection or authorization
+            // since comparison. Verify the current server copy before retiring
+            // this draft, just as the Desktop server-copy action does.
+            self.conflict_compare(&vault_id, &item_id, operation_id)?;
             self.discard_conflict(&vault_id, &item_id, operation_id)?;
             return Ok(json!({"resolved":operation_id,"kept":"server"}));
         }
