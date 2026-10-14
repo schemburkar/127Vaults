@@ -151,7 +151,7 @@ verification. [Recorded revisions and checksums](internal-release-artifacts-2026
 are committed; unsigned private-test artifacts remain at `C:\Projects\127Vaults-Releases`.
 
 - Server: `server/internal-20261013-a/linux-amd64`, source `8aeaf9b`, schema 7.
-- Desktop: `desktop/internal-20261013-g/{windows,linux}`, source `4224086`.
+- Desktop: `desktop/internal-20261013-h/{windows,linux}`, source `41e5ba9`.
 - CLI: `cli/internal-20261013-e/{windows,linux}`, source `4224086`.
 - Extension: `extension/internal-20261013-b/chromium`, source `8aeaf9b`.
 

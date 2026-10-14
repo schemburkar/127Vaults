@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -21,8 +21,8 @@ async function command(args,input=''){
  });
 }
 let evidence=['write','queue'].includes(phase)?{fixtureServer:server,title:'Packaged CLI cross-OS '+randomUUID(),writerOS:process.platform,writerDevice:deviceId}:JSON.parse(await readFile(evidencePath,'utf8'));
-assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS '));
-if(phase==='peer')assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
+assert.equal(evidence.fixtureServer,server);assert.ok(evidence.title.startsWith('Packaged CLI cross-OS ')||phase==='ui-peer'&&evidence.title.startsWith('Linux packaged queue '));
+if(['peer','ui-peer'].includes(phase))assert.notEqual(deviceId,evidence.writerDevice,'Distinct fixture peer required');
 const agent=spawn(executable,['agent-serve','--username','owner_127','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});
 let agentReady=false,agentError='';
 try{
@@ -36,7 +36,18 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(['write','queue'].includes(phase)){
+ if(phase==='ui-peer'){
+  assert.equal(evidence.items.length,2);
+  const listed=JSON.parse(await command(['item','list','--all']));
+  for(const row of evidence.items){
+   assert.ok(row.title.startsWith('Linux packaged queue '));
+   assert.equal(listed.filter(item=>item.title===row.title).length,1);
+   const value=JSON.parse(await command(['item','get',row.itemId,'--vault',evidence.vaultId]));
+   assert.equal(value.title,row.title);assert.equal(value.username,'');assert.equal(value.website,'');assert.equal(value.password,'[redacted]');
+   assert.equal(await command(['item','get',row.itemId,'--vault',evidence.vaultId,'--password','password']),'synthetic-ui-queue-password');
+  }
+  evidence.peerOS=process.platform;evidence.peerDevice=deviceId;
+ }else if(['write','queue'].includes(phase)){
   const vaults=JSON.parse(await command(['vault','list']));
   evidence.vaultId=vaults.find(row=>row.retired!==true).vaultId;
   const made=JSON.parse(await command(['item','create','--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.title,website:'https://packaged-cli.invalid',username:'fixture-writer',password:'fixture-packaged-password'})+'\n'));

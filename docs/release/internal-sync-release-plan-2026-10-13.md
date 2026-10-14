@@ -212,3 +212,32 @@ Desktop checks and 19 workflow tests pass, including the actual draft handlers'
 in-flight-save guard. The GUI fixture also explicitly chooses the destination
 vault and waits for the enabled Edit action. A new Desktop package/retest remains
 necessary; existing `internal-20261013-g` packages predate this UI fix.
+
+## Resumed verification — October 14
+
+Desktop `internal-20261013-h` for Windows/Linux includes the save/reload guard,
+builds from `41e5ba9`, and passes package checks and complete checksum verification.
+The selected inventory now records these packages instead of `g`.
+The new Linux package passes real GUI offline creation, a chained edit and a
+second creation with three durable operations: `...sync-desktop-linux-20261013-a\offline-b.json`.
+The original IDs are retained in `...\queue-b-identity.json`. After Windows CLI
+advances the server, Linux Desktop restarts, explicitly verifies Online connection
+and clears the queue; `...\replay-b.json`. Windows standalone CLI reads both
+original IDs exactly once, validates titles, empty ordinary fields, default password
+redaction and explicitly revealed fictitious passwords. The identity evidence
+records `ui-peerPassed` and an empty peer item queue.
+
+The previous replay timeout checked for two item titles inside the single-item
+detail pane rather than the item list. The corrected harness checks item-list
+buttons. On resume, the fixture server was stopped, which also exposed an overly
+broad Online text check matching "Online unlock failed". The harness now requires
+the Profile panel's exact Connection value. That misleading intermediate result
+is retained as `...\replay-b.invalid-online-assertion.json` and is not acceptance.
+Only the owned fixture server was restarted; the user installation was untouched.
+
+Next gates remain Windows packaged Desktop GUI, actual web/PWA-to-native pairs and
+unlocked web-tab extension source, the wider settings/authorization/lifecycle matrix,
+optional passkey permission/ceremony and physical OS-lock/intended-host acceptance.
+Windows fixture launch was explicitly approved but automatic review rejected it
+as "blocked by policy" without a further reason. Do not bypass that rejection or
+claim the full internal release accepted.
