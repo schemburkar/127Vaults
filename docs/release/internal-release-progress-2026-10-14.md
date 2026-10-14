@@ -469,3 +469,53 @@ Original server/database remain healthy. This closes the selected-field Linux
 GUI/Windows CLI case, not Windows GUI, multiple-vault queues or other pairings.
 Internal release remains unaccepted, with completed changes committed on local
 main and no remote push.
+
+## Cross-vault review and displayed-item owner fix
+
+The first actual Linux Desktop-g cross-vault run passes two drafts in distinct
+controlled vaults, read-only comparison, selected server/local decisions, exact
+preservation of the other vault's pending request and Windows peer verification.
+Its evidence is retained at
+`C:\Projects\127Vaults-desktop-multi-vault-20261014-a\evidence.json`.
+Workspace-b adds sidebar navigation to the opposite vault before each review.
+Its first wait expected a queued local title in the ordinary browse list, while
+that list correctly showed the verified server title. The helper now accepts
+those two expected representations. The corrected comparison passed; its original
+failed diagnostic and pending profile remain separate and unchanged.
+
+A subsequent actual-handler regression reproduced an additional P1 context bug:
+opening automatic sync review or Review sync reassigned `itemVaultId` to the
+conflict owner while leaving a different displayed item selected. Cancelling
+could therefore leave that displayed item's next save aimed at the wrong vault.
+Commit `68b16ea3e09cf6cb01e1e23cfa695e8b0f2d2d82` preserves the displayed item's
+binding when opening review. Conflict actions retain their captured owning vault;
+accepting a server copy explicitly passes that owner to the detail reload.
+Two actual-handler tests failed on the original code and pass on the fix; a third
+verifies the explicit server-copy reload owner. This did not deliberately write
+an unrelated item to another vault to demonstrate the bug.
+
+Desktop type/build/native checks and all 27 Desktop tests pass. New immutable
+Desktop-h Windows/Linux packages are built from that committed revision and pass
+locked dependency, frontend/native check, Desktop tests, CLI library tests
+(75 plus one intentionally ignored separate live fixture), optimized builds and
+framed native-host discovery. All six selected artifact file sets, sizes and
+SHA256 sums verify; the inventory selects Desktop-h. CLI-f, server/web/admin-e
+and extension-a remain unchanged. Older packages are retained.
+
+Actual Desktop-h Linux reruns the preserved two-vault queue from a separately
+copied pending profile. Before each item review it navigates to the opposite
+vault. Both versions show with password masked and exact queue preservation.
+Selecting the first verified server copy retires only that draft; the other
+vault's request and conflict remain byte-for-byte unchanged. A fresh GUI process
+selects the remaining local version. Windows CLI-f verifies the results,
+unchanged websites/usernames and explicit password; original synthetic fields
+are restored. Final item queues/conflicts are empty. Evidence:
+`C:\Projects\127Vaults-desktop-multi-vault-20261014-c\evidence.json`, actual UI
+phase records, native peer records and both-vault encrypted replica snapshots.
+The preserved workspace-b/profile-j reproduction was not discarded or synced;
+workspace-c/profile-k performs recovery. Source server fixture remains `103da5b`.
+
+This closes the selected Linux GUI cross-vault review/isolation case and the
+confirmed owner-binding bug. Windows GUI and other recorded release gates remain
+open; internal release is not accepted. Original server/database remain healthy.
+Completed changes are committed to local main without a remote push.
