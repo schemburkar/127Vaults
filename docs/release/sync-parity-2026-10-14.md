@@ -8,9 +8,9 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Flow | Web/PWA | Desktop | CLI | Remaining gate |
 | --- | --- | --- | --- | --- |
 | Durable create/edit and reconnect | Implemented; real-server offline subset passes | Linux package restart/replay passes | Windows/Linux packaged queue subsets pass | Latest Windows GUI; all-pair/type combinations |
-| Retry/lost reply | Real-server accepted-write/lost-reply/peer-edit passes | Shared native engine | Shared native engine | Native lost-reply injection and peer verification |
+| Retry/lost reply | Real-server accepted-write/lost-reply/peer-edit passes | Shared native engine | New Windows/Linux packages pass both writer directions with exact retry and newer peer edit retained | Latest GUI and broader multi-queue combinations |
 | Non-overlapping changes | Implemented | Shared native engine | Packaged Windows/Linux automatic merge passes | GUI combinations |
-| Review pending item/changed fields | Implemented | Implemented | Conflict list/show implemented | CLI general pending-review parity and broader multi-queue UI |
+| Review pending item/changed fields | Implemented | Implemented | Packaged `sync-review` reads durable queued metadata, masks values and preserves requests on both OSs | Broader multi-queue UI |
 | Verified read-only comparison | Packaged real-server pass | Engine/read-only UI regressions; latest Windows GUI pending | New Windows/Linux packages pass both directions | Latest Windows GUI and multi-queue UI |
 | Keep server/local | Packaged server-copy pass | Engine/UI subsets | Both packaged Windows/Linux choices pass | Latest Windows GUI and multi-queue isolation |
 | Selected-field merge | Packaged real-server pass | Implemented, engine subset pass | New Windows/Linux packages pass both directions | GUI combinations; CLI selects custom-fields array as a group |

@@ -5,7 +5,7 @@ import {isAbsolute,basename} from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [phase,executable,profile,evidencePath]=process.argv.slice(2);
-assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify'].includes(phase));
+assert.ok(['write','peer','verify','queue','replay','ui-peer','ui-online-peer','web-peer','web-verify','types-write','types-verify','types-check','lifecycle-create','lifecycle-archive','lifecycle-retired-peer','lifecycle-restore','lifecycle-restored-peer','lifecycle-settings-accept','native-queue','native-peer','native-review','native-resolve','native-verify','lost-write','lost-peer','lost-replay','lost-verify','capacity-check'].includes(phase));
 for(const path of [executable,profile,evidencePath])assert.ok(path&&isAbsolute(path),'Explicit absolute fixture paths required');
 assert.match(basename(executable),/^127vaults(?:\.exe)?$/);
 const server='14725fef-f5b4-4cb8-afe0-77aa3d80b268';
@@ -36,7 +36,46 @@ try{
  if(phase==='replay'){
   const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
  }
- if(phase.startsWith('native-')){
+ if(phase==='capacity-check'){
+  await command(['device','list']);
+  const before=JSON.parse(await command(['vault','list']));assert.equal(before.length,5,'Only the retained full fixture directory is accepted');
+  const queued=JSON.parse(await command(['sync-review']));
+  await assert.rejects(command(['vault','create','Capacity refusal fixture']),/private vault limit reached \(maximum 5\)/);
+  assert.deepEqual(JSON.parse(await command(['vault','list'])),before);
+  assert.deepEqual(JSON.parse(await command(['sync-review'])),queued);
+  evidence.capacityRefusalPreservedDirectoryAndQueues=true;
+ }else if(phase.startsWith('lost-')){
+  assert.equal(evidence['lifecycle-restored-peerPassed'],true,'Use only the restored synthetic lifecycle item');
+  if(phase==='lost-write'){
+   assert.equal(deviceId,evidence.writerDevice);
+   await command(['device','list']); // Refuse an offline-fallback unlock before creating any draft.
+   const before=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));assert.equal(before.pending.length,0);
+   evidence.lostReplyTitle=evidence.title+' lost reply '+randomUUID();
+   evidence.newerPeerTitle=evidence.lostReplyTitle+' newer peer';
+   await assert.rejects(command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.lostReplyTitle,username:'lost-reply-fixture',password:'fictitious-lifecycle-password'})+'\n'),/failed:/);
+   const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));assert.equal(replica.pending.length,1);
+   evidence.lostRequest=replica.pending[0].request;
+   const review=JSON.parse(await command(['sync-review']));assert.equal(review.items.length,1);assert.equal(review.items[0].title,evidence.lostReplyTitle);
+   assert.ok(!JSON.stringify(review).includes('lost-reply-fixture'));assert.ok(!JSON.stringify(review).includes('fictitious-lifecycle-password'));
+   assert.deepEqual(JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8')).pending,replica.pending);
+   evidence.packagedPendingReviewPassed=true;
+  }else if(phase==='lost-peer'){
+   assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['lost-writePassed'],true);
+   assert.equal(JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId])).title,evidence.lostReplyTitle);
+   await command(['item','edit',evidence.itemId,'--vault',evidence.vaultId,'--json','-'],JSON.stringify({title:evidence.newerPeerTitle,username:'newer-peer-fixture',password:'fictitious-lifecycle-password'})+'\n');
+  }else{
+   assert.equal(evidence['lost-peerPassed'],true);
+   if(phase==='lost-replay'){
+    assert.equal(deviceId,evidence.writerDevice);
+    const replica=JSON.parse(await readFile(profile+'/replicas/'+evidence.vaultId+'.json','utf8'));
+    assert.equal(replica.pending.length,1);assert.deepEqual(replica.pending[0].request,evidence.lostRequest);
+    const synced=JSON.parse(await command(['sync']));assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
+   }else{assert.notEqual(deviceId,evidence.writerDevice);assert.equal(evidence['lost-replayPassed'],true);}
+   const value=JSON.parse(await command(['item','get',evidence.itemId,'--vault',evidence.vaultId]));
+   assert.equal(value.title,evidence.newerPeerTitle);assert.equal(value.username,'newer-peer-fixture');assert.equal(value.password,'[redacted]');
+   delete evidence.lostRequest; // Do not duplicate encrypted queue bodies in final evidence.
+  }
+ }else if(phase.startsWith('native-')){
   assert.equal(evidence['lifecycle-restored-peerPassed'],true,'Use only the restored synthetic lifecycle item');
   if(phase==='native-queue'){
    assert.equal(deviceId,evidence.writerDevice);
@@ -224,7 +263,7 @@ try{
    assert.equal(second.title,evidence.secondTitle);
   }
  }
- if(!['queue','native-queue','native-review'].includes(phase)){
+ if(!['queue','native-queue','native-review','lost-write','capacity-check'].includes(phase)){
   const synced=JSON.parse(await command(['sync']));
   assert.equal(synced.pending,0);assert.equal(synced.conflicts.length,0);
   evidence[phase+'ItemQueueEmpty']=true;

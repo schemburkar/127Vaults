@@ -1,5 +1,12 @@
 # Internal release restart checkpoint — October 14, 2026
 
+Subsequent work and newer selected packages are recorded in
+[October 14 progress](internal-release-progress-2026-10-14.md). It supersedes the
+candidate labels below: server `internal-20261014-e`, Desktop
+`internal-20261014-b`, CLI `internal-20261014-c`, all source `ee83e2d`; extension
+is unchanged. Native lost-reply recovery now passes in both OS writer directions.
+Internal release is still unaccepted. The 12892 fixture still uses bundle-d.
+
 Saved at the user's request before further work. **Internal release remains not
 accepted.** The goal card is paused; no goal completion or remote push occurred.
 All implementation and evidence tracking through `caee58d` are committed on local

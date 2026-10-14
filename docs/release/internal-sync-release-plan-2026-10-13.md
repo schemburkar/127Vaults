@@ -2,6 +2,10 @@
 
 **Decision: not accepted for internal release; sync verification is open.**
 
+Latest [October 14 progress](internal-release-progress-2026-10-14.md) records
+new candidates, CLI pending review/capacity refusal, bidirectional packaged native
+lost-response recovery and isolated PWA cache-upgrade/queue preservation evidence.
+
 The user's expanded goal covers server, web/PWA, Windows and Linux desktop/CLI,
 Chromium extension and admin management writes, including synchronization between
 them. Commit completed work to local Git main; do not push. Preserve existing data

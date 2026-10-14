@@ -1,5 +1,10 @@
 # Internal release readiness — 2026-10-13
 
+Latest selected packages and evidence:
+[October 14 continuation](internal-release-progress-2026-10-14.md).
+That report supersedes the earlier candidate labels below, without accepting the
+remaining cross-client/physical/manual release gates.
+
 **Decision: not accepted for internal release; expanded sync verification is open.**
 The [expanded goal and acceptance matrix](internal-sync-release-plan-2026-10-13.md)
 tracks reported live failures and the remaining end-to-end release gates. Passing

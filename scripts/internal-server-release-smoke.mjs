@@ -35,13 +35,19 @@ const environment = { ...process.env };
 delete environment.VAULTS_ADMIN_SETUP_PASSWORD;
 async function run(args, cwd = root, env = environment, program = process.execPath) {
   const child = spawn(program, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  let output = '';
+  let output = '', diagnostic = '';
   child.stdout.setEncoding('utf8'); child.stdout.on('data', value => { output = (output + value).slice(-1024 * 1024); });
-  child.stderr.resume(); // Never echo operator output, credentials or backup contents.
+  child.stderr.setEncoding('utf8'); child.stderr.on('data', value => { diagnostic = (diagnostic + value).slice(-1024 * 1024); });
   const timer = setTimeout(() => child.kill(), 180000);
   try {
     const code = await new Promise((done, reject) => { child.on('error', reject); child.on('close', done); });
-    if (code !== 0) throw Error(`${program === process.execPath ? 'Node fixture operation' : program} failed (${code}); fixture files and volumes are retained for inspection.`);
+    if (code !== 0) {
+      // Keep private fixture diagnostics outside Git; never echo token-bearing
+      // assertions, operator output, credentials or backup contents.
+      const diagnosticsPath = join(work, `failure-${randomUUID()}.log`);
+      await writeFile(diagnosticsPath, diagnostic, { mode: 0o600, flag: 'wx' });
+      throw Error(`${program === process.execPath ? 'Node fixture operation' : program} failed (${code}); private diagnostics retained at ${diagnosticsPath}.`);
+    }
     return output.trim();
   } finally { clearTimeout(timer); }
 }
