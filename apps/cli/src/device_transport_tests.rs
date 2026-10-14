@@ -13,6 +13,71 @@ const CURRENT: &str = "ab111111-1111-4111-8111-111111111111";
 const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
+#[test]
+fn settings_authorization_failure_after_item_refresh_does_not_claim_online_sync() {
+    for (status, reject_write) in [
+        (401, false),
+        (403, false),
+        (401, true),
+        (403, true),
+        (503, false),
+    ] {
+        let mut session = session("http://127.0.0.1:1");
+        let directory = session.core.create_empty_directory(session.root).unwrap();
+        let mut settings = SettingsData::empty();
+        settings
+            .names
+            .insert(CURRENT.to_owned(), "Pending fixture name".to_owned());
+        let envelope = vault_settings::encrypt(&session.core, session.root, &settings).unwrap();
+        session.settings_record.pending = Some(vault_settings::PendingSettings {
+            base_revision: None,
+            envelope,
+        });
+        session
+            .settings_store
+            .commit(&session.settings_record)
+            .unwrap();
+        let file = session.profile_dir.join("vault-settings.json");
+        let preserved = std::fs::read(&file).unwrap();
+        let mut responses = vec![(
+            200,
+            json!({"directory":URL_SAFE_NO_PAD.encode(directory),"vaultEnvelopes":[]}),
+        )];
+        if reject_write {
+            responses.push((200, json!({"revision":null,"envelope":null})));
+        }
+        responses.push((status, json!({"error":"unavailable"})));
+        let (origin, worker) = fixture(responses);
+        session.origin = origin;
+        let result = session.sync_now();
+        if status == 503 {
+            let result = result.unwrap();
+            assert_eq!(result["online"], true);
+            assert_eq!(result["vaultSettings"]["pending"], true);
+            assert!(session.is_online());
+        } else {
+            assert!(
+                result.is_err(),
+                "settings authorization refusal must fail overall sync: {result:?}"
+            );
+            assert!(!session.is_online());
+            assert_eq!(session.replica_status().unwrap()["online"], false);
+            assert!(
+                session
+                    .offline_reason()
+                    .unwrap()
+                    .contains("no longer authorizes")
+            );
+        }
+        assert_eq!(std::fs::read(file).unwrap(), preserved);
+        assert_eq!(
+            worker.join().unwrap().len(),
+            if reject_write { 3 } else { 2 }
+        );
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
 fn inspection() -> Value {
     json!({"accountId":CURRENT,"enrollmentId":ENROLLMENT,"newDeviceId":TARGET,
         "newDevicePublicKey":URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&[7;32]).verifying_key().to_bytes()),

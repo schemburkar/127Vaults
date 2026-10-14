@@ -875,11 +875,24 @@ impl Session {
         )
     }
 
+    fn settings_sync_error(&mut self, error: String) -> String {
+        if matches!(
+            error.as_str(),
+            "server rejected request (401)" | "server rejected request (403)"
+        ) {
+            self.online = false;
+            self.offline_reason = Some("The server no longer authorizes this session. Local copies and pending changes are preserved.".to_owned());
+        }
+        error
+    }
+
     pub fn sync_vault_settings(&mut self) -> Result<Value, String> {
         if !self.online {
             return Err("vault settings sync unavailable while offline".to_owned());
         }
-        let remote = self.get("/api/v1/vault-settings")?;
+        let remote = self
+            .get("/api/v1/vault-settings")
+            .map_err(|error| self.settings_sync_error(error))?;
         let revision = remote["revision"].as_str().map(str::to_owned);
         let envelope = remote["envelope"].as_str().map(str::to_owned);
         if revision.is_some() != envelope.is_some() {
@@ -899,7 +912,7 @@ impl Session {
             }
             let next_revision = vault_settings::revision(&pending.envelope)?;
             self.post_auth("/api/v1/vault-settings", reqwest::Method::PUT,
-                &json!({"baseRevision":revision,"revision":next_revision,"envelope":pending.envelope}))?;
+                &json!({"baseRevision":revision,"revision":next_revision,"envelope":pending.envelope})).map_err(|error| self.settings_sync_error(error))?;
             self.settings_record.remote_revision = Some(next_revision);
             self.settings_record.verified_envelope = Some(pending.envelope);
             self.settings_record.pending = None;
@@ -1972,9 +1985,15 @@ impl Session {
             .iter()
             .map(|replica| replica.pending.len())
             .sum::<usize>();
-        let settings = self
-            .sync_vault_settings()
-            .unwrap_or_else(|error| json!({"pending":true,"error":error}));
+        let settings = match self.sync_vault_settings() {
+            Ok(settings) => settings,
+            Err(error) => {
+                if !self.online {
+                    return Err(error);
+                }
+                json!({"pending":true,"error":error})
+            }
+        };
         Ok(
             json!({"accepted":accepted,"rebased":rebased,"pending":pending,"online":true,"conflicts":conflicts,"vaultSettings":settings}),
         )
@@ -2597,6 +2616,7 @@ impl Session {
             "conflicts": replicas.iter().map(|r| r.conflicts.len()).sum::<usize>() + usize::from(self.settings_conflict),
             "lastVerifiedSyncAt": last_verified_sync_at,
             "online": self.online,
+            "offlineReason": self.offline_reason,
         }))
     }
     pub fn is_online(&self) -> bool {

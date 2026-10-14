@@ -1027,10 +1027,11 @@ export function App() {
   const refreshSyncStatus = async () => {
     const generation = syncReviewGeneration.current;
     try {
-      const result = await invoke<{ pending: number; conflicts: number; lastVerifiedSyncAt: number | null }>("replica_status");
+      const result = await invoke<{ pending: number; conflicts: number; lastVerifiedSyncAt: number | null; online?: boolean; offlineReason?: string | null }>("replica_status");
       if (generation !== syncReviewGeneration.current) return;
       setPendingChanges(result.pending);
       setSyncConflicts(result.conflicts);
+      if (typeof result.online === "boolean") { setOnline(result.online); setOfflineReason(result.offlineReason ?? null); }
       if (result.lastVerifiedSyncAt) setLastSynced(new Date(result.lastVerifiedSyncAt * 1000));
       else setLastSynced(null);
       try {
