@@ -21,6 +21,10 @@ const server=createServer({cert,key,minVersion:'TLSv1.2'},async(incoming,outgoin
   assert.equal(incoming.headers.host,'127.0.0.1:12892');let size=0;const chunks=[];
   for await(const chunk of incoming){size+=chunk.length;assert.ok(size<=16*1024*1024);chunks.push(chunk);}
   const body=Buffer.concat(chunks),path=incoming.url;
+  const baselineReady=()=>snapshots.has('/api/v1/vaults')&&(snapshots.has(prefix+'/checkpoint')||[...snapshots.keys()].some(path=>path.startsWith(prefix+'/checkpoint?')))&&[...snapshots.keys()].some(path=>path.startsWith(prefix+'/operations?'));
+  if(incoming.method==='PUT'&&path===writePath&&!frozen&&!baselineReady()){
+   await writeFile(work+'/proxy-precondition-failure.json',JSON.stringify({fixtureServer:fixture,capturedPaths:[...snapshots.keys()]},null,2)+'\n');outgoing.writeHead(503,{'content-type':'application/json'});outgoing.end(JSON.stringify({error:'FIXTURE_SNAPSHOT_INCOMPLETE'}));return;
+  }
   // Authenticate and authorize through the actual upstream for every request.
   // Only its successful GET responses can be replaced by retained snapshots.
   const result=await upstream(incoming.method,path,incoming.headers,body);
@@ -36,7 +40,7 @@ const server=createServer({cert,key,minVersion:'TLSv1.2'},async(incoming,outgoin
    }
   }
   if(incoming.method==='PUT'&&path===writePath&&result.status===200&&!frozen){
-   assert.ok(snapshots.has('/api/v1/vaults')&&snapshots.has(prefix+'/checkpoint'));
+   assert.ok(baselineReady());
    assert.ok([...snapshots.keys()].some(path=>path.startsWith(prefix+'/operations?')));
    const mutation=JSON.parse(body);frozen=true;acknowledgedOperation=mutation.signedOperation.opId;
    await writeFile(work+'/snapshot.json',JSON.stringify(Object.fromEntries([...snapshots].map(([path,value])=>[path,{status:value.status,value:JSON.parse(value.body)}])),null,2)+'\n',{flag:'wx'});

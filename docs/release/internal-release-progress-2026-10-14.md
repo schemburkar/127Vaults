@@ -554,3 +554,50 @@ Linux GUI lost-response/restart/peer preservation case. Windows GUI, broader
 multi-queue/pair loss cases and other recorded gates remain open. Internal release
 remains unaccepted. Completed checks/evidence are committed to local main without
 pushing or publicly deploying.
+
+## Selected packaged PWA acknowledged-history rollback acceptance
+
+Actual installed-mode Chromium/WASM/IndexedDB against selected server/web-e
+(`ee83e2d`) now passes a genuine successful acknowledgement followed by replay of
+older authorized encrypted/signed responses. The existing PWA projects each
+queued signed operation into encrypted local history and retains that operation
+after its accepted queue entry retires. This serves as the durable acknowledgement
+pin: its remote-history validation refuses the older history before replacing
+records. No product change was needed for this case.
+
+The actual UI displays Item saved; refresh needs attention and Sync needs
+attention. After the acknowledgement, the queue is empty and the accepted
+operation remains in local history. An explicit Sync attempt under older replay
+preserves the entire encrypted records object byte-for-byte. Resuming current
+server responses recovers the acknowledged title with secret masked and the
+operation in current verified history. The original title is restored and the
+browser locks. Windows CLI-f independently verifies the original title,
+username/website, default redaction and explicit password. Evidence:
+`C:\Projects\127Vaults-pwa-acknowledgement-20261014-c\evidence.json`, separate
+`web-evidence.json`, genuine signed snapshot/proxy record, accepted/refused
+encrypted records and native peer record.
+
+This is installed-mode emulation, not a physical PWA installation. It uses a
+separately copied enrolled fictitious browser profile, clears only its copied
+asset/service-worker caches, and preserves encrypted IndexedDB state and the
+original profiles. An existing queue is refused before authentication unless the
+explicit recovery mode validates exactly one controlled fixture operation. The
+selected runtime image is unchanged; its retained fixture Compose adjusts only
+the listener/mapping 12894→12892. Original database/identity are not rolled back.
+
+Workspaces-a/b preserve failed fixture runs. The original proxy assumed the native
+`/checkpoint` URL; the first adaptation guessed the wrong plural URL. Actual web
+source uses `/checkpoint?history=1`. Those two proxy assertions happened after
+upstream acceptance and accidentally lost the reply. In each case the PWA retained
+the exact request, then the explicit controlled recovery mode replayed its receipt
+against current history and restored the original title without resetting or
+clearing the queue. Both `queue-recovered.json` records are retained. The proxy
+now recognizes the actual native and web routes and validates snapshot readiness
+before forwarding a selected write; a bad test setup receives a diagnostic 503
+before any upstream mutation. Failed attempts are not counted as rollback passes.
+
+Helper syntax and Git whitespace checks pass. Original server/database are
+healthy after restoration. This closes the selected PWA acknowledged-history
+case; broader checkpoint/fork windows, physical trust/permission and other
+recorded release gates remain open. Internal release remains unaccepted.
+Completed evidence/helper changes are committed to local main without a push.

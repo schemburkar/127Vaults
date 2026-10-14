@@ -26,8 +26,10 @@ records four packaged settings-choice cases preserving an unrelated item queue,
 two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI
 repeated edits with Windows peer reads and latest-package reply-loss retests.
 Authenticated older-history replay after a real acknowledgement now passes on
-both packaged CLI operating systems and the actual Linux Desktop GUI, including
-durable preservation, restart and recovery. Broader checkpoint-window rollback
+both packaged CLI operating systems, the actual Linux Desktop GUI and selected
+packaged web/PWA (real Chromium/WASM/IndexedDB installed-mode emulation). The PWA
+preserves its accepted encrypted records exactly and recovers current history.
+Native evidence includes durable preservation, restart and recovery. Broader checkpoint-window rollback
 and Windows GUI acceptance remain open. Seven native item types also passed Linux
 GUI edit/restore with independent Windows CLI masked and explicit secret reads.
 
