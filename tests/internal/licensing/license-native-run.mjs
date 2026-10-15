@@ -1,16 +1,19 @@
 // Fresh, retained installation only; real supported license/revocation workflow.
 import assert from 'node:assert/strict';
-import {readFile,writeFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,copyFile,access} from 'node:fs/promises';
 import {spawn,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {request} from 'node:https';
+import {verifyRelease} from '../../../scripts/release/verify-release.mjs';
+import {verify} from '../../../deploy/install.mjs';
 import {issueSelfHostedLicense} from '../../../scripts/ops/issue-self-hosted-license.mjs';
 import {issueLicenseRevocation} from '../../../scripts/ops/issue-license-revocation.mjs';
 const work='C:/Projects/127Vaults-license-isolated-20261015-a',repo='C:/Projects/127Vaults';
-assert.equal(process.platform,'win32');assert.ok(process.argv[2]===undefined||process.argv[2]==='--peer-only');const base=JSON.parse(await readFile(work+'/evidence.json','utf8'));
+assert.equal(process.platform,'win32');assert.ok(process.argv[2]===undefined||['--peer-only','--upgrade-server'].includes(process.argv[2]));const base=JSON.parse(await readFile(work+'/evidence.json','utf8'));
 assert.equal(base.status,'passed');assert.equal(base.fixturePort,12900);assert.equal(base.checks.length,7);
 assert.ok(!['vaults-test-632a4442dfd2','vaults-test-a0540f7d9c99'].includes(base.sourceProject));
-const bundle=work+'/extracted/127vaults-server-0.0.0-linux-amd64',identity=work+'/identity';
+await assert.rejects(access(work+'/server-b-upgrade-evidence.json'),error=>error.code==='ENOENT','This fixture is already upgraded; do not restart its old server-a bundle. Extend an explicitly guarded server-b phase instead.');
+let bundle=work+'/extracted/127vaults-server-0.0.0-linux-amd64';const identity=work+'/identity';
 assert.equal(/^VAULTS_PROJECT=(.+)$/m.exec(await readFile(bundle+'/.env','utf8'))[1],base.sourceProject);
 const manifest=JSON.parse(await readFile(bundle+'/manifest.json','utf8'));assert.equal(manifest.revision,'cbb1be02e68e484c82334cd4389dcc4b09f64cf2');assert.ok(!manifest.files['issuer-keys.json'],'Do not replace pinned issuer keys');
 async function run(args,cwd=bundle,env=process.env){return new Promise((resolve,reject)=>{const c=spawn(process.execPath,args,{cwd,env,windowsHide:true,stdio:['ignore','pipe','pipe']});let out='',err='';c.stdout.on('data',b=>out+=b);c.stderr.on('data',b=>err+=b);c.on('error',reject);c.on('close',async code=>{if(code){await writeFile(work+'/license-failure-'+Date.now()+'.log',err,{flag:'wx',mode:0o600});reject(Error('License rehearsal operation failed; private diagnostic retained'));}else resolve(out.trim());});});}
@@ -24,7 +27,20 @@ async function issue(sequence,expiresAt){const signed=issueSelfHostedLicense({pr
 try{
  await operator('start');assert.equal(execFileSync('podman',['inspect',base.sourceProject+'_server_1','--format','{{.Image}}'],{encoding:'utf8',windowsHide:true}).trim().replace(/^sha256:/,''),manifest.imageIds[manifest.image]);await ready();
 
- if(process.argv[2]==='--peer-only'){
+ if(process.argv[2]==='--upgrade-server'){
+ const native=JSON.parse(await readFile(work+'/native-license-baseline.json','utf8'));const replica=JSON.parse(await readFile(work+'/native-cli-windows-b/replicas/'+native.vaultId+'.json','utf8'));assert.deepEqual(replica.pending,[]);assert.deepEqual(replica.conflicts,[]);
+ const peer=async()=>JSON.parse(await run([repo+'/tests/internal/licensing/license-server-probe.mjs',work,'read-native'],repo,{...process.env,NODE_EXTRA_CA_CERTS:identity+'/ca/ca.crt'}));
+ const before=await peer();
+ await run(['server.mjs','database','backup','--container',base.sourceProject+'_database_1','--output',work+'/pre-server-b-database.127vbak','--key-file',work+'/database.key']);
+ await run(['server.mjs','identity','backup','--private-dir',identity,'--output',work+'/pre-server-b-identity.127vbak','--key-file',work+'/identity.key','--server-id',base.installation]);
+ const release='C:/Projects/127Vaults-Releases/server/internal-20261015-b/linux-amd64',verified=await verifyRelease(release);assert.equal(verified.sourceRevision,'a574a62e6afd9423be4636db5f5f941d4ab037bf');
+ const extracted=work+'/extracted-b';await mkdir(extracted);const archive=verified.files.find(f=>f.name.endsWith('.tar'));assert.ok(archive);execFileSync('tar',['-xf',release+'/'+archive.name,'-C',extracted],{windowsHide:true});
+ const target=extracted+'/127vaults-server-0.0.0-linux-amd64';await verify(target);const nextManifest=JSON.parse(await readFile(target+'/manifest.json','utf8'));assert.equal(nextManifest.revision,verified.sourceRevision);
+ const env=await readFile(bundle+'/.env');await copyFile(bundle+'/.env',target+'/.env');const compose=await readFile(target+'/compose.test.yaml','utf8');assert.ok(compose.includes(':12780')&&compose.includes("      VAULTS_EXPERIMENTAL: '1'"));const overridden=compose.replaceAll(':12780',':12900').replace("      VAULTS_EXPERIMENTAL: '1'","      PORT: '12900'\n      VAULTS_EXPERIMENTAL: '1'");await writeFile(target+'/compose.test.yaml',overridden);nextManifest.files['compose.test.yaml']=createHash('sha256').update(overridden).digest('hex');await writeFile(target+'/manifest.json',JSON.stringify(nextManifest,null,2)+'\n');await verify(target);
+ await operator('stop');bundle=target;await operator('start');await ready();const running=execFileSync('podman',['inspect',base.sourceProject+'_server_1','--format','{{.Image}}'],{encoding:'utf8',windowsHide:true}).trim().replace(/^sha256:/,'');assert.equal(running,nextManifest.imageIds[nextManifest.image]);
+ const after=await peer();assert.deepEqual(after,before);assert.deepEqual(await readFile(target+'/.env'),env);
+ await writeFile(work+'/server-b-upgrade-evidence.json',JSON.stringify({status:'passed',installation:base.installation,project:base.sourceProject,sourceRevision:verified.sourceRevision,serverImageId:running,archiveSha256:archive.sha256,bundle:target,before,after,configurationPreserved:true,backups:['pre-server-b-database.127vbak','pre-server-b-identity.127vbak'],fixtureOverride:'Same loopback PORT 12900, project/volume, identity and license sequence 6; only fixture compose port/checksum adjusted',at:new Date().toISOString()},null,2)+'\n',{flag:'wx'});console.log('Backed-up existing installation upgraded to server-b; independent decrypted fields/history and ciphertext digest preserved.');
+ }else if(process.argv[2]==='--peer-only'){
  console.log(await run([repo+'/tests/internal/licensing/license-server-probe.mjs',work,'verify-native'],repo,{...process.env,NODE_EXTRA_CA_CERTS:identity+'/ca/ca.crt'}));
  const evidence=JSON.parse(await readFile(work+'/native-license-evidence.json','utf8'));assert.equal(evidence.status,'passed');evidence.peer=JSON.parse(await readFile(work+'/native-license-peer-read.json','utf8'));await writeFile(work+'/native-license-evidence.json',JSON.stringify(evidence,null,2)+'\n');
  }else{

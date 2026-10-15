@@ -188,7 +188,7 @@
         "apps/web/mvp-client.mjs"
       ],
       "validation": "Web 74 tests; Desktop 33 tests; web and Desktop type/build checks passed",
-      "packageAcceptance": "Desktop-e Windows/Linux and server-b rebuilt and checksum-verified from a574a62; actual live-session acceptance remains pending before selection"
+      "packageAcceptance": "Desktop-e Windows/Linux and server-b rebuilt and checksum-verified from a574a62; actual live-session acceptance remains pending before selection; server-b existing-installation upgrade passed with preserved identity/configuration, exact encrypted digest, independent decrypted reads/history and a fresh backup restore rehearsal; live GUI refresh acceptance still pending"
     }
   ],
   "candidateArtifacts": [
