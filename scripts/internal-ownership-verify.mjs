@@ -7,7 +7,9 @@ import { promisify } from 'node:util';
 import { verify } from '../deploy/install.mjs';
 import { verifyRelease } from './release/verify-release.mjs';
 
-const [work] = process.argv.slice(2);
+const [work, ...flags] = process.argv.slice(2);
+assert.ok(flags.every(flag => ['--with-browser', '--with-stale'].includes(flag)));
+assert.equal(new Set(flags).size, flags.length);
 assert.ok(work && isAbsolute(work));
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const fixture = await json(join(work, 'fixture.json'));
@@ -19,6 +21,33 @@ assert.equal(result.status, 'passed');
 assert.equal(result.serverId, fixture.serverId);
 assert.equal(result.checks.length, 5);
 assert.equal(result.memberId, (await json(join(work, 'ownership-member.json'))).accountId);
+const additional = {};
+if (flags.includes('--with-browser')) {
+  const browser = await json(join(work, 'ownership-admin-browser.json'));
+  assert.equal(browser.status, 'passed');
+  assert.equal(browser.serverId, fixture.serverId);
+  assert.equal(browser.serverRevision, fixture.serverRevision);
+  assert.equal(browser.checks.length, 5);
+  assert.equal(browser.mutations.length, 4);
+  assert.equal(browser.mutations[0].action, 'ownership.request');
+  assert.equal(browser.mutations[0].status, 200);
+  assert.equal(browser.mutations[1].action, 'ownership.cancel');
+  assert.equal(browser.mutations[1].status, 200);
+  assert.equal(browser.mutations[1].targetId, browser.mutations[0].requestId);
+  const denied = browser.mutations.slice(2);
+  assert.ok(denied.every(row => row.action === 'account.suspend' && row.status === 409));
+  assert.equal(denied[0].requestId, denied[1].requestId);
+  additional.adminBrowser = browser;
+}
+if (flags.includes('--with-stale')) {
+  const stale = await json(join(work, 'ownership-stale-evidence.json'));
+  assert.equal(stale.status, 'passed');
+  assert.equal(stale.serverId, fixture.serverId);
+  assert.equal(stale.serverRevision, fixture.serverRevision);
+  assert.ok(stale.elapsedMs >= 310000);
+  assert.equal(stale.checks.length, 3);
+  additional.staleAuthentication = stale;
+}
 for (const [name, snapshot] of [['compose.test.yaml', 'compose'], ['manifest.json', 'manifest'], ['.env', 'env']]) {
   assert.deepEqual(await readFile(join(fixture.bundle, name)), await readFile(join(work, 'ownership-' + snapshot + '-before')));
 }
@@ -39,7 +68,7 @@ for (const service of ['server', 'database']) {
 }
 await writeFile(join(work, 'ownership-combined-evidence.json'), JSON.stringify({
   status: 'passed', verifiedAt: new Date().toISOString(), serverId: fixture.serverId,
-  serverRevision: fixture.serverRevision, result,
+  serverRevision: fixture.serverRevision, result, ...additional,
   cli: { path: cliPath, sourceRevision: cli.sourceRevision, files: cli.files },
   cleanup: ['Exact Compose/manifest/environment restored and verified', 'Owned fixture stopped; original server/database healthy', 'Revoked device journal and pending request preserved'],
   limits: result.limits,

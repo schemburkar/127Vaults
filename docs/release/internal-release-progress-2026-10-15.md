@@ -277,3 +277,19 @@ passes exact fixture restoration, package hashes, unchanged revoked D draft/jour
 and original 12892 health. Isolated 12898 is stopped. Actual ownership browser UI,
 stale-auth boundary, external SMTP and broader physical/pairing/operational gates
 remain open. Internal release is still unaccepted; no push.
+
+## Selected admin browser and real stale-auth boundary
+
+[Ownership acceptance](ownership-acceptance-2026-10-15.md) now also passes actual
+selected admin-browser request/cancel, friendly last-owner denial and same-ID
+retry, password clearing, audit/narrow layout and separate admin-operator UI
+restrictions. A real member session aged 310 seconds without clock/database
+changes still lists requests but cannot accept ownership (fresh_auth_required).
+A fresh production login accepts the identical request ID; member is demoted back
+to user, original owner unchanged, private empty directory preserved.
+
+New/updated helper syntax checks and combined retained evidence/cleanup verification
+pass. Isolated project stopped, exact wiring restored, original server/database
+healthy, revoked D draft/journal unchanged. No product artifact changed. Customer
+ownership acceptance UI, physical/intended-host and other matrix gates remain
+open. Full internal release remains unaccepted; no push.

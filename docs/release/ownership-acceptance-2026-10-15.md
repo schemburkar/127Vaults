@@ -1,8 +1,8 @@
 # Selected-server ownership acceptance — October 15
 
-Status: **API/production-crypto acceptance passed; full internal release remains
-unaccepted.** This adds ownership/session/account-isolation evidence, not a
-customer or operator browser acceptance claim.
+Status: **API/production-crypto, selected operator browser and real stale-auth
+acceptance passed; full internal release remains unaccepted.** Customer ownership
+acceptance UI and physical/intended-host acceptance remain separate.
 
 The isolated installation `98027ac4-9882-42d5-812a-a18c972c299f` at
 `https://127.0.0.1:12898`, project `vaults-test-632a4442dfd2`, ran selected server-e
@@ -55,7 +55,7 @@ Read-only evidence/cleanup verification:
 node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
 ```
 
-All three helpers pass Node syntax checks. The verifier passes selected Windows
+The initial three helpers pass Node syntax checks. The verifier passes selected Windows
 CLI manifest/hash validation, byte-for-byte restoration of Compose, manifest and
 environment, bundle verification, stopped isolated project/absent mail sidecar,
 original 12892 server/database health, and unchanged revoked-device D journal
@@ -63,8 +63,7 @@ and pending request. The fixture retains the new member as a user with no vaults
 its empty directory can support later UI lifecycle checks without resetting the
 original owner's exhausted directory slots.
 
-Pending: actual operator browser request/cancel/error flows, customer ownership
-acceptance UI, the five-minute stale-authentication boundary, external SMTP and
+Pending: customer ownership acceptance UI, external SMTP and
 intended-host operations. Broader move UI/writer pairings, Windows physical
 installation/keyring/CA/OS-lock acceptance, actual PWA install/update, extension
 permissions/pairings and other gates in the release audit remain open. The
@@ -72,3 +71,45 @@ earlier Windows launch-policy cause is still unproven; no permission setting or
 alternate Windows GUI launch was attempted here. CLI-a/Desktop-c rebuilds are
 already selected from earlier work; no new product fix required another rebuild
 in this run. No remote push.
+
+## Actual selected admin-console browser
+
+The selected server/admin-e console also passes in headless Linux Chromium using
+its actual served assets and API. A strict fixture-CA Node HTTPS relay carries all
+requests; no response/API fixture or disabled certificate verification is used.
+The owner operator requests ownership for the enrolled member, confirms success,
+cancels through Roles & ownership, refreshes and sees no pending requests. Both
+confirmation passwords are cleared.
+
+Attempting to suspend the sole owner displays the specific last-owner explanation.
+The password is cleared and retry remains enabled; a second submission reuses the
+same request ID and again receives 409. Audit shows request, cancellation and
+suspension events. A 390px viewport has no document overflow. A separate admin
+operator context has no ownership-request action for the member and no suspension
+or elevated-role-removal actions for the owner. No browser page errors occurred.
+
+Evidence: `ownership-admin-browser.json` beside the existing retained evidence.
+Runner: `run-ownership-admin-browser.mjs`; repository check:
+`scripts/internal-ownership-admin-browser.mjs`. The request is cancelled; no account
+role or vault content changes in this browser phase. Physical Windows browser,
+customer acceptance UI and intended-host operator checks remain separate.
+
+## Real elapsed stale-authentication boundary
+
+The member authenticated through production OPAQUE/device proof, then retained its
+actual session for 310 seconds. No clock or database timestamp was changed. The
+aged session still listed its pending ownership request, but acceptance returned
+HTTP403 `fresh_auth_required`. Fresh authentication then accepted the identical
+previously denied request ID. The member was demoted back to user and logged in
+again with its empty private directory intact; the original owner was untouched.
+
+Evidence: `ownership-stale-evidence.json`; retained orchestration:
+`run-ownership-stale.mjs`. Repository helpers: `internal-ownership-client.mjs` and
+`internal-ownership-stale.mjs`. The fixture was stopped after completion. This
+proves the actual server boundary and API recovery, not the customer UI toast.
+All new/updated helpers pass syntax checks. Combined verification including both
+new phases and cleanup:
+
+```powershell
+node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale
+```
