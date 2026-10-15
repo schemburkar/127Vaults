@@ -188,3 +188,29 @@ The next substantive automation work is a fresh isolated lifecycle fixture for
 move, interruption and ownership cases. The capacity inventory above prevents
 using an existing retained vault as a disposable source. Physical and remaining
 pairing gates stay open; do not mark internal release complete.
+
+## New isolated packaged move and interruption evidence
+
+[Isolated lifecycle acceptance](isolated-lifecycle-2026-10-15.md) now passes selected
+server-e with packaged Windows CLI-a normal move, lost accepted copy reply and
+lost accepted finalization reply. Exact journals/reserved IDs survive restart;
+request IDs and SHA256 bodies match replay, copy operation ID matches, receipts
+clear journals only after verification, and no duplicate copies appear. Typed
+login/card fields and masked/explicit secrets, collection de-duplication, default
+view retargeting and retired-source read/write behavior pass on a distinct Windows
+device. A newly enrolled Linux device independently reads all four final copies
+using selected packaged Linux CLI-a, including exact IDs and secrets.
+
+The test uses a new private CA/identity, PostgreSQL project and loopback12898,
+not the retained five-vault 12892 installation. Only the new project is stopped;
+its data and failed fixture attempts are retained, exact environment restored,
+and the original installation stays healthy. Fixture setup assertion mistakes
+were corrected with guarded resume, never data deletion. No product runtime code
+changed. The enrollment-only helper passes strict Rust example Clippy/format and
+a relative-root rejection check; JavaScript helpers pass syntax and actual runs.
+
+Combined retained index:
+`C:/Projects/127Vaults-lifecycle-isolated-20261015-a/combined-evidence.json`.
+Detailed boundaries and concrete next interruption/ownership/UI cases are in the
+new lifecycle document. Selected artifact versions stay unchanged; internal
+release remains unaccepted and the goal active. Commit locally, do not push.

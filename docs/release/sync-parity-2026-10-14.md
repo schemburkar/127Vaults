@@ -15,7 +15,7 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Keep server/local | Packaged server-copy pass | Desktop-h Linux selected server copy preserves other vault's request exactly; second local decision reaches Windows peer | CLI-e verifies server before retirement; two-conflict independent server/local decisions pass both directions | Latest Windows GUI; other pairings |
 | Selected-field merge | Packaged real-server pass | Desktop-g Linux actual server-title/local-username selection reaches Windows CLI; sibling request preserved exactly | New Windows/Linux packages pass both directions | Windows GUI; multiple-vault and other UI pairings; CLI selects custom-fields array as a group |
 | Missing item / stale creation | Classification and replay implemented | Shared native engine and retained queues | Shared native engine | Deleted-item and collision matrix across UIs |
-| Vault archive/restore | Selected packaged server/web actual settings archive/restore passes with Windows CLI peer | Desktop-g Linux actual settings archive/restore passes with Windows CLI peer | Packaged Windows/Linux propagation and read-only refusal pass | Windows GUI; move/ownership and interrupted lifecycle combinations |
+| Vault archive/restore | Selected packaged server/web actual settings archive/restore passes with Windows CLI peer | Desktop-g Linux actual settings archive/restore passes with Windows CLI peer | Packaged Windows/Linux archive propagation and read-only refusal; Windows normal/interrupted move with Windows/Linux readers pass | Windows GUI; other move writers/UIs, abort/changed-source and ownership |
 | Multiple missed checkpoints | Engine and source subsets | Desktop-g Linux stale process restart verifies three intervening real signed checkpoints from Windows CLI-f; PostgreSQL sequence proof | Packaged peer creates checkpoints and ends settled | Windows GUI; other pairings and larger chains |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
@@ -94,3 +94,12 @@ queues. Original synchronized settings restored after all four cases. New
 Desktop source closes stale review on refusal and refreshes connection status;
 32 handler tests pass. Broader settings combinations and human-dependent gates
 remain open. See the new continuation for packaged GUI proof and its limits.
+
+## Isolated move subset — October 15
+
+Selected CLI-a Windows writer passes normal move plus accepted copy/finalization
+reply loss, durable journal/restart/exact replay and duplicate prevention, with
+independent selected Windows/Linux CLI readers. Typed fields and secrets,
+collection/default retargeting and retired-source behavior are verified on a new
+TLS/PostgreSQL installation. [Detailed evidence and limits](isolated-lifecycle-2026-10-15.md)
+retain the open UI/reverse-writer/abort/source-change/ownership/physical cases.

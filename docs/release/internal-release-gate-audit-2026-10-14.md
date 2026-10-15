@@ -74,3 +74,12 @@ Latest source library tests pass 81/1 ignored; the Desktop-c committed build
 snapshot passes 80/1 ignored and 32 Desktop tests. CLI-a remains unchanged because
 its dispatch does not expose this global operation. Move testing needs an isolated
 fresh account/project; the retained five-vault fixture must be preserved.
+
+## Isolated lifecycle progress
+
+[New move evidence](isolated-lifecycle-2026-10-15.md) covers a packaged Windows
+writer with Windows/Linux readers, typed secret preservation, collection/default
+retargeting, retired-source behavior and exact receipt replay after copy/final
+reply loss. It uses a new isolated project; no retained vault was retired for a
+test. Desktop/web, reverse writer, abort/changed-source/ownership and physical
+acceptance remain open. No aggregate acceptance decision changed.

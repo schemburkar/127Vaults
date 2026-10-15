@@ -186,6 +186,10 @@ fn main() -> Result<(), String> {
     }
     // Optional isolated release fixture; historical defaults remain unchanged.
     let external = std::env::var_os("VAULTS_INTERNAL_CLIENT_ROOT").map(PathBuf::from);
+    let enroll_only = std::env::var("VAULTS_INTERNAL_ENROLL_ONLY").as_deref() == Ok("1");
+    if enroll_only && external.as_ref().is_none_or(|base| !base.is_absolute()) {
+        return Err("enrollment-only mode requires an absolute new external fixture".to_owned());
+    }
     let server_id = if external.is_some() {
         let value = std::env::var("VAULTS_INTERNAL_SERVER_ID")
             .map_err(|_| "explicit fixture server ID is required")?;
@@ -289,6 +293,10 @@ fn main() -> Result<(), String> {
         other.vault_list()?.as_array().map_or(0, Vec::len)
     );
     drop(other);
+    if enroll_only {
+        println!("Two distinct fictitious device profiles enrolled and unlocked.");
+        return Ok(());
+    }
     let vault_id = vaults[0]["vaultId"]
         .as_str()
         .ok_or("missing vault")?
