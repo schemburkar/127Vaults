@@ -611,3 +611,20 @@ retained; no simultaneous use with copied Desktop identity, and online sync is
 required before future offline CLI work. No runtime artifact or push. Broader
 GUI conflict/multi-pending/typed/settings/interruption, Windows/physical/PWA/
 extension/intended-host gates remain open; full release unaccepted.
+
+## Actual selected member Desktop offline conflict / comparison / field merge
+
+Reused retained member Desktop profile now passes actual Offline unlock/Edit/Save
+and durable queued request across process restart; real newer Windows peer edit;
+actual GUI verified/redacted comparison and Cancel with exact encrypted pending
+request preservation; another GUI process explicitly selects server title/local
+username and saves; Windows peer verifies/restores; fresh GUI independently reads
+baseline, reveals/remasks, confirms settled queue and locks.
+
+[Evidence](server-a-member-desktop-conflict-2026-10-15.md). Selected bytes/image,
+no-removal preflight and complete member/native/web/P1/extension-negative/both
+native-conflict/Desktop evidence and cleanup chain pass. Original/revoked data
+preserved, owned project and agents/app stopped. No profile recopy/reset, browser
+grant, Windows policy, artifact change or push. Broader multi-pending/vault,
+deleted-item/collision/settings/loss, Windows/physical/installed-PWA/extension/
+intended-host gates remain open; full release unaccepted.

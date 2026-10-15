@@ -262,3 +262,13 @@ records explicit copied identity (not new Desktop enrollment), selected Deb hash
 settled GUI replicas, stopped app/project and preservation checks. Original Linux
 CLI identity must sync Online before later offline work after this GUI writer;
 do not run the two copied profiles concurrently. Broader GUI/physical cases remain.
+
+## Selected server-a: actual member Desktop offline conflict review
+
+Actual GUI offline queue → Windows peer overlap → fresh GUI verified/redacted
+comparison/cancel preserving exact encrypted request → GUI selected server title /
+local username save → Windows verify/restore → fresh GUI baseline read/lock passes.
+Existing copied member profile reused, no recopy/reset; both native identities
+remain distinct. [Evidence](server-a-member-desktop-conflict-2026-10-15.md).
+One GUI pending request covered; multiple pending/vaults, deletion/collision,
+settings/loss, physical/other-platform/extension-positive cases remain separate.
