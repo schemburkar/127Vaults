@@ -7,9 +7,10 @@ import { createRequire } from 'node:module';
 import { sign, createHash } from 'node:crypto';
 import { ownershipClient } from './internal-ownership-client.mjs';
 
-const [work, phase] = process.argv.slice(2);
+const [work, phase, kind = 'copy'] = process.argv.slice(2);
 assert.ok(['loss','resume'].includes(phase));
-let dropAcceptedCopy = phase === 'loss';
+assert.ok(['copy', 'finalization'].includes(kind));
+let dropAcceptedReply = phase === 'loss';
 assert.ok(work && isAbsolute(work));
 const fixture = JSON.parse(await readFile(join(work, 'fixture.json'), 'utf8'));
 assert.equal(fixture.serverId, '98027ac4-9882-42d5-812a-a18c972c299f');
@@ -44,7 +45,8 @@ async function context() {
         mutations.push({ path: new URL(incoming.url()).pathname, requestId: input.requestId, itemId: input.itemId, sha256: createHash('sha256').update(incoming.postDataBuffer()).digest('hex'), status: response.status });
       }
       const headers = Object.fromEntries(Object.entries(response.headers).filter(([key]) => !['content-length', 'transfer-encoding', 'content-encoding'].includes(key)).map(([key, value]) => [key, Array.isArray(value) ? value.join('\n') : String(value)]));
-      if (dropAcceptedCopy && incoming.method() === 'POST' && new URL(incoming.url()).pathname === '/api/v1/vaults/' + record.destination + '/items' && response.status === 200) { dropAcceptedCopy = false; mutations.at(-1).replyDropped = true; await route.abort('failed'); return; }
+      const faultPath = '/api/v1/vaults/' + (kind === 'copy' ? record.destination + '/items' : record.source + '/removal');
+      if (dropAcceptedReply && incoming.method() === 'POST' && new URL(incoming.url()).pathname === faultPath && response.status === 200) { dropAcceptedReply = false; mutations.at(-1).replyDropped = true; await route.abort('failed'); return; }
       await route.fulfill({ status: response.status, headers, body: response.body });
     } catch (error) { errors.push('TLS relay: ' + error.code); await route.abort(); }
   });
@@ -73,7 +75,7 @@ async function unlock(page) {
   await page.waitForFunction(() => document.querySelector('#vault')?.hidden === false && document.querySelector('#state')?.textContent.startsWith('Unlocked'), null, { timeout: 60000 });
   await page.waitForFunction(() => document.body.getAttribute('aria-busy') === 'false');
 }
-const fixturePath = join(work, 'web-move-copy-loss-fixture.json');
+const fixturePath = join(work, 'web-move-' + kind + '-loss-fixture.json');
 let record;
 try { record = JSON.parse(await readFile(fixturePath, 'utf8')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -81,7 +83,7 @@ if (record) {
   assert.equal(record.serverId, fixture.serverId);
   assert.equal(record.accountId, metadata.accountId);
 } else {
-  record = { serverId: fixture.serverId, accountId: metadata.accountId, sourceName: 'Web UI copy-loss source 20261015-a', destinationName: 'Web UI move destination 20261015-a', title: 'Web UI copy-loss login 20261015-a', username: 'synthetic-move-member', password: 'fictitious-web-move-password', website: 'https://web-move.invalid/' };
+  record = { serverId: fixture.serverId, accountId: metadata.accountId, sourceName: 'Web UI ' + kind + '-loss source 20261015-a', destinationName: 'Web UI move destination 20261015-a', title: 'Web UI ' + kind + '-loss login 20261015-a', username: 'synthetic-move-member', password: 'fictitious-web-move-password', website: 'https://web-move.invalid/' };
   await writeFile(fixturePath, JSON.stringify(record, null, 2) + '\n', { flag: 'wx' });
 }
 const save = () => writeFile(fixturePath, JSON.stringify(record, null, 2) + '\n');
@@ -101,7 +103,7 @@ async function select(id) {
   await page.waitForFunction(id => window.__vaultsSnapshot.some(row => row.vaultId === id && row.selected), id);
 }
 try {
-  assert.ok(!record.movePassed, 'Completed copy-loss case must be verified without resubmitting it');
+  assert.ok(!record.movePassed, 'Completed reply-loss case must be verified without resubmitting it');
   stage = 'unlock retained browser profile';
   page = await context();
   page.setDefaultTimeout(30000);
@@ -145,7 +147,7 @@ try {
     }
     record.sourceItem = await original.getAttribute('data-item-id');
     await save();
-    stage = 'lose accepted copy response';
+    stage = 'lose accepted ' + kind + ' response';
     await vaultSettings();
     await page.getByLabel('Source vault', { exact: true }).selectOption(record.source);
     await page.getByLabel('Vault removal action').selectOption('move');
@@ -157,15 +159,28 @@ try {
     record.journal = await page.evaluate(() => window.__vaultsLifecycle.pending);
     assert.equal(record.journal.source, record.source);
     assert.equal(record.journal.destination, record.destination);
-    assert.equal(record.journal.pendingCopy.sourceItemId, record.sourceItem);
-    assert.equal(record.journal.request, null);
-    record.destinationItem = record.journal.pendingCopy.destinationItemId;
+    if (kind === 'copy') {
+      assert.equal(record.journal.pendingCopy.sourceItemId, record.sourceItem);
+      assert.equal(record.journal.request, null);
+      record.destinationItem = record.journal.pendingCopy.destinationItemId;
+    } else {
+      assert.equal(record.journal.pendingCopy, null);
+      assert.ok(record.journal.request);
+      assert.equal(record.journal.mappings.length, 1);
+      assert.equal(record.journal.mappings[0].sourceItemId, record.sourceItem);
+      record.destinationItem = record.journal.mappings[0].destinationItemId;
+      assert.ok(await page.evaluate(id => window.__vaultsLifecycle.retired.some(row => row.vaultId === id), record.source));
+    }
     const copies = mutations.filter(row => row.path === '/api/v1/vaults/' + record.destination + '/items');
     assert.equal(copies.length, 1);
     assert.equal(copies[0].status, 200);
-    assert.equal(copies[0].replyDropped, true);
-    assert.equal(copies[0].requestId, record.journal.pendingCopy.payload.requestId);
-    assert.equal(copies[0].sha256, createHash('sha256').update(JSON.stringify(record.journal.pendingCopy.payload)).digest('hex'));
+    const accepted = kind === 'copy' ? copies : mutations.filter(row => row.path === '/api/v1/vaults/' + record.source + '/removal');
+    assert.equal(accepted.length, 1);
+    assert.equal(accepted[0].replyDropped, true);
+    assert.equal(accepted[0].status, 200);
+    const request = kind === 'copy' ? record.journal.pendingCopy.payload : record.journal.request;
+    assert.equal(accepted[0].requestId, request.requestId);
+    assert.equal(accepted[0].sha256, createHash('sha256').update(JSON.stringify(request)).digest('hex'));
     record.lossPassed = true;
     await save();
   } else {
@@ -176,10 +191,13 @@ try {
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
     await page.waitForFunction(id => window.__vaultsLifecycle?.retired?.some(row => row.vaultId === id && row.retirementChoice === 'move') && !window.__vaultsLifecycle.pending, record.source);
     const copies = mutations.filter(row => row.path === '/api/v1/vaults/' + record.destination + '/items');
-    assert.equal(copies.length, 1);
-    assert.equal(copies[0].status, 200);
-    assert.equal(copies[0].requestId, record.journal.pendingCopy.payload.requestId);
-    assert.equal(copies[0].sha256, createHash('sha256').update(JSON.stringify(record.journal.pendingCopy.payload)).digest('hex'));
+    assert.equal(copies.length, kind === 'copy' ? 1 : 0);
+    const replay = kind === 'copy' ? copies : mutations.filter(row => row.path === '/api/v1/vaults/' + record.source + '/removal');
+    assert.equal(replay.length, 1);
+    assert.equal(replay[0].status, 200);
+    const request = kind === 'copy' ? record.journal.pendingCopy.payload : record.journal.request;
+    assert.equal(replay[0].requestId, request.requestId);
+    assert.equal(replay[0].sha256, createHash('sha256').update(JSON.stringify(request)).digest('hex'));
     stage = 'read unique resumed copy';
     await select(record.destination);
     const copy = page.locator('#items [data-item-id]').filter({ hasText: record.title });
@@ -199,9 +217,9 @@ try {
     await save();
   }
   assert.deepEqual(errors, []);
-  await writeFile(join(work, 'web-move-copy-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'loss' ? ['Actual successful TLS copy response discarded; real UI offers Resume', 'Durable pending journal reserves exact destination ID/request ID/encrypted request hash', 'Browser process closes with pending journal retained'] : ['Full browser process restart and real unlock preserve exact journal', 'Visible Resume replays identical request ID/body hash, obtains receipt and retires source', 'One reserved copy retains fields, masked/revealed password and final lock'], limits: ['Ordinary web with strict-CA relay and service-worker bypass; physical PWA separate', 'Accepted copy loss only; finalization loss, source/destination changes and other peer/writer pairings separate'] }, null, 2) + '\n');
-  console.log('Selected web copy reply-loss ' + phase + ' passed.');
+  await writeFile(join(work, 'web-move-' + kind + '-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, kind, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'loss' ? ['Actual successful TLS ' + kind + ' response discarded; real UI offers Resume', 'Durable pending journal reserves exact destination ID/request ID/encrypted request hash', 'Browser process closes with pending journal retained'] : ['Full browser process restart and real unlock preserve exact journal', 'Visible Resume replays identical request ID/body hash and obtains receipt without duplicate copies', 'One reserved copy retains fields, masked/revealed password and final lock'], limits: ['Ordinary web with strict-CA relay and service-worker bypass; physical PWA separate', 'Accepted ' + kind + ' loss only; source/destination changes and other peer/writer pairings separate'] }, null, 2) + '\n');
+  console.log('Selected web ' + kind + ' reply-loss ' + phase + ' passed.');
 } catch (error) {
-  await writeFile(join(work, 'web-move-copy-' + phase + '-failure-' + Date.now() + '.json'), JSON.stringify({ stage, error: error.message, mutations, errors, transports }, null, 2) + '\n', { flag: 'wx' });
-  throw Error('Owned web copy-loss ' + phase + ' failed at ' + stage + '; inspect retained diagnostic.');
+  await writeFile(join(work, 'web-move-' + kind + '-' + phase + '-failure-' + Date.now() + '.json'), JSON.stringify({ stage, error: error.message, mutations, errors, transports }, null, 2) + '\n', { flag: 'wx' });
+  throw Error('Owned web ' + kind + '-loss ' + phase + ' failed at ' + stage + '; inspect retained diagnostic.');
 } finally { await browser.close(); }

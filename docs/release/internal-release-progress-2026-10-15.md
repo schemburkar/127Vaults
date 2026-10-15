@@ -358,3 +358,19 @@ fixed-count phases must not be rerun blindly. Isolated project stopped, original
 server healthy, exact bundle/wiring restored and revoked D draft intact. No product
 runtime/artifact changed. Web finalization/guard/typed/settings cases and other
 writer/package/physical/operational gates remain open; release unaccepted. No push.
+
+## Actual web finalization reply loss and receipt-only recovery
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now also proves actual web
+finalization HTTP200 reply loss, server-retired source with durable final request,
+full browser restart, exact journal and same request-ID/body-hash receipt replay.
+Resume sends zero copy POSTs, clears pending state and reads the unique reserved
+copy with masking/reveal/lock. A distinct registered device decrypts original and
+copy, verifies source/destination counts and retains both prior copy IDs.
+
+Member now has four retained entries (three retired; destination three items).
+Syntax and combined evidence/cleanup checks pass: project stopped, original server
+healthy, exact bundle/wiring restored, selected CLI hashes and revoked D pending
+draft intact. No product runtime or artifact change. Divergence/abort, typed/
+settings, packaged peer/other writer, physical/operational gates remain open.
+Internal release is unaccepted; no push.

@@ -149,3 +149,13 @@ copy reply. Independent registered-device decryption/counts and the retained
 normal-move item ID pass. This is ordinary-web recovery with strict TLS; installed
 PWA, finalization loss, divergence guards, typed/settings and additional packaged
 peer/writer combinations remain separate.
+
+## Actual ordinary-web finalization reply-loss recovery
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now verifies discarded actual
+finalization HTTP200, already-retired source, full-browser restart with exact final
+journal, receipt-only Resume with same request ID/body hash and no copy POSTs.
+Unique-copy UI fields/masking/reveal/lock and independent registered-device reads /
+counts/prior IDs pass. Member directory now has four entries; use explicit current
+reader mode. Divergence/abort policies, typed/settings, additional packaged peers
+and physical/operational acceptance remain separate.

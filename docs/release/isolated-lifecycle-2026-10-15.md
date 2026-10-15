@@ -333,3 +333,52 @@ selected artifact changed, no push. Web finalization loss, changed-source /
 changed-destination refusal, typed/custom fields, settings retarget and remaining
 package/writer/physical/operational gates remain open. Internal release is still
 unaccepted.
+
+## Actual web finalization reply loss and receipt-only resume
+
+Selected web-e now also passes finalization reply loss through its actual UI. A
+fourth controlled vault was created for the genuinely enrolled invited member.
+Its signed encrypted copy succeeded normally; the strict-CA relay then forwarded
+finalization, observed real HTTP200 and discarded only that reply. The server had
+already retired the source. The UI showed pending-action guidance and Resume,
+while the retained journal contained the complete final request, one item mapping
+and no pending copy. The full browser process then closed.
+
+A separate process opened the retained profile and performed actual login. The
+complete published journal matched the saved journal. Visible Resume sent exactly
+one finalization POST with the same request ID and body hash, received its receipt
+and cleared the journal. It sent **zero item-copy POSTs**. The unique reserved copy
+retained ordinary fields, default password masking, explicit reveal and final Lock.
+
+An independent registered device authenticated using production OPAQUE/device
+proof and decrypted both the retired source original and destination copy. It
+verified four retained directory entries, one item in the source, three destination
+items and both earlier normal/copy-loss item IDs still present. This is Node
+production-crypto reader evidence, not a packaged peer claim. All selected product
+artifacts and runtime code remain unchanged.
+
+Retained evidence: `web-move-finalization-loss-fixture.json` (full final request),
+`web-move-finalization-loss.json`, `web-move-finalization-resume.json`,
+`web-move-finalization-peer.json`, and
+`web-move-finalization-combined-evidence.json`. The retained runner is
+`run-web-move-finalization-loss.mjs loss|resume`; the repository fault helper accepts
+`<work> loss|resume finalization` while retaining its default copy-loss mode.
+`run-web-move-finalization-peer.mjs` selects the peer's `finalization-loss` mode.
+Completed/lost phases are protected against reinjection and resubmission.
+
+New/updated helper syntax and combined verification pass:
+
+```powershell
+node scripts/internal-web-move-finalization-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+```
+
+The verification chain retains earlier normal/copy/ownership history and checks
+exact bundle/wiring restoration, stopped isolated project, absent owned browser
+containers, original 12892 health, selected CLI hashes and revoked D's exact
+pending request/journal. Earlier catalogue counts are historical: the invited
+member now has four entries (three moved sources, one active destination with
+three items). Do not reset them or rerun older fixed-count live phases. Browser
+transport is strict-CA ordinary web with service-worker bypass; installed/physical
+PWA acceptance remains separate. Web divergence/abort policies, typed/custom and
+settings retarget, packaged peer/other writer, physical and operational gates
+remain open. Full internal release is still unaccepted. No push.
