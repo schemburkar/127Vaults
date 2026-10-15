@@ -645,3 +645,19 @@ without starting servers, repeating mutations/restores or granting permissions.
 No new P1/runtime change or push. Next local priority: multiple-pending independent
 decisions and missing server item, then collision/chained pending, packaged/UI
 budget and settings/license cases. Internal release remains unaccepted; goal active.
+
+## Actual selected member Desktop two pending / independent decisions
+
+Selected Linux GUI online-hydrates both retained member items, genuinely edits
+both offline, then compares real Windows peer overlaps and cancels both while
+preserving both encrypted requests exactly. First explicit server decision keeps
+the second original request byte-identical; second explicit local decision settles
+the queue. Windows independently verifies both different choices and restores
+both baselines. Fresh GUI independently reads/reveals/remasks both and locks.
+
+[Eight-phase evidence](server-a-member-desktop-multi-2026-10-15.md). No new/deleted
+item, profile/history reset or mocked response. Exact six-item catalogue, previous
+peer-edited title and retirement restored/preserved. Selected artifact/profile/
+queue/process/full prior acceptance/original/revoked-data cleanup chain passes.
+Same-vault multiple-pending case is covered; absent-server-item/cross-vault/
+collision and other remaining gates stay explicit. No runtime package or push.

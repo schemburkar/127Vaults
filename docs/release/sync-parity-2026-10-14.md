@@ -272,3 +272,13 @@ Existing copied member profile reused, no recopy/reset; both native identities
 remain distinct. [Evidence](server-a-member-desktop-conflict-2026-10-15.md).
 One GUI pending request covered; multiple pending/vaults, deletion/collision,
 settings/loss, physical/other-platform/extension-positive cases remain separate.
+
+## Selected server-a: two GUI pending conflicts, server then local
+
+Actual Linux member Desktop queues two edits offline and independently compares
+both real Windows peer versions; Cancel preserves both original request hashes.
+First Use server version preserves second encrypted request exactly. Second Use
+mine settles queue, verified independently by Windows; both original baselines
+are restored and read by fresh GUI. [Evidence](server-a-member-desktop-multi-2026-10-15.md).
+Two items in one vault covered; cross-vault/deleted-item/collision and other UI/
+platform cases remain. Existing identity/profile/history preserved; no push.

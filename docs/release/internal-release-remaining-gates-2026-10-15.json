@@ -56,16 +56,16 @@
       "name": "Same-field conflict, owner context and selected-field save",
       "source": "required acceptance matrix / same-field",
       "assessment": "partial",
-      "covered": "Selected member CLI both writer directions and Linux GUI verified masked comparison/cancel, exact pending preservation, explicit merge and peer restoration; older cross-vault GUI subset",
-      "remaining": "Latest Windows GUI; multiple pending/vaults and other UI/client pairings; current member one-item success does not close all of these"
+      "covered": "Selected member CLI both writer directions and Linux GUI verified masked comparison/cancel, exact pending preservation, explicit merge and peer restoration; older cross-vault GUI subset; selected actual Linux GUI two-item compare/cancel and independent server/local choices with exact sibling preservation",
+      "remaining": "Latest Windows GUI; cross-vault and other client/UI pairings. Two-item same-vault GUI success is scoped."
     },
     {
       "id": "SYNC-07",
       "name": "Explicit server copy, missing server item and independent queues",
       "source": "required acceptance matrix / server copy and missing item",
       "assessment": "partial",
-      "covered": "Earlier server/local decisions and two-conflict isolation; selected GUI cancel preserves its one request",
-      "remaining": "Actual missing-edited-item classification, no nonexistent field comparison, explicit selected discard/server decision while sibling request remains byte-identical; broader GUI matrix"
+      "covered": "Earlier server/local decisions and two-conflict isolation; selected GUI cancel preserves its one request; selected actual Linux GUI two pending requests, first server/second local choice and exact sibling preservation",
+      "remaining": "Actual missing-edited-item classification/no nonexistent comparison and explicit selected discard with untouched sibling; broader GUI/client/cross-vault matrix"
     },
     {
       "id": "SYNC-08",
@@ -181,21 +181,22 @@
     }
   ],
   "nextLocalPriority": [
-    "SYNC-07 / SYNC-06: independent multiple pending decisions and absent server item",
+    "SYNC-07: actual missing-server-item classification and selected discard with sibling preservation; cross-vault GUI follow-up",
     "SYNC-08: controlled create-ID collision/chained pending fixture",
     "LOCAL-01: packaged/UI budget message and recovery",
     "SYNC-09 and LOCAL-02: settings/default-view divergence and signed-license notices/renewal"
   ],
   "evidence": {
     "candidateWork": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a",
-    "latestCombined": "member-desktop-conflict-combined-evidence.json",
+    "latestCombined": "member-desktop-multi-combined-evidence.json",
     "operationsWork": "C:/Projects/127Vaults-server-a-ops-20261015-a",
     "operationsCombined": "selected-operational-evidence.json",
     "notes": [
       "docs/release/server-a-member-desktop-conflict-2026-10-15.md",
       "docs/release/server-a-member-offline-reverse-2026-10-15.md",
       "docs/release/server-a-operations-2026-10-15.md",
-      "docs/release/server-a-extension-web-permission-2026-10-15.md"
+      "docs/release/server-a-extension-web-permission-2026-10-15.md",
+      "docs/release/server-a-member-desktop-multi-2026-10-15.md"
     ]
   },
   "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."
