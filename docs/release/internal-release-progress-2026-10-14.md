@@ -691,3 +691,7 @@ resolve-time race/refusal evidence. Full reproduction, next actions and remainin
 seven-surface/manual gates are saved in
 [the stop checkpoint](internal-release-stop-2026-10-14.md). Internal release is
 not accepted. Work pauses at the user's request, with no push.
+
+## October 15 resumption
+
+The user explicitly resumed the goal. [October 15 progress](internal-release-progress-2026-10-15.md) records fresh selected CLI/Desktop packages, four two-OS settings safety cases, actual Linux GUI refusal/newer-review acceptance, updated Windows static preparation and the corrected policy investigation. Internal release is still unaccepted; the goal remains active.

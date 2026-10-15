@@ -19,8 +19,8 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Multiple missed checkpoints | Engine and source subsets | Desktop-g Linux stale process restart verifies three intervening real signed checkpoints from Windows CLI-f; PostgreSQL sequence proof | Packaged peer creates checkpoints and ends settled | Windows GUI; other pairings and larger chains |
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
-Latest native candidates are CLI `internal-20261014-g` and Desktop
-`internal-20261014-i`, source `fba2cb2`; server/web remains `internal-20261014-e`,
+Latest native candidates are CLI `internal-20261015-a` (source `600f206`) and
+Desktop `internal-20261015-b` (source `5312a34`); server/web remains `internal-20261014-e`,
 source `ee83e2d`. The [October 14 continuation](internal-release-progress-2026-10-14.md)
 records four packaged settings-choice cases preserving an unrelated item queue,
 two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI
@@ -84,3 +84,13 @@ Current package extraction roots:
 `/home/vaults-dev/vaults-sync-cli-20261014-b/cli-package`. Both continue to use the
 original guarded fictitious profiles. Saved runner `linux-lifecycle-b.sh` selects
 the new Linux package and accepts an explicit second evidence-path argument.
+
+## October 15 settings-review acceptance
+
+[New continuation](internal-release-progress-2026-10-15.md): both selected CLI
+operating systems pass server/local choices after resolution-time 401/403 and
+changed remote revision, preserving real encrypted drafts and original item
+queues. Original synchronized settings restored after all four cases. New
+Desktop source closes stale review on refusal and refreshes connection status;
+32 handler tests pass. Broader settings combinations and human-dependent gates
+remain open. See the new continuation for packaged GUI proof and its limits.

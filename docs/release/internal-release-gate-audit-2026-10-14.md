@@ -8,8 +8,8 @@ gates or treat source tests as physical or installed-user acceptance.
 | --- | --- | --- |
 | Server | Selected server-e, source `ee83e2d`, verified bundle/image and real HTTPS/PostgreSQL startup, hostile authorization, encrypted backup/restore and current-schema checks | Intended-host installation/trust, unrelated-host deployment and remaining operational acceptance |
 | Web/PWA | Selected server/web-e: seven Desktop-created type reads, real archive/restore, acknowledged-history rollback refusal and recovery; prior real-server queue/conflict/reply-loss and installed-mode cache-upgrade evidence | Physical PWA/CA enrollment and update acceptance; other recorded pairing/lifecycle/fork cases |
-| Desktop | Selected Desktop-i, source `fba2cb2`: Windows/Linux package gates, 30 tests, fixed displayed-item owner binding; actual Linux cross-vault review/isolation and receipt replay with independent Windows CLI; earlier seven-type creation/read and lifecycle cases | Latest Windows GUI, clean physical installation/keyring/lock and remaining UI pairings/operations |
-| CLI | Selected CLI-g, source `fba2cb2`: both OS packages, 76 library passes plus separately exercised live fixture, actual signing/retry, acknowledgement preservation, queued review, field merge and peer reads | Physical terminal/clean-host acceptance and other recorded device/lifecycle combinations |
+| Desktop | Selected Desktop-20261015-b, source `5312a34`: Windows/Linux package gates, 32 tests, fixed displayed-item owner binding; actual Linux cross-vault review/isolation and receipt replay with independent Windows CLI; earlier seven-type creation/read and lifecycle cases | Latest Windows GUI, clean physical installation/keyring/lock and remaining UI pairings/operations |
+| CLI | Selected CLI-20261015-a, source `600f206`: both OS packages, 78 library passes plus separately exercised live fixture, actual signing/retry, acknowledgement preservation, queued review, field merge and peer reads | Physical terminal/clean-host acceptance and other recorded device/lifecycle combinations |
 | Browser extension | Selected extension-a: real installed native messaging, guarded form filling, Linux GUI-owned source handoff/lock/restart and prior Windows installed subsets | Current active Windows session, actual web-source permission/selection/reconnect, physical idle/lock and optional passkey ceremonies |
 | Admin console | Selected server/admin-e: real authenticated, audited invitation create/replay/revoke/sign-out; earlier browser usability, permission, ownership and failure subsets | Intended-host operator acceptance and remaining management/client integration cases |
 | Public site | All 11 local pages exercised in actual Chromium at desktop/mobile widths; local links/images/overflow checked, intake closed and no public downloads exposed | Public deployment is not performed; deployment/signing/real-secret readiness are outside this private fictitious-data cut |
@@ -26,13 +26,13 @@ settings convergence; those flags are recorded separately.
 
 The latest reviewed Windows fixture is prepared at
 `C:\Projects\127Vaults-sync-desktop-20261013-a\start-isolated-desktop.ps1`.
-It selects extracted Desktop-i `app-l`, copied `profile-k`, separate `webview-l`
+It selects extracted Desktop-20261015-b `app-m`, copied `profile-l`, separate `webview-m`
 and inspector 12915. It validates the fictitious profile and extracted executable
 SHA256 before launching. Original app/profile/starter are retained. Static
 extraction, copied-file hashes and script syntax pass; no app launch, installation
 or native registration was performed. Preparation is not Windows GUI acceptance.
 
-The earlier automatic approval review rejected agent Windows GUI launch as
+The earlier command-execution check rejected agent Windows GUI launch as
 “blocked by policy,” without a further reason. A human manual-launch reply/PID
 has not been received; another launcher is not a permissible workaround. The
 isolated extension's permission for `https://127.0.0.1:12892` is also unanswered.
@@ -50,12 +50,16 @@ the original scope. Do not mark the goal complete from aggregate green checks.
 Commit completed changes to local main, preserve existing data and exact queued
 requests, and do not push.
 
-## Latest source versus selected packages
+## October 15 continuation supersedes package notes above
 
-Source commit `a65ab45` adds authenticated review revalidation before either vault
-settings conflict choice. CLI source checks now pass 78 tests (one live fixture
-ignored), strict workspace Clippy and formatting. Selected CLI-g/Desktop-i still
-contain `fba2cb2`, so refreshed native builds and packaged resolve-time refusal /
-changed-review acceptance are required. See the
-[stop checkpoint](internal-release-stop-2026-10-14.md) for the exact next actions.
-Work is paused at the user's request; the decision above remains unaccepted.
+The [new progress record](internal-release-progress-2026-10-15.md) records selected
+CLI-20261015-a and Desktop-20261015-b, manifest/SHA256 verification and actual
+packaged settings-review safety cases. The latest selected packages contain both
+the backend review fix and Desktop failed-review UI correction; rebuilding for
+those fixes is complete. Remaining pairings and physical/operational gates are
+still open. The goal was explicitly resumed by the user.
+
+The [policy investigation](windows-launch-policy-investigation-2026-10-15.md)
+corrects the earlier attribution: the raw launch error says blocked by policy
+but does not identify automatic review, Windows, a user rule or the exact reason.
+No security setting was changed and no alternate launcher was attempted.

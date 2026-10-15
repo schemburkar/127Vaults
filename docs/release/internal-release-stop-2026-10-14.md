@@ -1,3 +1,5 @@
+Resumed October 15 at the user's request. The rebuilds and packaged settings review cases below are now complete; see [new progress and remaining gates](internal-release-progress-2026-10-15.md). This stop checkpoint is historical.
+
 # Stop checkpoint — October 14, 2026
 
 Stopped within the user's requested ten-minute limit to preserve usage. Internal

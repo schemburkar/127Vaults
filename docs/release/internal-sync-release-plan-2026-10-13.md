@@ -1,3 +1,5 @@
+Current package/evidence continuation: [October 15 progress](internal-release-progress-2026-10-15.md). Historical launch-error attribution below is corrected by the [policy investigation](windows-launch-policy-investigation-2026-10-15.md); its denying rule remains unknown.
+
 # Internal release and cross-client sync verification
 
 **Decision: not accepted for internal release; sync verification is open.**
