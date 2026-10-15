@@ -637,6 +637,12 @@ export function App() {
       await refreshSyncStatus();
       notify("success", "Vault settings resolved");
     } catch (error) {
+      if (!resolved) {
+        // Resolution may discover a newer server comparison or denied access.
+        // Reopen review explicitly rather than retaining an outdated choice.
+        setSettingsReview(null);
+        await refreshSyncStatus().catch(() => {});
+      }
       notify("error", resolved ? "Settings saved; refresh needed" : "Could not resolve settings", resolved ? "Sync again to refresh the vault view." : friendlyError(error));
     }
   };
