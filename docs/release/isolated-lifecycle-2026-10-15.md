@@ -226,3 +226,13 @@ refusal and this Linux-writer recovery subset are now proven. Remaining scope
 includes move UI, other writer/fault pairings, ownership and original physical /
 intended-host acceptance. No product runtime or selected artifact changed, and
 no push or public deployment occurred.
+
+## Ownership API and private-data isolation
+
+The selected server now passes the [real ownership acceptance flow](ownership-acceptance-2026-10-15.md),
+including genuine invited-member onboarding, session revocation, idempotent receipt
+replay, last-owner protection and cross-account vault denial. Original owner role
+is restored after demotion, with a selected Windows CLI secret read during the
+demoted interval. The new member remains a user with an empty private directory.
+The ownership browser UI/stale-auth and broader lifecycle/physical gates remain
+open. Cleanup and D's revoked pending draft/journal pass the retained verifier.

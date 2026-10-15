@@ -261,3 +261,19 @@ request and complete journal remain unchanged. The isolated environment is
 restored and project stopped; original 12892 stays healthy. No runtime code or
 artifact changed, no push. Move-UI/additional pairing/ownership and physical /
 intended-host gates remain open. The full internal release is still unaccepted.
+
+## Selected-server ownership/session/account-isolation acceptance
+
+[Ownership evidence](ownership-acceptance-2026-10-15.md) now passes real invitation,
+TLS email capture, OPAQUE activation/login, request/cancel/accept and receipt replay,
+session invalidation, last-owner guards, operator restrictions and private-vault
+isolation. The selected Windows CLI reads the former owner's secrets while it is
+demoted. Original ownership is restored and the new member remains a user with an
+empty private directory. No product runtime or selected artifact changed.
+
+The initial email 503 was the local capture's network wiring, resolved inside the
+owned server container without disabling TLS validation. The combined verifier
+passes exact fixture restoration, package hashes, unchanged revoked D draft/journal
+and original 12892 health. Isolated 12898 is stopped. Actual ownership browser UI,
+stale-auth boundary, external SMTP and broader physical/pairing/operational gates
+remain open. Internal release is still unaccepted; no push.
