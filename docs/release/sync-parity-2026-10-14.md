@@ -198,3 +198,13 @@ a distinct random device, not the seeded historical Node peer. Exact catalogue,
 retirement, fields/password and empty review checked; no member writes or new
 move claimed. [Evidence](server-a-linux-member-cli-2026-10-15.md). Private WSL
 keyring is not physical clean-host acceptance; broader writer pairings remain.
+
+## Selected server-a: bidirectional native member writers
+
+Selected Windows/Linux CLI-a now passes Windows edit → Linux read/edit → Windows
+read/restore → Linux final read on the web-created moved member item. Both genuine
+member devices verify exact fields/password, catalogue/preserved peer edit and
+retired-source write refusal. Queues empty; original fields restored normally.
+[Evidence and limits](server-a-member-writers-2026-10-15.md). This closes sequential
+online native writes on selected server-a; concurrent/interrupted and additional
+GUI/physical/client pairings remain separate.

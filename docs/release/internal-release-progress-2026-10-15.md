@@ -497,3 +497,19 @@ profile binding, absent member processes/container, stopped owned project,
 original server health and exact revoked-D draft. First helper-only CA-path error
 was corrected before enrollment. No product rebuild required; physical/writer and
 other matrix gates remain open. No push; internal release remains unaccepted.
+
+## Selected server-a bidirectional member native writes
+
+Actual packaged Windows member edit → Linux read/edit → Windows read/restore →
+Linux final read passed against selected server-a, using distinct genuinely
+enrolled devices. Every phase verified masked/explicit password and ordinary
+fields, exact six-item catalogue, preserved historical destination edit, empty
+queues/review and actual retired-source write refusal. Original item fields are
+restored through normal accepted edits; no history/data reset occurred.
+
+[Evidence](server-a-member-writers-2026-10-15.md). Combined verification confirms
+selected bytes/image, both OS member processes absent, owned project stopped,
+original 12892 healthy and revoked-D draft unchanged. Initial helper-only stdin
+wiring failure was corrected before mutation. Sequential online writes close an
+additional selected-server pairing, not concurrent/interruption/GUI/physical
+acceptance. Broader gates remain open; no product artifact change or push.
