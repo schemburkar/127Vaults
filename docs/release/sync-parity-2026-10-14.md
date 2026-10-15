@@ -188,3 +188,13 @@ possession-proof completion and real native member reads of the web move / retai
 peer edit. Selected admin UI management/security walkthrough also passes. This is
 native member enrollment/read proof; additional OSs, writers, interruption and
 physical/human review/intended-host combinations remain separate.
+
+## Selected server-a: fresh Linux member CLI
+
+Linux CLI-a now genuinely enrolls via member web approval and Secret Service,
+independently reads the web-created valid move and preserved peer edit, then
+locks/restarts its agent and authenticates/reads with its persisted key. This is
+a distinct random device, not the seeded historical Node peer. Exact catalogue,
+retirement, fields/password and empty review checked; no member writes or new
+move claimed. [Evidence](server-a-linux-member-cli-2026-10-15.md). Private WSL
+keyring is not physical clean-host acceptance; broader writer pairings remain.

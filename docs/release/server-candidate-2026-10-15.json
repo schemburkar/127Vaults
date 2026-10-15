@@ -65,5 +65,6 @@
   ],
   "acceptanceEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/candidate-combined-evidence.json",
   "nativeReaderEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/candidate-native-combined-evidence.json",
-  "memberAndAdminEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-acceptance-combined-evidence.json"
+  "memberAndAdminEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-acceptance-combined-evidence.json",
+  "linuxMemberEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-linux-combined-evidence.json"
 }

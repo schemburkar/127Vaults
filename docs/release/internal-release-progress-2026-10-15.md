@@ -481,3 +481,19 @@ pass; owned project stopped, original server healthy and revoked D draft exact.
 No product/selected-artifact change or push. Wider member writers/enrollment OSs,
 interruptions, human comparison/physical/browser/Windows/extension and intended-host
 gates remain open. Full internal release remains unaccepted.
+
+## Selected Linux member enrollment and persisted-key restart
+
+Selected Linux CLI-a genuinely enrolled a fresh member device against selected
+server-a via actual member web Settings/Devices approval, possession proof and
+private Linux Secret Service storage. Packaged sync independently read the moved
+item fields/masked and explicit password, historical destination peer edit,
+six-item catalogue, retired source and empty review. A new agent process then
+unlocked the persisted key, authenticated/synced and read the password again.
+
+[Evidence and retained profile](server-a-linux-member-cli-2026-10-15.md). Binary
+hash/manifest/image checks pass; combined verifier confirms distinct device,
+profile binding, absent member processes/container, stopped owned project,
+original server health and exact revoked-D draft. First helper-only CA-path error
+was corrected before enrollment. No product rebuild required; physical/writer and
+other matrix gates remain open. No push; internal release remains unaccepted.
