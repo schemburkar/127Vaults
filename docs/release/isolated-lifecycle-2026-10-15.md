@@ -190,3 +190,39 @@ finalization-stage abort refusal and broader authorization/expiry combinations,
 plus the original physical/intended-host gates. The Windows CLI divergence,
 keep-copies/early-abort and actual revocation subsets above are now proven; older
 open statements in this chronological document describe earlier checkpoints.
+
+## Linux writer, finalization abort refusal and actual GUI reader
+
+Selected packaged Linux CLI-a, on independently enrolled device C, moved the
+remaining active synthetic Private source into the lab destination. The accepted
+finalization HTTP-200 reply was dropped after server retirement. On restart,
+`abort-move --keep-copies` refused the finalizing request and kept the complete
+journal byte for byte. A new process replayed the same request ID and SHA256 body,
+verified the receipt and cleared the journal. Distinct selected Windows CLI-a
+reads the reserved destination ID, ordinary fields and built-in/custom secrets;
+the destination now has nine deliberate records across the staged attempts.
+
+Actual selected Linux Desktop-c then unlocked a copied C profile against selected
+server-e, opened the unique retained destination-peer edit, verified username,
+website and custom-secret label, masked both secrets by default, explicitly
+revealed and remasked each through real React buttons/native backend, and locked.
+No clipboard copy, native-command mock or direct invoke was used. The fixture
+helper's new-lab opt-in permits only this guarded read/lock mode and checks the
+lab identity, project, origin, writer device and expected title before inspector
+access. It does not enable mutation scenarios on arbitrary profiles.
+
+Evidence: `linux-final-evidence.json`, `linux-final-summary.json`,
+`linux-final-proxy-evidence.json`, `gui-read.json`, `gui-read-summary.json` and
+`linux-final-combined-evidence.json`. Runners and shells are `run-linux-final.mjs`,
+`linux-final.sh`, `run-gui-read.mjs` and `gui-read.sh`; `verify-linux-final.mjs`
+checks all phases, exact replay, package hashes, restored environment and D's
+still-identical revoked journal/pending request. The lab is stopped, original
+12892 remains healthy, and no existing data or revoked draft was reset.
+
+All four lab sources are now retired, leaving only the destination active. The
+five-entry directory is full; use another fresh isolated account/project for
+future move-UI or additional writer/fault scenarios. Finalization-stage abort
+refusal and this Linux-writer recovery subset are now proven. Remaining scope
+includes move UI, other writer/fault pairings, ownership and original physical /
+intended-host acceptance. No product runtime or selected artifact changed, and
+no push or public deployment occurred.

@@ -8,7 +8,7 @@ const fixture=JSON.parse(await readFile('/evidence/fixture.json','utf8'));
 assert.equal(fixture.serverId,'98027ac4-9882-42d5-812a-a18c972c299f');assert.equal(fixture.project,'vaults-test-632a4442dfd2');assert.equal(fixture.origin,'https://127.0.0.1:12898');
 const [cert,key,ca]=await Promise.all(['live/server.crt','live/server.key','ca/ca.crt'].map(path=>readFile('/identity/'+path)));
 const dropped=new Set(),attempts=[];
-const recordName=process.env.VAULTS_MOVE_PROXY_RECORD??'proxy-evidence.json';assert.ok(['proxy-evidence.json','guard-proxy-evidence.json','early-abort-proxy-evidence.json','revocation-proxy-evidence.json'].includes(recordName));
+const recordName=process.env.VAULTS_MOVE_PROXY_RECORD??'proxy-evidence.json';assert.ok(['proxy-evidence.json','guard-proxy-evidence.json','early-abort-proxy-evidence.json','revocation-proxy-evidence.json','linux-final-proxy-evidence.json'].includes(recordName));
 const server=createServer({cert,key,minVersion:'TLSv1.2'},async(incoming,outgoing)=>{try{
  assert.equal(incoming.headers.host,'127.0.0.1:12898');const chunks=[];let size=0;for await(const chunk of incoming){size+=chunk.length;assert.ok(size<=16*1024*1024);chunks.push(chunk);}const bytes=Buffer.concat(chunks),arm=JSON.parse(await readFile('/evidence/arm.json','utf8'));assert.equal(arm.serverId,fixture.serverId);
  if(arm.tag!==undefined)assert.match(arm.tag,/^[a-z-]{1,40}$/);

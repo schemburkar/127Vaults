@@ -93,3 +93,13 @@ interrupted move. Windows/Linux readers verify copies, secrets, source preservat
 and revoked-device operation history. Exact pending bytes and journal survive
 revocation; no authorization response was forged for that case. Other writers/UI,
 ownership, finalization-stage abort and physical/operational gates stay open.
+
+## Linux writer and finalization abort
+
+Selected Linux CLI-a now passes move with lost accepted finalization reply,
+process restart, refusal to abort a finalizing request, byte-identical receipt
+replay and independent selected Windows reader. Actual Linux Desktop-c reads
+preserved fields, explicitly reveals/remasks built-in/custom secrets and locks.
+[Exact scope and evidence](isolated-lifecycle-2026-10-15.md) retain open move-UI,
+additional writer/fault, ownership and physical/intended-host acceptance. D's
+revoked journal and pending request remain preserved; no product runtime changed.

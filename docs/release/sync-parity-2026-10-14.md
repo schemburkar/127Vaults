@@ -112,3 +112,11 @@ new disposable device's real revocation preserves its journal and exact pending
 request with truthful offline status; Windows/Linux peers still verify its signed
 history and accepted copy. [Exact evidence and remaining scope](isolated-lifecycle-2026-10-15.md)
 separate these packaged cases from UI/reverse-writer, ownership and physical gates.
+
+## Linux writer and actual Desktop reader
+
+Linux CLI-a move/finalization reply loss, restart, finalizing-stage abort refusal
+and exact receipt replay pass with a Windows CLI reader. Selected Linux Desktop-c
+reads the retained peer edit and explicitly reveals/remasks both secret types
+through actual GUI/native handlers, then locks. [Lifecycle record](isolated-lifecycle-2026-10-15.md)
+separates reader proof from still-open move UI and other pairing/ownership cases.

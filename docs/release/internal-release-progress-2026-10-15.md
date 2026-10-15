@@ -241,3 +241,23 @@ Only the isolated project is stopped; original server/database stay healthy.
 Product runtime/artifacts did not change. UI/reverse-writer, ownership,
 finalization-abort and broader physical/operational gates remain open. Internal
 release is still unaccepted; the goal remains active. No push.
+
+## Linux writer finalization and Desktop secret-read acceptance
+
+Selected Linux CLI-a now passes an actual move whose accepted finalization reply
+is lost. A fresh process refuses abort at finalizing stage without changing the
+journal; exact request-ID/body-hash replay verifies the receipt and clears it.
+A distinct selected Windows CLI-a reader verifies the reserved copy and ordinary /
+secret fields. Actual selected Linux Desktop-c then reads the retained peer edit,
+checks ordinary/custom fields, masks both secrets, explicitly reveals/remasks each
+through real GUI buttons/native backend, and locks against selected server-e.
+This is a GUI reader test, not a move-UI claim.
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) records exact phases and
+limits. Combined retained index:
+`C:/Projects/127Vaults-lifecycle-isolated-20261015-a/linux-final-combined-evidence.json`.
+Selected CLI/Desktop manifests and hashes pass; D's original revoked pending
+request and complete journal remain unchanged. The isolated environment is
+restored and project stopped; original 12892 stays healthy. No runtime code or
+artifact changed, no push. Move-UI/additional pairing/ownership and physical /
+intended-host gates remain open. The full internal release is still unaccepted.
