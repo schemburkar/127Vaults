@@ -14,6 +14,74 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn failed_second_vault_reload_does_not_discard_first_vault_queue() {
+    let (mut session, first_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
+    let server = session.replica_store.load(&first_id).unwrap().unwrap();
+    let second = session
+        .core
+        .create_private_vault(
+            session.root,
+            &URL_SAFE_NO_PAD.decode(&server.directory).unwrap(),
+        )
+        .unwrap();
+    let second_id =
+        uuid::Uuid::from_bytes(second.vault.context[33..49].try_into().unwrap()).to_string();
+    let mut second_replica =
+        crate::replica::Replica::new(session.tenant_id.clone(), second_id.clone(), 1);
+    second_replica.directory = URL_SAFE_NO_PAD.encode(&second.directory);
+    second_replica.vault_envelope = URL_SAFE_NO_PAD.encode(&second.vault.envelope);
+    second_replica.catalogue = URL_SAFE_NO_PAD.encode(&second.catalogue);
+    session.replica_store.commit(&second_replica).unwrap();
+    session.online = false;
+    session
+        .item_upsert(
+            &first_id,
+            Some(&item_id),
+            "Pending first vault",
+            "https://fixture.invalid",
+            "fixture-user",
+            "fixture-password",
+            &[],
+        )
+        .unwrap();
+    let pending = session
+        .replica_store
+        .load(&first_id)
+        .unwrap()
+        .unwrap()
+        .pending;
+    let mut responses = initial_snapshot_responses(&server);
+    responses[0] = (
+        200,
+        json!({"directory":URL_SAFE_NO_PAD.encode(second.directory),"vaultEnvelopes":[{"vaultId":first_id,"envelope":server.vault_envelope},{"vaultId":second_id,"envelope":second_replica.vault_envelope}]}),
+    );
+    responses.insert(2, (200, json!({"envelope":server.items[0].body})));
+    responses.push((503, json!({"error":"unavailable"})));
+    let (origin, worker) = fixture(responses);
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    session.online = true;
+    assert!(session.discard_local_changes().unwrap_err().contains("503"));
+    let refreshed = session.replica_store.load(&first_id).unwrap().unwrap();
+    assert_eq!(refreshed.pending, pending);
+    assert_eq!(
+        refreshed.items, server.items,
+        "first vault was authenticated before the second failed"
+    );
+    assert_eq!(
+        session.replica_store.load(&second_id).unwrap().unwrap(),
+        second_replica
+    );
+    assert_eq!(worker.join().unwrap().len(), 6);
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn global_server_reload_requires_complete_authenticated_replacements() {
     for scenario in ["missing-vault", "invalid-catalogue", "verified"] {
         let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
