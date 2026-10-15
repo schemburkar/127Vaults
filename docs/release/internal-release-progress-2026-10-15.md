@@ -342,3 +342,19 @@ change. The member now has two vault entries, one retired: do not rerun earlier
 empty-directory ownership phases or reprovision the completed move. Web fault/
 restart, custom/typed/settings and other pairings remain open along with broader
 physical/operational gates. Internal release remains unaccepted; no push.
+
+## Actual web accepted-copy loss and full browser recovery
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now verifies a real accepted
+copy HTTP200 whose reply is lost, UI Resume guidance, full browser-process restart,
+exact retained journal, identical request-ID/body-hash receipt replay, final source
+retirement and cleared pending action. UI reads/masks/reveals the unique copy and
+locks. A different registered device independently decrypts original and copy,
+checks exact counts and preservation of the earlier normal-move item ID.
+
+Combined syntax/evidence/cleanup verification passes. The member now has three
+retained vault entries (two retired, one active, destination two items); historical
+fixed-count phases must not be rerun blindly. Isolated project stopped, original
+server healthy, exact bundle/wiring restored and revoked D draft intact. No product
+runtime/artifact changed. Web finalization/guard/typed/settings cases and other
+writer/package/physical/operational gates remain open; release unaccepted. No push.

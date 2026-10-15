@@ -139,3 +139,13 @@ independently decrypts original and copy. This covers a normal login subset usin
 the invited member; web fault/restart/custom/settings cases and packaged peer /
 additional writer pairings remain open. Member directory is now nonempty; retain
 its two entries and use the read-only verifier for the completed move.
+
+## Actual ordinary-web accepted-copy reply-loss recovery
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now also proves actual UI
+Resume after full browser restart, retained encrypted journal/reserved ID, exact
+copy receipt replay and unique-copy finalization after a discarded real HTTP200
+copy reply. Independent registered-device decryption/counts and the retained
+normal-move item ID pass. This is ordinary-web recovery with strict TLS; installed
+PWA, finalization loss, divergence guards, typed/settings and additional packaged
+peer/writer combinations remain separate.

@@ -285,3 +285,51 @@ subset does not prove web move fault/restart recovery, typed/custom fields,
 collection/default retargeting or additional writer/package pairings. Those and
 broader physical/intended-host gates remain open; internal release is unaccepted.
 No push.
+
+## Actual web accepted-copy loss, restart and resume
+
+Selected web-e now also passes an accepted-copy reply loss through actual UI
+handlers. A third controlled vault belongs to the same genuinely enrolled invited
+member. The strict-CA relay forwards the real signed encrypted copy to the selected
+server, observes HTTP200, then discards only that response. The app shows “Vault
+action needs attention” and a Resume control. The durable journal retains the
+reserved destination ID, exact request ID and encrypted request hash; no source
+removal is submitted in this loss phase. The complete browser process then closes.
+
+A separate process opens the same retained profile, authenticates through the real
+login ceremony and verifies its published pending journal equals the complete
+saved journal. Visible Resume replays the identical copy request ID/body hash,
+obtains the receipt, finalizes retirement and clears the pending action. Exactly
+one reserved copy is displayed with its original fields; password masking,
+explicit reveal and final Lock pass. This is ordinary-web IndexedDB/profile
+recovery, not installed-PWA/offline acceptance.
+
+A distinct registered device independently decrypts the retired original and new
+copy, verifies three directory entries, one source item and exactly two destination
+items, and confirms the earlier normal-move item ID remains present. Thus the lost
+reply/restart did not make a duplicate or replace that prior item. The independent
+reader is the Node production-crypto helper, not a packaged CLI/Desktop claim.
+
+Retained evidence: `web-move-copy-loss-fixture.json` (including the full encrypted
+pending journal), `web-move-copy-loss.json`, `web-move-copy-resume.json`,
+`web-move-copy-peer.json`, and `web-move-copy-combined-evidence.json`. Saved runners:
+`run-web-move-copy-loss.mjs loss|resume` and `run-web-move-copy-peer.mjs`. The case
+refuses reinjection after loss or resubmission after completion; never clear its
+journal/profile or recreate its source to obtain a passing run.
+
+New/updated helpers pass syntax checks. Combined verification:
+
+```powershell
+node scripts/internal-web-move-copy-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+```
+
+This also verifies earlier normal/ownership evidence, exact bundle/wiring
+restoration, stopped isolated project/absent owned browser container, original
+12892 health, selected CLI hashes and unchanged revoked D draft/journal. Earlier
+normal/ownership item counts remain historical snapshots. The member now has
+three retained entries (two moved sources, one active destination with two items);
+use the explicit `copy-loss` peer mode for current counts. No product runtime or
+selected artifact changed, no push. Web finalization loss, changed-source /
+changed-destination refusal, typed/custom fields, settings retarget and remaining
+package/writer/physical/operational gates remain open. Internal release is still
+unaccepted.
