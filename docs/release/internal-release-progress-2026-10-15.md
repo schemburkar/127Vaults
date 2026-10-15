@@ -391,3 +391,22 @@ four items). Do not reset it or blindly rerun historical fixed-count phases; the
 current reader mode is guard. Destination-change, other abort/authorization,
 typed/settings, packaged peers/other writers and physical/operational gates remain
 open. Full release remains unaccepted; no push.
+
+## P1 web destination-copy integrity regression
+
+[Blocker and source fix](web-destination-copy-blocker-2026-10-15.md): the original
+web move code attempted replay without comparing an already accepted destination
+copy to its source, then could adopt a newer destination revision into finalization.
+The focused new regression failed before the fix. Complete decrypted contents are
+now compared before replay/journal advancement and finalization, including legacy
+final requests while their source remains active. Exact retired-source receipt
+replay is retained. UI guidance asks for review; a later destination race keeps
+the validated revision and is refused by server CAS.
+
+Twelve lifecycle and 72 full web tests pass, including real Rust-WASM comparison,
+plus TypeScript/production build/syntax checks. The selected server/web-e remains
+unchanged and lacks this fix. New server/web/admin packaging and live immutable-
+package destination divergence plus valid-move checks are required before closing
+the P1. This is source-level regression proof, not a claimed live selected-browser
+reproduction. No CLI/Desktop rebuild is needed for this web-only change. Existing
+fixtures preserved, no push; full internal release remains unaccepted.

@@ -263,6 +263,7 @@ const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storage is fu
     SERVER_IDENTITY_CHANGED: "The server identity changed. Your local copy and pending changes are preserved; verify the server before registering again.",
     PENDING_REMOVAL: "Resume or cancel the pending vault removal before starting another.",
     REMOVAL_SOURCE_CHANGED: "The source vault changed. It remains available; cancel the pending move and start again after syncing.",
+    REMOVAL_DESTINATION_CHANGED: "The destination copy changed. Both vaults remain available; review the copy before cancelling or restarting the move.",
     SYNC_ROLLBACK: "The server returned an older sync history. Your verified local copy is preserved.",
     SYNC_FORK: "The server sync history differs from this device’s verified copy. Your local changes are preserved.",
     INVALID_SYNC_HISTORY: "Sync signatures or the operation chain could not be verified. Your encrypted local copy and changes are preserved.",
