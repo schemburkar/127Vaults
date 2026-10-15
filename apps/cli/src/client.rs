@@ -875,7 +875,7 @@ impl Session {
         )
     }
 
-    fn settings_sync_error(&mut self, error: String) -> String {
+    fn record_authorization_error(&mut self, error: String) -> String {
         if matches!(
             error.as_str(),
             "server rejected request (401)" | "server rejected request (403)"
@@ -889,7 +889,7 @@ impl Session {
     fn fetch_vault_settings(&mut self) -> Result<(Option<String>, Option<String>), String> {
         let remote = self
             .get("/api/v1/vault-settings")
-            .map_err(|error| self.settings_sync_error(error))?;
+            .map_err(|error| self.record_authorization_error(error))?;
         let revision = remote["revision"].as_str().map(str::to_owned);
         let envelope = remote["envelope"].as_str().map(str::to_owned);
         if revision.is_some() != envelope.is_some() {
@@ -917,7 +917,7 @@ impl Session {
             }
             let next_revision = vault_settings::revision(&pending.envelope)?;
             self.post_auth("/api/v1/vault-settings", reqwest::Method::PUT,
-                &json!({"baseRevision":revision,"revision":next_revision,"envelope":pending.envelope})).map_err(|error| self.settings_sync_error(error))?;
+                &json!({"baseRevision":revision,"revision":next_revision,"envelope":pending.envelope})).map_err(|error| self.record_authorization_error(error))?;
             self.settings_record.remote_revision = Some(next_revision);
             self.settings_record.verified_envelope = Some(pending.envelope);
             self.settings_record.pending = None;
@@ -1886,14 +1886,24 @@ impl Session {
             json!({"itemId":item_id,"title":index["title"],"website":index["website"],"username":body["username"],"password":body["password"],"customFields":body["customFields"]}),
         )
     }
-    /// Drops unsynchronized local mutations, then replaces the replica with the
-    /// latest verified server state. This is intentionally separate from sync,
-    /// which always tries to preserve and upload pending work.
+    /// Verify every replacement before dropping unsynchronized local mutations.
+    /// Unlike sync, this explicit action never uploads pending work.
     pub fn discard_local_changes(&mut self) -> Result<Value, String> {
         if !self.online {
             return Err("server state is unavailable while offline".to_owned());
         }
         let replicas = self.replica_store.list()?;
+        let verified = self
+            .hydrate_replicas_verified_vaults()
+            .map_err(|error| self.record_authorization_error(error))?;
+        if replicas
+            .iter()
+            .any(|replica| !verified.contains(&replica.vault_id))
+        {
+            return Err(
+                "server did not provide every local vault; local changes were preserved".to_owned(),
+            );
+        }
         let discarded = replicas
             .iter()
             .map(|replica| replica.pending.len())
@@ -1906,7 +1916,6 @@ impl Session {
                 Ok(())
             })?;
         }
-        self.hydrate_replicas()?;
         Ok(json!({"discarded":discarded,"online":true}))
     }
 
@@ -2205,8 +2214,13 @@ impl Session {
         result.map(|_| ())
     }
 
-    #[allow(clippy::too_many_lines)]
     fn hydrate_replicas(&mut self) -> Result<(), String> {
+        self.hydrate_replicas_verified_vaults().map(|_| ())
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn hydrate_replicas_verified_vaults(&mut self) -> Result<Vec<String>, String> {
+        let mut verified = Vec::new();
         let directory = self.get("/api/v1/vaults")?;
         let directory_bytes = bytes(&directory, "directory")?;
         let envelopes = directory["vaultEnvelopes"]
@@ -2459,6 +2473,7 @@ impl Session {
                 .release(handle)
                 .map_err(|_| "vault key could not be released")?;
             self.replica_store.commit(&replica)?;
+            verified.push(vault_id.clone());
             if let Some(head) = replica
                 .operations
                 .iter()
@@ -2472,7 +2487,7 @@ impl Session {
                 self.accepted_device_heads.remove(&vault_id);
             }
         }
-        Ok(())
+        Ok(verified)
     }
 
     fn reference(prefix: &str, id: &str) -> String {

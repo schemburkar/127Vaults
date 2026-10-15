@@ -14,6 +14,122 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn global_server_reload_requires_complete_authenticated_replacements() {
+    for scenario in ["missing-vault", "invalid-catalogue", "verified"] {
+        let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
+        let server = session.replica_store.load(&vault_id).unwrap().unwrap();
+        session.online = false;
+        session
+            .item_upsert(
+                &vault_id,
+                Some(&item_id),
+                "Pending offline edit",
+                "https://fixture.invalid",
+                "fixture-user",
+                "fixture-password",
+                &[],
+            )
+            .unwrap();
+        let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+        let responses = match scenario {
+            "missing-vault" => vec![(
+                200,
+                json!({"directory":server.directory,"vaultEnvelopes":[]}),
+            )],
+            "invalid-catalogue" => vec![
+                initial_snapshot_responses(&server)[0].clone(),
+                (
+                    200,
+                    json!({"catalogue":URL_SAFE_NO_PAD.encode(b"not an authenticated catalogue"),"indices":[]}),
+                ),
+            ],
+            _ => {
+                let mut responses = initial_snapshot_responses(&server);
+                responses.insert(2, (200, json!({"envelope":server.items[0].body})));
+                responses
+            }
+        };
+        let (origin, worker) = fixture(responses);
+        session.origin.clone_from(&origin);
+        session.sync_transport = Some(HttpSyncTransport::new(
+            session.client.clone(),
+            origin,
+            session.cookie.clone(),
+            session.csrf.clone(),
+        ));
+        session.online = true;
+        let result = session.discard_local_changes();
+        let after = session.replica_store.load(&vault_id).unwrap().unwrap();
+        if scenario == "verified" {
+            assert_eq!(result.unwrap()["discarded"], 1);
+            assert!(after.pending.is_empty());
+            assert!(after.conflicts.is_empty());
+            assert_eq!(after.items, server.items);
+            assert_eq!(after.catalogue, server.catalogue);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(
+                after, before,
+                "unverified global reload lost pending work: {scenario}"
+            );
+        }
+        assert!(
+            worker
+                .join()
+                .unwrap()
+                .iter()
+                .all(|request| request.line.starts_with("GET "))
+        );
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
+#[test]
+fn global_server_reload_preserves_pending_work_until_refresh_is_verified() {
+    for status in [401, 403, 503] {
+        let (origin, worker) = fixture(vec![(status, json!({"error":"unavailable"}))]);
+        let (mut session, vault_id, item_id) = session_with_editable_item(&origin);
+        session.online = false;
+        session
+            .item_upsert(
+                &vault_id,
+                Some(&item_id),
+                "Pending offline edit",
+                "https://fixture.invalid",
+                "fixture-user",
+                "fixture-password",
+                &[],
+            )
+            .unwrap();
+        session.online = true;
+        let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+        assert_eq!(before.pending.len(), 1);
+        assert!(
+            session
+                .discard_local_changes()
+                .unwrap_err()
+                .contains(&status.to_string())
+        );
+        assert_eq!(
+            session.replica_store.load(&vault_id).unwrap().unwrap(),
+            before,
+            "failed global reload lost pending ciphertext for {status}"
+        );
+        assert_eq!(session.is_online(), status == 503);
+        if status != 503 {
+            assert!(
+                session
+                    .offline_reason()
+                    .unwrap()
+                    .contains("no longer authorizes")
+            );
+        }
+        assert_eq!(worker.join().unwrap().len(), 1);
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
+#[test]
 fn unchanged_settings_review_allows_both_explicit_choices() {
     for keep in ["server", "local"] {
         let mut session = session("http://127.0.0.1:1");
