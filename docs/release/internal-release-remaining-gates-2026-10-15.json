@@ -72,8 +72,8 @@
       "name": "Stale create, create-ID collision and chained pending edits",
       "source": "required acceptance matrix / stale create collision",
       "assessment": "partial",
-      "covered": "Earlier fixed stale/chained creation and stable original IDs; actual recovered reported queues and consecutive native/GUI creation",
-      "remaining": "Create-ID collision and broader pending chains, field/loss combinations and client/UI matrix; preserve failed original requests"
+      "covered": "Earlier fixed stale/chained creation and stable original IDs; actual recovered reported queues and consecutive native/GUI creation; real encrypted native Session create-ID collision classifies without automatic upload/rebase, preserves peer and two requests, explicit server choice preserves decryptable sibling component regression",
+      "remaining": "Packaged/live-server/GUI create-ID collision and broader pending chains, field/loss combinations and client/UI matrix. Controlled component collision is partial evidence only; preserve failed originals."
     },
     {
       "id": "SYNC-09",
@@ -181,9 +181,9 @@
     }
   ],
   "nextLocalPriority": [
-    "SYNC-07: design applicable GUI defensive missing-item fixture around unsupported private-item deletion boundary; retain encrypted component coverage and cross-vault follow-up",
-    "SYNC-08: controlled create-ID collision/chained pending fixture",
-    "LOCAL-01: packaged/UI budget message and recovery",
+    "LOCAL-01: selected packaged/UI encryption-budget message and fresh-unlock/retry recovery without lowering the budget",
+    "SYNC-08: packaged collision/chained pending on a suitable new controlled fixture",
+    "SYNC-07: applicable GUI defensive missing-item coverage around unsupported private deletion; cross-vault follow-up",
     "SYNC-09 and LOCAL-02: settings/default-view divergence and signed-license notices/renewal"
   ],
   "evidence": {
@@ -197,7 +197,8 @@
       "docs/release/server-a-operations-2026-10-15.md",
       "docs/release/server-a-extension-web-permission-2026-10-15.md",
       "docs/release/server-a-member-desktop-multi-2026-10-15.md",
-      "docs/release/server-a-missing-item-boundary-2026-10-15.md"
+      "docs/release/server-a-missing-item-boundary-2026-10-15.md",
+      "docs/release/create-id-collision-component-2026-10-15.md"
     ]
   },
   "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."

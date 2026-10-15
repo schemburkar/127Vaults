@@ -733,6 +733,138 @@ fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
 }
 
 #[test]
+fn create_id_collision_preserves_real_draft_and_peer_until_explicit_choice() {
+    let (mut session, vault_id, first_id, mut before, mut remote) =
+        session_with_real_missing_item_drafts(true);
+    let operation_id = before.pending[0].operation["opId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Only the colliding first creation is quarantined in this component case;
+    // the second real signed request remains unrelated pending work.
+    before
+        .conflicts
+        .retain(|row| row["operationId"] == operation_id);
+    session.replica_store.commit(&before).unwrap();
+    add_authenticated_collision(&mut session, &mut remote, &first_id);
+    let snapshot = initial_snapshot_responses(&remote);
+    let mut first_snapshot = snapshot.clone();
+    first_snapshot.insert(2, (200, json!({"envelope":remote.items[0].body})));
+    let (origin, worker) = fixture([first_snapshot, snapshot.clone(), snapshot].concat());
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    session.online = true;
+    session.hydrate_replicas().unwrap();
+    assert_eq!(session.rebase_nonoverlapping_conflicts().unwrap(), 0);
+    let classified = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(classified.pending, before.pending);
+    assert_eq!(classified.conflicts.len(), 1);
+    assert_eq!(classified.conflicts[0]["kind"], "create-id-collision");
+    assert_eq!(classified.items, remote.items);
+    let compared = session
+        .conflict_compare(&vault_id, &first_id, &operation_id)
+        .unwrap();
+    assert_eq!(compared["deleted"], false);
+    assert_eq!(compared["server"]["title"], "Peer at reserved ID");
+    assert_eq!(compared["server"]["password"], "peer-collision-password");
+    assert_eq!(
+        session
+            .conflict_draft(&vault_id, &first_id, &operation_id)
+            .unwrap()["password"],
+        "first-private-password"
+    );
+    assert_eq!(
+        session
+            .replica_store
+            .load(&vault_id)
+            .unwrap()
+            .unwrap()
+            .pending,
+        before.pending
+    );
+    session
+        .resolve_conflict(&vault_id, &operation_id, "server")
+        .unwrap();
+    let after = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(after.pending, vec![before.pending[1].clone()]);
+    assert_eq!(after.items, remote.items);
+    let sibling = &after.pending[0];
+    let sibling_draft = session
+        .decrypt_item_parts(
+            &vault_id,
+            sibling.operation["itemId"].as_str().unwrap(),
+            sibling.request["catalogue"].as_str().unwrap(),
+            sibling.request["index"].as_str().unwrap(),
+            sibling.request["body"].as_str().unwrap(),
+        )
+        .unwrap();
+    assert_eq!(sibling_draft["password"], "sibling-private-password");
+    assert_eq!(
+        session.item_get(&vault_id, &first_id, None).unwrap()["title"],
+        "Peer at reserved ID"
+    );
+    assert_eq!(
+        session
+            .item_get(&vault_id, &first_id, Some("password"))
+            .unwrap(),
+        "peer-collision-password"
+    );
+    assert!(
+        worker
+            .join()
+            .unwrap()
+            .iter()
+            .all(|request| request.line.starts_with("GET "))
+    );
+    session.online = false;
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+fn add_authenticated_collision(
+    session: &mut Session,
+    remote: &mut crate::replica::Replica,
+    item_id: &str,
+) {
+    let handle = session
+        .core
+        .open_private_vault(
+            session.root,
+            &URL_SAFE_NO_PAD.decode(&remote.directory).unwrap(),
+            uuid::Uuid::parse_str(&remote.vault_id)
+                .unwrap()
+                .into_bytes(),
+            &URL_SAFE_NO_PAD.decode(&remote.vault_envelope).unwrap(),
+        )
+        .unwrap()
+        .handle
+        .unwrap();
+    let item = session
+        .core
+        .upsert_private_item_at_id(
+            handle,
+            &URL_SAFE_NO_PAD.decode(&remote.catalogue).unwrap(),
+            uuid::Uuid::parse_str(item_id).unwrap().into_bytes(),
+            false,
+            br#"{"title":"Peer at reserved ID","website":"https://fixture.invalid","favorite":false}"#,
+            br#"{"username":"peer-collision-user","password":"peer-collision-password","customFields":[]}"#,
+        )
+        .unwrap();
+    remote.catalogue = URL_SAFE_NO_PAD.encode(&item.catalogue);
+    remote.items.push(crate::replica::ReplicaItem {
+        item_id: item_id.to_owned(),
+        index: URL_SAFE_NO_PAD.encode(&item.index),
+        body: URL_SAFE_NO_PAD.encode(&item.body),
+        created_at: None,
+        updated_at: None,
+    });
+}
+
+#[test]
 fn sync_review_reads_durable_queue_without_network_values_or_mutation() {
     let mut session = session("http://127.0.0.1:1");
     let directory = session.core.create_empty_directory(session.root).unwrap();

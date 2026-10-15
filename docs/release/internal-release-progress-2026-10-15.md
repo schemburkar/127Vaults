@@ -679,3 +679,19 @@ Clippy pass. Only #[cfg(test)] Rust coverage/helper/docs changed, no production
 artifact rebuild. Probe/audit cleanup passes, original/revoked data preserved.
 Remaining GUI/collision/chained/settings/license/budget/physical/access work stays
 open. No browser permission or push.
+
+## Create-ID collision: authenticated component guard with real pending requests
+
+New source regression creates two actual native signed encrypted drafts and a
+real authenticated peer item at the first reserved UUID. Hydration plus automatic
+non-overlap handling classifies create-id-collision with zero rebase/upload,
+preserving both requests and peer data. Verified comparison keeps original local
+and peer secrets distinct. Explicit server choice retires only the first creation;
+sibling remains exact/decryptable and peer fields/password unchanged. GET only.
+
+[Exact scope](create-id-collision-component-2026-10-15.md): controlled native Session
+HTTP fixture, not packaged/live-server/GUI collision acceptance. Focused test1,
+fmt and strict CLI lib/tests Clippy pass; production/artifacts unchanged. No runtime
+P1 reproduced. Remaining packaged collision/chained/loss and original matrix stay
+open; next local runtime priority is packaged/UI session-budget recovery, then
+settings/license and suitable fresh defensive fixtures. No push.
