@@ -231,3 +231,14 @@ Selected archive/extraction bytes and cleanup chain pass.
 is test configuration, not a host grant. Successful permission/selection/fill,
 lock/reconnect remains pending the isolated-browser access answer. No physical
 or Windows-native claim; other automatic cases can continue.
+
+## Selected server-a: member offline overlap and explicit merge
+
+Windows member CLI genuinely queues offline across process restart; newer Linux
+peer title/username causes an actual conflict. Sync and verified/redacted compare
+preserve the original encrypted pending request exactly. Explicit server-title /
+local-username merge reaches Linux; Linux restores original fields, independently
+read by Windows. Both final queues empty; catalogue, peer edit and retirement
+preserved. [Evidence](server-a-member-offline-conflict-2026-10-15.md). Reverse writer,
+multi-queue/vault, GUI/loss and physical/other-source cases remain open; settings
+convergence is not inferred from item queue state.

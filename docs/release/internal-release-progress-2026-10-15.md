@@ -561,3 +561,19 @@ without repeating restore. Syntax and full member/native/web/P1/extension-negati
 cleanup chain pass. No runtime artifact rebuild, permission change or push.
 Existing-host evidence does not close intended/unrelated-host, physical, external
 SMTP or remaining cross-client/extension gates; full release remains unaccepted.
+
+## Selected member offline overlap / exact comparison / explicit field merge
+
+Selected CLI-a Windows cached member edit genuinely queues while only the owned
+server-a is stopped. After restart Linux writes overlapping title/username; a new
+Windows process retains the exact encrypted request through real conflict sync
+and redacted verified comparison. Explicit server-title/local-username merge
+reaches independent Linux. Linux restores baseline; Windows independently reads
+original fields/password. Queues empty, six-item catalogue/peer edit/retirement
+preserved. No queue/identity reset or conflict mocking.
+
+[Evidence and retained request](server-a-member-offline-conflict-2026-10-15.md).
+Syntax and combined member/native/web/P1/extension-negative cleanup verification
+pass. Original server healthy, owned project/processes stopped and revoked draft
+unchanged. Reverse/multiple-pending/GUI/loss/physical and other client/operational
+gates remain open. No runtime package change, browser grant or push.
