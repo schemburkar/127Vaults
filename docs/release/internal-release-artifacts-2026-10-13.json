@@ -188,7 +188,98 @@
         "apps/web/mvp-client.mjs"
       ],
       "validation": "Web 74 tests; Desktop 33 tests; web and Desktop type/build checks passed",
-      "packageAcceptance": "Pending rebuild and actual live-session acceptance; existing selected artifacts predate this fix"
+      "packageAcceptance": "Desktop-e Windows/Linux and server-b rebuilt and checksum-verified from a574a62; actual live-session acceptance remains pending before selection"
+    }
+  ],
+  "candidateArtifacts": [
+    {
+      "path": "desktop/internal-20261015-e/windows",
+      "product": "desktop",
+      "platform": "windows",
+      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
+      "files": [
+        {
+          "name": "127vaults-desktop-0.0.0-windows-x64.exe",
+          "sizeBytes": 5138033,
+          "sha256": "8693bed0083c87cb8742e23c9fd4a2e0174fea6ac32d9ebc527d25dfcde8f378"
+        },
+        {
+          "name": "LICENSE-POLICY.md",
+          "sizeBytes": 6422,
+          "sha256": "95de5da42b8786034f9eb443307aad8bfb4d1b93eda0d1ac9cf32ed1e1d1d2f1"
+        },
+        {
+          "name": "README.md",
+          "sizeBytes": 3077,
+          "sha256": "ebb8601eaaca199e08a05aaceebca3d09bfa061abaa12545277c255469eafcd6"
+        },
+        {
+          "name": "verify-release.mjs",
+          "sizeBytes": 2401,
+          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+        }
+      ]
+    },
+    {
+      "path": "desktop/internal-20261015-e/linux",
+      "product": "desktop",
+      "platform": "linux",
+      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
+      "files": [
+        {
+          "name": "127vaults-desktop-0.0.0-linux-x64.AppImage",
+          "sizeBytes": 86022648,
+          "sha256": "e6822a09ed0529dbe75605accb061fe8b4b4591005aa8fd87ea69ae4fb4c6a4e"
+        },
+        {
+          "name": "127vaults-desktop-0.0.0-linux-x64.deb",
+          "sizeBytes": 11210930,
+          "sha256": "dd56a94a1489301982a8de5551aa67806cd8b349a48445471ef25fb2525c8430"
+        },
+        {
+          "name": "LICENSE-POLICY.md",
+          "sizeBytes": 6300,
+          "sha256": "dfed6164ca665a6db45aae798f781c1b41700f757e46c5ee76448392ac991ebb"
+        },
+        {
+          "name": "README.md",
+          "sizeBytes": 3025,
+          "sha256": "558119cac9cbf67b82b896a4ec63a535e07abe690c09b718feeb53ca2de13a86"
+        },
+        {
+          "name": "verify-release.mjs",
+          "sizeBytes": 2401,
+          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+        }
+      ]
+    },
+    {
+      "path": "server/internal-20261015-b/linux-amd64",
+      "product": "server",
+      "platform": "linux-amd64",
+      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
+      "files": [
+        {
+          "name": "127vaults-server-0.0.0-linux-amd64.tar",
+          "sizeBytes": 835059200,
+          "sha256": "c2b559f762cf6821e58281185acaa390452c986816fa144f46bde9f9c1dea760"
+        },
+        {
+          "name": "LICENSE-POLICY.md",
+          "sizeBytes": 6422,
+          "sha256": "95de5da42b8786034f9eb443307aad8bfb4d1b93eda0d1ac9cf32ed1e1d1d2f1"
+        },
+        {
+          "name": "README.md",
+          "sizeBytes": 17775,
+          "sha256": "0ade97b468dc65fe362497170fde623aff30544d514be6eb5de6a4423fc6e8b8"
+        },
+        {
+          "name": "verify-release.mjs",
+          "sizeBytes": 2401,
+          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+        }
+      ]
     }
   ]
 }
