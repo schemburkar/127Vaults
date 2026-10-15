@@ -7,7 +7,10 @@ import { createRequire } from 'node:module';
 import { sign } from 'node:crypto';
 import { ownershipClient } from './internal-ownership-client.mjs';
 
-const [work] = process.argv.slice(2);
+const [work, mode] = process.argv.slice(2);
+assert.ok(mode === undefined || mode === '--stale-auth');
+const staleAuth = mode === '--stale-auth';
+const evidenceName = staleAuth ? 'ownership-customer-stale' : 'ownership-customer-browser';
 assert.ok(work && isAbsolute(work));
 const fixture = JSON.parse(await readFile(join(work, 'fixture.json'), 'utf8'));
 assert.equal(fixture.serverId, '98027ac4-9882-42d5-812a-a18c972c299f');
@@ -39,7 +42,7 @@ async function context() {
       transports.push({ path: new URL(incoming.url()).pathname, status: response.status });
       if (/\/api\/v1\/ownership\/requests\/[^/]+\/accept$/.test(incoming.url())) {
         const input = JSON.parse(incoming.postData());
-        mutations.push({ action: 'ownership.accept', requestId: input.requestId, status: response.status });
+        mutations.push({ action: 'ownership.accept', requestId: input.requestId, status: response.status, ...(response.status !== 200 ? { error: JSON.parse(response.body).error } : {}) });
       }
       const headers = Object.fromEntries(Object.entries(response.headers).filter(([key]) => !['content-length', 'transfer-encoding', 'content-encoding'].includes(key)).map(([key, value]) => [key, Array.isArray(value) ? value.join('\n') : String(value)]));
       await route.fulfill({ status: response.status, headers, body: response.body });
@@ -58,7 +61,7 @@ assert.equal(metadata.serverId, fixture.serverId);
 assert.equal(metadata.fixtureSigningSeed, 10);
 const member = new client.Account(metadata.accountId, metadata.deviceId, metadata.username, 10);
 const operator = await client.operator('lifecycleowner', 'synthetic-ownership-owner-password');
-let grant, accepted = false;
+let grant, accepted = false, elapsedMs;
 async function unlock(page) {
   if (await page.locator('#login-next').isVisible()) {
     await page.locator('#username').fill(metadata.username);
@@ -98,6 +101,7 @@ try {
   stage = 'unlock and display grant';
   grant = await client.action(operator, 'ownership.request', { targetId: metadata.accountId });
   await unlock(page);
+  const authenticatedAt = Date.now();
   // Use visible settings controls, not direct action invocations or seeded keys.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.locator('#settings').getByRole('button', { name: 'Devices', exact: true }).click();
@@ -110,12 +114,40 @@ try {
   await page.locator('#confirm-cancel').click();
   assert.equal(mutations.length, 0);
   await accept.waitFor();
+  if (staleAuth) {
+    stage = 'real elapsed browser session aging';
+    console.log('Real customer browser session unlocked; aging beyond five minutes without reauthentication.');
+    while (Date.now() - authenticatedAt < 310000) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(30000, 310000 - (Date.now() - authenticatedAt))));
+      // Harmless visible activity avoids the separate inactivity lock. Refresh
+      // uses the same session; it never creates a fresh authentication ceremony.
+      await page.locator('#reload-devices').click();
+      console.log('Owned browser stale-auth wait: ' + Math.floor((Date.now() - authenticatedAt) / 1000) + ' seconds.');
+    }
+    elapsedMs = Date.now() - authenticatedAt;
+    stage = 'stale customer acceptance guidance';
+    await accept.click();
+    await page.locator('#confirm-accept').click();
+    await page.getByText('Lock and unlock again, then accept this request within five minutes.', { exact: true }).waitFor();
+    assert.equal(mutations.length, 1);
+    assert.equal(mutations[0].status, 403);
+    assert.equal(mutations[0].error, 'fresh_auth_required');
+    assert.equal(await page.locator('#vault').isVisible(), true);
+    await accept.waitFor();
+    await page.locator('#close-settings').click();
+    await page.locator('#lock-app').click();
+    await page.waitForFunction(() => document.querySelector('#state')?.textContent === 'Locked');
+    await unlock(page);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.locator('#settings').getByRole('button', { name: 'Devices', exact: true }).click();
+    await accept.waitFor();
+  }
   stage = 'accept customer confirmation';
   await accept.click();
   await page.locator('#confirm-accept').click();
   await page.waitForFunction(() => document.querySelector('#vault')?.hidden === true && document.querySelector('#state')?.textContent === 'Locked');
-  assert.equal(mutations.length, 1);
-  assert.equal(mutations[0].status, 200);
+  assert.equal(mutations.length, staleAuth ? 2 : 1);
+  assert.equal(mutations.at(-1).status, 200);
   accepted = true;
   await page.getByText('Ownership accepted', { exact: true }).waitFor();
   stage = 'fresh unlock after ownership';
@@ -127,7 +159,9 @@ try {
   await page.locator('#lock-app').click();
   await page.waitForFunction(() => document.querySelector('#vault')?.hidden === true && document.querySelector('#state')?.textContent === 'Locked');
   assert.deepEqual(errors, []);
-  await writeFile(join(work, 'ownership-customer-browser.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, mutations, checks: ['Real browser-generated device enrollment approved by original member device; no key/session seeding', 'Real browser OPAQUE unlock displays ownership request under Settings/Devices', 'Cancelling confirmation sends no acceptance; confirming sends one successful request and locks the client', 'Fresh unlock succeeds and clears accepted request; private vault directory remains empty; final lock'], limits: ['Headless Linux ordinary web browser with strict-CA HTTPS relay; physical PWA install/update and Windows acceptance separate', 'Stale-authentication server boundary has separate real elapsed-time evidence; stale UI toast not exercised here'] }, null, 2) + '\n');
+  const checks = ['Real browser-generated device enrollment approved by original member device; no key/session seeding', 'Real browser OPAQUE unlock displays ownership request under Settings/Devices', 'Cancelling confirmation sends no acceptance; confirming sends one successful request and locks the client', 'Fresh unlock succeeds and clears accepted request; private vault directory remains empty; final lock'];
+  if (staleAuth) checks.push('Real aged session receives fresh_auth_required and exact lock/unlock guidance without losing the request; visible lock/unlock recovers successful acceptance');
+  await writeFile(join(work, evidenceName + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, mutations, ...(staleAuth ? { elapsedMs } : {}), checks, limits: ['Headless Linux ordinary web browser with strict-CA HTTPS relay and service-worker bypass; physical PWA install/update and Windows acceptance separate', ...(!staleAuth ? ['Stale-authentication server boundary has separate real elapsed-time evidence; stale UI toast not exercised here'] : [])] }, null, 2) + '\n');
   console.log('Selected customer ownership browser acceptance passed.');
 } catch (error) {
   await writeFile(join(work, 'ownership-customer-browser-failure-' + Date.now() + '.json'), JSON.stringify({ stage, error: error.message, mutations, errors, transports }, null, 2) + '\n', { flag: 'wx' });
@@ -140,7 +174,7 @@ try {
     assert.equal(accounts.status, 200);
     assert.equal(accounts.value.users.find(row => row.id === metadata.accountId)?.role, 'user');
     assert.equal(accounts.value.users.find(row => row.id === '11111111-1111-4111-8111-111111111111')?.role, 'owner');
-    await writeFile(join(work, 'ownership-customer-cleanup.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, memberRole: 'user', originalRole: 'owner' }, null, 2) + '\n');
+    await writeFile(join(work, staleAuth ? 'ownership-customer-stale-cleanup.json' : 'ownership-customer-cleanup.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, memberRole: 'user', originalRole: 'owner' }, null, 2) + '\n');
   }
   await browser.close();
 }

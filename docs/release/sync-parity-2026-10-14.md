@@ -120,3 +120,12 @@ and exact receipt replay pass with a Windows CLI reader. Selected Linux Desktop-
 reads the retained peer edit and explicitly reveals/remasks both secret types
 through actual GUI/native handlers, then locks. [Lifecycle record](isolated-lifecycle-2026-10-15.md)
 separates reader proof from still-open move UI and other pairing/ownership cases.
+
+## Ownership software integration
+
+[Selected ownership acceptance](ownership-acceptance-2026-10-15.md) now covers real
+invited-account onboarding, request/cancel/accept, role/session/account isolation,
+actual operator and customer browser controls, and real aged-session rejection /
+customer guidance / fresh-unlock recovery. Original roles and catalogue restored;
+selected CLI reads during demotion. Broader lifecycle/UI writer pairings and
+physical/intended-host gates remain open; ownership is no longer wholly untested.

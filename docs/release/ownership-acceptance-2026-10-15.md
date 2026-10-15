@@ -63,7 +63,7 @@ and pending request. The fixture retains the new member as a user with no vaults
 its empty directory can support later UI lifecycle checks without resetting the
 original owner's exhausted directory slots.
 
-Pending: customer stale-auth error toast, external SMTP and
+Pending: external SMTP and
 intended-host operations. Broader move UI/writer pairings, Windows physical
 installation/keyring/CA/OS-lock acceptance, actual PWA install/update, extension
 permissions/pairings and other gates in the release audit remain open. The
@@ -143,3 +143,45 @@ from the already verified real server boundary. No product runtime changed.
 ```powershell
 node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer
 ```
+
+## Actual stale-auth customer guidance and recovery
+
+The retained ordinary-web profile also passes the stale-authentication UI case.
+The real browser session aged **310,024 ms** without clock or database timestamp
+changes. Harmless visible Refresh devices clicks prevented the independent idle
+lock without reauthenticating. Ownership confirmation returned HTTP403
+`fresh_auth_required`; the UI displayed exactly “Lock and unlock again, then
+accept this request within five minutes.” The app stayed unlocked and retained
+the pending request. Visible Lock, fresh OPAQUE unlock and confirmation then
+returned one HTTP200 acceptance. The usual acceptance lock/success toast, fresh
+unlock, absent accepted request, empty private directory and final Lock passed.
+
+The UI creates a new request ID for the post-unlock confirmation. Same-ID recovery
+after fresh authentication is proved separately by the API elapsed-time case.
+No root/session/key data was injected and service-worker/physical-PWA limits from
+the earlier ordinary-web case still apply. No product runtime/artifact changed.
+
+Evidence: `ownership-customer-stale.json` and
+`ownership-customer-stale-cleanup.json`; retained runner:
+`run-ownership-customer-stale.mjs`. The repository customer-browser helper accepts
+`--stale-auth`. The interrupted parent left the owned server running after test
+and role-cleanup evidence had been written. On continuation, no runner/browser
+process remained; roles and original catalogue were rechecked through actual
+authenticated APIs (`ownership-customer-stale-live-recheck.json`) before stopping
+the isolated project. Member=user, original account=owner, five original vault
+entries and nine destination items remain. This recovery did not restart a live
+test or change the original 12892 installation.
+
+Syntax and combined evidence verification pass, including exact bundle/wiring
+restoration, selected CLI hashes, original server/database health, absent owned
+browser/mail containers and the revoked device D journal/pending request:
+
+```powershell
+node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer --with-customer-stale
+```
+
+Ownership software integration covered here is now verified across the selected
+server, operator console, ordinary web UI and independent CLI reader. This does
+not close the broader move/UI pairing, physical installation, installed PWA,
+extension permission, external SMTP or intended-host operational release gates.
+Internal release remains unaccepted. No push.

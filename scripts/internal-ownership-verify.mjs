@@ -8,7 +8,7 @@ import { verify } from '../deploy/install.mjs';
 import { verifyRelease } from './release/verify-release.mjs';
 
 const [work, ...flags] = process.argv.slice(2);
-assert.ok(flags.every(flag => ['--with-browser', '--with-stale', '--with-customer'].includes(flag)));
+assert.ok(flags.every(flag => ['--with-browser', '--with-stale', '--with-customer', '--with-customer-stale'].includes(flag)));
 assert.equal(new Set(flags).size, flags.length);
 assert.ok(work && isAbsolute(work));
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
@@ -22,6 +22,30 @@ assert.equal(result.serverId, fixture.serverId);
 assert.equal(result.checks.length, 5);
 assert.equal(result.memberId, (await json(join(work, 'ownership-member.json'))).accountId);
 const additional = {};
+if (flags.includes('--with-customer-stale')) {
+  const stale = await json(join(work, 'ownership-customer-stale.json'));
+  const cleanup = await json(join(work, 'ownership-customer-stale-cleanup.json'));
+  const recheck = await json(join(work, 'ownership-customer-stale-live-recheck.json'));
+  for (const record of [stale, cleanup, recheck]) {
+    assert.equal(record.status, 'passed');
+    assert.equal(record.serverId, fixture.serverId);
+  }
+  assert.equal(stale.serverRevision, fixture.serverRevision);
+  assert.ok(stale.elapsedMs >= 310000);
+  assert.equal(stale.checks.length, 5);
+  assert.equal(stale.mutations.length, 2);
+  assert.ok(stale.mutations.every(row => row.action === 'ownership.accept'));
+  assert.equal(stale.mutations[0].status, 403);
+  assert.equal(stale.mutations[0].error, 'fresh_auth_required');
+  assert.equal(stale.mutations[1].status, 200);
+  for (const record of [cleanup, recheck]) {
+    assert.equal(record.memberRole, 'user');
+    assert.equal(record.originalRole, 'owner');
+  }
+  assert.equal(recheck.originalVaults, 5);
+  assert.equal(recheck.destinationItems, 9);
+  additional.customerStaleAuthentication = { ...stale, roleCleanup: cleanup, liveRecheck: recheck };
+}
 if (flags.includes('--with-customer')) {
   const customer = await json(join(work, 'ownership-customer-browser.json'));
   const device = await json(join(work, 'ownership-customer-device.json'));
@@ -80,6 +104,7 @@ const run = promisify(execFile);
 const { stdout } = await run('podman', ['ps', '--format', '{{.Names}} {{.Status}}'], { windowsHide: true });
 assert.ok(!stdout.includes(fixture.project), 'Owned fixture must be stopped after cleanup');
 assert.ok(!stdout.includes('vaults-ownership-mail-20261015-a'));
+for (const name of ['admin-browser', 'customer-browser', 'customer-stale']) assert.ok(!stdout.includes('vaults-ownership-' + name + '-20261015-a'));
 for (const service of ['server', 'database']) {
   assert.match(stdout, new RegExp('vaults-test-a0540f7d9c99_' + service + '_1 Up[^\\r\\n]*\\(healthy\\)'));
 }
@@ -88,6 +113,8 @@ await writeFile(join(work, 'ownership-combined-evidence.json'), JSON.stringify({
   serverRevision: fixture.serverRevision, result, ...additional,
   cli: { path: cliPath, sourceRevision: cli.sourceRevision, files: cli.files },
   cleanup: ['Exact Compose/manifest/environment restored and verified', 'Owned fixture stopped; original server/database healthy', 'Revoked device journal and pending request preserved'],
-  limits: result.limits,
+  limits: flags.includes('--with-customer-stale')
+    ? ['Headless/container and local TLS evidence; physical Windows/PWA/intended-host gates remain separate', 'SMTP verification used local TLS capture, not external delivery']
+    : result.limits,
 }, null, 2) + '\n');
 console.log('Ownership evidence, selected CLI, exact cleanup and revoked draft verified.');

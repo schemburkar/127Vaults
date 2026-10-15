@@ -308,3 +308,20 @@ this ordinary-web UI check, separate from physical PWA install/update acceptance
 diagnostics, exact driver corrections and limits. No product runtime changed.
 Customer stale-auth toast and broader physical/pairing/intended-host gates remain
 open. Full internal release remains unaccepted; no push.
+
+## Actual stale-auth customer UI completed
+
+[Ownership evidence](ownership-acceptance-2026-10-15.md) now also proves actual
+310-second browser-session rejection, exact lock/unlock guidance, preserved pending
+request and visible lock/fresh-unlock recovery through successful acceptance.
+Inactivity was prevented with harmless device refreshes, without reauthentication
+or clock/database changes. Acceptance lock/toast, new unlock, absent grant, empty
+private directory and final Lock pass. The member is restored to user.
+
+The interrupted parent left the isolated project up after recording the passing
+case and role cleanup. No runner/browser process remained on continuation. Live
+API checks verified member=user, original=owner and original five vault entries /
+nine destination items before completing stop. Combined verifier and syntax checks
+pass; bundle/wiring restored, original server healthy, revoked D draft intact.
+No product runtime or artifact changed. Broader release gates remain open and
+internal release remains unaccepted. No push.
