@@ -628,3 +628,20 @@ preserved, owned project and agents/app stopped. No profile recopy/reset, browse
 grant, Windows policy, artifact change or push. Broader multi-pending/vault,
 deleted-item/collision/settings/loss, Windows/physical/installed-PWA/extension/
 intended-host gates remain open; full release unaccepted.
+
+## Original requirement reconciliation and next concrete gates
+
+[Reconciliation](internal-release-reconciliation-2026-10-15.md) and machine-readable
+remaining-gate register now preserve all 12 original scenario families and 10
+separately named gates, without converting subset success into all-pair completion.
+Earlier named packaged/UI session-budget recovery, signed-license-state/renewal,
+clipboard/drag/accessibility and upgrade gaps remain explicit alongside current
+multi-pending/missing-item/collision/settings/client/physical/access gaps.
+
+New audit helper verifies all six selected manifests/file hashes/source revisions,
+latest concrete member/native/web/Desktop/P1/extension-negative cleanup chain and
+paired-decryption operational records with stopped retained volumes. It passed
+without starting servers, repeating mutations/restores or granting permissions.
+No new P1/runtime change or push. Next local priority: multiple-pending independent
+decisions and missing server item, then collision/chained pending, packaged/UI
+budget and settings/license cases. Internal release remains unaccepted; goal active.

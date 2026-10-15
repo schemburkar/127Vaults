@@ -1,7 +1,7 @@
 # Internal release gate audit — October 14, 2026
 
 **Decision: internal release is not accepted.** The [destination-copy P1](web-destination-copy-blocker-2026-10-15.md) is resolved in selected server/web/admin internal-20261015-a (cbb1be0) with targeted packaged live acceptance; broader release gates remain open.
-seven-surface release. This audit consolidates evidence; it does not waive open
+This audit consolidates seven-surface evidence; it does not waive open
 gates or treat source tests as physical or installed-user acceptance.
 
 | Surface | Authoritative local evidence | Still unproven |
@@ -103,3 +103,12 @@ preserved fields, explicitly reveals/remasks built-in/custom secrets and locks.
 [Exact scope and evidence](isolated-lifecycle-2026-10-15.md) retain open move-UI,
 additional writer/fault, ownership and physical/intended-host acceptance. D's
 revoked journal and pending request remain preserved; no product runtime changed.
+
+## Requirement reconciliation
+
+[October 15 reconciliation](internal-release-reconciliation-2026-10-15.md) and its
+machine-readable remaining-gate register preserve all twelve original scenario
+families plus separately named budget, license, accessibility, upgrade, permission
+and host gates. Selected artifact/scoped evidence and stopped operational volumes
+verify; broad remaining rows above are not exhaustive substitutes for that register.
+No additional exception or release acceptance is inferred.

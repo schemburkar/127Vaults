@@ -1,3 +1,5 @@
+Current requirement reconciliation: [October 15 remaining gates](internal-release-reconciliation-2026-10-15.md). All original scenario families and separately named gates remain explicit; recent selected-package passes are scoped and do not close untested pairs. Earlier labels/status below are historical.
+
 Current package/evidence continuation: [October 15 progress](internal-release-progress-2026-10-15.md). Historical launch-error attribution below is corrected by the [policy investigation](windows-launch-policy-investigation-2026-10-15.md); its denying rule remains unknown.
 
 # Internal release and cross-client sync verification

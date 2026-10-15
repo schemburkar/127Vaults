@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "decision": "internal release not accepted",
+  "scope": "Server, web/PWA, Windows/Linux Desktop and CLI, Chromium extension, admin console and public site; local main commits only, no remote push",
+  "requirementsSources": [
+    "docs/release/internal-sync-release-plan-2026-10-13.md",
+    "docs/release/internal-release-readiness-2026-10-13.md",
+    "docs/release/self-hosted-client-acceptance.md",
+    "docs/release/internal-release-gate-audit-2026-10-14.md"
+  ],
+  "pairRule": "For each enabled writer/reader pair, both directions are required by the original matrix. The family evidence below proves only its named clients, types and environment. No all-pair completion is inferred. Extension consumes credentials through each supported source; admin changes authorization without decrypting items.",
+  "selectedInventory": "docs/release/internal-release-artifacts-2026-10-13.json",
+  "requirements": [
+    {
+      "id": "SYNC-01",
+      "name": "Online create/update and all enabled item types",
+      "source": "required acceptance matrix / online create-update",
+      "assessment": "partial",
+      "covered": "Selected member CLI both OS, actual web/native, Linux Desktop/native ordinary-login round trips; earlier seven-type GUI/CLI/web evidence",
+      "remaining": "Broader selected-package creator/reader/type pairings, latest Windows GUI; retain custom/related-secret disclosure checks"
+    },
+    {
+      "id": "SYNC-02",
+      "name": "Offline create/edit, process restart and reconnect",
+      "source": "required acceptance matrix / offline",
+      "assessment": "partial",
+      "covered": "Selected member Windows/Linux CLI and Linux GUI offline edits and restart/conflict convergence; earlier stale/chained creation and PWA queue replay",
+      "remaining": "Additional writer/reader/UI and chained create/edit pairings; actual installed-PWA and latest Windows GUI"
+    },
+    {
+      "id": "SYNC-03",
+      "name": "Lost reply and repeated retry",
+      "source": "required acceptance matrix / lost response",
+      "assessment": "partial",
+      "covered": "Targeted selected web move destination accepted-reply loss/guard/cancel; historical ordinary/PWA/native/GUI exact receipt replay preserves peer changes",
+      "remaining": "Remaining selected-package ordinary and multi-queue/UI loss pairings; no duplicate identities or discarded pending ciphertext"
+    },
+    {
+      "id": "SYNC-04",
+      "name": "Multiple missed checkpoints and long history",
+      "source": "required acceptance matrix / checkpoints; original history follow-up",
+      "assessment": "partial",
+      "covered": "Earlier verified multi-checkpoint catch-up and 502-operation history, both native reader directions; actual Linux GUI stale-checkpoint subset",
+      "remaining": "Other packaged UI/client pairings and retained-anchor/fork refusal; source tests are not complete runtime coverage"
+    },
+    {
+      "id": "SYNC-05",
+      "name": "Concurrent non-overlapping edits",
+      "source": "required acceptance matrix / nonoverlap",
+      "assessment": "partial",
+      "covered": "Historical packaged Windows/Linux automatic merge and actual Linux GUI title plus Windows username convergence",
+      "remaining": "Remaining selected server/client/UI directions and exact peer verification"
+    },
+    {
+      "id": "SYNC-06",
+      "name": "Same-field conflict, owner context and selected-field save",
+      "source": "required acceptance matrix / same-field",
+      "assessment": "partial",
+      "covered": "Selected member CLI both writer directions and Linux GUI verified masked comparison/cancel, exact pending preservation, explicit merge and peer restoration; older cross-vault GUI subset",
+      "remaining": "Latest Windows GUI; multiple pending/vaults and other UI/client pairings; current member one-item success does not close all of these"
+    },
+    {
+      "id": "SYNC-07",
+      "name": "Explicit server copy, missing server item and independent queues",
+      "source": "required acceptance matrix / server copy and missing item",
+      "assessment": "partial",
+      "covered": "Earlier server/local decisions and two-conflict isolation; selected GUI cancel preserves its one request",
+      "remaining": "Actual missing-edited-item classification, no nonexistent field comparison, explicit selected discard/server decision while sibling request remains byte-identical; broader GUI matrix"
+    },
+    {
+      "id": "SYNC-08",
+      "name": "Stale create, create-ID collision and chained pending edits",
+      "source": "required acceptance matrix / stale create collision",
+      "assessment": "partial",
+      "covered": "Earlier fixed stale/chained creation and stable original IDs; actual recovered reported queues and consecutive native/GUI creation",
+      "remaining": "Create-ID collision and broader pending chains, field/loss combinations and client/UI matrix; preserve failed original requests"
+    },
+    {
+      "id": "SYNC-09",
+      "name": "Vault/collection/default-view/settings divergence",
+      "source": "required acceptance matrix / settings",
+      "assessment": "partial",
+      "covered": "Selected native packages denial/new-revision revalidation both choices/OSs; earlier actual GUI navigation refresh and unrelated item queue preservation",
+      "remaining": "Wider default view/collection/removal preference and divergence/interruption pairings; empty item queues do not establish settings convergence"
+    },
+    {
+      "id": "SYNC-10",
+      "name": "Archive/restore/move/ownership lifecycle",
+      "source": "required acceptance matrix / lifecycle",
+      "assessment": "partial",
+      "covered": "Selected destination-copy P1 refusal/cancel and valid move; earlier native move loss/abort/changed-source/finalization, GUI archive/restore and genuine ownership/stale-auth subsets",
+      "remaining": "Remaining writer/UI/type/settings-retarget/lifecycle pairings and latest Windows GUI; do not reuse exhausted five-vault member as empty fixture"
+    },
+    {
+      "id": "SYNC-11",
+      "name": "Revocation/expiry/lock and extension source handoff",
+      "source": "required acceptance matrix / device and extension",
+      "assessment": "partial",
+      "covered": "Earlier actual revoked-device refusal with exact draft retention and native/GUI extension handoff; selected actual unlocked web missing-permission refusal only",
+      "remaining": "Affirmative actual web source permission/selection/multiple-tab/reconnect/lock; current Windows active session; physical idle/OS lock and wider device/rotation cases"
+    },
+    {
+      "id": "SYNC-12",
+      "name": "Upgrade and selected package compatibility",
+      "source": "required acceptance matrix / upgrade",
+      "assessment": "partial",
+      "covered": "Six selected manifests/hash sets verified; fresh selected server backup/restore with paired decrypted proof; earlier installer/update/uninstall/dependency lifecycle",
+      "remaining": "Existing-profile upgrade combinations, latest Windows GUI, clean physical hosts and intended-host trust; artifact build pass alone does not establish installation acceptance"
+    }
+  ],
+  "additionalNamedGates": [
+    {
+      "id": "LOCAL-01",
+      "name": "Packaged/UI encryption-budget limit and lock/unlock/retry recovery",
+      "source": "internal-sync-release-plan-2026-10-13.md / 1000-envelope budget follow-up",
+      "state": "open_local",
+      "proof": "Exercise the unchanged budget on a selected package/UI, retain pending requests, verify actionable recovery message and fresh-unlock continuation; source/core budget tests and historical across-session 502 writes are partial evidence only."
+    },
+    {
+      "id": "LOCAL-02",
+      "name": "License read-only/locked/revoked and higher-sequence renewal",
+      "source": "self-hosted-client-acceptance.md / one installation two devices step 6",
+      "state": "open_local_and_host",
+      "proof": "Use signed fictitious license states, verify server write refusal, cross-client notices/appropriate reads and exact pending edit retention through renewal; do not substitute authentication denial tests."
+    },
+    {
+      "id": "LOCAL-03",
+      "name": "Clipboard/drag exposure and accessibility",
+      "source": "internal-release-readiness-2026-10-13.md / Desktop and extension remaining checks",
+      "state": "open_local_and_physical",
+      "proof": "Complete applicable selected UI clipboard/drag/masking, keyboard/screen-reader and accessibility checks; existing DOM/button tests do not prove physical interaction."
+    },
+    {
+      "id": "ACCESS-01",
+      "name": "Latest Windows Desktop GUI and unidentified launch rejection",
+      "source": "windows-launch-policy-investigation-2026-10-15.md",
+      "state": "waiting_supported_launch",
+      "proof": "Identify the original denying rule/reason or obtain the supported human-launched reviewed fixture; do not change settings or bypass through another launcher. Earlier error is not proof of user/Windows/automatic-review policy."
+    },
+    {
+      "id": "ACCESS-02",
+      "name": "Affirmative extension web-source host access",
+      "source": "server-a-extension-web-permission-2026-10-15.md",
+      "state": "waiting_user_answer",
+      "proof": "Pending isolated Linux-browser https://127.0.0.1/* grant question; Chromium grant is host-wide while app source selection is exact port 12898. No answer/automatic continuation is a grant. Negative permission-boundary pass is not affirmative fill."
+    },
+    {
+      "id": "ACCESS-03",
+      "name": "Enabled passkey provider ceremony",
+      "source": "internal-release-readiness-2026-10-13.md / pending passkey consent",
+      "state": "waiting_permission_and_ceremony",
+      "proof": "Enabled installed-site registration/assertion and provider/browser fallback remain unverified; preserve existing permission boundary. No exception has been accepted by this audit."
+    },
+    {
+      "id": "HOST-01",
+      "name": "Intended-host private trust, onboarding, operator and SMTP",
+      "source": "internal-sync-release-plan-2026-10-13.md / completion rules; self-hosted-client-acceptance.md",
+      "state": "waiting_target_and_human_acceptance",
+      "proof": "Record intended host/endpoint/installation and independently verified CA, actual onboarding/admin acceptance and live SMTP path; local stub/Podman restore is not unrelated-host evidence."
+    },
+    {
+      "id": "HOST-02",
+      "name": "Clean physical Windows/Linux installation and keyrings",
+      "source": "internal-release-readiness-2026-10-13.md / physical acceptance",
+      "state": "waiting_physical_acceptance",
+      "proof": "Actual clean-host trust/enrollment, keyring, terminal, installer/update and lock/idle behavior. Existing-host copied profiles, WSL/Xvfb and container dependency install remain scoped evidence."
+    },
+    {
+      "id": "HOST-03",
+      "name": "Installed PWA enrollment, offline/update and retained edits",
+      "source": "internal-release-gate-audit-2026-10-14.md / Web-PWA unproven",
+      "state": "waiting_install_and_local_cases",
+      "proof": "Actual intended-host installed-PWA CA/enrollment/update/queue acceptance; installed-display-mode cache-upgrade emulation is partial, not physical installation."
+    },
+    {
+      "id": "SITE-01",
+      "name": "Public site private internal cut",
+      "source": "internal-release-gate-audit-2026-10-14.md / Public site",
+      "state": "local_pass_scope_limited",
+      "proof": "Eleven local pages desktop/mobile links/assets/overflow passed; intake closed and public downloads unexposed. Public deployment/distribution/signing/real secrets remain outside the already documented private fictitious-data cut, not newly waived here."
+    }
+  ],
+  "nextLocalPriority": [
+    "SYNC-07 / SYNC-06: independent multiple pending decisions and absent server item",
+    "SYNC-08: controlled create-ID collision/chained pending fixture",
+    "LOCAL-01: packaged/UI budget message and recovery",
+    "SYNC-09 and LOCAL-02: settings/default-view divergence and signed-license notices/renewal"
+  ],
+  "evidence": {
+    "candidateWork": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a",
+    "latestCombined": "member-desktop-conflict-combined-evidence.json",
+    "operationsWork": "C:/Projects/127Vaults-server-a-ops-20261015-a",
+    "operationsCombined": "selected-operational-evidence.json",
+    "notes": [
+      "docs/release/server-a-member-desktop-conflict-2026-10-15.md",
+      "docs/release/server-a-member-offline-reverse-2026-10-15.md",
+      "docs/release/server-a-operations-2026-10-15.md",
+      "docs/release/server-a-extension-web-permission-2026-10-15.md"
+    ]
+  },
+  "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."
+}
