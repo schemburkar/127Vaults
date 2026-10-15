@@ -528,3 +528,18 @@ the accepted save was recovered by read-only browser restart and independent
 native read, without resubmission. Combined member/native/P1/cleanup checks pass.
 No runtime package changed or push performed. Wider interrupted/concurrent/UI,
 Windows/physical/PWA/extension/intended-host gates remain open.
+
+## Selected extension with actual unlocked web source: missing permission
+
+Selected immutable extension-a loaded as a real MV3 worker/action popup in the
+retained member browser. Against the actual selected unlocked web app, saved
+public vaultOrigin with absent host grant yields Connect guidance, no results or
+password, zero target field fill/submits and unchanged empty origin permissions.
+Actual source locks afterward. No source/Chrome API mocks or native registration.
+
+[Evidence and scope](server-a-extension-web-permission-2026-10-15.md). Selected ZIP
+and every extracted byte verify. Combined member/native/web/P1/cleanup checks
+pass; original server and revoked draft preserved. Affirmative web-source
+fill/lock/reconnect requires the pending isolated-browser host-access answer;
+no grant was made. Other automated work remains possible. No artifact change or
+push; full internal release unaccepted.

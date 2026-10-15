@@ -220,3 +220,14 @@ preserved peer edit, actual retired-source refusal and empty queue/review.
 from the initial helper's endpoint-observation mismatch, without duplicate save.
 Online sequential web/native member pairing is covered; interrupted/concurrent,
 Desktop/extension and installed/physical pairings remain separate.
+
+## Selected server-a / extension-a: actual web missing-permission refusal
+
+Actual installed extension popup selects configured Web tab while real selected
+member app is unlocked but optional host access is absent. It refuses results,
+reveals no credentials and fills/submits nothing; permission set stays empty.
+Selected archive/extraction bytes and cleanup chain pass.
+[Evidence](server-a-extension-web-permission-2026-10-15.md). Public origin storage
+is test configuration, not a host grant. Successful permission/selection/fill,
+lock/reconnect remains pending the isolated-browser access answer. No physical
+or Windows-native claim; other automatic cases can continue.
