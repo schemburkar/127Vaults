@@ -179,3 +179,12 @@ Desktop-c reads retained peer data, reveals/remasks both secret kinds and locks.
 Binaries match selected archives; current server image is selected server-a.
 This proves retained-owner reader/sync interoperability, not a new writer/member
 CLI enrollment or physical/Windows/PWA/extension acceptance claim.
+
+## New member web-to-packaged-CLI enrollment and move reads
+
+[Selected-server evidence](server-a-member-cli-2026-10-15.md) now covers actual member
+web approval of a fresh selected Windows CLI device, full binding comparison,
+possession-proof completion and real native member reads of the web move / retained
+peer edit. Selected admin UI management/security walkthrough also passes. This is
+native member enrollment/read proof; additional OSs, writers, interruption and
+physical/human review/intended-host combinations remain separate.

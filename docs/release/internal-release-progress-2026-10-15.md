@@ -464,3 +464,20 @@ project stopped, original server healthy and revoked D journal/draft intact.
 No product/selected-artifact change, no Windows GUI/policy change, no push. These
 are reader/sync combinations only. Broader writer/interruption/member enrollment /
 physical/operational release gates remain open; internal release unaccepted.
+
+## Selected admin console and genuinely enrolled packaged member CLI
+
+[New member/admin evidence](server-a-member-cli-2026-10-15.md) proves actual selected
+admin request/cancel, last-owner retry/refusal, audit/layout and operator restrictions.
+A fresh selected Windows CLI generated its own device key, established pinned trust,
+received actual member-web UI approval after exact UUID/fingerprint binding checks,
+completed possession proof and OS-keyring storage, then authenticated/synced and
+independently read the web-created member move, masked/explicit password, preserved
+peer edit, six-item catalogue and source retirement. No key/session seeding or reset.
+
+The new member CLI identity/profile is retained for further work; re-enrollment
+intentionally refuses. Syntax and combined selected-native/P1/data/cleanup checks
+pass; owned project stopped, original server healthy and revoked D draft exact.
+No product/selected-artifact change or push. Wider member writers/enrollment OSs,
+interruptions, human comparison/physical/browser/Windows/extension and intended-host
+gates remain open. Full internal release remains unaccepted.
