@@ -20,7 +20,7 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
 Latest native candidates are CLI `internal-20261015-a` (source `600f206`) and
-Desktop `internal-20261015-b` (source `5312a34`); server/web remains `internal-20261014-e`,
+Desktop `internal-20261015-c` (source `4e1e146`); server/web remains `internal-20261014-e`,
 source `ee83e2d`. The [October 14 continuation](internal-release-progress-2026-10-14.md)
 records four packaged settings-choice cases preserving an unrelated item queue,
 two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI

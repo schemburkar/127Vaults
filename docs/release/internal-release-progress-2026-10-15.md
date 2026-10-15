@@ -107,3 +107,84 @@ intended-host/physical gates in the original matrix. Windows GUI remains open,
 along with actual web-source extension permission/selection/reconnect and the
 other explicitly recorded manual/operational checks. This completed settings
 subset is not full release acceptance. No remote push or public deployment.
+
+## Global replacement verification before item-queue discard
+
+Source `4e1e1461666a1b6c50e43eda58719996ae05aba5` fixes a latent data-loss path in
+the registered Desktop `discard_local_changes` backend command. The current React
+source has no caller for that command; this is not claimed as a reproduced GUI
+button failure or a CLI command. The CLI library provides the shared engine, but
+CLI agent dispatch does not expose this global operation. Selected CLI-a remains
+applicable; only Desktop requires an updated package for this registered entry.
+
+Before the fix, a real encrypted offline edit was queued, the replacement GET
+returned 401, and the operation returned an error after clearing `pending`. The
+new regression failed with the previously nonempty queue becoming empty. The
+backend now verifies replacements for every local vault before retiring any
+queued request. A missing local vault in the server list also refuses discard.
+401/403 refresh refusals mark the session offline with the preservation reason;
+503 preserves an otherwise-online session.
+
+Seven real HTTP/encrypted-engine cases pass: 401, 403, 503, missing vault,
+malformed unauthenticated catalogue, successful verified server replacement, and
+a later-vault failure after the first vault was verified. The last case retains
+the first vault's exact pending request while allowing its authenticated remote
+view to refresh. All requests are GETs; no pending edit is uploaded. Test-only
+follow-up `b84cef7` adds the multi-vault case. Final source library suite: **81
+passed, 0 failed, 1 separately gated live fixture ignored**. Strict workspace
+Clippy and formatting pass. This is encrypted source transport evidence, not
+actual TLS/PostgreSQL or a normal GUI workflow claim.
+
+A new Desktop-c candidate is built from committed `4e1e146`, whose build snapshot
+contains the preceding 80 passing library tests; its product code matches the
+follow-up test-only commit. Package completion/selection is recorded below after
+verification. Earlier Desktop-b settings GUI cases remain historical evidence,
+not retests of Desktop-c.
+
+## Lifecycle fixture inventory and next isolation requirement
+
+Read-only packaged CLI inventory at
+`C:/Projects/127Vaults-vault-move-20261015-a/inventory.json` confirms the retained
+fixture already has five active vaults (item counts 31, 50, 0, 5 and 14). Only one
+is empty. A sixth-vault capacity refusal was already verified earlier. Do not
+retire an existing fixture vault merely to manufacture a move test, or delete
+items to make room. A dedicated fresh fixture/account/project is the next useful
+step for a complete move/interruption/ownership matrix with independently owned
+source and destination vaults. The inventory used a copied profile, read actual
+packaged item lists and made no server mutation.
+
+### Verified Desktop-c selection and selected-server GUI smoke
+
+Desktop `internal-20261015-c/windows` and `/linux`, source `4e1e146`, now supersede
+Desktop-b in the selected inventory. CLI-a, server/web/admin-e and extension-a
+remain selected. All six complete selected file sets and SHA256 sums pass. Both
+Desktop-c builds pass locked dependencies, TypeScript/Vite/native checks, 32
+Desktop tests, 80 library passes plus one separate live fixture ignored, optimized
+CLI/native-host/App, NSIS or DEB/AppImage and framed native-host discovery. The
+later `b84cef7` is test-only; product code is unchanged.
+
+Actual Linux Desktop-c GUI online unlock, retained-item read and lock pass against
+the selected server-e image (`8caae90f...`, source `ee83e2d`). The test temporarily
+used the existing copied server-e operator fixture with its listener mapped to
+12892; image identity was checked before GUI work. The retained item was read,
+not edited. This smoke covers the refactored verified hydration path; it does not
+claim to invoke the global-discard command through the UI.
+
+Evidence index:
+`C:/Projects/127Vaults-global-reload-20261015-a/evidence.json`; `gui.json`,
+`runtime-image.json`, `run.mjs`, `gui.sh`, `verify.mjs` and both environment snapshots
+are retained. Both exact operator environments and original bundle-d runtime were
+restored and checked; the owned server/database are healthy. Only the dedicated
+fixture D-Bus session was stopped. Original profiles and data remain intact.
+
+Windows static preparation now pins Desktop-c in `app-n`, copied `profile-m`,
+separate `webview-n`, inspector 12915 at the existing manual starter path. Manifest,
+file hashes and launcher syntax pass. Previous starter is separately preserved as
+`start-isolated-desktop.previous-20261015-c.ps1`; preparation receipt is
+`manual-preparation-20261015-c.json`. No Windows GUI execution, installation,
+native registration, security setting change, public deployment or remote push.
+
+The next substantive automation work is a fresh isolated lifecycle fixture for
+move, interruption and ownership cases. The capacity inventory above prevents
+using an existing retained vault as a disposable source. Physical and remaining
+pairing gates stay open; do not mark internal release complete.

@@ -1,3 +1,5 @@
+Latest follow-up: Desktop-20261015-c (4e1e146) is selected; CLI-20261015-a is unchanged. Current Windows static fixture is app-n/profile-m/webview-n. Source tests 81 passed/1 live fixture ignored; Desktop-c build snapshot 80 passed/1 ignored. See [October 15 progress](internal-release-progress-2026-10-15.md) for backend scope and remaining fresh-fixture lifecycle work.
+
 Latest continuation: [October 15 progress](internal-release-progress-2026-10-15.md). The user resumed the goal. Selected CLI-20261015-a (600f206) and Desktop-20261015-b (5312a34) include the settings fixes. Current Windows starter is app-m/profile-l/webview-m, inspector 12915. The stop/paused notes below are historical. Internal release remains unaccepted.
 
 Latest stop checkpoint: [October 14 stop and pending work](internal-release-stop-2026-10-14.md). Source fix `a65ab45` is committed and checked; selected CLI-g/Desktop-i packages still lack that fix and must be rebuilt. Work is paused at the user's request; internal release is not accepted.

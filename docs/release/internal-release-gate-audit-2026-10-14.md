@@ -8,7 +8,7 @@ gates or treat source tests as physical or installed-user acceptance.
 | --- | --- | --- |
 | Server | Selected server-e, source `ee83e2d`, verified bundle/image and real HTTPS/PostgreSQL startup, hostile authorization, encrypted backup/restore and current-schema checks | Intended-host installation/trust, unrelated-host deployment and remaining operational acceptance |
 | Web/PWA | Selected server/web-e: seven Desktop-created type reads, real archive/restore, acknowledged-history rollback refusal and recovery; prior real-server queue/conflict/reply-loss and installed-mode cache-upgrade evidence | Physical PWA/CA enrollment and update acceptance; other recorded pairing/lifecycle/fork cases |
-| Desktop | Selected Desktop-20261015-b, source `5312a34`: Windows/Linux package gates, 32 tests, fixed displayed-item owner binding; actual Linux cross-vault review/isolation and receipt replay with independent Windows CLI; earlier seven-type creation/read and lifecycle cases | Latest Windows GUI, clean physical installation/keyring/lock and remaining UI pairings/operations |
+| Desktop | Selected Desktop-20261015-c, source `4e1e146`: Windows/Linux package gates, 32 tests, fixed displayed-item owner binding; actual Linux cross-vault review/isolation and receipt replay with independent Windows CLI; earlier seven-type creation/read and lifecycle cases | Latest Windows GUI, clean physical installation/keyring/lock and remaining UI pairings/operations |
 | CLI | Selected CLI-20261015-a, source `600f206`: both OS packages, 78 library passes plus separately exercised live fixture, actual signing/retry, acknowledgement preservation, queued review, field merge and peer reads | Physical terminal/clean-host acceptance and other recorded device/lifecycle combinations |
 | Browser extension | Selected extension-a: real installed native messaging, guarded form filling, Linux GUI-owned source handoff/lock/restart and prior Windows installed subsets | Current active Windows session, actual web-source permission/selection/reconnect, physical idle/lock and optional passkey ceremonies |
 | Admin console | Selected server/admin-e: real authenticated, audited invitation create/replay/revoke/sign-out; earlier browser usability, permission, ownership and failure subsets | Intended-host operator acceptance and remaining management/client integration cases |
@@ -26,7 +26,7 @@ settings convergence; those flags are recorded separately.
 
 The latest reviewed Windows fixture is prepared at
 `C:\Projects\127Vaults-sync-desktop-20261013-a\start-isolated-desktop.ps1`.
-It selects extracted Desktop-20261015-b `app-m`, copied `profile-l`, separate `webview-m`
+It selects extracted Desktop-20261015-c `app-n`, copied `profile-m`, separate `webview-n`
 and inspector 12915. It validates the fictitious profile and extracted executable
 SHA256 before launching. Original app/profile/starter are retained. Static
 extraction, copied-file hashes and script syntax pass; no app launch, installation
@@ -63,3 +63,14 @@ The [policy investigation](windows-launch-policy-investigation-2026-10-15.md)
 corrects the earlier attribution: the raw launch error says blocked by policy
 but does not identify automatic review, Windows, a user rule or the exact reason.
 No security setting was changed and no alternate launcher was attempted.
+
+## Global reload backend follow-up
+
+[October 15 progress](internal-release-progress-2026-10-15.md) now selects Desktop-c
+from `4e1e146`, which verifies every replacement before globally clearing pending
+item requests. This registered backend command has no current React caller; its
+seven encrypted HTTP regression cases are not claimed as a normal GUI flow.
+Latest source library tests pass 81/1 ignored; the Desktop-c committed build
+snapshot passes 80/1 ignored and 32 Desktop tests. CLI-a remains unchanged because
+its dispatch does not expose this global operation. Move testing needs an isolated
+fresh account/project; the retained five-vault fixture must be preserved.
