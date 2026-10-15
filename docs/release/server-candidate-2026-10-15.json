@@ -76,5 +76,6 @@
   "memberDesktopEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-desktop-native-combined-evidence.json",
   "memberDesktopConflictEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-desktop-conflict-combined-evidence.json",
   "requirementAudit": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/release-gap-audit.json",
-  "memberDesktopMultiEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-desktop-multi-combined-evidence.json"
+  "memberDesktopMultiEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-desktop-multi-combined-evidence.json",
+  "itemDeleteBoundaryEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/item-delete-capability-boundary.json"
 }

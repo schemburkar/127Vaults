@@ -661,3 +661,21 @@ peer-edited title and retirement restored/preserved. Selected artifact/profile/
 queue/process/full prior acceptance/original/revoked-data cleanup chain passes.
 Same-vault multiple-pending case is covered; absent-server-item/cross-vault/
 collision and other remaining gates stay explicit. No runtime package or push.
+
+## Missing-item boundary and real encrypted defensive regression
+
+The selected private-item route refuses authenticated DELETE with 405 and preserves
+returned catalogue/indices/signed history snapshot; selected Windows CLI item help
+has no delete/remove. No sentinel or retained item was deleted, no SQL/catalogue/
+history marker fabricated. This changes how the proposed missing-item end-to-end
+fixture can be constructed; the GUI gate remains unproven, not waived.
+
+[Evidence](server-a-missing-item-boundary-2026-10-15.md). New native Session
+component regression generates actual signed encrypted pending create/edit plus
+sibling. Controlled absent-catalogue comparison preserves both exactly, identifies
+creation versus edit, uses GET only, and explicit selected retirement preserves
+and decrypts the sibling. Two focused tests, Rustfmt and strict CLI lib/tests
+Clippy pass. Only #[cfg(test)] Rust coverage/helper/docs changed, no production
+artifact rebuild. Probe/audit cleanup passes, original/revoked data preserved.
+Remaining GUI/collision/chained/settings/license/budget/physical/access work stays
+open. No browser permission or push.

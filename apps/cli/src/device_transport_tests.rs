@@ -572,6 +572,166 @@ fn missing_server_item_distinguishes_a_queued_creation_from_an_edit() {
     }
 }
 
+fn session_with_real_missing_item_drafts(
+    queued_create: bool,
+) -> (
+    Session,
+    String,
+    String,
+    crate::replica::Replica,
+    crate::replica::Replica,
+) {
+    let mut session = session("http://127.0.0.1:1");
+    let directory = session.core.create_empty_directory(session.root).unwrap();
+    let vault = session
+        .core
+        .create_private_vault(session.root, &directory)
+        .unwrap();
+    let vault_id =
+        uuid::Uuid::from_bytes(vault.vault.context[33..49].try_into().unwrap()).to_string();
+    let mut remote = crate::replica::Replica::new(session.tenant_id.clone(), vault_id.clone(), 1);
+    remote.directory = URL_SAFE_NO_PAD.encode(&vault.directory);
+    remote.vault_envelope = URL_SAFE_NO_PAD.encode(&vault.vault.envelope);
+    remote.catalogue = URL_SAFE_NO_PAD.encode(&vault.catalogue);
+    let mut local = remote.clone();
+    let existing_id = if queued_create {
+        None
+    } else {
+        let item = session
+            .core
+            .upsert_private_item(
+                vault.vault.handle.unwrap(),
+                &vault.catalogue,
+                None,
+                br#"{"title":"Original","website":"https://fixture.invalid","favorite":false}"#,
+                br#"{"username":"fixture-user","password":"fixture-password","customFields":[]}"#,
+            )
+            .unwrap();
+        let item_id = uuid::Uuid::from_bytes(item.item).to_string();
+        local.catalogue = URL_SAFE_NO_PAD.encode(&item.catalogue);
+        local.items.push(crate::replica::ReplicaItem {
+            item_id: item_id.clone(),
+            index: URL_SAFE_NO_PAD.encode(&item.index),
+            body: URL_SAFE_NO_PAD.encode(&item.body),
+            created_at: None,
+            updated_at: None,
+        });
+        Some(item_id)
+    };
+    session.replica_store.commit(&local).unwrap();
+    session.online = false;
+    let first = session
+        .item_upsert(
+            &vault_id,
+            existing_id.as_deref(),
+            "Real first draft",
+            "https://fixture.invalid",
+            "first-user",
+            "first-private-password",
+            &[],
+        )
+        .unwrap();
+    let sibling = session
+        .item_upsert(
+            &vault_id,
+            None,
+            "Real sibling draft",
+            "https://fixture.invalid",
+            "sibling-user",
+            "sibling-private-password",
+            &[],
+        )
+        .unwrap();
+    let first_id = first["itemId"].as_str().unwrap().to_owned();
+    let mut before = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(before.pending.len(), 2);
+    assert_eq!(before.pending[1].operation["itemId"], sibling["itemId"]);
+    assert_eq!(
+        before.pending[0].operation["kind"],
+        if queued_create {
+            "item.create"
+        } else {
+            "item.update"
+        }
+    );
+    for pending in before.pending.clone() {
+        before.mark_stale(
+            &pending.operation,
+            pending.operation["itemId"].as_str().unwrap(),
+        );
+    }
+    session.replica_store.commit(&before).unwrap();
+    (session, vault_id, first_id, before, remote)
+}
+
+#[test]
+fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
+    for queued_create in [true, false] {
+        let (mut session, vault_id, first_id, before, remote) =
+            session_with_real_missing_item_drafts(queued_create);
+        let operation_id = before.pending[0].operation["opId"].as_str().unwrap();
+        let responses = initial_snapshot_responses(&remote);
+        // Controlled authenticated empty-catalogue state, not a production
+        // deletion endpoint. Actual native writes above produce both requests.
+        let (origin, worker) = fixture([responses.clone(), responses].concat());
+        session.origin.clone_from(&origin);
+        session.sync_transport = Some(HttpSyncTransport::new(
+            session.client.clone(),
+            origin,
+            session.cookie.clone(),
+            session.csrf.clone(),
+        ));
+        session.online = true;
+        let compared = session
+            .conflict_compare(&vault_id, &first_id, operation_id)
+            .unwrap();
+        assert_eq!(compared["deleted"], true);
+        assert_eq!(compared["queuedCreate"], queued_create);
+        assert!(compared["server"].is_null());
+        assert_eq!(
+            session
+                .replica_store
+                .load(&vault_id)
+                .unwrap()
+                .unwrap()
+                .pending,
+            before.pending
+        );
+        let draft = session
+            .conflict_draft(&vault_id, &first_id, operation_id)
+            .unwrap();
+        assert_eq!(draft["password"], "first-private-password");
+        session
+            .resolve_conflict(&vault_id, operation_id, "server")
+            .unwrap();
+        let after = session.replica_store.load(&vault_id).unwrap().unwrap();
+        assert_eq!(after.pending, vec![before.pending[1].clone()]);
+        assert_eq!(after.conflicts.len(), 1);
+        assert_eq!(
+            after.conflicts[0]["itemId"],
+            before.pending[1].operation["itemId"]
+        );
+        let sibling_draft = session
+            .conflict_draft(
+                &vault_id,
+                before.pending[1].operation["itemId"].as_str().unwrap(),
+                after.pending[0].operation["opId"].as_str().unwrap(),
+            )
+            .unwrap();
+        assert_eq!(sibling_draft["title"], "Real sibling draft");
+        assert_eq!(sibling_draft["password"], "sibling-private-password");
+        assert!(
+            worker
+                .join()
+                .unwrap()
+                .iter()
+                .all(|request| request.line.starts_with("GET "))
+        );
+        session.online = false;
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
 #[test]
 fn sync_review_reads_durable_queue_without_network_values_or_mutation() {
     let mut session = session("http://127.0.0.1:1");

@@ -64,8 +64,8 @@
       "name": "Explicit server copy, missing server item and independent queues",
       "source": "required acceptance matrix / server copy and missing item",
       "assessment": "partial",
-      "covered": "Earlier server/local decisions and two-conflict isolation; selected GUI cancel preserves its one request; selected actual Linux GUI two pending requests, first server/second local choice and exact sibling preservation",
-      "remaining": "Actual missing-edited-item classification/no nonexistent comparison and explicit selected discard with untouched sibling; broader GUI/client/cross-vault matrix"
+      "covered": "Earlier server/local decisions and two-conflict isolation; selected GUI cancel preserves its one request; selected actual Linux GUI two pending requests, first server/second local choice and exact sibling preservation; selected private-item DELETE405/no mutation and CLI capability probe; real encrypted Session create/edit absent-copy classification, exact comparison and selected discard preserving decryptable sibling component regression",
+      "remaining": "Applicable actual GUI absent-item classification/selected discard and cross-vault/client matrix remain unproven. Current private API/CLI has no supported deletion transaction; do not fabricate production history/SQL deletion or waive the defensive gate."
     },
     {
       "id": "SYNC-08",
@@ -181,7 +181,7 @@
     }
   ],
   "nextLocalPriority": [
-    "SYNC-07: actual missing-server-item classification and selected discard with sibling preservation; cross-vault GUI follow-up",
+    "SYNC-07: design applicable GUI defensive missing-item fixture around unsupported private-item deletion boundary; retain encrypted component coverage and cross-vault follow-up",
     "SYNC-08: controlled create-ID collision/chained pending fixture",
     "LOCAL-01: packaged/UI budget message and recovery",
     "SYNC-09 and LOCAL-02: settings/default-view divergence and signed-license notices/renewal"
@@ -196,7 +196,8 @@
       "docs/release/server-a-member-offline-reverse-2026-10-15.md",
       "docs/release/server-a-operations-2026-10-15.md",
       "docs/release/server-a-extension-web-permission-2026-10-15.md",
-      "docs/release/server-a-member-desktop-multi-2026-10-15.md"
+      "docs/release/server-a-member-desktop-multi-2026-10-15.md",
+      "docs/release/server-a-missing-item-boundary-2026-10-15.md"
     ]
   },
   "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."
