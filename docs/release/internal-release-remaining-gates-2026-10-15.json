@@ -121,7 +121,7 @@
       "name": "License read-only/locked/revoked and higher-sequence renewal",
       "source": "self-hosted-client-acceptance.md / one installation two devices step 6",
       "state": "open_local_and_host",
-      "proof": "Use signed fictitious license states, verify server write refusal, cross-client notices/appropriate reads and exact pending edit retention through renewal; do not substitute authentication denial tests."
+      "proof": "Fresh selected-server real HTTPS/PostgreSQL/production crypto-protocol test passes signed natural-expiry read-only and revocation 423 refusals, continued authenticated reads, exact original request retention, higher-sequence renewal, duplicate receipts/single history operations and sequence rollback refusal. See server-license-renewal-2026-10-15.md. Still required: client-owned native/GUI durable queues and notices/renewal, applicable locked and physical/intended-host cases; protocol fixture files are not native queue proof."
     },
     {
       "id": "LOCAL-03",
@@ -198,8 +198,11 @@
       "docs/release/server-a-member-desktop-multi-2026-10-15.md",
       "docs/release/server-a-missing-item-boundary-2026-10-15.md",
       "docs/release/create-id-collision-component-2026-10-15.md",
-      "docs/release/desktop-budget-acceptance-2026-10-15.md"
-    ]
+      "docs/release/desktop-budget-acceptance-2026-10-15.md",
+      "docs/release/server-license-renewal-2026-10-15.md"
+    ],
+    "licenseWork": "C:/Projects/127Vaults-license-isolated-20261015-a",
+    "licenseCombined": "license-server-evidence.json"
   },
   "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."
 }

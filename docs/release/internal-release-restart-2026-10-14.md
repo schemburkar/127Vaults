@@ -1,3 +1,5 @@
+Latest: [selected-server signed-license refusal and renewal](server-license-renewal-2026-10-15.md) passes on a new retained fixture. Source/restore stopped; original server healthy. Native/GUI license queue/notices and locked cases remain open. Next: genuine client enrollment on the isolated license fixture, or packaged collision/chained and settings cases. Goal remains active and internal release unaccepted.
+
 Latest: [Desktop-d production budget acceptance](desktop-budget-acceptance-2026-10-15.md) passes for the actual Linux GUI. CLI-b/Desktop-d rebuilt and selected; both OS member CLI checks pass; all queues settled. Remaining local priorities: packaged collision/chains, missing-item GUI defense, settings and signed-license state/renewal. Full release remains unaccepted.
 
 Latest recovery: [the interrupted Desktop queue is recovered](desktop-budget-partial-recovery-2026-10-15.md). All 298 requests replayed, Windows restored the baseline, and fresh GUI verification passed. Budget-limit acceptance remains open. See remaining gates for next work.
