@@ -236,3 +236,52 @@ is restored after demotion, with a selected Windows CLI secret read during the
 demoted interval. The new member remains a user with an empty private directory.
 The ownership browser UI/stale-auth and broader lifecycle/physical gates remain
 open. Cleanup and D's revoked pending draft/journal pass the retained verifier.
+
+## Actual selected web normal move UI
+
+Selected web-e now passes a normal move through its actual React/DOM controls,
+using the genuinely invited `ownership_member` account and its retained enrolled
+browser profile. The account's empty directory supplied new slots without
+retiring any original owner fixture. Two vaults and a synthetic login were created
+through visible controls. Cancelling move confirmation sent no removal; confirming
+made one successful destination copy and one successful final removal. The source
+became retired with no pending action or archive-restore button. The destination
+showed exactly one new item ID, retained ordinary fields, masked its password,
+explicitly revealed it and locked through the actual UI.
+
+A different genuinely registered device then authenticated using production
+OPAQUE/device proof and independently decrypted both the retained original and
+new copy with the exact title, website, username and password. It verified two
+directory entries, source retired/destination active and one item in each. This
+reader is a Node production-crypto helper, not a packaged CLI/Desktop claim.
+
+The initial profile-label assertion ran before opening Settings, which is when
+the app populates that label; no vault was changed in that failed attempt. The
+first independent reader hit connection refused immediately after startup; a
+bounded setup-read readiness wait resolved the host-port startup race. Failure
+diagnostics and partial records remain retained. No product runtime changed.
+
+Evidence under the existing isolated work directory:
+`web-move-ui-fixture.json`, `web-move-ui.json`, `web-move-peer.json`, and
+`web-move-combined-evidence.json`. Saved runners are `run-web-move-ui.mjs` and
+`run-web-move-peer.mjs`. The mutating UI helper refuses an already completed move;
+do not recreate the retired source or reset the profile to rerun it. The member
+now has two directory entries (one moved source and one active destination), so
+older ownership checks requiring an empty member directory are historical and
+must not be blindly rerun. Original owner catalogue and revoked D are untouched.
+
+All three new helpers pass syntax checks. Combined verification passes:
+
+```powershell
+node scripts/internal-web-move-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+```
+
+This includes the earlier ownership verifier's exact Compose/manifest/environment
+restoration, selected Windows CLI hash checks, stopped owned project, healthy
+original 12892 server/database, and preserved revoked D pending request/journal.
+The actual browser uses the existing strict-CA HTTPS relay with service-worker
+bypass; physical/installed PWA acceptance remains separate. This normal login
+subset does not prove web move fault/restart recovery, typed/custom fields,
+collection/default retargeting or additional writer/package pairings. Those and
+broader physical/intended-host gates remain open; internal release is unaccepted.
+No push.

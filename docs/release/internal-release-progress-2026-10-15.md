@@ -325,3 +325,20 @@ nine destination items before completing stop. Combined verifier and syntax chec
 pass; bundle/wiring restored, original server healthy, revoked D draft intact.
 No product runtime or artifact changed. Broader release gates remain open and
 internal release remains unaccepted. No push.
+
+## Actual selected web normal move and independent reader
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now proves actual web controls
+create a controlled source/destination and login, cancel confirmation without a
+removal, then move exactly one copy and retire the source. Actual UI preserves
+ordinary fields, masks/reveals the password, offers no restore for the moved source
+and locks. A distinct registered device independently authenticates and decrypts
+both retained original and new copy with exact contents/counts. This peer is a
+production-crypto Node reader, not packaged CLI/Desktop evidence.
+
+Syntax and combined verification pass; isolated project stopped, original server
+healthy, exact wiring restored and revoked D draft intact. No runtime/artifact
+change. The member now has two vault entries, one retired: do not rerun earlier
+empty-directory ownership phases or reprovision the completed move. Web fault/
+restart, custom/typed/settings and other pairings remain open along with broader
+physical/operational gates. Internal release remains unaccepted; no push.

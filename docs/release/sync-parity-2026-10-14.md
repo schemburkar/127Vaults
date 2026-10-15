@@ -129,3 +129,13 @@ actual operator and customer browser controls, and real aged-session rejection /
 customer guidance / fresh-unlock recovery. Original roles and catalogue restored;
 selected CLI reads during demotion. Broader lifecycle/UI writer pairings and
 physical/intended-host gates remain open; ownership is no longer wholly untested.
+
+## Actual ordinary-web normal move
+
+[Selected lifecycle evidence](isolated-lifecycle-2026-10-15.md) now also proves web
+UI move confirmation/cancellation, one successful copy/finalization, retired source
+without restore, field/password read/reveal and lock. A distinct registered device
+independently decrypts original and copy. This covers a normal login subset using
+the invited member; web fault/restart/custom/settings cases and packaged peer /
+additional writer pairings remain open. Member directory is now nonempty; retain
+its two entries and use the read-only verifier for the completed move.
