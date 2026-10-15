@@ -9,8 +9,8 @@ import { ownershipClient } from './internal-ownership-client.mjs';
 
 const [work, phase, kind = 'copy'] = process.argv.slice(2);
 assert.ok(['loss','resume','guard','abort'].includes(phase));
-assert.ok(['copy', 'finalization', 'guard'].includes(kind));
-assert.ok((kind === 'guard' ? ['loss', 'guard', 'abort'] : ['loss', 'resume']).includes(phase));
+assert.ok(['copy', 'finalization', 'guard', 'destination'].includes(kind));
+assert.ok((['guard', 'destination'].includes(kind) ? ['loss', 'guard', 'abort'] : ['loss', 'resume']).includes(phase));
 const copyStage = kind !== 'finalization';
 let dropAcceptedReply = phase === 'loss';
 assert.ok(work && isAbsolute(work));
@@ -86,6 +86,11 @@ if (record) {
   assert.equal(record.accountId, metadata.accountId);
 } else {
   record = { serverId: fixture.serverId, accountId: metadata.accountId, sourceName: 'Web UI ' + kind + '-loss source 20261015-a', destinationName: 'Web UI move destination 20261015-a', title: 'Web UI ' + kind + '-loss login 20261015-a', username: 'synthetic-move-member', password: 'fictitious-web-move-password', website: 'https://web-move.invalid/' };
+  if(kind === 'destination') {
+    const previous=JSON.parse(await readFile(join(work,'web-move-guard-loss-fixture.json'),'utf8'));
+    assert.equal(previous.abortPassed,true);
+    Object.assign(record,{source:previous.source,sourceItem:previous.sourceItem,sourceName:previous.sourceName,title:previous.changedTitle});
+  }
   await writeFile(fixturePath, JSON.stringify(record, null, 2) + '\n', { flag: 'wx' });
 }
 const save = () => writeFile(fixturePath, JSON.stringify(record, null, 2) + '\n');
@@ -187,7 +192,7 @@ try {
     record.lossPassed = true;
     await save();
   } else if (phase === 'guard' || phase === 'abort') {
-    assert.equal(kind, 'guard');
+    assert.ok(['guard','destination'].includes(kind));
     assert.equal(record.lossPassed, true);
     assert.equal(record.peerEditPassed, true);
     await vaultSettings();
@@ -195,7 +200,7 @@ try {
     if (phase === 'guard') {
       stage = 'refuse changed source through actual Resume';
       await page.getByRole('button', { name: 'Resume', exact: true }).click();
-      await page.getByText('The source vault changed.', { exact: false }).waitFor();
+      await page.getByText(kind === 'destination' ? 'The destination copy changed.' : 'The source vault changed.', { exact: false }).waitFor();
       await page.waitForFunction(() => document.body.getAttribute('aria-busy') === 'false');
       assert.deepEqual(await page.evaluate(() => window.__vaultsLifecycle.pending), record.journal);
       assert.equal(mutations.filter(row => row.path.endsWith('/removal') || row.path === '/api/v1/vaults/' + record.destination + '/items').length, 0);
@@ -211,11 +216,11 @@ try {
       await select(record.source);
       const original = page.locator('#items [data-item-id="' + record.sourceItem + '"]');
       await original.click();
-      await page.waitForFunction(title => document.querySelector('#view-title')?.textContent === title, record.changedTitle);
+      await page.waitForFunction(title => document.querySelector('#view-title')?.textContent === title, kind === 'destination' ? record.title : record.changedTitle);
       await select(record.destination);
       const copy = page.locator('#items [data-item-id="' + record.destinationItem + '"]');
       await copy.click();
-      await page.waitForFunction(title => document.querySelector('#view-title')?.textContent === title, record.title);
+      await page.waitForFunction(title => document.querySelector('#view-title')?.textContent === title, kind === 'destination' ? record.changedTitle : record.title);
       assert.ok(!(await page.locator('#item-view').innerText()).includes(record.password));
       await page.locator('#lock-app').click();
       await page.waitForFunction(() => document.querySelector('#state')?.textContent === 'Locked');
@@ -223,7 +228,7 @@ try {
       await save();
     }
     assert.deepEqual(errors, []);
-    await writeFile(join(work, 'web-move-guard-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'guard' ? ['Actual Resume reports changed source and sends no copy/removal retry', 'Exact complete pending journal survives refusal'] : ['Explicit UI cancel clears pending journal without retiring source', 'Peer source edit and accepted historical copy both remain readable; final lock'], limits: ['Actual ordinary web UI with strict-CA relay; source change only, destination changes and other authorization/finalizing-abort cases separate'] }, null, 2)+'\n');
+    await writeFile(join(work, 'web-move-' + kind + '-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'guard' ? ['Actual Resume reports changed ' + (kind === 'destination' ? 'destination copy' : 'source') + ' and sends no copy/removal retry', 'Exact complete pending journal survives refusal'] : ['Explicit UI cancel clears pending journal without retiring source', 'Peer source edit and accepted historical copy both remain readable; final lock'], limits: ['Actual ordinary web UI with strict-CA relay; source change only, destination changes and other authorization/finalizing-abort cases separate'] }, null, 2)+'\n');
     console.log('Selected web source-change ' + phase + ' passed.');
   } else {
     stage = 'verify exact journal after full browser restart';

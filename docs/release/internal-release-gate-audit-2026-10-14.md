@@ -1,6 +1,6 @@
 # Internal release gate audit — October 14, 2026
 
-**Decision: internal release is not accepted.** New [P1 destination-copy blocker](web-destination-copy-blocker-2026-10-15.md): source fix passes tests, but selected server/web-e lacks it; new packaging and live acceptance are required. The goal remains the complete
+**Decision: internal release is not accepted.** New [P1 destination-copy blocker](web-destination-copy-blocker-2026-10-15.md): source fix and new server/web/admin candidate build pass; selected server/web-e still lacks it. Immutable candidate live acceptance and selection are required. The goal remains the complete
 seven-surface release. This audit consolidates evidence; it does not waive open
 gates or treat source tests as physical or installed-user acceptance.
 

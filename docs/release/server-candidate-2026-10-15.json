@@ -1,0 +1,67 @@
+{
+  "status": "built-and-verified; live acceptance pending; not selected",
+  "verifiedAt": "2026-10-15T09:16:43.693Z",
+  "path": "C:/Projects/127Vaults-Releases/server/internal-20261015-a/linux-amd64",
+  "sourceRevision": "cbb1be02e68e484c82334cd4389dcc4b09f64cf2",
+  "files": [
+    {
+      "name": "127vaults-server-0.0.0-linux-amd64.tar",
+      "sizeBytes": 835057152,
+      "sha256": "db56bf303df88353ba4940acf6189cb49a1a6a153a725dd6f7b203064ef1a012"
+    },
+    {
+      "name": "LICENSE-POLICY.md",
+      "sizeBytes": 6422,
+      "sha256": "95de5da42b8786034f9eb443307aad8bfb4d1b93eda0d1ac9cf32ed1e1d1d2f1"
+    },
+    {
+      "name": "README.md",
+      "sizeBytes": 17775,
+      "sha256": "0ade97b468dc65fe362497170fde623aff30544d514be6eb5de6a4423fc6e8b8"
+    },
+    {
+      "name": "verify-release.mjs",
+      "sizeBytes": 2401,
+      "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+    }
+  ],
+  "checks": [
+    {
+      "name": "locked workspace dependencies",
+      "status": "passed"
+    },
+    {
+      "name": "fresh browser and Node WASM bindings",
+      "status": "passed"
+    },
+    {
+      "name": "server checks",
+      "status": "passed"
+    },
+    {
+      "name": "server tests",
+      "status": "passed"
+    },
+    {
+      "name": "web checks",
+      "status": "passed"
+    },
+    {
+      "name": "web tests",
+      "status": "passed"
+    },
+    {
+      "name": "installer and operational tests",
+      "status": "passed"
+    }
+  ],
+  "serverImage": "localhost/127vaults-server:release-21caa965329aa478",
+  "serverImageId": "4bfc4bf6344f20efcb574501aca5c6f212d3ffdc752892867b504b74a8939a27",
+  "fixture": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a",
+  "fixtureStatus": "separate directory and genuine copied profile prepared; project remains stopped; original fixture retained",
+  "limits": [
+    "Destination divergence and valid-move live tests pending",
+    "Prior server-e evidence remains historical and still selected until new candidate accepted",
+    "CLI/Desktop artifacts unchanged"
+  ]
+}

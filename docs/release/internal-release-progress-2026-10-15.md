@@ -410,3 +410,20 @@ package destination divergence plus valid-move checks are required before closin
 the P1. This is source-level regression proof, not a claimed live selected-browser
 reproduction. No CLI/Desktop rebuild is needed for this web-only change. Existing
 fixtures preserved, no push; full internal release remains unaccepted.
+
+## Server/web/admin candidate rebuilt for the P1 fix
+
+[Candidate metadata](server-candidate-2026-10-15.json) verifies immutable
+internal-20261015-a from cbb1be0, complete release gates, archive hashes and server
+image 4bfc4bf6. A separate extracted fixture and copied genuine browser profile
+are prepared in lifecycle-isolated-20261015-a/candidate-server-20261015-a. The
+pristine Compose template's implicit image PORT required a corrected preparation
+assertion; no fixture was started or reset during that correction. New extracted
+wiring/manifest pass verification. Original fixture/bundle/profile are retained,
+owned project is stopped and original 12892 stays healthy.
+
+Destination loss/peer-edit/guard/cancel helpers are syntax checked and retained
+runners assert the new image ID. These branches have not run live. The [P1 blocker](web-destination-copy-blocker-2026-10-15.md)
+remains open until immutable-package refusal/journal/data preservation and valid
+move/interruption acceptance pass. The selected inventory still points to server-e;
+no premature selection or release acceptance. CLI/Desktop unchanged, no push.
