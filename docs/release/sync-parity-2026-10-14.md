@@ -20,8 +20,9 @@ unlocked source; admin manages authorization without decrypting vault items.
 | Source handoff/lock/reconnect | Web source bridge implemented | Actual Linux GUI-owned extension matrix passes | Linux agent-source matrix passes | Windows active-session and actual web-source extension |
 
 Latest native candidates are CLI `internal-20261015-a` (source `600f206`) and
-Desktop `internal-20261015-c` (source `4e1e146`); server/web remains `internal-20261014-e`,
-source `ee83e2d`. The [October 14 continuation](internal-release-progress-2026-10-14.md)
+Desktop `internal-20261015-c` (source `4e1e146`); selected server/web/admin is
+`internal-20261015-a`, source `cbb1be0`. Earlier server-e pairings below remain
+historical; appended selected-server records identify current coverage. The [October 14 continuation](internal-release-progress-2026-10-14.md)
 records four packaged settings-choice cases preserving an unrelated item queue,
 two-conflict isolation, consecutive native edit signing fixes, actual Linux GUI
 repeated edits with Windows peer reads and latest-package reply-loss retests.
@@ -208,3 +209,14 @@ retired-source write refusal. Queues empty; original fields restored normally.
 [Evidence and limits](server-a-member-writers-2026-10-15.md). This closes sequential
 online native writes on selected server-a; concurrent/interrupted and additional
 GUI/physical/client pairings remain separate.
+
+## Selected server-a: actual member web/native writes
+
+Actual selected web edit reaches packaged Windows CLI; native restoration reaches
+a fully restarted/unlocked actual web UI. Exact ordinary fields/password masking
+and reveal, six-item catalogue and retirement checked. Native phase also verifies
+preserved peer edit, actual retired-source refusal and empty queue/review.
+[Evidence](server-a-member-web-native-2026-10-15.md) explains read-only recovery
+from the initial helper's endpoint-observation mismatch, without duplicate save.
+Online sequential web/native member pairing is covered; interrupted/concurrent,
+Desktop/extension and installed/physical pairings remain separate.

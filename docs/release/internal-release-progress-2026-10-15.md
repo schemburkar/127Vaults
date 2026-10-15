@@ -513,3 +513,18 @@ original 12892 healthy and revoked-D draft unchanged. Initial helper-only stdin
 wiring failure was corrected before mutation. Sequential online writes close an
 additional selected-server pairing, not concurrent/interruption/GUI/physical
 acceptance. Broader gates remain open; no product artifact change or push.
+
+## Selected member web/native write round trip
+
+Actual selected web Edit/Save → independently enrolled packaged Windows CLI
+read/restore → full browser restart/unlock/read passed for the moved member login.
+Exact ordinary fields, masked/explicit password, six-item catalogue, retired
+source, historical peer edit and empty native queue/review checked. Original
+fields restored normally; no identity, journal or database reset.
+
+[Evidence and observation-recovery limits](server-a-member-web-native-2026-10-15.md).
+An initial helper watched the move-copy endpoint instead of ordinary operations;
+the accepted save was recovered by read-only browser restart and independent
+native read, without resubmission. Combined member/native/P1/cleanup checks pass.
+No runtime package changed or push performed. Wider interrupted/concurrent/UI,
+Windows/physical/PWA/extension/intended-host gates remain open.

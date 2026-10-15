@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 
-const [work,mode]=process.argv.slice(2);assert.ok(work&&isAbsolute(work));assert.ok(mode===undefined||['--linux','--writes'].includes(mode));
+const [work,mode]=process.argv.slice(2);assert.ok(work&&isAbsolute(work));assert.ok(mode===undefined||['--linux','--writes','--web'].includes(mode));
 const json=async name=>JSON.parse(await readFile(join(work,name),'utf8'));
 const fixture=await json('fixture.json'),admin=await json('ownership-admin-browser.json'),approval=await json('member-cli-web-approval.json'),cli=await json('member-cli-windows.json'),member=await json('ownership-member.json');
 assert.equal(fixture.serverRevision,'cbb1be02e68e484c82334cd4389dcc4b09f64cf2');
@@ -25,7 +25,7 @@ assert.equal(cli.preservedPeerEdit,(await json('web-move-destination-loss-fixtur
 assert.equal(cli.checks.length,4);assert.equal(approval.checks.length,3);
 const run=promisify(execFile);
 let linux;
-if(['--linux','--writes'].includes(mode)){
+if(['--linux','--writes','--web'].includes(mode)){
   linux=await json('member-cli-linux.json');const approved=await json('member-cli-linux-web-approval.json');
   for(const record of [linux,approved]){assert.equal(record.status,'passed');assert.equal(record.serverId,fixture.serverId);assert.equal(record.serverRevision,fixture.serverRevision);assert.equal(record.accountId,member.accountId);}
   assert.equal(linux.device,approved.device);assert.equal(linux.fingerprint,approved.fingerprint);assert.match(linux.fingerprint,/^[a-f0-9]{64}$/);
@@ -44,7 +44,7 @@ assert.ok(!ps.stdout.includes('vaults-member-cli-linux-approval-20261015-a'));
 await writeFile(join(work,'member-acceptance-combined-evidence.json'),JSON.stringify({status:'passed',verifiedAt:new Date().toISOString(),serverId:fixture.serverId,serverRevision:fixture.serverRevision,admin,approval,cli,cleanup:'Selected native/P1 acceptance and exact bundle/wiring/stopped-project/original-health/revoked-draft checks pass; approval container absent',limits:['New Windows member CLI enrollment/read and selected admin web controls only; broader writer/physical/other-platform enrollment gates remain','CLI approval binding compared automatically; human fingerprint-comparison UX separate']},null,2)+'\n');
 console.log('Selected admin browser and genuinely enrolled packaged member CLI acceptance verified.');
 if(linux){await writeFile(join(work,'member-linux-combined-evidence.json'),JSON.stringify({status:'passed',verifiedAt:new Date().toISOString(),serverId:fixture.serverId,serverRevision:fixture.serverRevision,linux,windowsDevice:cli.device,checks:['Distinct Linux/member/browser/Windows devices and exact selected binary hash','Real web approval plus Linux keyring persistence across agent restart','Exact independent member move/peer-edit reads','Linux profile binding and stopped native processes; native/P1/bundle/original/revoked-data cleanup verified'],limits:['WSL/private test keyring; physical clean-host and wider writer combinations remain']},null,2)+'\n');console.log('Linux member enrollment, retained profile and cleanup evidence verified.');}
-if(mode==='--writes'){
+if(['--writes','--web'].includes(mode)){
   const writes=await json('member-cross-os-writes.json');assert.equal(writes.status,'passed');assert.equal(writes.serverId,fixture.serverId);assert.equal(writes.serverRevision,fixture.serverRevision);assert.equal(writes.baselineRestored,true);
   assert.equal(writes.itemId,cli.itemId);assert.equal(writes.windowsDevice,cli.device);assert.equal(writes.linuxDevice,linux.device);
   assert.deepEqual(writes.phases.map(row=>row.phase),['windows-write','linux-read-write','windows-read-restore','linux-final']);
@@ -52,4 +52,15 @@ if(mode==='--writes'){
   const processes=await run('powershell.exe',['-NoProfile','-Command',"Get-CimInstance Win32_Process -Filter \"Name='127vaults.exe'\" | Select-Object -ExpandProperty CommandLine"],{windowsHide:true});
   assert.ok(!processes.stdout.includes('member-cli-windows-a'),'Windows member CLI remains live');
   await writeFile(join(work,'member-writes-combined-evidence.json'),JSON.stringify({status:'passed',verifiedAt:new Date().toISOString(),serverId:fixture.serverId,serverRevision:fixture.serverRevision,writes,checks:['Selected packaged Windows edit reaches distinct Linux member device','Linux edit reaches Windows; Windows restores original fields and Linux independently verifies restoration','Both devices refuse retired-source edits; six-item catalogue, historical peer edit and empty queues preserved','Native/member/P1 checks and stopped processes/owned project/original server/revoked draft verified'],limits:['Online sequential ordinary-field writes on retained test hosts; interruption/concurrent-write/UI/physical combinations remain']},null,2)+'\n');console.log('Selected cross-OS member writer evidence and cleanup verified.');
+}
+if(mode==='--web'){
+  const web=await json('member-web-native-writes.json');assert.equal(web.status,'passed');assert.equal(web.serverId,fixture.serverId);assert.equal(web.serverRevision,fixture.serverRevision);assert.equal(web.baselineRestored,true);assert.equal(web.nativeRestored,true);
+  assert.equal(web.itemId,cli.itemId);assert.equal(web.windowsDevice,cli.device);assert.equal(web.browserDevice,(await json('ownership-customer-device.json')).deviceId);assert.notEqual(web.browserDevice,web.windowsDevice);
+  assert.deepEqual(web.phases.map(row=>row.phase),['web-write','windows-web-restore','web-final']);
+  for(const [index,row] of web.phases.entries()){assert.equal(row.status,'passed');assert.equal(row.device,index===1?cli.device:web.browserDevice);}
+  assert.equal(web.webWrite.status,200);assert.equal(web.webWrite.path,'/api/v1/vaults/'+(await json('web-move-candidate-normal-fixture.json')).destination+'/operations');
+  assert.equal(web.phases[1].queueEmpty,true);assert.equal(web.phases[1].retiredWriteRefused,true);assert.deepEqual(web.phases[2].mutations,[]);
+  if(web.phases[0].recoveredByRead){assert.ok(web.webWrite.recoveredFrom);assert.deepEqual(web.phases[0].mutations,[]);}else assert.match(web.webWrite.sha256,/^[a-f0-9]{64}$/);
+  assert.ok(!ps.stdout.includes('vaults-member-web-writer-20261015-a'));
+  await writeFile(join(work,'member-web-native-combined-evidence.json'),JSON.stringify({status:'passed',verifiedAt:new Date().toISOString(),serverId:fixture.serverId,serverRevision:fixture.serverRevision,web,checks:['Actual selected web UI edit read by independent packaged Windows member CLI','Native original-field restoration independently verified after browser restart/unlock','Real UI password masking/reveal, six-item catalogue, retired-source and lock checks','No duplicate edit during helper-observation recovery; all native/member/P1 and cleanup checks pass'],limits:['Sequential online ordinary-field pairing with headless strict-CA transport; installed-PWA/physical/interruption/other pairings separate','Initial accepted operation response retained without request ID/hash; recovery uses read-only app restart plus independent native read']},null,2)+'\n');console.log('Selected web/native member writer evidence and cleanup verified.');
 }
