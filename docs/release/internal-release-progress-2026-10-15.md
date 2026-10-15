@@ -427,3 +427,22 @@ runners assert the new image ID. These branches have not run live. The [P1 block
 remains open until immutable-package refusal/journal/data preservation and valid
 move/interruption acceptance pass. The selected inventory still points to server-e;
 no premature selection or release acceptance. CLI/Desktop unchanged, no push.
+
+## Packaged destination-copy P1 accepted; new server candidate selected
+
+[Live acceptance](web-destination-copy-blocker-2026-10-15.md) now verifies actual
+new-image destination-edit refusal, specific UI guidance, exact journal preservation
+and zero copy/removal retry. Explicit cancel preserves source and edited copy.
+A separately confirmed valid move succeeds. Read completion recovered from a
+substring-selector/mode-driver failure without resubmitting it; diagnostics remain.
+A distinct registered device decrypts source/new copy, checks current counts and
+all prior IDs, and verifies the historical peer edit was not reverted.
+
+Candidate verifier passes unchanged extracted wiring/manifest, stopped owned
+project, original server health and exact revoked draft preservation. All six
+selected manifests/hashes verify. Selected server/web/admin is now
+internal-20261015-a (cbb1be0, image4bfc4bf6); targeted P1 resolved. CLI/Desktop unchanged.
+Use the candidate fixture directory; old root fixture still names historical
+server-e. Member now five entries (four retired; active destination six items).
+Broader new-package interruption/cross-client/typed/settings and physical /
+operational gates remain open. Internal release is unaccepted; no push.

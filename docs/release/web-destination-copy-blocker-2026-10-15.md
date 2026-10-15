@@ -1,8 +1,9 @@
 # P1: web move destination-copy integrity — October 15
 
-Status: source fix, local checks and immutable candidate build passed. Selected
-server/web-e still lacks the fix. **The release blocker remains open until the
-new candidate passes packaged live acceptance.**
+Status: **resolved in selected server/web/admin internal-20261015-a**, source
+`cbb1be0`, by targeted immutable-package live refusal/cancel, valid move,
+independent data-preservation and cleanup checks. Full internal release remains
+unaccepted; the broader matrix is still open.
 
 A copied destination item can change after its create was accepted but its reply
 was lost, or after the client has recorded that mapping. The selected web client
@@ -63,8 +64,8 @@ archive/file hashes and named checks are in
 [the candidate record](server-candidate-2026-10-15.json). The server image is
 `localhost/127vaults-server:release-21caa965329aa478`, ID
 `4bfc4bf6344f20efcb574501aca5c6f212d3ffdc752892867b504b74a8939a27`.
-Manifest/hash and local image-ID verification pass. This remains a candidate; the
-selected artifact inventory was not changed ahead of live acceptance.
+Manifest/hash and local image-ID verification pass. At the build checkpoint this was not yet selected; the artifact inventory was
+updated only after the targeted live acceptance below passed.
 
 A separate extracted fixture and genuine copied enrolled browser profile are at
 `C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a`.
@@ -75,7 +76,7 @@ verified. The pristine archive uses the image default port rather than an explic
 PORT line: the first preparation assertion stopped before starting anything, and
 preparation resumed safely from the retained extracted directory.
 
-The project is still stopped; no new-candidate browser/API acceptance has run.
+At the preparation checkpoint the project was stopped and live acceptance had not run.
 Original 12892 server/database remain healthy. Next retained commands:
 `node <candidate-work>/run-destination.mjs loss`, then
 `node <candidate-work>/run-destination-peer-edit.mjs`, then
@@ -87,3 +88,48 @@ After refusal/cancel, establish a separately recorded valid move attempt on the
 new package while preserving the edited historical copy; also exercise applicable
 interrupted paths. Only then update artifact selection and close this blocker.
 CLI/Desktop selections remain unchanged. No push.
+
+## Packaged live acceptance passed and selection updated
+
+The runner asserted actual server image ID 4bfc4bf6 before each browser phase.
+Actual selected web controls reused the active guard source, made a real copy
+whose accepted response was discarded, and retained its complete journal. A
+different registered device made a real signed edit to that destination item.
+Resume showed the specific destination-copy guidance, sent no copy or removal
+retry and preserved the exact journal. Explicit cancellation kept both source and
+edited copy. No user/device/account/session data was seeded or reset.
+
+A separate explicitly confirmed move attempt then copied the source into a new ID
+and retired it successfully. The first read assertion matched both the new title
+and the edited historical title because it used a substring selector. A read-only
+completion phase selected the exact title, recovered the accepted request IDs from
+the retained failed diagnostic, and verified fields/masking/reveal/lock without
+repeating the move or recreating its source. A mode-flag error in that read driver
+was corrected before it ran successfully. Failed diagnostics remain retained.
+
+A different registered-device crypto reader independently decrypted retired source
+and new copy, verified five directory entries and six destination items, all five
+prior item IDs, and the edited historical copy title still unchanged. The new
+normal move did not silently overwrite or revert the peer edit. This is a source
+production-crypto reader, not a packaged CLI/Desktop peer claim.
+
+Candidate records: `web-move-destination-{loss,peer-edit,guard,abort}.json`,
+`web-move-candidate-normal.json`, `web-move-candidate-peer.json` and
+`candidate-combined-evidence.json` under the separate candidate work directory.
+The owned project is stopped, candidate extracted wiring/manifest match their
+snapshots, original 12892 server/database remain healthy, and revoked D pending
+request/journal remain exact. All six selected artifact sets pass manifest/hash
+verification. The artifact inventory now selects server/web/admin
+`internal-20261015-a`; old server-e is retained as historical evidence.
+
+```powershell
+node scripts/internal-server-candidate-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
+```
+
+Use the candidate work directory for future new-package acceptance; the original
+lab fixture.json still names the old bundle for historical cases. Member now has
+five retained entries, four moved sources and one active destination with six
+items. Older fixed-count live phases must not be rerun blindly. Broader new-package
+interruption/cross-client, typed/settings, Windows/installed-PWA/extension and
+intended-host gates remain separate; passing this P1 does not accept the full
+release. CLI/Desktop selection is unchanged. No push.

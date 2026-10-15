@@ -228,8 +228,8 @@ try {
       await save();
     }
     assert.deepEqual(errors, []);
-    await writeFile(join(work, 'web-move-' + kind + '-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'guard' ? ['Actual Resume reports changed ' + (kind === 'destination' ? 'destination copy' : 'source') + ' and sends no copy/removal retry', 'Exact complete pending journal survives refusal'] : ['Explicit UI cancel clears pending journal without retiring source', 'Peer source edit and accepted historical copy both remain readable; final lock'], limits: ['Actual ordinary web UI with strict-CA relay; source change only, destination changes and other authorization/finalizing-abort cases separate'] }, null, 2)+'\n');
-    console.log('Selected web source-change ' + phase + ' passed.');
+    await writeFile(join(work, 'web-move-' + kind + '-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'guard' ? ['Actual Resume reports changed ' + (kind === 'destination' ? 'destination copy' : 'source') + ' and sends no copy/removal retry', 'Exact complete pending journal survives refusal'] : ['Explicit UI cancel clears pending journal without retiring source', 'Peer ' + (kind === 'destination' ? 'destination' : 'source') + ' edit and retained source/copy remain readable; final lock'], limits: ['Actual ordinary web UI with strict-CA relay; ' + kind + ' change only, other authorization/finalizing-abort cases separate'] }, null, 2)+'\n');
+    console.log('Selected web ' + kind + '-change ' + phase + ' passed.');
   } else {
     stage = 'verify exact journal after full browser restart';
     assert.equal(record.lossPassed, true);

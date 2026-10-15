@@ -1,13 +1,17 @@
 // Actual selected web move controls; strict-CA HTTPS transport only.
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { request } from 'node:https';
 import { join, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
 import { sign, createHash } from 'node:crypto';
 import { ownershipClient } from './internal-ownership-client.mjs';
 
-const [work] = process.argv.slice(2);
+const [work, mode] = process.argv.slice(2);
+assert.ok(mode === undefined || ['candidate-retry','candidate-read'].includes(mode));
+const candidateRetry = ['candidate-retry','candidate-read'].includes(mode);
+const candidateRead = mode === 'candidate-read';
+const recordPrefix = candidateRetry ? 'web-move-candidate-normal' : 'web-move-ui';
 assert.ok(work && isAbsolute(work));
 const fixture = JSON.parse(await readFile(join(work, 'fixture.json'), 'utf8'));
 assert.equal(fixture.serverId, '98027ac4-9882-42d5-812a-a18c972c299f');
@@ -70,7 +74,7 @@ async function unlock(page) {
   await page.waitForFunction(() => document.querySelector('#vault')?.hidden === false && document.querySelector('#state')?.textContent.startsWith('Unlocked'), null, { timeout: 60000 });
   await page.waitForFunction(() => document.body.getAttribute('aria-busy') === 'false');
 }
-const fixturePath = join(work, 'web-move-ui-fixture.json');
+const fixturePath = join(work, recordPrefix + '-fixture.json');
 let record;
 try { record = JSON.parse(await readFile(fixturePath, 'utf8')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -79,6 +83,10 @@ if (record) {
   assert.equal(record.accountId, metadata.accountId);
 } else {
   record = { serverId: fixture.serverId, accountId: metadata.accountId, sourceName: 'Web UI move source 20261015-a', destinationName: 'Web UI move destination 20261015-a', title: 'Web UI moved login 20261015-a', username: 'synthetic-move-member', password: 'fictitious-web-move-password', website: 'https://web-move.invalid/' };
+  if(candidateRetry) {
+    const previous=JSON.parse(await readFile(join(work,'web-move-destination-loss-fixture.json'),'utf8'));assert.equal(previous.abortPassed,true);
+    for(const key of ['source','destination','sourceItem','sourceName','destinationName','title','username','password','website'])record[key]=previous[key];
+  }
   await writeFile(fixturePath, JSON.stringify(record, null, 2) + '\n', { flag: 'wx' });
 }
 const save = () => writeFile(fixturePath, JSON.stringify(record, null, 2) + '\n');
@@ -98,7 +106,7 @@ async function select(id) {
   await page.waitForFunction(id => window.__vaultsSnapshot.some(row => row.vaultId === id && row.selected), id);
 }
 try {
-  assert.ok(!record.movePassed, 'Move already completed; use the read-only peer/evidence verifiers instead of reprovisioning it');
+  assert.ok(!record.movePassed || candidateRead, 'Move already completed; use the read-only peer/evidence verifiers instead of reprovisioning it');
   stage = 'unlock existing enrolled member browser';
   page = await context();
   page.setDefaultTimeout(30000);
@@ -107,6 +115,7 @@ try {
   await unlock(page);
   await page.locator('#settings-toggle').click();
   await page.waitForFunction(username => document.querySelector('#profile-username')?.textContent === username, metadata.username);
+  if (!candidateRead) {
   for (const [kind, name] of [['source', record.sourceName], ['destination', record.destinationName]]) {
     stage = 'create or recover controlled ' + kind;
     let rows = await page.evaluate(() => window.__vaultsSnapshot);
@@ -160,9 +169,23 @@ try {
   record.movePassed = true;
   await save();
   assert.equal(await page.getByRole('button', { name: 'Restore', exact: true }).count(), 0);
+  } else {
+    assert.equal(record.movePassed,true);
+    const names=(await readdir(work)).filter(name=>name.startsWith(recordPrefix+'-failure-')&&name.endsWith('.json')).sort();
+    assert.ok(names.length);
+    const failed=JSON.parse(await readFile(join(work,names.at(-1)),'utf8'));
+    assert.equal(failed.stage,'read moved item through UI');
+    assert.equal(mutations.length,0);
+    const copies=failed.mutations.filter(row=>row.path==='/api/v1/vaults/'+record.destination+'/items');
+    assert.equal(copies.length,1);assert.equal(copies[0].status,200);
+    assert.ok(failed.mutations.some(row=>row.path==='/api/v1/vaults/'+record.source+'/removal'&&row.status===200));
+    record.destinationItem=copies[0].itemId;record.recoveredFrom=names.at(-1);await save();
+    mutations.push(...failed.mutations);
+    assert.ok(await page.evaluate(id=>window.__vaultsLifecycle.retired.some(row=>row.vaultId===id),record.source));
+  }
   stage = 'read moved item through UI';
   await select(record.destination);
-  const copy = page.locator('#items [data-item-id]').filter({ hasText: record.title });
+  const copy = page.locator('#items [data-item-id]').filter({ has: page.getByText(record.title,{exact:true}) });
   await copy.waitFor();
   assert.equal(await copy.count(), 1);
   record.destinationItem = await copy.getAttribute('data-item-id');
@@ -179,9 +202,9 @@ try {
   await page.locator('#lock-app').click();
   await page.waitForFunction(() => document.querySelector('#state')?.textContent === 'Locked');
   assert.deepEqual(errors, []);
-  await writeFile(join(work, 'web-move-ui.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, accountId: metadata.accountId, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: ['Actual web controls create source/destination vaults and synthetic login', 'Move confirmation cancellation sends no removal; confirmed move retires source and clears pending journal', 'Moved source offers no archive restore; destination has exactly one newly identified copy', 'Actual UI retains ordinary fields, masks/reveals password and locks'], limits: ['Normal ordinary-web move UI only; fault injection, custom typed fields, settings retarget and other writer pairings remain separate', 'Headless Linux strict-CA HTTPS relay with service-worker bypass; physical/installed PWA acceptance separate'] }, null, 2) + '\n');
+  await writeFile(join(work, recordPrefix + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, accountId: metadata.accountId, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: [candidateRetry ? 'Actual web controls move a deliberately reused active source into the existing destination' : 'Actual web controls create source/destination vaults and synthetic login', 'Move confirmation cancellation sends no removal; confirmed move retires source and clears pending journal', 'Moved source offers no archive restore; destination has exactly one newly identified copy', 'Actual UI retains ordinary fields, masks/reveals password and locks'], limits: ['Normal ordinary-web move UI only; fault injection, custom typed fields, settings retarget and other writer pairings remain separate', 'Headless Linux strict-CA HTTPS relay with service-worker bypass; physical/installed PWA acceptance separate'] }, null, 2) + '\n');
   console.log('Selected web normal move UI passed.');
 } catch (error) {
-  await writeFile(join(work, 'web-move-ui-failure-' + Date.now() + '.json'), JSON.stringify({ stage, error: error.message, mutations, errors, transports }, null, 2) + '\n', { flag: 'wx' });
+  await writeFile(join(work, recordPrefix + '-failure-' + Date.now() + '.json'), JSON.stringify({ stage, error: error.message, mutations, errors, transports }, null, 2) + '\n', { flag: 'wx' });
   throw Error('Owned web move UI failed at ' + stage + '; inspect private diagnostic.');
 } finally { await browser.close(); }

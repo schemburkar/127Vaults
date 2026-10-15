@@ -69,4 +69,4 @@ try {
     await writeFile(join(work, prefix + '-peer-edit.json'), JSON.stringify({ status: 'passed', serverId: client.fixture.serverId, source: record.source, sourceItem: record.sourceItem, editedVault, editedItem, ...record.peerEdit }, null, 2) + '\n');
   } finally { indexBytes.fill(0); bodyBytes.fill(0); made?.free(); core.release_vault(vault); vault.free(); }
 } finally { core.lock(); }
-console.log('Distinct registered device made an accepted signed source edit.');
+console.log('Distinct registered device made an accepted signed ' + (destinationEdit ? 'destination' : 'source') + ' edit.');
