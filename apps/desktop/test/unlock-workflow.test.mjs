@@ -35,15 +35,19 @@ test('verified desktop unlock presents the vault without awaiting ancillary stat
 
 function statusHarness() {
   const pending = {}, values = {};
+  const events = new Map(), timers = new Map();
   let cleanup;
   const sandbox = vm.createContext({ unlocked: true, online: true,
+    document: { hidden: false },
+    window: { setInterval: (callback, delay) => { assert.equal(delay, 30000); timers.set(1, callback); return 1; },
+      clearInterval: id => timers.delete(id), addEventListener: (name, callback) => events.set(name, callback), removeEventListener: name => events.delete(name) },
     invoke: command => new Promise(resolve => { pending[command] = resolve; }),
     useEffect: callback => { cleanup = callback(); },
     setRemovalPlan: value => { values.removal = value; },
     setLicenseStatus: value => { values.license = value; },
   });
   vm.runInContext(compile(statusSource), sandbox);
-  return { pending, values, dispose: () => cleanup() };
+  return { pending, values, timers, events, dispose: () => cleanup() };
 }
 
 test('ancillary status updates are applied after the vault is presented', async () => {
@@ -51,7 +55,7 @@ test('ancillary status updates are applied after the vault is presented', async 
   const plan = { pending: false }, license = { mode: 'active' };
   harness.pending.vault_removal_status(plan);
   harness.pending.license_status(license);
-  await Promise.resolve();
+  await new Promise(setImmediate);
   assert.deepEqual(harness.values, { removal: plan, license });
 });
 
@@ -60,6 +64,21 @@ test('locking or switching sessions discards stale ancillary status responses', 
   harness.dispose();
   harness.pending.vault_removal_status({ pending: true });
   harness.pending.license_status({ mode: 'revoked' });
-  await Promise.resolve();
+  await new Promise(setImmediate);
   assert.deepEqual(harness.values, {});
+  assert.equal(harness.timers.size, 0);
+  assert.equal(harness.events.size, 0);
+});
+
+test('unlocked online desktop refreshes expiry and renewal without overlapping requests', async () => {
+  const harness = statusHarness();
+  const originalRequest = harness.pending.license_status;
+  await harness.events.get('focus')();
+  assert.equal(harness.pending.license_status, originalRequest);
+  originalRequest({ mode: 'active' }); await new Promise(setImmediate);
+  harness.timers.get(1)(); harness.pending.license_status({ mode: 'read-only' }); await new Promise(setImmediate);
+  assert.equal(harness.values.license.mode, 'read-only');
+  const focused = harness.events.get('focus')(); harness.pending.license_status({ mode: 'active' }); await focused;
+  assert.equal(harness.values.license.mode, 'active');
+  harness.dispose();
 });

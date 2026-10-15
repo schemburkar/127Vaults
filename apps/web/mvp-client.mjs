@@ -776,6 +776,32 @@ async function authenticateOnline(secret, password) {
       if (nextRoot && !delivered) { if (generation === sessionGeneration) core.release_root(nextRoot); nextRoot.free?.(); }
     }
 }
+let stopLicenseStatus = () => {};
+function monitorLicenseStatus() {
+  stopLicenseStatus();
+  const generation = sessionGeneration;
+  let disposed = false, refreshing = false;
+  const refresh = async () => {
+    if (disposed || refreshing || !root || !serverAuthenticated || $("vault").hidden) return;
+    refreshing = true;
+    try {
+      const license = await call('/api/v1/license');
+      if (!disposed && generation === sessionGeneration && serverAuthenticated && !$("vault").hidden) {
+        const guidance = license.mode === 'read-only' ? 'Expired: vault and invitation writes are blocked during the 30-day read-only period.'
+          : license.mode === 'revoked' ? 'Revoked: server writes are blocked. Ask the operator for a replacement license.'
+            : license.mode === 'locked' ? 'Locked: server writes are blocked. Check expiry and the server clock.'
+              : license.mode === 'active' ? `Active${license.expiresAt ? ` until ${license.expiresAt.slice(0, 10)}` : ''}.`
+                : 'Experimental license state.';
+        $("state").textContent = `Unlocked · ${guidance}`;
+      }
+    } catch { /* Advisory only; server enforcement still decides every write. */ }
+    finally { refreshing = false; }
+  };
+  const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 30000);
+  window.addEventListener('focus', refresh);
+  stopLicenseStatus = () => { disposed = true; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  void refresh();
+}
 async function login() {
   const generation = ++sessionGeneration;
   let loginCredentials;
@@ -843,16 +869,7 @@ async function login() {
     $("vault").hidden = false;
     $("lock").disabled = false;
     $("state").textContent = "Unlocked";
-    void call('/api/v1/license').then((license) => {
-      if (!$("vault").hidden) {
-        const guidance = license.mode === 'read-only' ? 'Expired: vault and invitation writes are blocked during the 30-day read-only period.'
-          : license.mode === 'revoked' ? 'Revoked: server writes are blocked. Ask the operator for a replacement license.'
-            : license.mode === 'locked' ? 'Locked: server writes are blocked. Check expiry and the server clock.'
-              : license.mode === 'active' ? `Active${license.expiresAt ? ` until ${license.expiresAt.slice(0, 10)}` : ''}.`
-                : 'Experimental license state.';
-        $("state").textContent = `Unlocked · ${guidance}`;
-      }
-    }).catch(() => { /* Older servers may not expose license status. */ });
+    monitorLicenseStatus();
     arm();
     applyDefaultView = true;
     if (vaultSettings.default_view?.kind === 'all') await selectBrowseView({ kind: 'all' });
@@ -2252,6 +2269,7 @@ function arm() {
   );
 }
 async function lock(logout = true) {
+  stopLicenseStatus();
   const logoutToken = csrf;
   ++sessionGeneration;
   reconnectCredentials?.password.fill(0); reconnectCredentials?.secret.fill(0);

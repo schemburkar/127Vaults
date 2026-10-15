@@ -175,5 +175,20 @@
         }
       ]
     }
+  ],
+  "pendingRuntimeChanges": [
+    {
+      "description": "Desktop/web license expiry and renewal warnings refresh during a live session",
+      "products": [
+        "server/web",
+        "desktop"
+      ],
+      "sourceFiles": [
+        "apps/desktop/src/app.tsx",
+        "apps/web/mvp-client.mjs"
+      ],
+      "validation": "Web 74 tests; Desktop 33 tests; web and Desktop type/build checks passed",
+      "packageAcceptance": "Pending rebuild and actual live-session acceptance; existing selected artifacts predate this fix"
+    }
   ]
 }

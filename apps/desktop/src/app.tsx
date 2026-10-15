@@ -1067,12 +1067,22 @@ export function App() {
     void invoke<RemovalPlan>("vault_removal_status").then((plan) => {
       if (!disposed) setRemovalPlan(plan);
     }).catch(() => { /* Explicit vault actions report their own errors. */ });
-    if (online) {
-      void invoke<NonNullable<typeof licenseStatus>>("license_status").then((license) => {
+    let licenseBusy = false;
+    const refreshLicenseStatus = async () => {
+      if (disposed || licenseBusy || !online) return;
+      licenseBusy = true;
+      try {
+        const license = await invoke<NonNullable<typeof licenseStatus>>("license_status");
         if (!disposed) setLicenseStatus(license);
-      }).catch(() => { /* Status is advisory; the server enforces write permissions. */ });
+      } catch { /* Status is advisory; the server enforces write permissions. */ }
+      finally { licenseBusy = false; }
+    };
+    if (online) {
+      void refreshLicenseStatus();
     } else { setLicenseStatus(null); }
-    return () => { disposed = true; };
+    const timer = window.setInterval(() => { if (!document.hidden) void refreshLicenseStatus(); }, 30000);
+    window.addEventListener("focus", refreshLicenseStatus);
+    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", refreshLicenseStatus); };
   }, [unlocked, online]);
   // Connector saves use this same encrypted replica. Refresh external writes
   // without replacing an editor draft, and deliver queued writes when online.

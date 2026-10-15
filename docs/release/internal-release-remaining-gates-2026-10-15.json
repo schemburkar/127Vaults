@@ -105,7 +105,7 @@
       "source": "required acceptance matrix / upgrade",
       "assessment": "partial",
       "covered": "Six selected manifests/hash sets verified; fresh selected server backup/restore with paired decrypted proof; earlier installer/update/uninstall/dependency lifecycle",
-      "remaining": "Existing-profile upgrade combinations, latest Windows GUI, clean physical hosts and intended-host trust; artifact build pass alone does not establish installation acceptance"
+      "remaining": "Existing-profile upgrade combinations, latest Windows GUI, clean physical hosts and intended-host trust; artifact build pass alone does not establish installation acceptance Latest source license-refresh fix requires new server/Desktop packages and live-session acceptance; selected inventory records the pending runtime change."
     }
   ],
   "additionalNamedGates": [
@@ -121,7 +121,7 @@
       "name": "License read-only/locked/revoked and higher-sequence renewal",
       "source": "self-hosted-client-acceptance.md / one installation two devices step 6",
       "state": "open_local",
-      "proof": "Fresh selected-server real HTTPS/PostgreSQL/production crypto-protocol test passes signed natural-expiry read-only and revocation 423 refusals, continued authenticated reads, exact original request retention, higher-sequence renewal, duplicate receipts/single history operations and sequence rollback refusal. See server-license-renewal-2026-10-15.md. Still required: client-owned native/GUI durable queues and notices/renewal, applicable locked and physical/intended-host cases; protocol fixture files are not native queue proof. Selected Windows CLI-b now genuinely enrolled on the separate licensed fixture: actual read-only/revoked guidance, refusal-owned encrypted queue, exact retention through repeated sync and fresh agent restart, higher-sequence renewal/replay and baseline restoration pass, with independent registered-owner decryption and single history entries. See windows-cli-license-2026-10-15.md. Linux GUI/client and later-expiry locked cases remain."
+      "proof": "Fresh selected-server real HTTPS/PostgreSQL/production crypto-protocol test passes signed natural-expiry read-only and revocation 423 refusals, continued authenticated reads, exact original request retention, higher-sequence renewal, duplicate receipts/single history operations and sequence rollback refusal. See server-license-renewal-2026-10-15.md. Still required: client-owned native/GUI durable queues and notices/renewal, applicable locked and physical/intended-host cases; protocol fixture files are not native queue proof. Selected Windows CLI-b now genuinely enrolled on the separate licensed fixture: actual read-only/revoked guidance, refusal-owned encrypted queue, exact retention through repeated sync and fresh agent restart, higher-sequence renewal/replay and baseline restoration pass, with independent registered-owner decryption and single history entries. See windows-cli-license-2026-10-15.md. Linux GUI/client and later-expiry locked cases remain. Actual product gap found: Desktop/web fetched status only on unlock/connectivity and kept stale warnings after expiry/renewal. Source fix adds visible-session/focus refresh with stale-response/overlap protection; existing product regression suites pass. Rebuilt packages and real live-session follow-up remain pending."
     },
     {
       "id": "LOCAL-03",

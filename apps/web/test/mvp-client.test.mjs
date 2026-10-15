@@ -1,7 +1,47 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 import { PrivateVaultClient } from "../src/private-vault-client.mjs";
+
+async function licenseHarness() {
+  const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
+  const code = source.slice(source.indexOf('let stopLicenseStatus ='), source.indexOf('async function login() {'));
+  const calls = [], events = new Map(), timers = new Map();
+  const elements = { vault: { hidden: false }, state: { textContent: 'Unlocked' } };
+  const context = vm.createContext({ root: {}, serverAuthenticated: true, sessionGeneration: 1,
+    document: { hidden: false }, $: id => elements[id],
+    call: path => { assert.equal(path, '/api/v1/license'); return new Promise(resolve => calls.push(resolve)); },
+    window: { setInterval: (callback, delay) => { assert.equal(delay, 30000); timers.set(1, callback); return 1; },
+      clearInterval: id => timers.delete(id), addEventListener: (name, callback) => events.set(name, callback), removeEventListener: name => events.delete(name) },
+  });
+  vm.runInContext(code + '\nmonitorLicenseStatus();', context);
+  return { calls, events, timers, elements, context, stop: () => vm.runInContext('stopLicenseStatus()', context) };
+}
+
+test('unlocked web session refreshes license expiry and renewal without duplicate requests', async () => {
+  const h = await licenseHarness();
+  await h.events.get('focus')(); assert.equal(h.calls.length, 1);
+  h.calls[0]({ mode: 'active' }); await new Promise(setImmediate);
+  h.timers.get(1)(); h.calls[1]({ mode: 'read-only' }); await new Promise(setImmediate);
+  assert.match(h.elements.state.textContent, /Expired:.*writes are blocked/);
+  h.context.document.hidden = true; h.timers.get(1)(); assert.equal(h.calls.length, 2);
+  h.context.document.hidden = false;
+  const focused = h.events.get('focus')(); h.calls[2]({ mode: 'active', expiresAt: '2030-01-01' }); await focused;
+  assert.match(h.elements.state.textContent, /Active until 2030-01-01/);
+  h.stop(); assert.equal(h.timers.size, 0); assert.equal(h.events.size, 0);
+});
+
+test('web discards an old license response after locking or switching sessions', async () => {
+  const h = await licenseHarness(); const oldResponse = h.calls[0];
+  h.stop(); vm.runInContext('sessionGeneration += 1; monitorLicenseStatus()', h.context);
+  h.calls[1]({ mode: 'active' }); await new Promise(setImmediate);
+  oldResponse({ mode: 'revoked' }); await new Promise(setImmediate);
+  assert.match(h.elements.state.textContent, /Active/); assert.doesNotMatch(h.elements.state.textContent, /Revoked/);
+  h.stop();
+  vm.runInContext('serverAuthenticated = false; monitorLicenseStatus()', h.context);
+  assert.equal(h.calls.length, 2); h.stop();
+});
 
 test("WebCrypto digests are converted with a bound constructor call", async () => {
   const source = await readFile(
