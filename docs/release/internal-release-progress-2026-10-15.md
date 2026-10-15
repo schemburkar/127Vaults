@@ -593,3 +593,21 @@ verifies both directions, current member replica settlement, existing native/web
 P1/extension-negative evidence and full cleanup/original/revoked-data preservation.
 Broader multi-queue/GUI/loss/settings/client/physical/intended-host gates remain
 open. No browser permission, runtime artifact or Windows policy change; no push.
+
+## Selected member Linux Desktop read/edit/native restoration
+
+Actual selected Desktop-c on an explicit new copy of the genuinely enrolled Linux
+member CLI profile passes Online unlock/exact device display, moved-login fields,
+password reveal/remask, actual Edit/Save and Lock. Independent selected Windows
+CLI reads its title edit and restores baseline. Fresh actual Desktop process then
+reads restored fields/password, remasks and locks. No direct invoke or UI/native
+mocks. Both selected bytes/image and copied-profile semantics are documented.
+
+[Evidence and retained profile](server-a-member-desktop-2026-10-15.md). Combined
+verifier independently checks Deb binary hash, member GUI profile settlement and
+absent process, all prior member/native/web/P1/extension-negative/both-conflict
+records plus full cleanup/original/revoked-data preservation. Original CLI profile
+retained; no simultaneous use with copied Desktop identity, and online sync is
+required before future offline CLI work. No runtime artifact or push. Broader
+GUI conflict/multi-pending/typed/settings/interruption, Windows/physical/PWA/
+extension/intended-host gates remain open; full release unaccepted.

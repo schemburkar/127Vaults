@@ -251,3 +251,14 @@ explicit field merge and independent restoration checks. Forward Windows evidenc
 is retained separately. [Reverse evidence](server-a-member-offline-reverse-2026-10-15.md).
 Combined --conflict-both checks both records and current member replica settlement.
 Multiple pending/vaults, GUI/loss/settings and physical/other-source cases remain.
+
+## Selected server-a: actual member Desktop/native round trip
+
+Selected Linux Desktop-c unlocks Online using a copied genuine member CLI profile,
+reads/reveals/remasks moved login and saves a title edit through actual controls.
+Independent Windows CLI verifies/restores it; restarted Desktop independently
+reads original fields/password and locks. [Evidence](server-a-member-desktop-2026-10-15.md)
+records explicit copied identity (not new Desktop enrollment), selected Deb hash,
+settled GUI replicas, stopped app/project and preservation checks. Original Linux
+CLI identity must sync Online before later offline work after this GUI writer;
+do not run the two copied profiles concurrently. Broader GUI/physical cases remain.
