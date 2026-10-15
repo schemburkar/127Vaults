@@ -214,3 +214,30 @@ Combined retained index:
 Detailed boundaries and concrete next interruption/ownership/UI cases are in the
 new lifecycle document. Selected artifact versions stay unchanged; internal
 release remains unaccepted and the goal active. Commit locally, do not push.
+
+## Move divergence, early abort and actual revocation subsets
+
+[Isolated lifecycle evidence](isolated-lifecycle-2026-10-15.md) now also proves:
+changed-source and changed-destination refusal after a lost accepted copy reply;
+exact retained journal/copy recovery; explicit abort that preserves both peer
+edits; abort before receipt replay preserving the pending encrypted request; and
+ordinary sync replaying only that copy without retiring the source. Independent
+selected Windows/Linux CLI readers verify the resulting data and secrets.
+
+A separately enrolled disposable device D then lost an accepted copy reply and
+was actually revoked by trusted device B. Restart reports offline/unauthenticated
+with encrypted local unlock retained. Its journal bytes, exact pending request
+and masked review survive; move/sync refuse and send no copy retry. Trusted
+Windows/Linux peers still verify D's historical signature and read the accepted
+copy. D is deliberately left revoked with its queued draft/journal retained;
+owner A, peer B/C and the retained 12892 installation are untouched. The reason
+is currently generic HTTP401; device-specific recovery wording remains a UX
+follow-up. This is actual TLS/PostgreSQL revocation, not response injection.
+
+`C:/Projects/127Vaults-lifecycle-isolated-20261015-a/guard-combined-evidence.json`
+and `verify-guards.mjs` verify all cases, matching replay IDs/hashes, the revoked
+profile's retained data, selected package hashes and exact environment restoration.
+Only the isolated project is stopped; original server/database stay healthy.
+Product runtime/artifacts did not change. UI/reverse-writer, ownership,
+finalization-abort and broader physical/operational gates remain open. Internal
+release is still unaccepted; the goal remains active. No push.

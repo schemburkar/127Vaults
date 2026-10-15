@@ -92,3 +92,101 @@ loss, ownership or physical gates. Remaining active synthetic data may support
 further interruption scenarios; use a new isolated project if extra vaults are
 needed, since this lab now also contains five directory entries. Preserve failed
 runs and original journals rather than resetting either installation.
+
+## Source/destination changes and abort subset
+
+New selected-package Windows cases pass with independent Windows/Linux readers:
+
+- During accepted-copy reply loss, a peer changes the source. Exact copy receipt
+  replay succeeds after restart, then move refuses the changed source, retains
+  the original journal and leaves the source active. Explicit abort retains both
+  the original copy and newer source data.
+- During another accepted-copy reply loss, a peer edits the destination copy.
+  Replay succeeds, but move refuses to retire the source over a changed copy.
+  Abort preserves the peer's destination edit, the source and all earlier copies.
+- Abort before receipt replay preserves the exact still-pending encrypted copy
+  request. A new agent's ordinary sync replays that request byte for byte,
+  clears only the pending copy and never retires the source or recreates the
+  removal plan. Independent readers verify seven destination records.
+
+The remaining active Private vault is owned by this new lifecycle lab, not the
+retained 12892 installation. Its single synthetic MVP item was checked as Race A/B
+with its known fictitious password and edited through the actual CLI into a full
+login record for these cases. Its later peer edit is deliberately retained. No
+existing user item, old installation or original release fixture was normalized,
+retired, reset or deleted.
+
+`guard-evidence.json`, `guard-summary.json`, `guard-proxy-evidence.json`,
+`guard-linux-evidence.json`, `early-abort-summary.json`,
+`early-abort-proxy-evidence.json` and `early-linux-evidence.json` are retained in
+the isolated workspace. Each dropped copy reply had one matching HTTP-200 receipt
+replay with identical request ID, operation ID and SHA256 body. Source, destination
+and pending-copy preservation are checked separately. Linux readers use existing
+independently enrolled device C and the immutable selected CLI; no source client
+is substituted for packaged operations.
+
+Runners stop only the isolated project and restore exact environment values.
+Historical four-copy acceptance remains a point-in-time result before these
+intentional additional copies; do not blindly rerun its fixed-count assertions
+against the now-expanded lab. Broader UI/reverse-writer, ownership and physical
+acceptance remain open. Actual revocation-during-move evidence follows separately.
+
+## Actual revocation during an interrupted move
+
+A new disposable device D was enrolled solely for this case. It accepted one
+copy, lost the reply, and retained a copying-stage journal plus one pending
+request. Existing trusted Windows device B then revoked D using the packaged
+CLI and the real TLS/PostgreSQL device endpoint. This is actual revocation,
+not an injected 401. Owner writer A and Windows/Linux peers remain active; no
+device in the retained 12892 installation was changed.
+
+Restarting D falls back to encrypted local unlock with `online:false`,
+`authenticated:false`, `unlocked:true` and an authorization-refusal reason.
+Its complete journal bytes and exact pending encrypted request survive; masked
+sync review remains available without exposing either fixture secret. Move and
+sync refuse while offline and preserve the same records. Nothing retires the
+source. Trusted device B still verifies the revoked device's signed history and
+reads the accepted copy with ordinary fields, masked and explicit secrets; the
+new destination count is eight intentional records across all staged attempts.
+
+D's reason is currently `server rejected request (401)`, not a device-specific
+re-enrollment explanation. More actionable wording is a UX follow-up; this test
+proves authorization refusal, truthful offline status and work preservation.
+The revoked profile, keyring entry, journal and pending request are deliberately
+retained, not reset or reactivated to make a test pass. Each earlier case is a
+point-in-time result: later intentional copies change fixed-count assertions.
+
+Records: `revocation-evidence.json`, `revocation-summary.json`,
+`revocation-proxy-evidence.json`, `run-revocation.mjs` and source enrollment
+profiles under `clients-revocation`. Proxy evidence contains exactly one
+upstream HTTP-200 copy with a dropped reply; revoked move/sync sends no copy
+retry. Linux history/read verification follows in its own evidence record.
+
+### Linux verification and retained state
+
+The selected packaged Linux CLI independently verifies the post-revocation copy,
+its fields/secrets and still-active source. This includes verification of device
+D's signed operation after D is revoked; historical verification keys are not
+lost. `revocation-linux-evidence.json` and the final peer OS/device in
+`revocation-evidence.json` record the actual reader.
+
+The combined verifier checks all six Windows/Linux case summaries, three pairs
+of exact receipt replays, the single accepted-but-unretried revoked copy, the
+revoked profile's still-identical journal bytes and pending request, both immutable
+CLI package manifests and restoration of all three environment snapshots.
+Combined index: `guard-combined-evidence.json`; repeatable verification:
+`verify-guards.mjs`. New runs and shells are `run-guards.mjs`, `run-linux-guards.mjs`,
+`run-early-abort.mjs`, `run-linux-early.mjs`, `run-revocation.mjs` and
+`run-linux-revocation.mjs`, with their private-bus shell scripts.
+
+All new cases passed without a product runtime change. Source fixture helpers
+pass JavaScript syntax checks and actual packaged execution. Only the new
+isolated project was stopped and its exact environment restored. Revoked D stays
+revoked with its original queued work intact; owner A and peer B/C stay trusted.
+The retained 12892 installation remains healthy. No push or public deployment.
+
+Current remaining lifecycle scope is other writers/UI pairings, ownership,
+finalization-stage abort refusal and broader authorization/expiry combinations,
+plus the original physical/intended-host gates. The Windows CLI divergence,
+keep-copies/early-abort and actual revocation subsets above are now proven; older
+open statements in this chronological document describe earlier checkpoints.

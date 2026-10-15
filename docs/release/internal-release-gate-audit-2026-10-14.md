@@ -83,3 +83,13 @@ retargeting, retired-source behavior and exact receipt replay after copy/final
 reply loss. It uses a new isolated project; no retained vault was retired for a
 test. Desktop/web, reverse writer, abort/changed-source/ownership and physical
 acceptance remain open. No aggregate acceptance decision changed.
+
+## Additional guarded lifecycle cases
+
+The [isolated move follow-up](isolated-lifecycle-2026-10-15.md) passes Windows-writer
+changed-source/destination refusal, keep-copies abort before/after receipt replay,
+ordinary sync after abort, and actual disposable-device revocation during an
+interrupted move. Windows/Linux readers verify copies, secrets, source preservation
+and revoked-device operation history. Exact pending bytes and journal survive
+revocation; no authorization response was forged for that case. Other writers/UI,
+ownership, finalization-stage abort and physical/operational gates stay open.
