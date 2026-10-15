@@ -69,5 +69,6 @@
   "linuxMemberEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-linux-combined-evidence.json",
   "memberWriterEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-writes-combined-evidence.json",
   "memberWebNativeEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/member-web-native-combined-evidence.json",
-  "extensionWebPermissionEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/extension-web-refusal-combined-evidence.json"
+  "extensionWebPermissionEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/extension-web-refusal-combined-evidence.json",
+  "selectedServerOperationalEvidence": "C:/Projects/127Vaults-server-a-ops-20261015-a/selected-operational-evidence.json"
 }

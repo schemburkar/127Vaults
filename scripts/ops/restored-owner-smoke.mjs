@@ -50,4 +50,23 @@ assert.ok(vaults.vaultEnvelopes.length > 0);
 const vaultId = vaults.vaultEnvelopes[0].vaultId;
 const items = await call(`/api/v1/vaults/${vaultId}/items`);
 assert.ok(items.indices.length > 0);
-console.log(JSON.stringify({ ok: true, installation, vaultCount: vaults.vaultEnvelopes.length, itemCount: items.indices.length }));
+const core = new wasm.ExperimentalEcf1Core();
+let openedRoot, openedVault, indexBytes, bodyBytes;
+try {
+  openedRoot = core.unwrap_root(un(root.envelope), un(root.descriptor), password, secret);
+  const envelope = vaults.vaultEnvelopes.find(row => row.vaultId === vaultId);
+  openedVault = core.open_private_vault(openedRoot, un(vaults.directory), id(vaultId), un(envelope.envelope));
+  const item = items.indices[0], catalogue = un(items.catalogue);
+  const body = await call(`/api/v1/vaults/${vaultId}/items/${item.itemId}?catalogueRevision=${uuid(catalogue.subarray(44, 60))}`);
+  indexBytes = core.decrypt_private_part(openedVault, catalogue, id(item.itemId), un(item.envelope), 4);
+  bodyBytes = core.decrypt_private_part(openedVault, catalogue, id(item.itemId), un(body.envelope), 3);
+  const index = JSON.parse(new TextDecoder().decode(indexBytes)), plaintext = JSON.parse(new TextDecoder().decode(bodyBytes));
+  assert.ok(['Race A', 'Race B'].includes(index.title));
+  assert.equal(plaintext.password, index.title === 'Race A' ? 'race-a' : 'race-b');
+  const encryptedItemSha256 = createHash('sha256').update(catalogue).update(un(item.envelope)).update(un(body.envelope)).digest('hex');
+  console.log(JSON.stringify({ ok: true, installation, vaultCount: vaults.vaultEnvelopes.length, itemCount: items.indices.length, decryptedIndexBody: true, encryptedItemSha256 }));
+} finally {
+  indexBytes?.fill(0); bodyBytes?.fill(0);
+  if (openedVault) { core.release_vault(openedVault); openedVault.free(); }
+  core.lock();
+}

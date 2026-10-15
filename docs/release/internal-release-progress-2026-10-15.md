@@ -543,3 +543,21 @@ pass; original server and revoked draft preserved. Affirmative web-source
 fill/lock/reconnect requires the pending isolated-browser host-access answer;
 no grant was made. Other automated work remains possible. No artifact change or
 push; full internal release unaccepted.
+
+## Selected server-a fresh installation / encrypted backup and restore
+
+The selected immutable server-a now passes seven fresh packaged-operator checks:
+identity/admin setup, HTTPS/Host/SNI, owner/encrypted-item hostile paths,
+admin invitation/replay/audit/sign-out, encrypted database+identity backup/rehearsal,
+combined new-empty-project restore/duplicate refusal, and restored owner/item read.
+A strengthened helper then authenticates and actually decrypts the known fixture
+item on both source/restored projects; encrypted catalogue/index/body digest,
+installation and counts match exactly. Both actual images match selected 4bfc4bf6.
+
+[Operational evidence](server-a-operations-2026-10-15.md). Two new projects on
+12899 are stopped, their separate volumes retained, original labs unchanged.
+Wrapper-only stop/container and working-directory assumptions were corrected
+without repeating restore. Syntax and full member/native/web/P1/extension-negative
+cleanup chain pass. No runtime artifact rebuild, permission change or push.
+Existing-host evidence does not close intended/unrelated-host, physical, external
+SMTP or remaining cross-client/extension gates; full release remains unaccepted.
