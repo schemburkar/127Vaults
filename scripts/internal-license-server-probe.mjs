@@ -9,7 +9,7 @@ import wasm from '../apps/server/wasm-auth/vaults_browser_fixture.cjs';
 import { authenticationContextHash } from '../apps/server/src/opaque-adapter.mjs';
 import { deviceProofBytes } from '../apps/server/src/auth-policy.mjs';
 
-const [work,phase]=process.argv.slice(2);assert.equal(work,'C:/Projects/127Vaults-license-isolated-20261015-a');assert.ok(['prepare-grace','check-grace','replay-grace','prepare-revoked','check-revoked','replay-revoked'].includes(phase));const evidence=JSON.parse(await readFile(work+'/evidence.json','utf8'));assert.equal(evidence.status,'passed');const origin='https://127.0.0.1:12900';
+const [work,phase]=process.argv.slice(2);assert.equal(work,'C:/Projects/127Vaults-license-isolated-20261015-a');assert.ok(['verify-native','approve-cli','prepare-grace','check-grace','replay-grace','prepare-revoked','check-revoked','replay-revoked'].includes(phase));const evidence=JSON.parse(await readFile(work+'/evidence.json','utf8'));assert.equal(evidence.status,'passed');const origin='https://127.0.0.1:12900';
 if (!origin?.startsWith('https://')) throw Error('Supply the HTTPS origin.');
 const deviceId = '22222222-2222-4222-8222-222222222222';
 const secret = new Uint8Array(32).fill(7);
@@ -50,6 +50,25 @@ const session = await call(`/api/v1/auth/${begun.attemptId}/device-proof`, { met
 csrf = session.csrf;
 
 assert.equal(installation,evidence.installation);assert.ok(!['98027ac4-9882-42d5-812a-a18c972c299f','14725fef-f5b4-4cb8-afe0-77aa3d80b268'].includes(installation));
+if(phase==='approve-cli'){
+ const pending=JSON.parse(await readFile(work+'/native-license-enrollment-request.json','utf8'));
+ assert.equal(pending.serverId,installation);const binding=await call('/api/v1/device-enrollment/inspect',{method:'POST',body:{code:pending.code}});
+ assert.equal(binding.accountId,account);assert.equal(binding.newDeviceId,pending.device);assert.equal(createHash('sha256').update(un(binding.newDevicePublicKey)).digest('hex'),pending.fingerprint);
+ const bytes=Buffer.from(JSON.stringify(binding,Object.keys(binding).sort()));await call('/api/v1/device-enrollment/'+binding.enrollmentId+'/approval',{method:'POST',body:{approvalSignature:b64(sign(null,bytes,key))}});
+ await writeFile(work+'/native-license-enrollment-approval.json',JSON.stringify({status:'passed',installation,device:pending.device,fingerprint:pending.fingerprint,scope:'Existing production-crypto protocol owner approves exact new CLI identity; not browser approval UI'},null,2)+'\n',{flag:'wx'});console.log('Exact new CLI device inspected and approved.');
+}else if(phase==='verify-native'){
+ const baseline=JSON.parse(await readFile(work+'/native-license-baseline.json','utf8'));assert.notEqual(deviceId,baseline.device);
+ const vaults=await call('/api/v1/vaults'),items=await call('/api/v1/vaults/'+baseline.vaultId+'/items');assert.equal(items.indices.length,1);
+ const core=new wasm.ExperimentalEcf1Core();let handle;
+ try{
+  const openedRoot=core.unwrap_root(un(root.envelope),un(root.descriptor),password,secret);handle=core.open_private_vault(openedRoot,un(vaults.directory),id(baseline.vaultId),un(vaults.vaultEnvelopes.find(v=>v.vaultId===baseline.vaultId).envelope));
+  const catalogue=un(items.catalogue),item=items.indices.find(x=>x.itemId===baseline.itemId),body=await call('/api/v1/vaults/'+baseline.vaultId+'/items/'+baseline.itemId+'?catalogueRevision='+uuid(catalogue.subarray(44,60)));
+  const index=JSON.parse(new TextDecoder().decode(core.decrypt_private_part(handle,catalogue,id(item.itemId),un(item.envelope),4))),plain=JSON.parse(new TextDecoder().decode(core.decrypt_private_part(handle,catalogue,id(item.itemId),un(body.envelope),3)));
+  assert.equal(index.title,baseline.title);assert.equal(index.website,baseline.website);assert.equal(plain.username,baseline.username);assert.deepEqual(plain.customFields,baseline.customFields);assert.match(plain.password,/^race-[ab]$/);
+  const history=await call('/api/v1/vaults/'+baseline.vaultId+'/operations?cursor=0&limit=500');for(const kind of ['grace','revoked']){const original=JSON.parse(await readFile(work+'/native-license-'+kind+'-original.json','utf8'));assert.equal(history.operations.filter(x=>x.operation.opId===original[0].operation.opId).length,1);}
+  await writeFile(work+'/native-license-peer-read.json',JSON.stringify({status:'passed',installation,device:deviceId,clientDevice:baseline.device,checks:['Independent production-crypto owner authenticates and decrypts restored native item fields and secret','One catalogue identity and one accepted history entry per original retained native request'],at:new Date().toISOString()},null,2)+'\n',{flag:'wx'});console.log('Independent owner verifies native license recovery and request histories.');
+ }finally{if(handle){core.release_vault(handle);handle.free();}core.lock();}
+}else{
 const kind=phase.split('-')[1],packetPath=work+'/license-'+kind+'-pending.json';
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const vaults=await call('/api/v1/vaults'),vaultId=vaults.vaultEnvelopes[0].vaultId;
@@ -86,3 +105,5 @@ try{
  }
  await writeFile(work+'/license-'+phase+'.json',JSON.stringify({status:'passed',installation,phase,scope:'Actual selected server HTTPS/PostgreSQL and production crypto/protocol fixture owner; GUI/native UI not covered',at:new Date().toISOString()},null,2)+'\n',{flag:'wx'});console.log('Selected server license phase passed: '+phase);
 }finally{if(openedVault){core.release_vault(openedVault);openedVault.free();}core.lock();}
+
+}

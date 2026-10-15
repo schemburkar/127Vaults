@@ -120,8 +120,8 @@
       "id": "LOCAL-02",
       "name": "License read-only/locked/revoked and higher-sequence renewal",
       "source": "self-hosted-client-acceptance.md / one installation two devices step 6",
-      "state": "open_local_and_host",
-      "proof": "Fresh selected-server real HTTPS/PostgreSQL/production crypto-protocol test passes signed natural-expiry read-only and revocation 423 refusals, continued authenticated reads, exact original request retention, higher-sequence renewal, duplicate receipts/single history operations and sequence rollback refusal. See server-license-renewal-2026-10-15.md. Still required: client-owned native/GUI durable queues and notices/renewal, applicable locked and physical/intended-host cases; protocol fixture files are not native queue proof."
+      "state": "open_local",
+      "proof": "Fresh selected-server real HTTPS/PostgreSQL/production crypto-protocol test passes signed natural-expiry read-only and revocation 423 refusals, continued authenticated reads, exact original request retention, higher-sequence renewal, duplicate receipts/single history operations and sequence rollback refusal. See server-license-renewal-2026-10-15.md. Still required: client-owned native/GUI durable queues and notices/renewal, applicable locked and physical/intended-host cases; protocol fixture files are not native queue proof. Selected Windows CLI-b now genuinely enrolled on the separate licensed fixture: actual read-only/revoked guidance, refusal-owned encrypted queue, exact retention through repeated sync and fresh agent restart, higher-sequence renewal/replay and baseline restoration pass, with independent registered-owner decryption and single history entries. See windows-cli-license-2026-10-15.md. Linux GUI/client and later-expiry locked cases remain."
     },
     {
       "id": "LOCAL-03",
@@ -155,21 +155,21 @@
       "id": "HOST-01",
       "name": "Intended-host private trust, onboarding, operator and SMTP",
       "source": "internal-sync-release-plan-2026-10-13.md / completion rules; self-hosted-client-acceptance.md",
-      "state": "waiting_target_and_human_acceptance",
-      "proof": "Record intended host/endpoint/installation and independently verified CA, actual onboarding/admin acceptance and live SMTP path; local stub/Podman restore is not unrelated-host evidence."
+      "state": "user_separate_followup",
+      "proof": "Record intended host/endpoint/installation and independently verified CA, actual onboarding/admin acceptance and live SMTP path; local stub/Podman restore is not unrelated-host evidence. User October 15: target-specific acceptance is a separate follow-up; use owned Windows/WSL loopback fixtures for applicable local work."
     },
     {
       "id": "HOST-02",
       "name": "Clean physical Windows/Linux installation and keyrings",
       "source": "internal-release-readiness-2026-10-13.md / physical acceptance",
-      "state": "waiting_physical_acceptance",
-      "proof": "Actual clean-host trust/enrollment, keyring, terminal, installer/update and lock/idle behavior. Existing-host copied profiles, WSL/Xvfb and container dependency install remain scoped evidence."
+      "state": "physical_user_separate_followup",
+      "proof": "Actual clean-host trust/enrollment, keyring, terminal, installer/update and lock/idle behavior. Existing-host copied profiles, WSL/Xvfb and container dependency install remain scoped evidence. Physical machine acceptance is user-owned separate follow-up per October 15 answer; genuine local package/keyring checks remain applicable."
     },
     {
       "id": "HOST-03",
       "name": "Installed PWA enrollment, offline/update and retained edits",
       "source": "internal-release-gate-audit-2026-10-14.md / Web-PWA unproven",
-      "state": "waiting_install_and_local_cases",
+      "state": "open_local_install_target_separate",
       "proof": "Actual intended-host installed-PWA CA/enrollment/update/queue acceptance; installed-display-mode cache-upgrade emulation is partial, not physical installation."
     },
     {
@@ -199,10 +199,20 @@
       "docs/release/server-a-missing-item-boundary-2026-10-15.md",
       "docs/release/create-id-collision-component-2026-10-15.md",
       "docs/release/desktop-budget-acceptance-2026-10-15.md",
-      "docs/release/server-license-renewal-2026-10-15.md"
+      "docs/release/server-license-renewal-2026-10-15.md",
+      "docs/release/windows-cli-license-2026-10-15.md"
     ],
     "licenseWork": "C:/Projects/127Vaults-license-isolated-20261015-a",
-    "licenseCombined": "license-server-evidence.json"
+    "licenseCombined": "license-server-evidence.json",
+    "nativeLicenseCombined": "native-license-evidence.json"
   },
-  "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."
+  "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission. User October 15 explicitly separates intended-host and physical acceptance from this local release effort; retain those follow-ups visibly without making local acceptance depend on a fixed target. Applicable local PWA, package, permission and security checks remain required.",
+  "userDecisions": [
+    {
+      "date": "2026-10-15",
+      "decision": "Intended-host and physical installation/CA/OS-lock/SMTP acceptance will be handled separately by the user. Local acceptance may use this machine or WSL and must not depend on a fixed deployment host.",
+      "source": "Direct user answer to intended-host acceptance question in this thread",
+      "limits": "No permission grant for extension/passkeys or bypass of a denied launcher; remaining applicable local gates unchanged."
+    }
+  ]
 }
