@@ -52,7 +52,7 @@ Initialization refuses an existing phase record; do not blindly replay mutations
 or recopy/reset a profile to make a phase pass. No live operation remains.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --desktop-conflict
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --desktop-conflict
 ```
 
 New/changed helper syntax, real six-phase flow and combined checks pass. An added

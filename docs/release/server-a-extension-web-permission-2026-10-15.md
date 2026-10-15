@@ -37,7 +37,7 @@ in `extension-selected/127vaults-extension`; successful existing member profile 
 preserved. Runner verifies selected files before reuse, not a source-tree substitute.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --extension
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --extension
 ```
 
 New/changed helper syntax and combined verification pass. The chain rechecks

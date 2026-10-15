@@ -41,7 +41,7 @@ fresh rehearsal. Read-only verification mode starts only these two retained
 projects sequentially and stops them afterward; it does not repeat restore.
 
 ```powershell
-node scripts/internal-selected-server-ops.mjs C:/Projects/127Vaults-server-a-ops-20261015-a --verify-existing
+node tests/internal/server/selected-server-ops.mjs C:/Projects/127Vaults-server-a-ops-20261015-a --verify-existing
 ```
 
 Records: `evidence.json` (seven checks, installation/projects/archive hash) and

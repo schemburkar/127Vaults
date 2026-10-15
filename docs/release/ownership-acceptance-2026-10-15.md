@@ -52,7 +52,7 @@ reset the database. Private failure diagnostics and mail captures remain local.
 Read-only evidence/cleanup verification:
 
 ```powershell
-node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+node tests/internal/ownership/ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
 ```
 
 The initial three helpers pass Node syntax checks. The verifier passes selected Windows
@@ -90,7 +90,7 @@ or elevated-role-removal actions for the owner. No browser page errors occurred.
 
 Evidence: `ownership-admin-browser.json` beside the existing retained evidence.
 Runner: `run-ownership-admin-browser.mjs`; repository check:
-`scripts/internal-ownership-admin-browser.mjs`. The request is cancelled; no account
+`tests/internal/ownership/ownership-admin-browser.mjs`. The request is cancelled; no account
 role or vault content changes in this browser phase. Physical Windows browser,
 customer acceptance UI and intended-host operator checks remain separate.
 
@@ -111,7 +111,7 @@ All new/updated helpers pass syntax checks. Combined verification including both
 new phases and cleanup:
 
 ```powershell
-node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale
+node tests/internal/ownership/ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale
 ```
 
 ## Actual customer ownership UI
@@ -141,7 +141,7 @@ PWA/update claim is made. The customer stale-authentication toast remains separa
 from the already verified real server boundary. No product runtime changed.
 
 ```powershell
-node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer
+node tests/internal/ownership/ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer
 ```
 
 ## Actual stale-auth customer guidance and recovery
@@ -177,7 +177,7 @@ restoration, selected CLI hashes, original server/database health, absent owned
 browser/mail containers and the revoked device D journal/pending request:
 
 ```powershell
-node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer --with-customer-stale
+node tests/internal/ownership/ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer --with-customer-stale
 ```
 
 Ownership software integration covered here is now verified across the selected

@@ -49,7 +49,7 @@ behind the latest short status table:
 
 ## Verification performed
 
-`node scripts/internal-release-gap-audit.mjs` passed. It verifies all six selected
+`node tests/internal/audit/release-gap-audit.mjs` passed. It verifies all six selected
 artifact file sets/SHA256/revisions, source-reference existence and the original
 family inventory, runs the latest actual-scenario evidence/cleanup verifier, and
 checks selected operational records (seven real checks, paired decrypted source/

@@ -605,7 +605,7 @@ Completed evidence/helper changes are committed to local main without a push.
 ## Latest Windows manual fixture preparation and seven-surface audit
 
 The pending Windows manual starter was still selecting an older package. The new
-`scripts/prepare-windows-desktop-fixture.mjs` verifies the selected immutable
+`tests/internal/desktop/prepare-windows-desktop-fixture.mjs` verifies the selected immutable
 Desktop-h Windows release (`68b16ea`), statically extracts its installer with
 7-Zip, copies the guarded fictitious profile and prepares the human-run starter.
 It never launches/installs Desktop or changes native registration. The starter

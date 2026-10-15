@@ -46,7 +46,7 @@ original 12892 health and the unchanged revoked-D journal/encrypted pending copy
 Recheck evidence/cleanup without re-enrollment:
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --linux
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --linux
 ```
 
 New/changed helper syntax and combined checks pass. No product artifact changed,

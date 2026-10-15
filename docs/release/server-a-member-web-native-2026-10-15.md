@@ -44,7 +44,7 @@ preservation. Member processes and browser container are absent; owned candidate
 project is stopped, original 12892 remains healthy. Browser was locked before exit.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --web
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --web
 ```
 
 Changed/new helper syntax and combined checks pass. No runtime release artifact

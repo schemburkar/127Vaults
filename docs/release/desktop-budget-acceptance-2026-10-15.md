@@ -43,7 +43,7 @@ Private authoritative records under
 - Original/retry encrypted request snapshots (kept outside Git).
 - `member-rebuilt-cli-linux-read.json` and `member-budget-cli-package.json`.
 
-`node scripts/internal-member-acceptance-verify.mjs <candidate-work> --budget`
+`node tests/internal/audit/member-acceptance-verify.mjs <candidate-work> --budget`
 passes the full existing scoped evidence chain plus actual budget request hashes,
 IDs, predecessor links, runtime binary/revision, all five phases and cleanup.
 The gap audit now also binds the new runtime records to selected artifact

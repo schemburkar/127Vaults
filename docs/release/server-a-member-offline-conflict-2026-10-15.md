@@ -45,7 +45,7 @@ initialization refuses existing records. Do not blindly repeat completed phases
 or erase a pending request if later work fails.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --conflict
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --conflict
 ```
 
 New/changed helper syntax and combined verification pass. The combined checker

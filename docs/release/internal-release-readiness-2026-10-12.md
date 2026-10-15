@@ -44,7 +44,7 @@ documentation added afterward do not change those product binaries.
 
 ## Repeatable checks and fixture boundary
 
-`scripts/internal-server-release-smoke.mjs` accepts an extracted release tar,
+`tests/internal/server/server-release-smoke.mjs` accepts an extracted release tar,
 new external workspace, Compose provider and free loopback port. It refuses an
 existing workspace/listener, creates separate projects and stops only its own
 projects. The explicit fixture port override recomputes the inner manifest;
@@ -70,7 +70,7 @@ enrolled fictitious `owner_127` profile matching the required fixture UUID.
 The native-host browser test temporarily selected that profile and registered
 the fixture extension ID, then restored the prior pointer and registry value.
 The repeatable Windows Edge API check is
-`scripts/internal-native-connector-smoke.mjs`; all five explicit arguments are
+`tests/internal/extension/native-connector-smoke.mjs`; all five explicit arguments are
 required, and the new external workspace retains evidence and prior registration
 metadata. The server-stopped run passed at
 `C:\Projects\127Vaults-internal-native-20261012-b\evidence.json`.

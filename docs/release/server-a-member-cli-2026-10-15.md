@@ -47,7 +47,7 @@ The packaged enrollment runner is the repository helper below; rerunning it now
 intentionally refuses the already enrolled profile.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
 ```
 
 New helper syntax and combined verification pass. The chain revalidates native

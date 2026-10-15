@@ -34,7 +34,10 @@
     "check": "node --check scripts/dev.mjs && node --check scripts/mvp-startup.mjs && node --check scripts/mvp-acceptance.mjs && node --check scripts/build-fixture.mjs && pnpm -r check && pnpm check:contracts",
     "check:rust:core": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo run -p vaults-crypto --example feasibility && cargo build -p vaults-crypto --target wasm32-unknown-unknown",
     "check:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
-    "test": "pnpm -r test && node --test scripts/mvp-startup.test.mjs public-website/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs && node public-website/validate-releases.mjs"
+    "test": "pnpm -r test && node --test tests/internal/structure.test.mjs scripts/mvp-startup.test.mjs public-website/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs && node public-website/validate-releases.mjs",
+    "test:internal": "node tests/internal/run.mjs",
+    "test:internal:check": "node --test tests/internal/structure.test.mjs",
+    "test:internal:audit": "node tests/internal/audit/release-gap-audit.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3"

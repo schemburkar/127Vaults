@@ -29,7 +29,7 @@ the original slow saves or prove a product performance fix. Recovery helpers are
 one-use evidence workflows, not instructions to rerun completed mutations.
 
 Validation: helper syntax checks and `git diff --check` passed. The full existing
-`node scripts/internal-release-gap-audit.mjs` passed its scoped checks, reconciling
+`node tests/internal/audit/release-gap-audit.mjs` passed its scoped checks, reconciling
 12 original scenario families, 10 additional gates, and six selected artifacts;
 it explicitly reports internal release unaccepted. App/helper cleanup and empty
 GUI queue checks are included in that audit. Selected server is stopped with its

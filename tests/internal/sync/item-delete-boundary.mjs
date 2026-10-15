@@ -1,0 +1,25 @@
+// Read-only capability probe plus refused unsupported method; no item is created/deleted.
+import assert from 'node:assert/strict';
+import {readFile,writeFile} from 'node:fs/promises';
+import {join,isAbsolute} from 'node:path';
+import {createHash,randomUUID} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {ownershipClient} from '../ownership/ownership-client.mjs';
+const [work]=process.argv.slice(2);assert.ok(work&&isAbsolute(work));assert.equal(process.platform,'win32');
+const json=async name=>JSON.parse(await readFile(join(work,name),'utf8')),client=await ownershipClient(work),metadata=await json('ownership-member.json'),normal=await json('web-move-candidate-normal-fixture.json');
+assert.equal(client.fixture.serverRevision,'cbb1be02e68e484c82334cd4389dcc4b09f64cf2');
+const peer=new client.Account(metadata.accountId,metadata.deviceId,metadata.username,10);await peer.login();
+const path='/api/v1/vaults/'+normal.destination+'/items',before=(await peer.call(path)).value;
+assert.equal(before.indices.length,6);assert.ok(before.indices.some(row=>row.itemId===normal.destinationItem));
+const historyBefore=(await peer.call('/api/v1/vaults/'+normal.destination+'/operations')).value;
+const absent=randomUUID();assert.ok(!before.indices.some(row=>row.itemId===absent));
+const response=await client.http(path+'/'+absent,{method:'DELETE',body:{},headers:{cookie:peer.cookie,'x-127v-csrf':peer.csrf,'content-length':'2'}});
+assert.equal(response.status,405);assert.equal(response.value.error,'method_not_allowed');
+const after=(await peer.call(path)).value,historyAfter=(await peer.call('/api/v1/vaults/'+normal.destination+'/operations')).value;
+assert.deepEqual(after,before);assert.deepEqual(historyAfter,historyBefore);
+const exe='C:/Projects/127Vaults-settings-review-20261015-a/cli-package/127vaults-cli-0.0.0-windows-x64/127vaults.exe';
+assert.equal(createHash('sha256').update(await readFile(exe)).digest('hex'),(await json('candidate-cli-windows.json')).cliBinarySha256);
+const help=await promisify(execFile)(exe,['item','--help'],{windowsHide:true});for(const command of ['list','get','create','edit'])assert.match(help.stdout,new RegExp('\\b'+command+'\\b'));assert.doesNotMatch(help.stdout,/\bdelete\b|\bremove\b/i);
+await writeFile(join(work,'item-delete-capability-boundary.json'),JSON.stringify({status:'passed scoped capability probe; missing-item UI acceptance remains unproven',serverId:client.fixture.serverId,serverRevision:client.fixture.serverRevision,accountId:metadata.accountId,device:metadata.deviceId,cliSourceRevision:'600f206ce300e643a0b3d2dfd8259bdde597cb1a',request:{method:'DELETE',target:'Fresh absent UUID under owned synthetic member vault',status:response.status,error:response.value.error},catalogueSha256:createHash('sha256').update(Buffer.from(before.catalogue,'base64url')).digest('hex'),itemCount:before.indices.length,checks:['Actual registered member authenticates using production OPAQUE/device proof','Selected server refuses unsupported authenticated private-item DELETE with 405','Exact catalogue/indices and signed-operation history remain unchanged','Exact selected packaged CLI item help exposes list/get/create/edit and no delete/remove'],limits:['item.delete is a signed-history protocol kind; this does not prove support for deleting private catalogue/body records','Missing-edited-item GUI classification remains a separate defensive/component gate; no response/queue/catalogue/database was fabricated','No new sentinel item was created because no supported delete cleanup path was established']},null,2)+'\n');
+console.log('Selected private-item DELETE boundary verified without catalogue/history changes.');

@@ -49,7 +49,7 @@ Retained enrolled profiles are those in the Windows/Linux member enrollment note
 Reverify records and cleanup without repeating mutations:
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --writes
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --writes
 ```
 
 Helper syntax and combined checks pass. No runtime/source release artifact changed

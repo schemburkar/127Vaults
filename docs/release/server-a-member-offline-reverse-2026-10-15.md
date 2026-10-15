@@ -41,7 +41,7 @@ New records: `member-offline-conflict-linux.json`,
 initialization refuses successful existing records rather than replaying mutations.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --conflict-both
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --conflict-both
 ```
 
 Shared-helper syntax and the combined forward/reverse checker pass. It verifies

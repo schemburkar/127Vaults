@@ -50,7 +50,7 @@ profiles. Both historically used member items' original fields, including the
 prior peer-edited title, are restored. Accepted history naturally advanced.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --desktop-multi
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --desktop-multi
 ```
 
 Selected Deb/executable bytes are checked before every app launch. Combined

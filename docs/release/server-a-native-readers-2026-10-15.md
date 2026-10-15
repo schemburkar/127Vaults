@@ -42,7 +42,7 @@ also checks selected native release manifests/hashes and the underlying candidat
 P1/move data and cleanup evidence.
 
 ```powershell
-node scripts/internal-candidate-native-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
+node tests/internal/audit/candidate-native-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
 ```
 
 New helper syntax and combined verification pass. Owned server/database are

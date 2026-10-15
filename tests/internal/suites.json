@@ -1,0 +1,503 @@
+{
+  "description": "Opt-in retained-fixture acceptance workflows; never run all mutations as unit tests.",
+  "entries": [
+    {
+      "id": "desktop-fixture-inspector",
+      "suite": "support",
+      "previousPath": "scripts/desktop-fixture-inspector.mjs",
+      "path": "tests/internal/support/desktop-fixture-inspector.mjs"
+    },
+    {
+      "id": "acknowledgement-proxy",
+      "suite": "support",
+      "previousPath": "scripts/internal-acknowledgement-proxy.mjs",
+      "path": "tests/internal/support/acknowledgement-proxy.mjs"
+    },
+    {
+      "id": "candidate-cli-read",
+      "suite": "cli",
+      "previousPath": "scripts/internal-candidate-cli-read.mjs",
+      "path": "tests/internal/cli/candidate-cli-read.mjs"
+    },
+    {
+      "id": "candidate-native-verify",
+      "suite": "audit",
+      "previousPath": "scripts/internal-candidate-native-verify.mjs",
+      "path": "tests/internal/audit/candidate-native-verify.mjs"
+    },
+    {
+      "id": "cli-disclosure-smoke",
+      "suite": "cli",
+      "previousPath": "scripts/internal-cli-disclosure-smoke.mjs",
+      "path": "tests/internal/cli/cli-disclosure-smoke.mjs"
+    },
+    {
+      "id": "cloud-rehearsal",
+      "suite": "server",
+      "previousPath": "scripts/internal-cloud-rehearsal.mjs",
+      "path": "tests/internal/server/cloud-rehearsal.mjs"
+    },
+    {
+      "id": "desktop-ui-smoke",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-desktop-ui-smoke.mjs",
+      "path": "tests/internal/desktop/desktop-ui-smoke.mjs"
+    },
+    {
+      "id": "extension-form-smoke",
+      "suite": "extension",
+      "previousPath": "scripts/internal-extension-form-smoke.mjs",
+      "path": "tests/internal/extension/extension-form-smoke.mjs"
+    },
+    {
+      "id": "extension-web-refusal-run",
+      "suite": "extension",
+      "previousPath": "scripts/internal-extension-web-refusal-run.mjs",
+      "path": "tests/internal/extension/extension-web-refusal-run.mjs"
+    },
+    {
+      "id": "extension-web-refusal",
+      "suite": "extension",
+      "previousPath": "scripts/internal-extension-web-refusal.mjs",
+      "path": "tests/internal/extension/extension-web-refusal.mjs"
+    },
+    {
+      "id": "isolated-linux-finalize",
+      "suite": "sync",
+      "previousPath": "scripts/internal-isolated-linux-finalize.mjs",
+      "path": "tests/internal/sync/isolated-linux-finalize.mjs"
+    },
+    {
+      "id": "isolated-move-guards",
+      "suite": "sync",
+      "previousPath": "scripts/internal-isolated-move-guards.mjs",
+      "path": "tests/internal/sync/isolated-move-guards.mjs"
+    },
+    {
+      "id": "isolated-move-proxy",
+      "suite": "support",
+      "previousPath": "scripts/internal-isolated-move-proxy.mjs",
+      "path": "tests/internal/support/isolated-move-proxy.mjs"
+    },
+    {
+      "id": "isolated-move-revocation",
+      "suite": "sync",
+      "previousPath": "scripts/internal-isolated-move-revocation.mjs",
+      "path": "tests/internal/sync/isolated-move-revocation.mjs"
+    },
+    {
+      "id": "isolated-move-smoke",
+      "suite": "sync",
+      "previousPath": "scripts/internal-isolated-move-smoke.mjs",
+      "path": "tests/internal/sync/isolated-move-smoke.mjs"
+    },
+    {
+      "id": "item-delete-boundary-run",
+      "suite": "sync",
+      "previousPath": "scripts/internal-item-delete-boundary-run.mjs",
+      "path": "tests/internal/sync/item-delete-boundary-run.mjs"
+    },
+    {
+      "id": "item-delete-boundary",
+      "suite": "sync",
+      "previousPath": "scripts/internal-item-delete-boundary.mjs",
+      "path": "tests/internal/sync/item-delete-boundary.mjs"
+    },
+    {
+      "id": "license-native-client",
+      "suite": "licensing",
+      "previousPath": "scripts/internal-license-native-client.mjs",
+      "path": "tests/internal/licensing/license-native-client.mjs"
+    },
+    {
+      "id": "license-native-run",
+      "suite": "licensing",
+      "previousPath": "scripts/internal-license-native-run.mjs",
+      "path": "tests/internal/licensing/license-native-run.mjs"
+    },
+    {
+      "id": "license-server-probe",
+      "suite": "licensing",
+      "previousPath": "scripts/internal-license-server-probe.mjs",
+      "path": "tests/internal/licensing/license-server-probe.mjs"
+    },
+    {
+      "id": "license-server-run",
+      "suite": "licensing",
+      "previousPath": "scripts/internal-license-server-run.mjs",
+      "path": "tests/internal/licensing/license-server-run.mjs"
+    },
+    {
+      "id": "linux-desktop-ui-smoke",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-linux-desktop-ui-smoke.mjs",
+      "path": "tests/internal/desktop/linux-desktop-ui-smoke.mjs"
+    },
+    {
+      "id": "linux-package-smoke",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-linux-package-smoke.mjs",
+      "path": "tests/internal/desktop/linux-package-smoke.mjs"
+    },
+    {
+      "id": "member-acceptance-verify",
+      "suite": "audit",
+      "previousPath": "scripts/internal-member-acceptance-verify.mjs",
+      "path": "tests/internal/audit/member-acceptance-verify.mjs"
+    },
+    {
+      "id": "member-budget-partial-cli",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-budget-partial-cli.mjs",
+      "path": "tests/internal/cli/member-budget-partial-cli.mjs"
+    },
+    {
+      "id": "member-cli-approve",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-cli-approve.mjs",
+      "path": "tests/internal/cli/member-cli-approve.mjs"
+    },
+    {
+      "id": "member-cli-enrollment",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-cli-enrollment.mjs",
+      "path": "tests/internal/cli/member-cli-enrollment.mjs"
+    },
+    {
+      "id": "member-cli-linux-enrollment",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-cli-linux-enrollment.mjs",
+      "path": "tests/internal/cli/member-cli-linux-enrollment.mjs"
+    },
+    {
+      "id": "member-cli-writes",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-cli-writes.mjs",
+      "path": "tests/internal/cli/member-cli-writes.mjs"
+    },
+    {
+      "id": "member-desktop-budget-partial-run",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-budget-partial-run.mjs",
+      "path": "tests/internal/desktop/member-desktop-budget-partial-run.mjs"
+    },
+    {
+      "id": "member-desktop-budget-partial-ui",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-budget-partial-ui.mjs",
+      "path": "tests/internal/desktop/member-desktop-budget-partial-ui.mjs"
+    },
+    {
+      "id": "member-desktop-budget-run",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-budget-run.mjs",
+      "path": "tests/internal/desktop/member-desktop-budget-run.mjs"
+    },
+    {
+      "id": "member-desktop-budget-stop",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-budget-stop.mjs",
+      "path": "tests/internal/desktop/member-desktop-budget-stop.mjs"
+    },
+    {
+      "id": "member-desktop-budget-ui",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-budget-ui.mjs",
+      "path": "tests/internal/desktop/member-desktop-budget-ui.mjs"
+    },
+    {
+      "id": "member-desktop-conflict-run",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-conflict-run.mjs",
+      "path": "tests/internal/desktop/member-desktop-conflict-run.mjs"
+    },
+    {
+      "id": "member-desktop-conflict-ui",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-conflict-ui.mjs",
+      "path": "tests/internal/desktop/member-desktop-conflict-ui.mjs"
+    },
+    {
+      "id": "member-desktop-multi-peer",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-multi-peer.mjs",
+      "path": "tests/internal/desktop/member-desktop-multi-peer.mjs"
+    },
+    {
+      "id": "member-desktop-multi-run",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-multi-run.mjs",
+      "path": "tests/internal/desktop/member-desktop-multi-run.mjs"
+    },
+    {
+      "id": "member-desktop-multi-ui",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-multi-ui.mjs",
+      "path": "tests/internal/desktop/member-desktop-multi-ui.mjs"
+    },
+    {
+      "id": "member-desktop-run",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-run.mjs",
+      "path": "tests/internal/desktop/member-desktop-run.mjs"
+    },
+    {
+      "id": "member-desktop-ui",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-member-desktop-ui.mjs",
+      "path": "tests/internal/desktop/member-desktop-ui.mjs"
+    },
+    {
+      "id": "member-linux-run",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-linux-run.mjs",
+      "path": "tests/internal/cli/member-linux-run.mjs"
+    },
+    {
+      "id": "member-offline-conflict-run",
+      "suite": "sync",
+      "previousPath": "scripts/internal-member-offline-conflict-run.mjs",
+      "path": "tests/internal/sync/member-offline-conflict-run.mjs"
+    },
+    {
+      "id": "member-offline-conflict",
+      "suite": "sync",
+      "previousPath": "scripts/internal-member-offline-conflict.mjs",
+      "path": "tests/internal/sync/member-offline-conflict.mjs"
+    },
+    {
+      "id": "member-rebuilt-cli-read",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-rebuilt-cli-read.mjs",
+      "path": "tests/internal/cli/member-rebuilt-cli-read.mjs"
+    },
+    {
+      "id": "member-rebuilt-cli-run",
+      "suite": "cli",
+      "previousPath": "scripts/internal-member-rebuilt-cli-run.mjs",
+      "path": "tests/internal/cli/member-rebuilt-cli-run.mjs"
+    },
+    {
+      "id": "member-web-writes-run",
+      "suite": "web",
+      "previousPath": "scripts/internal-member-web-writes-run.mjs",
+      "path": "tests/internal/web/member-web-writes-run.mjs"
+    },
+    {
+      "id": "member-web-writes",
+      "suite": "web",
+      "previousPath": "scripts/internal-member-web-writes.mjs",
+      "path": "tests/internal/web/member-web-writes.mjs"
+    },
+    {
+      "id": "member-writes-run",
+      "suite": "sync",
+      "previousPath": "scripts/internal-member-writes-run.mjs",
+      "path": "tests/internal/sync/member-writes-run.mjs"
+    },
+    {
+      "id": "native-connector-smoke",
+      "suite": "extension",
+      "previousPath": "scripts/internal-native-connector-smoke.mjs",
+      "path": "tests/internal/extension/native-connector-smoke.mjs"
+    },
+    {
+      "id": "native-settings-auth-smoke",
+      "suite": "sync",
+      "previousPath": "scripts/internal-native-settings-auth-smoke.mjs",
+      "path": "tests/internal/sync/native-settings-auth-smoke.mjs"
+    },
+    {
+      "id": "ownership-acceptance",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-acceptance.mjs",
+      "path": "tests/internal/ownership/ownership-acceptance.mjs"
+    },
+    {
+      "id": "ownership-admin-browser",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-admin-browser.mjs",
+      "path": "tests/internal/ownership/ownership-admin-browser.mjs"
+    },
+    {
+      "id": "ownership-client",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-client.mjs",
+      "path": "tests/internal/ownership/ownership-client.mjs"
+    },
+    {
+      "id": "ownership-customer-browser",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-customer-browser.mjs",
+      "path": "tests/internal/ownership/ownership-customer-browser.mjs"
+    },
+    {
+      "id": "ownership-smtp",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-smtp.mjs",
+      "path": "tests/internal/ownership/ownership-smtp.mjs"
+    },
+    {
+      "id": "ownership-stale",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-stale.mjs",
+      "path": "tests/internal/ownership/ownership-stale.mjs"
+    },
+    {
+      "id": "ownership-verify",
+      "suite": "ownership",
+      "previousPath": "scripts/internal-ownership-verify.mjs",
+      "path": "tests/internal/ownership/ownership-verify.mjs"
+    },
+    {
+      "id": "packaged-cli-sync",
+      "suite": "sync",
+      "previousPath": "scripts/internal-packaged-cli-sync.mjs",
+      "path": "tests/internal/sync/packaged-cli-sync.mjs"
+    },
+    {
+      "id": "packaged-multi-conflict",
+      "suite": "sync",
+      "previousPath": "scripts/internal-packaged-multi-conflict.mjs",
+      "path": "tests/internal/sync/packaged-multi-conflict.mjs"
+    },
+    {
+      "id": "packaged-settings-sync",
+      "suite": "sync",
+      "previousPath": "scripts/internal-packaged-settings-sync.mjs",
+      "path": "tests/internal/sync/packaged-settings-sync.mjs"
+    },
+    {
+      "id": "public-site-smoke",
+      "suite": "site",
+      "previousPath": "scripts/internal-public-site-smoke.mjs",
+      "path": "tests/internal/site/public-site-smoke.mjs"
+    },
+    {
+      "id": "release-gap-audit",
+      "suite": "audit",
+      "previousPath": "scripts/internal-release-gap-audit.mjs",
+      "path": "tests/internal/audit/release-gap-audit.mjs"
+    },
+    {
+      "id": "response-loss-proxy",
+      "suite": "support",
+      "previousPath": "scripts/internal-response-loss-proxy.mjs",
+      "path": "tests/internal/support/response-loss-proxy.mjs"
+    },
+    {
+      "id": "selected-server-ops",
+      "suite": "server",
+      "previousPath": "scripts/internal-selected-server-ops.mjs",
+      "path": "tests/internal/server/selected-server-ops.mjs"
+    },
+    {
+      "id": "server-candidate-verify",
+      "suite": "audit",
+      "previousPath": "scripts/internal-server-candidate-verify.mjs",
+      "path": "tests/internal/audit/server-candidate-verify.mjs"
+    },
+    {
+      "id": "server-release-smoke",
+      "suite": "server",
+      "previousPath": "scripts/internal-server-release-smoke.mjs",
+      "path": "tests/internal/server/server-release-smoke.mjs"
+    },
+    {
+      "id": "settings-auth-proxy",
+      "suite": "support",
+      "previousPath": "scripts/internal-settings-auth-proxy.mjs",
+      "path": "tests/internal/support/settings-auth-proxy.mjs"
+    },
+    {
+      "id": "settings-review-peer",
+      "suite": "sync",
+      "previousPath": "scripts/internal-settings-review-peer.mjs",
+      "path": "tests/internal/sync/settings-review-peer.mjs"
+    },
+    {
+      "id": "settings-review-smoke",
+      "suite": "sync",
+      "previousPath": "scripts/internal-settings-review-smoke.mjs",
+      "path": "tests/internal/sync/settings-review-smoke.mjs"
+    },
+    {
+      "id": "web-acknowledgement-smoke",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-acknowledgement-smoke.mjs",
+      "path": "tests/internal/web/web-acknowledgement-smoke.mjs"
+    },
+    {
+      "id": "web-lifecycle-smoke",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-lifecycle-smoke.mjs",
+      "path": "tests/internal/web/web-lifecycle-smoke.mjs"
+    },
+    {
+      "id": "web-move-copy-loss",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-copy-loss.mjs",
+      "path": "tests/internal/web/web-move-copy-loss.mjs"
+    },
+    {
+      "id": "web-move-copy-verify",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-copy-verify.mjs",
+      "path": "tests/internal/web/web-move-copy-verify.mjs"
+    },
+    {
+      "id": "web-move-finalization-verify",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-finalization-verify.mjs",
+      "path": "tests/internal/web/web-move-finalization-verify.mjs"
+    },
+    {
+      "id": "web-move-guard-verify",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-guard-verify.mjs",
+      "path": "tests/internal/web/web-move-guard-verify.mjs"
+    },
+    {
+      "id": "web-move-peer-edit",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-peer-edit.mjs",
+      "path": "tests/internal/web/web-move-peer-edit.mjs"
+    },
+    {
+      "id": "web-move-peer",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-peer.mjs",
+      "path": "tests/internal/web/web-move-peer.mjs"
+    },
+    {
+      "id": "web-move-ui",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-ui.mjs",
+      "path": "tests/internal/web/web-move-ui.mjs"
+    },
+    {
+      "id": "web-move-verify",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-move-verify.mjs",
+      "path": "tests/internal/web/web-move-verify.mjs"
+    },
+    {
+      "id": "web-native-sync",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-native-sync.mjs",
+      "path": "tests/internal/web/web-native-sync.mjs"
+    },
+    {
+      "id": "web-typed-sync",
+      "suite": "web",
+      "previousPath": "scripts/internal-web-typed-sync.mjs",
+      "path": "tests/internal/web/web-typed-sync.mjs"
+    },
+    {
+      "id": "prepare-windows-desktop-fixture",
+      "suite": "desktop",
+      "previousPath": "scripts/prepare-windows-desktop-fixture.mjs",
+      "path": "tests/internal/desktop/prepare-windows-desktop-fixture.mjs"
+    }
+  ]
+}

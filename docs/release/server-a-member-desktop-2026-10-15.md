@@ -57,7 +57,7 @@ both offline conflict records pass; original server healthy, owned project
 stopped and revoked-D encrypted draft/journal unchanged.
 
 ```powershell
-node scripts/internal-member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --desktop
+node tests/internal/audit/member-acceptance-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a --desktop
 ```
 
 New/changed helper syntax and combined verification pass. No runtime artifact

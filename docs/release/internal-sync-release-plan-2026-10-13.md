@@ -170,7 +170,7 @@ the bounded-session diagnostic. Server `internal-20261013-a` and extension
 `internal-20261013-b` retain their recorded `8aeaf9b` provenance. No public release
 or complete matrix acceptance is claimed.
 
-`scripts/internal-packaged-cli-sync.mjs` drives actual packaged CLI commands and
+`tests/internal/sync/packaged-cli-sync.mjs` drives actual packaged CLI commands and
 owned unlock-agent subprocesses with explicit enrolled fictitious profiles. It
 does not change the active-profile pointer or native-host registration. Windows
 creation, Linux read/edit and Windows return read pass against real TLS/PostgreSQL:
@@ -264,8 +264,8 @@ and OPAQUE unlock passed. The fixture CA is trusted only inside an isolated Linu
 browser container, with no HTTPS bypass. Its enrolled nonextractable identity
 survives browser restart.
 
-`scripts/internal-web-native-sync.mjs` and the `web-peer` phase of
-`scripts/internal-packaged-cli-sync.mjs` pass the actual online round trip:
+`tests/internal/web/web-native-sync.mjs` and the `web-peer` phase of
+`tests/internal/sync/packaged-cli-sync.mjs` pass the actual online round trip:
 web UI creates an encrypted item; Windows packaged CLI reads its original UUID,
 checks ordinary fields, redaction and explicitly requested fictitious password,
 edits title/username; web UI reloads, displays those values with password masking,
@@ -474,7 +474,7 @@ pending changes/conflicts. The vault is restored and no existing items discarded
 
 Repeatable phases are `lifecycle-create`, `lifecycle-archive`,
 `lifecycle-retired-peer`, `lifecycle-restore`, `lifecycle-restored-peer` in
-`scripts/internal-packaged-cli-sync.mjs`. Existing vault reuse requires explicit
+`tests/internal/sync/packaged-cli-sync.mjs`. Existing vault reuse requires explicit
 `VAULTS_FIXTURE_LIFECYCLE_VAULT` and an available `Fixture Work ` name. Evidence:
 `C:\Projects\127Vaults-sync-web-20261014-a\lifecycle-native.json`; Linux runner
 `linux-lifecycle.sh` uses `Ubuntu-24.04`, `vaults-dev` and the isolated keyring.

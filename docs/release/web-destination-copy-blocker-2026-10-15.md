@@ -123,7 +123,7 @@ verification. The artifact inventory now selects server/web/admin
 `internal-20261015-a`; old server-e is retained as historical evidence.
 
 ```powershell
-node scripts/internal-server-candidate-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
+node tests/internal/audit/server-candidate-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a
 ```
 
 Use the candidate work directory for future new-package acceptance; the original

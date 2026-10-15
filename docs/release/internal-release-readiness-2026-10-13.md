@@ -102,7 +102,7 @@ The final desktop Debian package and standalone CLI passed in a fresh Ubuntu
 opened its unconfigured trust form, native framing reported no enrolled sources,
 and removal/reinstallation preserved a separate profile marker. Evidence is
 `C:\Projects\127Vaults-internal-clean-client-20261013-a\evidence.json`;
-`scripts/internal-linux-package-smoke.mjs` records artifact revisions and the base
+`tests/internal/desktop/linux-package-smoke.mjs` records artifact revisions and the base
 image digest. This supersedes the dependency-lifecycle gap in the table above,
 but Xvfb/container startup does not establish physical-machine or keyring enrollment
 acceptance.
@@ -116,16 +116,16 @@ gate after approval in a fresh isolated browser profile.
 
 The following scripts are committed for replay with explicit fixture paths:
 
-- `scripts/internal-extension-form-smoke.mjs`, `extension-popup-driver.mjs` and
+- `tests/internal/extension/extension-form-smoke.mjs`, `extension-popup-driver.mjs` and
   `build-extension-react-fixture.mjs`: real popup/form/native-source matrix.
-- `scripts/internal-native-connector-smoke.mjs`: source/read/refusal/lock and
+- `tests/internal/extension/native-connector-smoke.mjs`: source/read/refusal/lock and
   explicit fixture uninstall/update/foreign-registration cases. This API-only
   harness is separate from the popup/form harness.
-- `scripts/internal-desktop-ui-smoke.mjs` and `desktop-fixture-inspector.mjs`:
+- `tests/internal/desktop/desktop-ui-smoke.mjs` and `desktop-fixture-inspector.mjs`:
   real packaged Windows WebView2/Linux WebKit UI, configurable previous/new title,
   Online/Offline expectation and conflict/settings review. The earlier Linux entry
   point forwards to this shared harness.
-- `scripts/internal-cli-disclosure-smoke.mjs`: captured pipe output assertions,
+- `tests/internal/cli/cli-disclosure-smoke.mjs`: captured pipe output assertions,
   with credentials omitted from console diagnostics.
 - `apps/cli/examples/internal_connector_fixture.rs`: explicitly enrolled
   `owner_127` fixture agent start/stop/pair, bound to the required installation UUID.

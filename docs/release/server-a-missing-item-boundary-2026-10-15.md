@@ -26,7 +26,7 @@ transaction. Appending a standalone history marker or removing SQL rows to force
 a classifier would misrepresent an enabled client operation; neither was done.
 
 Record: selected candidate work `item-delete-capability-boundary.json`.
-Runner: `scripts/internal-item-delete-boundary-run.mjs` starts/asserts selected
+Runner: `tests/internal/sync/item-delete-boundary-run.mjs` starts/asserts selected
 image, performs the refused-method probe, stops only the owned project and runs
 the existing scoped release-gap/preservation checker. It passed. No browser
 permission, GUI profile or native registration is changed.

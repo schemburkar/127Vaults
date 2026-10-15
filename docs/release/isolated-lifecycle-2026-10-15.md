@@ -273,7 +273,7 @@ must not be blindly rerun. Original owner catalogue and revoked D are untouched.
 All three new helpers pass syntax checks. Combined verification passes:
 
 ```powershell
-node scripts/internal-web-move-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+node tests/internal/web/web-move-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
 ```
 
 This includes the earlier ownership verifier's exact Compose/manifest/environment
@@ -320,7 +320,7 @@ journal/profile or recreate its source to obtain a passing run.
 New/updated helpers pass syntax checks. Combined verification:
 
 ```powershell
-node scripts/internal-web-move-copy-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+node tests/internal/web/web-move-copy-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
 ```
 
 This also verifies earlier normal/ownership evidence, exact bundle/wiring
@@ -369,7 +369,7 @@ Completed/lost phases are protected against reinjection and resubmission.
 New/updated helper syntax and combined verification pass:
 
 ```powershell
-node scripts/internal-web-move-finalization-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+node tests/internal/web/web-move-finalization-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
 ```
 
 The verification chain retains earlier normal/copy/ownership history and checks
@@ -415,7 +415,7 @@ Retained case records: `web-move-guard-loss-fixture.json` (complete saved journa
 `run-web-move-guard-peer.mjs`. New/updated helpers pass syntax checks. Verification:
 
 ```powershell
-node scripts/internal-web-move-guard-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+node tests/internal/web/web-move-guard-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
 ```
 
 The verification chain also preserves earlier lifecycle/ownership history and
