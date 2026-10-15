@@ -2,7 +2,9 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-export async function openDesktopFixtureInspector(origin, transport=process.platform==='win32'?'webview2':'webkit') {
+export async function openDesktopFixtureInspector(origin, transport=process.platform==='win32'?'webview2':'webkit', options={}) {
+  const commandTimeoutMs=options.commandTimeoutMs??10000;
+  assert.ok(Number.isInteger(commandTimeoutMs)&&commandTimeoutMs>=10000&&commandTimeoutMs<=60000);
   assert.match(origin,/^http:\/\/127\.0\.0\.1:\d+$/);
   if(transport==='webview2'){
     const {chromium}=createRequire(import.meta.url)(process.env.VAULTS_PLAYWRIGHT_MODULE||'playwright');
@@ -42,7 +44,7 @@ export async function openDesktopFixtureInspector(origin, transport=process.plat
   return {
     async evaluate(expression){
       const id=++sequence;
-      const response=new Promise((resolve,reject)=>pending.set(id,{resolve,timer:setTimeout(()=>{pending.delete(id);reject(Error('Inspector command timed out'));},10000)}));
+      const response=new Promise((resolve,reject)=>pending.set(id,{resolve,timer:setTimeout(()=>{pending.delete(id);reject(Error('Inspector command timed out'));},commandTimeoutMs)}));
       ws.send(JSON.stringify({id:1000+id,method:'Target.sendMessageToTarget',params:{targetId:target,message:JSON.stringify({id,method:'Runtime.evaluate',params:{expression,returnByValue:true}})}}));
       const result=await response;if(result.error||result.result?.wasThrown)throw Error('Desktop fixture evaluation failed');return result.result.result.value;
     },

@@ -1,4 +1,4 @@
-Latest stop: see [interrupted Desktop budget checkpoint](internal-release-checkpoint-2026-10-15-budget.md). 298 genuine encrypted requests remain queued and preserved; recover them first. Budget acceptance is incomplete. Resume only when the user restarts the goal.
+Latest recovery: [the interrupted Desktop queue is recovered](desktop-budget-partial-recovery-2026-10-15.md). All 298 requests replayed, Windows restored the baseline, and fresh GUI verification passed. Budget-limit acceptance remains open. See remaining gates for next work.
 
 Latest collision checkpoint: [encrypted component evidence](create-id-collision-component-2026-10-15.md) proves two actual signed drafts, authenticated peer at same UUID, zero automatic rebase/upload, exact queue/peer preservation and explicit server choice leaving sibling decryptable. Test1, fmt and strict Clippy pass; test-only source change, no package rebuild/P1 failure/push. Packaged/GUI collision remains open. Next runtime gate: actual selected package/UI 1000-envelope budget message and fresh-unlock recovery; retain original budget/profiles/queues. Other matrix/access/physical gates remain.
 

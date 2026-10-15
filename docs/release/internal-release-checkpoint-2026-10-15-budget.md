@@ -1,5 +1,11 @@
 # Stop checkpoint: interrupted Desktop budget rehearsal
 
+**Subsequent recovery completed:** the resumed run replayed the original queue,
+verified the final synthetic item through the distinct Windows CLI, restored its
+baseline, and verified it in a fresh GUI process. See
+[recovery evidence](desktop-budget-partial-recovery-2026-10-15.md). The pending
+298-request state below is historical; the private checkpoint remains preserved.
+
 Internal release remains INCOMPLETE. Stopped at the user's request because usage
 is low. Resume only when the user restarts the goal. No remote push.
 
