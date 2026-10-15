@@ -6,10 +6,11 @@ import wasm from '../apps/server/wasm-auth/vaults_browser_fixture.cjs';
 import { ownershipClient } from './internal-ownership-client.mjs';
 
 const [work, caseName] = process.argv.slice(2);
-assert.ok(caseName === undefined || ['copy-loss', 'finalization-loss'].includes(caseName));
+assert.ok(caseName === undefined || ['copy-loss', 'finalization-loss', 'guard'].includes(caseName));
 const copyLoss = caseName === 'copy-loss';
 const finalizationLoss = caseName === 'finalization-loss';
-const caseKind = copyLoss ? 'copy' : finalizationLoss ? 'finalization' : null;
+const guardCase = caseName === 'guard';
+const caseKind = copyLoss ? 'copy' : finalizationLoss ? 'finalization' : guardCase ? 'guard' : null;
 const client = await ownershipClient(work);
 for (let attempt = 0; ; attempt++) {
   try { assert.equal((await client.http('/api/v1/setup')).status, 200); break; }
@@ -24,8 +25,8 @@ const metadata = await json('ownership-member.json');
 const browser = await json('ownership-customer-device.json');
 assert.equal(record.serverId, client.fixture.serverId);
 assert.equal(record.accountId, metadata.accountId);
-assert.equal(record.movePassed, true);
-assert.equal((await json(caseKind ? 'web-move-' + caseKind + '-resume.json' : 'web-move-ui.json')).status, 'passed');
+assert.equal(guardCase ? record.abortPassed : record.movePassed, true);
+assert.equal((await json(guardCase ? 'web-move-guard-abort.json' : caseKind ? 'web-move-' + caseKind + '-resume.json' : 'web-move-ui.json')).status, 'passed');
 assert.notEqual(metadata.deviceId, browser.deviceId);
 assert.equal(metadata.fixtureSigningSeed, 10);
 const peer = new client.Account(metadata.accountId, metadata.deviceId, metadata.username, 10);
@@ -46,25 +47,31 @@ const root = core.unwrap_root(un(wrapped.envelope), un(wrapped.descriptor), peer
 const verified = [];
 try {
   const data = (await peer.call('/api/v1/vaults')).value;
-  assert.equal(data.vaultEnvelopes.length, finalizationLoss ? 4 : copyLoss ? 3 : 2);
+  assert.equal(data.vaultEnvelopes.length, guardCase ? 5 : finalizationLoss ? 4 : copyLoss ? 3 : 2);
   for (const [kind, itemId] of [['source', record.sourceItem], ['destination', record.destinationItem]]) {
     const vaultId = record[kind], row = data.vaultEnvelopes.find(row => row.vaultId === vaultId);
     assert.ok(row);
-    assert.equal(Boolean(row.retired), kind === 'source');
+    assert.equal(Boolean(row.retired), kind === 'source' && !guardCase);
     const listed = (await peer.call('/api/v1/vaults/' + vaultId + '/items')).value;
-    const expectedCount = kind === 'destination' ? finalizationLoss ? 3 : copyLoss ? 2 : 1 : 1;
+    const expectedCount = kind === 'destination' ? guardCase ? 4 : finalizationLoss ? 3 : copyLoss ? 2 : 1 : 1;
     assert.equal(listed.indices.length, expectedCount);
-    let preservedItemId, preservedCopyItemId;
+    let preservedItemId, preservedCopyItemId, preservedFinalizationItemId;
     if (caseKind && kind === 'destination') {
       const baseline = await json('web-move-ui-fixture.json');
       assert.equal(baseline.destination, vaultId);
       assert.ok(listed.indices.some(row => row.itemId === baseline.destinationItem));
       preservedItemId = baseline.destinationItem;
-      if (finalizationLoss) {
+      if (finalizationLoss || guardCase) {
         const previous = await json('web-move-copy-loss-fixture.json');
         assert.equal(previous.destination, vaultId);
         assert.ok(listed.indices.some(row => row.itemId === previous.destinationItem));
         preservedCopyItemId = previous.destinationItem;
+      }
+      if (guardCase) {
+        const previous = await json('web-move-finalization-loss-fixture.json');
+        assert.equal(previous.destination, vaultId);
+        assert.ok(listed.indices.some(row => row.itemId === previous.destinationItem));
+        preservedFinalizationItemId = previous.destinationItem;
       }
     }
     const item = listed.indices.find(row => row.itemId === itemId);
@@ -76,13 +83,13 @@ try {
     const bodyBytes = core.decrypt_private_part(vault, un(listed.catalogue), id(itemId), un(body.envelope), 3);
     try {
       const index = JSON.parse(new TextDecoder().decode(indexBytes)), plaintext = JSON.parse(new TextDecoder().decode(bodyBytes));
-      assert.equal(index.title, record.title);
+      assert.equal(index.title, guardCase && kind === 'source' ? record.changedTitle : record.title);
       assert.equal(index.website, record.website);
       assert.equal(plaintext.username, record.username);
       assert.equal(plaintext.password, record.password);
     } finally { indexBytes.fill(0); bodyBytes.fill(0); core.release_vault(vault); vault.free(); }
-    verified.push({ kind, vaultId, itemId, itemCount: expectedCount, retired: kind === 'source', ...(preservedItemId ? { preservedItemId } : {}), ...(preservedCopyItemId ? { preservedCopyItemId } : {}) });
+    verified.push({ kind, vaultId, itemId, itemCount: expectedCount, retired: kind === 'source' && !guardCase, ...(preservedItemId ? { preservedItemId } : {}), ...(preservedCopyItemId ? { preservedCopyItemId } : {}), ...(preservedFinalizationItemId ? { preservedFinalizationItemId } : {}) });
   }
 } finally { core.lock(); }
-await writeFile(join(work, caseKind ? 'web-move-' + caseKind + '-peer.json' : 'web-move-peer.json'), JSON.stringify({ status: 'passed', serverId: client.fixture.serverId, serverRevision: client.fixture.serverRevision, accountId: metadata.accountId, peerDevice: metadata.deviceId, browserDevice: browser.deviceId, verified, checks: ['Distinct genuinely registered device authenticates using production OPAQUE/device proof', 'Independently decrypts retained original and unique moved copy with exact ordinary fields and password', 'Source retired, destination active, one newly identified copy with exact expected catalogue counts'], limits: ['Production crypto Node reader, not a packaged CLI/Desktop reader claim'] }, null, 2) + '\n');
+await writeFile(join(work, caseKind ? 'web-move-' + caseKind + '-peer.json' : 'web-move-peer.json'), JSON.stringify({ status: 'passed', serverId: client.fixture.serverId, serverRevision: client.fixture.serverRevision, accountId: metadata.accountId, peerDevice: metadata.deviceId, browserDevice: browser.deviceId, verified, checks: ['Distinct genuinely registered device authenticates using production OPAQUE/device proof', guardCase ? 'Independently decrypts peer-edited source and accepted historical copy with exact fields/password' : 'Independently decrypts retained original and unique moved copy with exact ordinary fields and password', guardCase ? 'Both vaults remain active after cancellation, with exact expected item counts and earlier copy IDs retained' : 'Source retired, destination active, one newly identified copy with exact expected catalogue counts'], limits: ['Production crypto Node reader, not a packaged CLI/Desktop reader claim'] }, null, 2) + '\n');
 console.log('Independent production-crypto device verifies original and moved copy.');

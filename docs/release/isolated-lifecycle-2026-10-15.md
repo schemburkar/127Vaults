@@ -382,3 +382,52 @@ transport is strict-CA ordinary web with service-worker bypass; installed/physic
 PWA acceptance remains separate. Web divergence/abort policies, typed/custom and
 settings retarget, packaged peer/other writer, physical and operational gates
 remain open. Full internal release is still unaccepted. No push.
+
+## Actual web changed-source refusal and explicit cancel
+
+The member's fifth controlled vault now proves the selected web-e source-change
+guard. The real server accepted a copy; its HTTP200 response was discarded by the
+strict-CA relay, leaving the exact pending journal/reserved destination ID. A
+different already registered member device authenticated through production
+OPAQUE/device proof, verified signed source history, changed the source title and
+submitted a valid signed encrypted update. No account/session/database seeding or
+HTTP-response substitution was used for this peer edit.
+
+After browser restart and real unlock, visible Resume displayed the specific
+source-changed guidance, sent no copy or removal retry, and kept the complete
+pending journal equal to the saved object. Explicit Cancel pending action with
+confirmation cleared only the local pending plan. Both vaults remained active;
+the UI read the peer-edited source and accepted historical copy, kept the password
+masked and locked. This is deliberate cancellation after a copy was accepted,
+not a claim that finalizing cancellation or every abort policy was tested.
+
+The independent registered-device reader decrypted the edited source and older
+copy with exact ordinary fields/password, verified five directory entries and
+source=one item/destination=four items, and confirmed all three earlier copy IDs
+remain. No duplicate/removal retry occurred after the source changed. No product
+runtime or selected artifact changed.
+
+Retained case records: `web-move-guard-loss-fixture.json` (complete saved journal),
+`web-move-guard-loss.json`, `web-move-guard-peer-edit.json`,
+`web-move-guard-guard.json`, `web-move-guard-abort.json`,
+`web-move-guard-peer.json` and `web-move-guard-combined-evidence.json`. Runners are
+`run-web-move-guard.mjs loss|guard|abort`, `run-web-move-peer-edit.mjs` and
+`run-web-move-guard-peer.mjs`. New/updated helpers pass syntax checks. Verification:
+
+```powershell
+node scripts/internal-web-move-guard-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a
+```
+
+The verification chain also preserves earlier lifecycle/ownership history and
+checks exact bundle/wiring restoration, stopped isolated project/absent browser
+containers, original 12892 health, selected CLI hashes and revoked D's pending
+request/journal. Earlier counts are historical snapshots. The member now has all
+five retained directory slots: three moved sources, the active guard source and
+active destination with four items. Preserve these records; completed/cancelled
+cases refuse reinjection and must be checked through read-only verifiers. Use
+peer mode `guard` for current live counts. Any further case must explicitly reuse
+appropriate active fixture data or establish another account/lab, without resetting
+these records. Destination-change, other authorization/abort cases, custom/typed
+and settings retarget, packaged peers/other writers and physical/operational gates
+remain open. Ordinary-web/service-worker-bypass limits still apply. Internal
+release remains unaccepted; no push.

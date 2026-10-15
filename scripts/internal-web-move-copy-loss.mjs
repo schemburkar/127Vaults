@@ -8,8 +8,10 @@ import { sign, createHash } from 'node:crypto';
 import { ownershipClient } from './internal-ownership-client.mjs';
 
 const [work, phase, kind = 'copy'] = process.argv.slice(2);
-assert.ok(['loss','resume'].includes(phase));
-assert.ok(['copy', 'finalization'].includes(kind));
+assert.ok(['loss','resume','guard','abort'].includes(phase));
+assert.ok(['copy', 'finalization', 'guard'].includes(kind));
+assert.ok((kind === 'guard' ? ['loss', 'guard', 'abort'] : ['loss', 'resume']).includes(phase));
+const copyStage = kind !== 'finalization';
 let dropAcceptedReply = phase === 'loss';
 assert.ok(work && isAbsolute(work));
 const fixture = JSON.parse(await readFile(join(work, 'fixture.json'), 'utf8'));
@@ -45,7 +47,7 @@ async function context() {
         mutations.push({ path: new URL(incoming.url()).pathname, requestId: input.requestId, itemId: input.itemId, sha256: createHash('sha256').update(incoming.postDataBuffer()).digest('hex'), status: response.status });
       }
       const headers = Object.fromEntries(Object.entries(response.headers).filter(([key]) => !['content-length', 'transfer-encoding', 'content-encoding'].includes(key)).map(([key, value]) => [key, Array.isArray(value) ? value.join('\n') : String(value)]));
-      const faultPath = '/api/v1/vaults/' + (kind === 'copy' ? record.destination + '/items' : record.source + '/removal');
+      const faultPath = '/api/v1/vaults/' + (copyStage ? record.destination + '/items' : record.source + '/removal');
       if (dropAcceptedReply && incoming.method() === 'POST' && new URL(incoming.url()).pathname === faultPath && response.status === 200) { dropAcceptedReply = false; mutations.at(-1).replyDropped = true; await route.abort('failed'); return; }
       await route.fulfill({ status: response.status, headers, body: response.body });
     } catch (error) { errors.push('TLS relay: ' + error.code); await route.abort(); }
@@ -104,6 +106,7 @@ async function select(id) {
 }
 try {
   assert.ok(!record.movePassed, 'Completed reply-loss case must be verified without resubmitting it');
+  assert.ok(!record.abortPassed, 'Cancelled guard case must be checked with the read-only verifiers');
   stage = 'unlock retained browser profile';
   page = await context();
   page.setDefaultTimeout(30000);
@@ -159,7 +162,7 @@ try {
     record.journal = await page.evaluate(() => window.__vaultsLifecycle.pending);
     assert.equal(record.journal.source, record.source);
     assert.equal(record.journal.destination, record.destination);
-    if (kind === 'copy') {
+    if (copyStage) {
       assert.equal(record.journal.pendingCopy.sourceItemId, record.sourceItem);
       assert.equal(record.journal.request, null);
       record.destinationItem = record.journal.pendingCopy.destinationItemId;
@@ -174,15 +177,54 @@ try {
     const copies = mutations.filter(row => row.path === '/api/v1/vaults/' + record.destination + '/items');
     assert.equal(copies.length, 1);
     assert.equal(copies[0].status, 200);
-    const accepted = kind === 'copy' ? copies : mutations.filter(row => row.path === '/api/v1/vaults/' + record.source + '/removal');
+    const accepted = copyStage ? copies : mutations.filter(row => row.path === '/api/v1/vaults/' + record.source + '/removal');
     assert.equal(accepted.length, 1);
     assert.equal(accepted[0].replyDropped, true);
     assert.equal(accepted[0].status, 200);
-    const request = kind === 'copy' ? record.journal.pendingCopy.payload : record.journal.request;
+    const request = copyStage ? record.journal.pendingCopy.payload : record.journal.request;
     assert.equal(accepted[0].requestId, request.requestId);
     assert.equal(accepted[0].sha256, createHash('sha256').update(JSON.stringify(request)).digest('hex'));
     record.lossPassed = true;
     await save();
+  } else if (phase === 'guard' || phase === 'abort') {
+    assert.equal(kind, 'guard');
+    assert.equal(record.lossPassed, true);
+    assert.equal(record.peerEditPassed, true);
+    await vaultSettings();
+    assert.deepEqual(await page.evaluate(() => window.__vaultsLifecycle.pending), record.journal);
+    if (phase === 'guard') {
+      stage = 'refuse changed source through actual Resume';
+      await page.getByRole('button', { name: 'Resume', exact: true }).click();
+      await page.getByText('The source vault changed.', { exact: false }).waitFor();
+      await page.waitForFunction(() => document.body.getAttribute('aria-busy') === 'false');
+      assert.deepEqual(await page.evaluate(() => window.__vaultsLifecycle.pending), record.journal);
+      assert.equal(mutations.filter(row => row.path.endsWith('/removal') || row.path === '/api/v1/vaults/' + record.destination + '/items').length, 0);
+      record.guardPassed = true;
+      await save();
+    } else {
+      stage = 'explicit UI cancellation preserving peer edit and accepted copy';
+      assert.equal(record.guardPassed, true);
+      await page.getByRole('button', { name: 'Cancel pending action', exact: true }).click();
+      await page.locator('#confirm-accept').click();
+      await page.waitForFunction(() => window.__vaultsLifecycle.pending === undefined || window.__vaultsLifecycle.pending === null);
+      assert.ok(!await page.evaluate(id => window.__vaultsLifecycle.retired.some(row => row.vaultId === id), record.source));
+      await select(record.source);
+      const original = page.locator('#items [data-item-id="' + record.sourceItem + '"]');
+      await original.click();
+      await page.waitForFunction(title => document.querySelector('#view-title')?.textContent === title, record.changedTitle);
+      await select(record.destination);
+      const copy = page.locator('#items [data-item-id="' + record.destinationItem + '"]');
+      await copy.click();
+      await page.waitForFunction(title => document.querySelector('#view-title')?.textContent === title, record.title);
+      assert.ok(!(await page.locator('#item-view').innerText()).includes(record.password));
+      await page.locator('#lock-app').click();
+      await page.waitForFunction(() => document.querySelector('#state')?.textContent === 'Locked');
+      record.abortPassed = true;
+      await save();
+    }
+    assert.deepEqual(errors, []);
+    await writeFile(join(work, 'web-move-guard-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'guard' ? ['Actual Resume reports changed source and sends no copy/removal retry', 'Exact complete pending journal survives refusal'] : ['Explicit UI cancel clears pending journal without retiring source', 'Peer source edit and accepted historical copy both remain readable; final lock'], limits: ['Actual ordinary web UI with strict-CA relay; source change only, destination changes and other authorization/finalizing-abort cases separate'] }, null, 2)+'\n');
+    console.log('Selected web source-change ' + phase + ' passed.');
   } else {
     stage = 'verify exact journal after full browser restart';
     assert.equal(record.lossPassed, true);
@@ -191,11 +233,11 @@ try {
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
     await page.waitForFunction(id => window.__vaultsLifecycle?.retired?.some(row => row.vaultId === id && row.retirementChoice === 'move') && !window.__vaultsLifecycle.pending, record.source);
     const copies = mutations.filter(row => row.path === '/api/v1/vaults/' + record.destination + '/items');
-    assert.equal(copies.length, kind === 'copy' ? 1 : 0);
-    const replay = kind === 'copy' ? copies : mutations.filter(row => row.path === '/api/v1/vaults/' + record.source + '/removal');
+    assert.equal(copies.length, copyStage ? 1 : 0);
+    const replay = copyStage ? copies : mutations.filter(row => row.path === '/api/v1/vaults/' + record.source + '/removal');
     assert.equal(replay.length, 1);
     assert.equal(replay[0].status, 200);
-    const request = kind === 'copy' ? record.journal.pendingCopy.payload : record.journal.request;
+    const request = copyStage ? record.journal.pendingCopy.payload : record.journal.request;
     assert.equal(replay[0].requestId, request.requestId);
     assert.equal(replay[0].sha256, createHash('sha256').update(JSON.stringify(request)).digest('hex'));
     stage = 'read unique resumed copy';
@@ -217,8 +259,10 @@ try {
     await save();
   }
   assert.deepEqual(errors, []);
+  if (phase === 'loss' || phase === 'resume') {
   await writeFile(join(work, 'web-move-' + kind + '-' + phase + '.json'), JSON.stringify({ status: 'passed', serverId: fixture.serverId, serverRevision: fixture.serverRevision, phase, kind, source: record.source, destination: record.destination, sourceItem: record.sourceItem, destinationItem: record.destinationItem, mutations, checks: phase === 'loss' ? ['Actual successful TLS ' + kind + ' response discarded; real UI offers Resume', 'Durable pending journal reserves exact destination ID/request ID/encrypted request hash', 'Browser process closes with pending journal retained'] : ['Full browser process restart and real unlock preserve exact journal', 'Visible Resume replays identical request ID/body hash and obtains receipt without duplicate copies', 'One reserved copy retains fields, masked/revealed password and final lock'], limits: ['Ordinary web with strict-CA relay and service-worker bypass; physical PWA separate', 'Accepted ' + kind + ' loss only; source/destination changes and other peer/writer pairings separate'] }, null, 2) + '\n');
   console.log('Selected web ' + kind + ' reply-loss ' + phase + ' passed.');
+  }
 } catch (error) {
   await writeFile(join(work, 'web-move-' + kind + '-' + phase + '-failure-' + Date.now() + '.json'), JSON.stringify({ stage, error: error.message, mutations, errors, transports }, null, 2) + '\n', { flag: 'wx' });
   throw Error('Owned web ' + kind + '-loss ' + phase + ' failed at ' + stage + '; inspect retained diagnostic.');

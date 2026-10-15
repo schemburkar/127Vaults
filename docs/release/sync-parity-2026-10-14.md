@@ -159,3 +159,13 @@ Unique-copy UI fields/masking/reveal/lock and independent registered-device read
 counts/prior IDs pass. Member directory now has four entries; use explicit current
 reader mode. Divergence/abort policies, typed/settings, additional packaged peers
 and physical/operational acceptance remain separate.
+
+## Actual ordinary-web changed-source guard and cancellation
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now verifies lost accepted
+copy reply followed by a distinct device's real signed source edit, actual Resume
+refusal with exact journal preservation/no copy-removal retry, and explicit cancel
+preserving active source and historical copy. UI/independent-reader fields and
+counts/prior IDs pass. Member has five retained slots; use guard reader mode and
+preserve the completed/cancelled cases. Destination divergence, other abort /
+authorization, typed/settings and remaining packaged/physical gates stay open.

@@ -374,3 +374,20 @@ healthy, exact bundle/wiring restored, selected CLI hashes and revoked D pending
 draft intact. No product runtime or artifact change. Divergence/abort, typed/
 settings, packaged peer/other writer, physical/operational gates remain open.
 Internal release is unaccepted; no push.
+
+## Actual web source-change refusal and accepted-copy cancellation
+
+[Lifecycle evidence](isolated-lifecycle-2026-10-15.md) now proves source divergence
+after lost accepted copy reply: a different registered device makes an actual
+signed source edit; real UI Resume gives source-changed guidance, sends no copy /
+removal retry and preserves the exact journal. Explicit UI cancellation clears
+only the pending plan; both vaults remain active and peer edit/copy are readable.
+Independent decryption verifies fields/password, exact counts and all prior copy
+IDs. Syntax and combined cleanup/evidence checks pass; original fixtures and
+revoked D draft remain intact. No product runtime or artifacts changed.
+
+Member now occupies five retained slots (three retired, two active; destination
+four items). Do not reset it or blindly rerun historical fixed-count phases; the
+current reader mode is guard. Destination-change, other abort/authorization,
+typed/settings, packaged peers/other writers and physical/operational gates remain
+open. Full release remains unaccepted; no push.
