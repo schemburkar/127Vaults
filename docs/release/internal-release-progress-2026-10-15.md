@@ -446,3 +446,21 @@ Use the candidate fixture directory; old root fixture still names historical
 server-e. Member now five entries (four retired; active destination six items).
 Broader new-package interruption/cross-client/typed/settings and physical /
 operational gates remain open. Internal release is unaccepted; no push.
+
+## Both packaged CLI readers and actual Linux Desktop on selected server-a
+
+[Native-reader evidence](server-a-native-readers-2026-10-15.md) now verifies both
+selected CLI OS binaries against archive bytes, actual agent unlock/online requests /
+sync, exact reserved-copy fields and redacted/explicit built-in and custom secrets.
+Distinct Windows B/Linux A read the retained nine-item owner catalogue. Actual
+Linux Desktop-c fresh launch verifies selected binary bytes, device/Online status,
+retained peer fields, mask/reveal/remask for both secrets, zero queue and Lock.
+Original profiles/executables retained; Linux uses private keyring sessions.
+
+A Desktop preflight tar-entry-prefix error was corrected after inspecting the
+archive; it stopped before app launch and the existing copied profile was verified
+identical before retry. Combined manifest/syntax/data/cleanup checks pass, owned
+project stopped, original server healthy and revoked D journal/draft intact.
+No product/selected-artifact change, no Windows GUI/policy change, no push. These
+are reader/sync combinations only. Broader writer/interruption/member enrollment /
+physical/operational release gates remain open; internal release unaccepted.

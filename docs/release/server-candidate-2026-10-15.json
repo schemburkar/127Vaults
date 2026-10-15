@@ -63,5 +63,6 @@
     "Additional new-package cross-client/interruption and physical/intended-host gates remain open",
     "CLI/Desktop artifacts unchanged"
   ],
-  "acceptanceEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/candidate-combined-evidence.json"
+  "acceptanceEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/candidate-combined-evidence.json",
+  "nativeReaderEvidence": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/candidate-native-combined-evidence.json"
 }

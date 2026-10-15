@@ -169,3 +169,13 @@ preserving active source and historical copy. UI/independent-reader fields and
 counts/prior IDs pass. Member has five retained slots; use guard reader mode and
 preserve the completed/cancelled cases. Destination divergence, other abort /
 authorization, typed/settings and remaining packaged/physical gates stay open.
+
+## Selected server-a native-reader interoperability
+
+[New native-reader evidence](server-a-native-readers-2026-10-15.md): selected Windows
+and Linux CLI-a perform actual online sync/read with distinct owner devices, verify
+fields/retirement/counts and secret masking/explicit access. Actual selected Linux
+Desktop-c reads retained peer data, reveals/remasks both secret kinds and locks.
+Binaries match selected archives; current server image is selected server-a.
+This proves retained-owner reader/sync interoperability, not a new writer/member
+CLI enrollment or physical/Windows/PWA/extension acceptance claim.
