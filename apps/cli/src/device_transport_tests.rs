@@ -665,6 +665,59 @@ fn session_with_real_missing_item_drafts(
 }
 
 #[test]
+fn sync_review_authenticates_long_queue_without_changing_requests() {
+    let (mut session, vault_id, first_id, _, _) = session_with_real_missing_item_drafts(false);
+    for index in 0..64 {
+        session
+            .item_upsert(
+                &vault_id,
+                Some(&first_id),
+                &format!("Queued review {index}"),
+                "https://fixture.invalid",
+                "first-user",
+                "first-private-password",
+                &[],
+            )
+            .unwrap();
+    }
+    let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+    let review = session.sync_review().unwrap();
+    let rows = review["items"].as_array().unwrap();
+    assert_eq!(rows.len(), 66);
+    assert_eq!(rows.last().unwrap()["title"], "Queued review 63");
+    assert_eq!(rows.last().unwrap()["fields"], json!(["title"]));
+    assert!(!review.to_string().contains("private-password"));
+    assert_eq!(
+        session
+            .replica_store
+            .load(&vault_id)
+            .unwrap()
+            .unwrap()
+            .pending,
+        before.pending
+    );
+
+    // Reusing the vault handle must not bypass authentication of any draft.
+    let mut corrupt = before;
+    let body = corrupt.pending[32].request["body"].as_str().unwrap();
+    let mut bytes = URL_SAFE_NO_PAD.decode(body).unwrap();
+    *bytes.last_mut().unwrap() ^= 1;
+    corrupt.pending[32].request["body"] = json!(URL_SAFE_NO_PAD.encode(bytes));
+    session.replica_store.commit(&corrupt).unwrap();
+    assert!(session.sync_review().is_err());
+    assert_eq!(
+        session
+            .replica_store
+            .load(&vault_id)
+            .unwrap()
+            .unwrap()
+            .pending,
+        corrupt.pending
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
     for queued_create in [true, false] {
         let (mut session, vault_id, first_id, before, remote) =

@@ -1860,6 +1860,18 @@ impl Session {
         index: &str,
         body: &str,
     ) -> Result<Value, String> {
+        let (_, vault, _) = self.open_vault(vault_id)?;
+        self.decrypt_item_parts_with_key(vault, item_id, catalogue, index, body)
+    }
+
+    fn decrypt_item_parts_with_key(
+        &mut self,
+        vault: KeyHandle,
+        item_id: &str,
+        catalogue: &str,
+        index: &str,
+        body: &str,
+    ) -> Result<Value, String> {
         let catalogue = URL_SAFE_NO_PAD
             .decode(catalogue)
             .map_err(|_| "encrypted item is invalid")?;
@@ -1869,7 +1881,6 @@ impl Session {
         let body = URL_SAFE_NO_PAD
             .decode(body)
             .map_err(|_| "encrypted item is invalid")?;
-        let (_, vault, _) = self.open_vault(vault_id)?;
         let index = self
             .core
             .decrypt_private_part(vault, &catalogue, uuid_bytes(item_id)?, &index, 4)
@@ -2582,12 +2593,19 @@ impl Session {
     pub fn sync_review(&mut self) -> Result<Value, String> {
         let mut rows = Vec::new();
         for replica in self.replica_store.list()? {
+            if replica.pending.is_empty() {
+                continue;
+            }
+            // One immutable replica snapshot is reviewed in this call. Reuse
+            // its opened key rather than reloading the entire growing queue
+            // twice per draft. Every index/body is still authenticated below.
+            let (_, vault, _) = self.open_vault(&replica.vault_id)?;
             for pending in &replica.pending {
                 let item_id = pending.operation["itemId"]
                     .as_str()
                     .ok_or("invalid pending item")?;
-                let local = self.decrypt_item_parts(
-                    &replica.vault_id,
+                let local = self.decrypt_item_parts_with_key(
+                    vault,
                     item_id,
                     pending.request["catalogue"]
                         .as_str()
@@ -2600,8 +2618,8 @@ impl Session {
                         .ok_or("invalid pending body")?,
                 )?;
                 let base = match (&pending.base_catalogue, &pending.base_item) {
-                    (Some(catalogue), Some(item)) => Some(self.decrypt_item_parts(
-                        &replica.vault_id,
+                    (Some(catalogue), Some(item)) => Some(self.decrypt_item_parts_with_key(
+                        vault,
                         item_id,
                         catalogue,
                         &item.index,
