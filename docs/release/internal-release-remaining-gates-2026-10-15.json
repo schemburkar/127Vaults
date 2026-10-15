@@ -113,8 +113,8 @@
       "id": "LOCAL-01",
       "name": "Packaged/UI encryption-budget limit and lock/unlock/retry recovery",
       "source": "internal-sync-release-plan-2026-10-13.md / 1000-envelope budget follow-up",
-      "state": "open_local",
-      "proof": "Exercise the unchanged budget on a selected package/UI, retain pending requests, verify actionable recovery message and fresh-unlock continuation; source/core budget tests and historical across-session 502 writes are partial evidence only."
+      "state": "local_pass_scope_limited",
+      "proof": "Selected Desktop-d actual Linux GUI accepted 500 offline edits at unchanged 1000-envelope production limit; refused edit 501 with actionable lock/unlock/preservation guidance and exact original queue; fresh GUI retry preserved prefix, all 501 requests replayed, distinct rebuilt Windows CLI-b verified/restored, fresh GUI baseline verified. Combined --budget verifier passes. Other platform/error combinations remain scoped. See desktop-budget-acceptance-2026-10-15.md."
     },
     {
       "id": "LOCAL-02",
@@ -181,14 +181,13 @@
     }
   ],
   "nextLocalPriority": [
-    "LOCAL-01: selected packaged/UI encryption-budget message and fresh-unlock/retry recovery without lowering the budget",
     "SYNC-08: packaged collision/chained pending on a suitable new controlled fixture",
     "SYNC-07: applicable GUI defensive missing-item coverage around unsupported private deletion; cross-vault follow-up",
     "SYNC-09 and LOCAL-02: settings/default-view divergence and signed-license notices/renewal"
   ],
   "evidence": {
     "candidateWork": "C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a",
-    "latestCombined": "member-desktop-multi-combined-evidence.json",
+    "latestCombined": "member-desktop-budget-combined-evidence.json",
     "operationsWork": "C:/Projects/127Vaults-server-a-ops-20261015-a",
     "operationsCombined": "selected-operational-evidence.json",
     "notes": [
@@ -198,7 +197,8 @@
       "docs/release/server-a-extension-web-permission-2026-10-15.md",
       "docs/release/server-a-member-desktop-multi-2026-10-15.md",
       "docs/release/server-a-missing-item-boundary-2026-10-15.md",
-      "docs/release/create-id-collision-component-2026-10-15.md"
+      "docs/release/create-id-collision-component-2026-10-15.md",
+      "docs/release/desktop-budget-acceptance-2026-10-15.md"
     ]
   },
   "completionRule": "Every enabled pair/scenario and named gate must have matching authoritative evidence or an explicitly reviewed exception. Partial/historical records are not all-pair passes. This ledger is a requirement reconciliation, not a completed release audit or permission."

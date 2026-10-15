@@ -5,6 +5,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
+import {verifyRelease} from './release/verify-release.mjs';
 
 const [work,requestedMode]=process.argv.slice(2);const mode=['--desktop','--desktop-conflict','--desktop-multi','--budget'].includes(requestedMode)?'--conflict-both':requestedMode;assert.ok(work&&isAbsolute(work));assert.ok(mode===undefined||['--linux','--writes','--web','--extension','--conflict','--conflict-both'].includes(mode));
 const json=async name=>JSON.parse(await readFile(join(work,name),'utf8'));
@@ -126,7 +127,7 @@ if(['--desktop-multi','--budget'].includes(requestedMode)){
 }
 if(requestedMode==='--budget'){
   const budget=await json('member-desktop-budget.json'),original=await json('member-desktop-budget-original-requests.json'),retry=await json('member-desktop-budget-retry-request.json'),desktop=await json('member-desktop-native-writes.json');
-  assert.equal(budget.status,'passed');assert.equal(budget.serverId,fixture.serverId);assert.equal(budget.serverRevision,fixture.serverRevision);assert.equal(budget.desktopDevice,linux.device);assert.equal(budget.windowsDevice,cli.device);assert.equal(budget.itemId,cli.itemId);assert.equal(budget.binarySha256,desktop.binarySha256);assert.equal(budget.profile,desktop.profile);assert.ok(budget.accepted>=450&&budget.accepted<=500);assert.ok(budget.nativeVerifiedCursor>500);
+  assert.equal(budget.status,'passed');assert.equal(budget.serverId,fixture.serverId);assert.equal(budget.serverRevision,fixture.serverRevision);assert.equal(budget.desktopDevice,linux.device);assert.equal(budget.windowsDevice,cli.device);assert.equal(budget.itemId,cli.itemId);const budgetPackage=await verifyRelease('C:/Projects/127Vaults-Releases/desktop/internal-20261015-d/linux');assert.equal(budgetPackage.sourceRevision,'cd67ab2c224df758f173fd393590c4586386f8b8');assert.equal(budget.desktopSourceRevision,budgetPackage.sourceRevision);const budgetDigest=await promisify(execFile)('wsl.exe',['-d','Ubuntu-24.04','-u','vaults-dev','--exec','sha256sum','/home/vaults-dev/vaults-lifecycle-isolated-20261015-a/gui-app-budget-d/usr/bin/vaults-desktop-poc'],{windowsHide:true});assert.equal(budget.binarySha256,budgetDigest.stdout.split(/\s+/)[0]);assert.equal(budget.cliSourceRevision,budgetPackage.sourceRevision);const budgetCli=await json('member-budget-cli-package.json');assert.equal(budget.cliBinarySha256,budgetCli.binarySha256);assert.equal(budget.profile,desktop.profile);assert.ok(budget.accepted>=450&&budget.accepted<=500);assert.ok(budget.nativeVerifiedCursor>500);
   for(const flag of ['guardPreservedExactQueue','freshUnlockRetryPreservedPrefix','replayedAll','nativeRestored','baselineRestored'])assert.equal(budget[flag],true);
   const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');assert.equal(original.length,budget.accepted);assert.equal(hash(original),budget.originalQueueSha256);assert.equal(hash([...original,retry]),budget.retryQueueSha256);
   assert.equal(new Set([...original,retry].map(row=>row.request.requestId)).size,budget.accepted+1);

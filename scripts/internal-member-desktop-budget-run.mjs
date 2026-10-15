@@ -25,9 +25,9 @@ printf '%s\n' synthetic-keyring-password | gnome-keyring-daemon --unlock --compo
 task_source_profile=/home/vaults-dev/vaults-lifecycle-isolated-20261015-a/member-cli-linux-a
 task_target_profile=/home/vaults-dev/vaults-lifecycle-isolated-20261015-a/gui-member-server-a-20261015-a
 ${phase==='desktop-write'?'test ! -e "$task_target_profile"\ncp -a "$task_source_profile" "$task_target_profile"':'test -d "$task_target_profile"'}
-task_binary=/home/vaults-dev/vaults-lifecycle-isolated-20261015-a/gui-app/usr/bin/vaults-desktop-poc
+task_binary=/home/vaults-dev/vaults-lifecycle-isolated-20261015-a/gui-app-budget-d/usr/bin/vaults-desktop-poc
 task_binary_hash=$(sha256sum "$task_binary" | cut -d ' ' -f1)
-task_package_hash=$(dpkg-deb --fsys-tarfile /mnt/c/Projects/127Vaults-Releases/desktop/internal-20261015-c/linux/127vaults-desktop-0.0.0-linux-x64.deb | tar -xOf - usr/bin/vaults-desktop-poc | sha256sum | cut -d ' ' -f1)
+task_package_hash=$(dpkg-deb --fsys-tarfile /mnt/c/Projects/127Vaults-Releases/desktop/internal-20261015-d/linux/127vaults-desktop-0.0.0-linux-x64.deb | tar -xOf - usr/bin/vaults-desktop-poc | sha256sum | cut -d ' ' -f1)
 test "$task_binary_hash" = "$task_package_hash"
 export VAULTS_CONFIG_DIR="$task_target_profile"
 export VAULTS_FIXTURE_DESKTOP_SHA="$task_binary_hash"
@@ -41,7 +41,7 @@ trap 'kill "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" 2>/dev/null |
 cd /mnt/c/Projects/127Vaults
 /opt/vaults-node24/bin/node scripts/internal-member-desktop-budget-ui.mjs '${'/mnt/c'+work.slice(2).replaceAll('\\','/')}' '${phase}'
 `;
-      const file=join(work,'member-'+phase+'.sh');await writeFile(file,shell,{flag:'wx'});
+      const file=join(work,'member-budget-d-'+phase+'-'+Date.now()+'.sh');await writeFile(file,shell,{flag:'wx'});
       await run('wsl.exe',['-d','Ubuntu-24.04','-u','vaults-dev','--exec','dbus-run-session','--','bash','-l','/mnt/c'+file.slice(2).replaceAll('\\','/')]);
     }
     console.log('Completed '+phase);

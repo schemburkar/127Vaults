@@ -15,10 +15,10 @@ const conf=await readFile(join(profile,'device.conf'),'utf8');assert.ok(conf.inc
 await assert.rejects(access(join(profile,'vault-removal.json')),error=>error.code==='ENOENT');
 const recordName='member-desktop-budget.json',hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const replica=async()=>JSON.parse(await readFile(join(profile,'replicas',normal.destination+'.json'),'utf8'));
-let record;if(phase==='desktop-budget-burn'){await assert.rejects(access(join(work,recordName)),error=>error.code==='ENOENT');record={status:'in-progress',serverId:fixture.serverId,serverRevision:fixture.serverRevision,itemId:normal.destinationItem,vaultId:normal.destination,desktopDevice:linux.device,windowsDevice:windows.device,profile,binarySha256,desktopSourceRevision:'4e1e1461666a1b6c50e43eda58719996ae05aba5',phases:[]};}else{record=await json(recordName);assert.equal(record.status,'in-progress');assert.equal(record.phases.length,{'desktop-budget-retry':1,'desktop-budget-replay':2,'desktop-budget-final':4}[phase]);}
+let record;if(phase==='desktop-budget-burn'){await assert.rejects(access(join(work,recordName)),error=>error.code==='ENOENT');record={status:'in-progress',serverId:fixture.serverId,serverRevision:fixture.serverRevision,itemId:normal.destinationItem,vaultId:normal.destination,desktopDevice:linux.device,windowsDevice:windows.device,profile,binarySha256,desktopSourceRevision:'cd67ab2c224df758f173fd393590c4586386f8b8',phases:[]};}else{record=await json(recordName);assert.equal(record.status,'in-progress');assert.equal(record.phases.length,{'desktop-budget-retry':1,'desktop-budget-replay':2,'desktop-budget-final':4}[phase]);}
 const initial=(await replica()).pending;assert.equal(initial.length,phase==='desktop-budget-retry'?record.accepted:phase==='desktop-budget-replay'?record.accepted+1:0);
 if(phase==='desktop-budget-retry')assert.equal(hash(initial),record.originalQueueSha256);if(phase==='desktop-budget-replay')assert.equal(hash(initial),record.retryQueueSha256);
-let inspector=await openDesktopFixtureInspector('http://127.0.0.1:12926'),connectedAt=Date.now();const evaluate=value=>inspector.evaluate(value);let beforeAttempt;
+let inspector=await openDesktopFixtureInspector('http://127.0.0.1:12926','webkit',{commandTimeoutMs:60000}),connectedAt=Date.now();const evaluate=value=>inspector.evaluate(value);let beforeAttempt;
 try{
  let text='';for(let i=0;i<80;i++){text=await evaluate('document.body.innerText');if(text.includes('Unlock 127Vaults'))break;await new Promise(r=>setTimeout(r,250));}assert.match(text,/Unlock 127Vaults/);
  await evaluate(`globalThis.__budget={done:false};(async()=>{
@@ -52,9 +52,9 @@ try{
  if(phase!=='desktop-budget-burn'){const detail=document.querySelector('main').innerText;if(!detail.includes(fixture.username)||!detail.includes('web-move.invalid')||detail.includes(fixture.password))throw Error('Budget item fields/masking mismatch');button('Lock').click();await wait(()=>document.body.innerText.includes('Unlock 127Vaults'));checks.push('Actual GUI fields remain intact/masked and lock clears view');globalThis.__budget={done:true,ok:true,checks};}
  }catch(error){globalThis.__budget={done:true,ok:false,stage,error:String(error),checks};}
 })();`);
- let result,lastAllowed=0,guardChecked=false;const deadline=Date.now()+480000;
+ let result,lastAllowed=0,guardChecked=false;const deadline=Date.now()+1200000;
  while(Date.now()<deadline){
-  if(Date.now()-connectedAt>60000){inspector.close();inspector=await openDesktopFixtureInspector('http://127.0.0.1:12926');connectedAt=Date.now();}
+  if(Date.now()-connectedAt>60000){inspector.close();inspector=await openDesktopFixtureInspector('http://127.0.0.1:12926','webkit',{commandTimeoutMs:60000});connectedAt=Date.now();}
   result=await evaluate('globalThis.__budget');if(result?.done)break;
   if(result?.awaitingSave&&result.awaitingSave!==lastAllowed){beforeAttempt=(await replica()).pending;assert.equal(beforeAttempt.length,result.accepted);lastAllowed=result.awaitingSave;await evaluate('globalThis.__allowBudgetSave='+lastAllowed);if(result.accepted%50===0)await writeFile(join(work,'member-desktop-budget-progress.json'),JSON.stringify({phase,accepted:result.accepted,attempt:lastAllowed,at:new Date().toISOString()})+'\n');}
   if(result?.guardReached&&!guardChecked){const after=(await replica()).pending;assert.deepEqual(after,beforeAttempt);assert.ok(result.accepted>=450&&result.accepted<=500);record.originalQueueSha256=hash(after);await writeFile(join(work,'member-desktop-budget-original-requests.json'),JSON.stringify(after)+'\n',{flag:'wx',mode:0o600});guardChecked=true;await evaluate('globalThis.__budgetGuardChecked=true');}

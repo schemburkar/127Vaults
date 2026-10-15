@@ -22,3 +22,6 @@ denied passes. Formatting passes after applying rustfmt.
 CLI and Desktop runtime artifacts require rebuilding before this change can be
 claimed in packaged acceptance. The original budget-limit gate remains open
 until a selected rebuilt package exercises the unchanged limit and recovery.
+
+Subsequent builds and actual unchanged-budget GUI recovery passed; see
+[packaged budget acceptance](desktop-budget-acceptance-2026-10-15.md).

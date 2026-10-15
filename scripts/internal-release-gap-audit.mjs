@@ -16,8 +16,11 @@ for(const file of [...ledger.requirementsSources,...ledger.evidence.notes,ledger
 const inventory=JSON.parse(await readFile(join(repo,ledger.selectedInventory),'utf8'));assert.equal(inventory.artifacts.length,6);
 const selected=[];
 for(const artifact of inventory.artifacts){const release=await verifyRelease(join('C:/Projects/127Vaults-Releases',artifact.path));assert.equal(release.sourceRevision,artifact.sourceRevision);assert.deepEqual(release.files,artifact.files);selected.push({product:artifact.product,platform:artifact.platform,path:artifact.path,sourceRevision:release.sourceRevision});}
-await run(process.execPath,[join(repo,'scripts/internal-member-acceptance-verify.mjs'),ledger.evidence.candidateWork,'--desktop-multi'],{windowsHide:true});
+await run(process.execPath,[join(repo,'scripts/internal-member-acceptance-verify.mjs'),ledger.evidence.candidateWork,'--budget'],{windowsHide:true});
 const current=JSON.parse(await readFile(join(ledger.evidence.candidateWork,ledger.evidence.latestCombined),'utf8'));assert.equal(current.status,'passed');
+assert.equal(current.budget.desktopSourceRevision,selected.find(row=>row.product==='desktop'&&row.platform==='linux').sourceRevision);
+assert.equal(current.budget.cliSourceRevision,selected.find(row=>row.product==='cli'&&row.platform==='windows').sourceRevision);
+const rebuiltLinux=JSON.parse(await readFile(join(ledger.evidence.candidateWork,'member-rebuilt-cli-linux-read.json'),'utf8'));assert.equal(rebuiltLinux.status,'passed');assert.equal(rebuiltLinux.sourceRevision,selected.find(row=>row.product==='cli'&&row.platform==='linux').sourceRevision);
 const operations=JSON.parse(await readFile(join(ledger.evidence.operationsWork,ledger.evidence.operationsCombined),'utf8'));assert.equal(operations.status,'passed');assert.equal(operations.sourceRevision,selected.find(row=>row.product==='server').sourceRevision);assert.equal(operations.evidence.checks.length,7);assert.ok(operations.evidence.checks.every(row=>row.status==='passed'));
 assert.equal(operations.sourceAndRestoreReads.length,2);assert.deepEqual(operations.sourceAndRestoreReads[0],operations.sourceAndRestoreReads[1]);assert.equal(operations.sourceAndRestoreReads[0].decryptedIndexBody,true);
 assert.equal(operations.sourceAndRestoreReads[0].installation,operations.evidence.installation);assert.equal(operations.archiveSha256,inventory.artifacts.find(row=>row.product==='server').files.find(row=>row.name.endsWith('.tar')).sha256);

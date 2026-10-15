@@ -14,10 +14,12 @@ const windows=process.platform==='win32';assert.equal(windows,phase.startsWith('
 const json=async name=>JSON.parse(await readFile(join(work,name),'utf8'));
 const fixture=await json('fixture.json'),normal=await json('web-move-candidate-normal-fixture.json'),enrolled=await json(windows?'member-cli-windows.json':'member-cli-linux.json');
 assert.equal(fixture.serverRevision,'cbb1be02e68e484c82334cd4389dcc4b09f64cf2');assert.equal(fixture.serverId,'98027ac4-9882-42d5-812a-a18c972c299f');assert.equal(enrolled.status,'passed');assert.equal(enrolled.serverId,fixture.serverId);
-const exe=windows?'C:/Projects/127Vaults-settings-review-20261015-a/cli-package/127vaults-cli-0.0.0-windows-x64/127vaults.exe':'/home/vaults-dev/vaults-settings-review-20261015-a/cli-package/127vaults-cli-0.0.0-linux-x64/127vaults';
+const budgetPackage=budgetRestore?await json('member-budget-cli-package.json'):null;
+if(budgetRestore)assert.equal(budgetPackage.sourceRevision,'cd67ab2c224df758f173fd393590c4586386f8b8');
+const exe=budgetRestore?budgetPackage.exe:windows?'C:/Projects/127Vaults-settings-review-20261015-a/cli-package/127vaults-cli-0.0.0-windows-x64/127vaults.exe':'/home/vaults-dev/vaults-settings-review-20261015-a/cli-package/127vaults-cli-0.0.0-linux-x64/127vaults';
 const profile=windows?join(work,'member-cli-windows-a'):'/home/vaults-dev/vaults-lifecycle-isolated-20261015-a/member-cli-linux-a';
 const conf=await readFile(join(profile,'device.conf'),'utf8');assert.ok(conf.includes('device_id='+enrolled.device+'\n')&&conf.includes('username=ownership_member\n')&&conf.includes('server_id='+fixture.serverId+'\n'));
-assert.equal(createHash('sha256').update(await readFile(exe)).digest('hex'),(await json(windows?'candidate-cli-windows.json':'candidate-cli-linux.json')).cliBinarySha256);
+assert.equal(createHash('sha256').update(await readFile(exe)).digest('hex'),budgetRestore?budgetPackage.binarySha256:(await json(windows?'candidate-cli-windows.json':'candidate-cli-linux.json')).cliBinarySha256);
 for(const name of await readdir(join(profile,'replicas')))if(name.endsWith('.json'))assert.equal(JSON.parse(await readFile(join(profile,'replicas',name),'utf8')).pending.length,0,'Preserve existing queued writes');
 await assert.rejects(access(join(profile,'vault-removal.json')),error=>error.code==='ENOENT');
 const recordName=budgetRestore?'member-desktop-budget.json':conflictPeer||conflictRestore?'member-desktop-conflict.json':desktopRestore?'member-desktop-native-writes.json':webRestore?'member-web-native-writes.json':'member-cross-os-writes.json';let record;
@@ -53,6 +55,6 @@ try{
   record.phases.push({phase,device:enrolled.device,platform:process.platform,status:'passed',completedAt:new Date().toISOString(),queueEmpty:true,retiredWriteRefused:true});
   if(phase==='linux-final'){record.status='passed';record.baselineRestored=true;}
   if(peerRestore)record.nativeRestored=true;
-  if(budgetRestore){record.nativeVerifiedCursor=JSON.parse(await readFile(join(profile,'replicas',normal.destination+'.json'),'utf8')).cursor;assert.ok(record.nativeVerifiedCursor>500);}
+  if(budgetRestore){record.cliSourceRevision=budgetPackage.sourceRevision;record.cliBinarySha256=budgetPackage.binarySha256;record.nativeVerifiedCursor=JSON.parse(await readFile(join(profile,'replicas',normal.destination+'.json'),'utf8')).cursor;assert.ok(record.nativeVerifiedCursor>500);}
   await writeFile(join(work,recordName),JSON.stringify(record,null,2)+'\n');console.log('Member native phase passed: '+phase);
 }finally{if(ready)await command(['lock']).catch(()=>{});if(agent.exitCode===null)agent.kill();}

@@ -1,3 +1,5 @@
+Latest: [Desktop-d production budget acceptance](desktop-budget-acceptance-2026-10-15.md) passes for the actual Linux GUI. CLI-b/Desktop-d rebuilt and selected; both OS member CLI checks pass; all queues settled. Remaining local priorities: packaged collision/chains, missing-item GUI defense, settings and signed-license state/renewal. Full release remains unaccepted.
+
 # October 15 internal-release continuation
 
 **Internal release remains not accepted.** The user explicitly resumed the goal.
