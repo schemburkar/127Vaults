@@ -7,9 +7,10 @@ import {createHash,createPrivateKey,sign,randomUUID} from 'node:crypto';
 import wasm from '../apps/server/wasm-auth/vaults_browser_fixture.cjs';
 import {authenticationContextHash} from '../apps/server/src/opaque-adapter.mjs';
 import {deviceProofBytes} from '../apps/server/src/auth-policy.mjs';
-export async function ownershipClient(work) {
+export async function ownershipClient(work, identityDirectory) {
 assert.ok(work&&isAbsolute(work));const fixture=JSON.parse(await readFile(join(work,'fixture.json'),'utf8'));assert.equal(fixture.serverId,'98027ac4-9882-42d5-812a-a18c972c299f');assert.equal(fixture.origin,'https://127.0.0.1:12898');assert.equal(fixture.project,'vaults-test-632a4442dfd2');
-const ca=await readFile(join(fixture.identity,'ca/ca.crt')),origin=fixture.origin,b64=x=>Buffer.from(x).toString('base64url'),un=x=>Buffer.from(x,'base64url'),id=x=>Buffer.from(x.replaceAll('-',''),'hex');
+if (identityDirectory !== undefined) { assert.equal(process.platform, 'linux'); assert.equal(identityDirectory, '/identity'); }
+const ca=await readFile(join(identityDirectory ?? fixture.identity,'ca/ca.crt')),origin=fixture.origin,b64=x=>Buffer.from(x).toString('base64url'),un=x=>Buffer.from(x,'base64url'),id=x=>Buffer.from(x.replaceAll('-',''),'hex');
 async function http(path,{method='GET',body,headers={}}={}){return new Promise((resolve,reject)=>{const req=request(origin+path,{method,ca,timeout:15000,headers:{...(body?{'content-type':'application/json',origin}:{}),...headers}},res=>{let text='';res.setEncoding('utf8');res.on('data',b=>text+=b);res.on('end',()=>{try{resolve({status:res.statusCode,value:JSON.parse(text),cookie:res.headers['set-cookie']?.[0]?.split(';')[0]});}catch{reject(Error('Expected fixture JSON response'));}});});req.on('error',reject);req.on('timeout',()=>req.destroy());req.end(body&&JSON.stringify(body));});}
 class Account{
  constructor(accountId,deviceId,username,seed){Object.assign(this,{accountId,deviceId,username});this.secret=new Uint8Array(32).fill(7);this.password=new TextEncoder().encode('fictitious password 127vaults');this.key=createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),Buffer.alloc(32,seed)]),format:'der',type:'pkcs8'});}

@@ -293,3 +293,18 @@ pass. Isolated project stopped, exact wiring restored, original server/database
 healthy, revoked D draft/journal unchanged. No product artifact changed. Customer
 ownership acceptance UI, physical/intended-host and other matrix gates remain
 open. Full internal release remains unaccepted; no push.
+
+## Actual customer ownership web UI
+
+Selected web-e passes genuine browser-key enrollment, actual Settings/Devices
+ownership request display, confirmation cancellation with no acceptance, one
+successful confirmed acceptance, app lock/success toast, fresh unlock, absent
+accepted request and preserved empty private directory. Final Lock works. The
+operator restores member=user and verifies original=owner through the live account
+directory. Strict-CA transport remains enabled; service workers are bypassed for
+this ordinary-web UI check, separate from physical PWA install/update acceptance.
+
+[Ownership evidence](ownership-acceptance-2026-10-15.md) records the retained profile,
+diagnostics, exact driver corrections and limits. No product runtime changed.
+Customer stale-auth toast and broader physical/pairing/intended-host gates remain
+open. Full internal release remains unaccepted; no push.

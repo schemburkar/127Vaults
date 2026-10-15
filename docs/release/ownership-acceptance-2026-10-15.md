@@ -2,7 +2,7 @@
 
 Status: **API/production-crypto, selected operator browser and real stale-auth
 acceptance passed; full internal release remains unaccepted.** Customer ownership
-acceptance UI and physical/intended-host acceptance remain separate.
+UI now also passes as described below; physical/intended-host acceptance remains separate.
 
 The isolated installation `98027ac4-9882-42d5-812a-a18c972c299f` at
 `https://127.0.0.1:12898`, project `vaults-test-632a4442dfd2`, ran selected server-e
@@ -63,7 +63,7 @@ and pending request. The fixture retains the new member as a user with no vaults
 its empty directory can support later UI lifecycle checks without resetting the
 original owner's exhausted directory slots.
 
-Pending: customer ownership acceptance UI, external SMTP and
+Pending: customer stale-auth error toast, external SMTP and
 intended-host operations. Broader move UI/writer pairings, Windows physical
 installation/keyring/CA/OS-lock acceptance, actual PWA install/update, extension
 permissions/pairings and other gates in the release audit remain open. The
@@ -112,4 +112,34 @@ new phases and cleanup:
 
 ```powershell
 node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale
+```
+
+## Actual customer ownership UI
+
+Selected web-e now passes ownership acceptance through the actual ordinary-web
+UI in headless Linux Chromium. Its retained profile uses a genuinely generated
+nonextractable browser key, approved by the existing member device with a signed
+request and possession-proof completion. No browser keys or sessions were seeded.
+The request appears in Settings → Devices after real browser OPAQUE unlock.
+Cancel sends no acceptance. Confirm sends exactly one HTTP200 acceptance, locks
+the app and shows the success toast. Fresh unlock succeeds, the accepted request
+is absent, the private directory is still empty, and the final Lock control works.
+
+Cleanup uses the operator API to restore the member to user, then reads the live
+account directory to verify member=user and original account=owner. The retained
+runner exits successfully after stopping the isolated project. Evidence:
+`ownership-customer-device.json`, `ownership-customer-browser.json` and
+`ownership-customer-cleanup.json`. The profile and failed diagnostics are retained.
+
+The initial failures were test-driver issues: new-device registration was checked
+before the username step; a retained service worker intercepted requests before
+the strict-CA relay; and extension/sync diagnostic state was unsuitable for the
+empty-directory/lock UI assertions. The final check uses actual vault visibility
+and the displayed Locked/Unlocked state. Service-worker requests are explicitly
+bypassed for this ordinary-web test; no CA checks are disabled and no installed
+PWA/update claim is made. The customer stale-authentication toast remains separate
+from the already verified real server boundary. No product runtime changed.
+
+```powershell
+node scripts/internal-ownership-verify.mjs C:/Projects/127Vaults-lifecycle-isolated-20261015-a --with-browser --with-stale --with-customer
 ```

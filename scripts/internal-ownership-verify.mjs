@@ -8,7 +8,7 @@ import { verify } from '../deploy/install.mjs';
 import { verifyRelease } from './release/verify-release.mjs';
 
 const [work, ...flags] = process.argv.slice(2);
-assert.ok(flags.every(flag => ['--with-browser', '--with-stale'].includes(flag)));
+assert.ok(flags.every(flag => ['--with-browser', '--with-stale', '--with-customer'].includes(flag)));
 assert.equal(new Set(flags).size, flags.length);
 assert.ok(work && isAbsolute(work));
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
@@ -22,6 +22,23 @@ assert.equal(result.serverId, fixture.serverId);
 assert.equal(result.checks.length, 5);
 assert.equal(result.memberId, (await json(join(work, 'ownership-member.json'))).accountId);
 const additional = {};
+if (flags.includes('--with-customer')) {
+  const customer = await json(join(work, 'ownership-customer-browser.json'));
+  const device = await json(join(work, 'ownership-customer-device.json'));
+  const cleanup = await json(join(work, 'ownership-customer-cleanup.json'));
+  for (const record of [customer, device, cleanup]) assert.equal(record.serverId, fixture.serverId);
+  assert.equal(customer.status, 'passed');
+  assert.equal(customer.serverRevision, fixture.serverRevision);
+  assert.equal(customer.checks.length, 4);
+  assert.equal(customer.mutations.length, 1);
+  assert.equal(customer.mutations[0].action, 'ownership.accept');
+  assert.equal(customer.mutations[0].status, 200);
+  assert.equal(device.accountId, result.memberId);
+  assert.equal(cleanup.status, 'passed');
+  assert.equal(cleanup.memberRole, 'user');
+  assert.equal(cleanup.originalRole, 'owner');
+  additional.customerBrowser = { ...customer, device, roleCleanup: cleanup };
+}
 if (flags.includes('--with-browser')) {
   const browser = await json(join(work, 'ownership-admin-browser.json'));
   assert.equal(browser.status, 'passed');
