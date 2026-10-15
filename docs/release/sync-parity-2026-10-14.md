@@ -242,3 +242,12 @@ read by Windows. Both final queues empty; catalogue, peer edit and retirement
 preserved. [Evidence](server-a-member-offline-conflict-2026-10-15.md). Reverse writer,
 multi-queue/vault, GUI/loss and physical/other-source cases remain open; settings
 convergence is not inferred from item queue state.
+
+## Selected server-a: both member offline writer directions
+
+The reverse Linux-offline / Windows-peer case now passes with the same actual
+queue/restart/conflict/redacted comparison/exact encrypted request preservation,
+explicit field merge and independent restoration checks. Forward Windows evidence
+is retained separately. [Reverse evidence](server-a-member-offline-reverse-2026-10-15.md).
+Combined --conflict-both checks both records and current member replica settlement.
+Multiple pending/vaults, GUI/loss/settings and physical/other-source cases remain.

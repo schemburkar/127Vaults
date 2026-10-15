@@ -4,8 +4,12 @@ import {readFile,writeFile,access,readdir} from 'node:fs/promises';
 import {join,isAbsolute} from 'node:path';
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
-const [work,phase]=process.argv.slice(2);assert.ok(work&&isAbsolute(work));
-const phases=['windows-baseline','linux-baseline','windows-queue','linux-peer','windows-review-merge','linux-verify-restore','windows-final'];assert.ok(phases.includes(phase));
+const [work,phase,direction]=process.argv.slice(2);assert.ok(work&&isAbsolute(work));assert.ok(direction===undefined||direction==='--reverse');const reverse=direction==='--reverse';
+const forwardPhases=['windows-baseline','linux-baseline','windows-queue','linux-peer','windows-review-merge','linux-verify-restore','windows-final'];
+const swap=value=>value.startsWith('windows')?value.replace('windows','linux'):value.replace('linux','windows');
+const phases=reverse?forwardPhases.map(swap):forwardPhases;assert.ok(phases.includes(phase));
+const [baselinePhase,peerBaselinePhase,queuePhase,peerPhase,reviewPhase,restorePhase]=phases;
+const writerKey=reverse?'linuxDevice':'windowsDevice',peerKey=reverse?'windowsDevice':'linuxDevice';
 const windows=process.platform==='win32';assert.equal(windows,phase.startsWith('windows'));
 const json=async name=>JSON.parse(await readFile(join(work,name),'utf8'));
 const fixture=await json('fixture.json'),normal=await json('web-move-candidate-normal-fixture.json'),enrolled=await json(windows?'member-cli-windows.json':'member-cli-linux.json');
@@ -15,41 +19,41 @@ const profile=windows?join(work,'member-cli-windows-a'):'/home/vaults-dev/vaults
 const conf=await readFile(join(profile,'device.conf'),'utf8');assert.ok(conf.includes('device_id='+enrolled.device+'\n')&&conf.includes('username=ownership_member\n')&&conf.includes('server_id='+fixture.serverId+'\n'));
 assert.equal(createHash('sha256').update(await readFile(exe)).digest('hex'),(await json(windows?'candidate-cli-windows.json':'candidate-cli-linux.json')).cliBinarySha256);
 await assert.rejects(access(join(profile,'vault-removal.json')),error=>error.code==='ENOENT');
-const recordName='member-offline-conflict.json';let record;
-if(phase==='windows-baseline'){
+const recordName=reverse?'member-offline-conflict-linux.json':'member-offline-conflict.json';let record;
+if(phase===baselinePhase){
   await assert.rejects(access(join(work,recordName)),error=>error.code==='ENOENT');
-  record={status:'in-progress',serverId:fixture.serverId,serverRevision:fixture.serverRevision,itemId:normal.destinationItem,vaultId:normal.destination,windowsDevice:enrolled.device,localTitle:normal.title+' offline Windows overlap',serverTitle:normal.title+' online Linux overlap',localUsername:'offline-member-local-20261015-a',serverUsername:'online-member-peer-20261015-a',phases:[]};
-}else{record=await json(recordName);assert.equal(record.status,'in-progress');assert.equal(record.serverId,fixture.serverId);assert.equal(record.phases.length,phases.indexOf(phase));}
+  record={status:'in-progress',serverId:fixture.serverId,serverRevision:fixture.serverRevision,itemId:normal.destinationItem,vaultId:normal.destination,direction:reverse?'linux-writer':'windows-writer',[writerKey]:enrolled.device,localTitle:normal.title+(reverse?' offline Linux overlap':' offline Windows overlap'),serverTitle:normal.title+(reverse?' online Windows overlap':' online Linux overlap'),localUsername:'offline-member-local-20261015-a',serverUsername:'online-member-peer-20261015-a',phases:[]};
+}else{record=await json(recordName);assert.equal(record.direction??'windows-writer',reverse?'linux-writer':'windows-writer');assert.equal(record.status,'in-progress');assert.equal(record.serverId,fixture.serverId);assert.equal(record.phases.length,phases.indexOf(phase));}
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const replica=async()=>JSON.parse(await readFile(join(profile,'replicas',normal.destination+'.json'),'utf8'));
 for(const name of await readdir(join(profile,'replicas')))if(name.endsWith('.json')){
   const pending=JSON.parse(await readFile(join(profile,'replicas',name),'utf8')).pending;
-  if(phase==='windows-review-merge'&&name===normal.destination+'.json'){assert.equal(pending.length,1);assert.equal(fingerprint(pending),record.pendingSha256);}else assert.equal(pending.length,0,'Preserve unrelated queued writes');
+  if(phase===reviewPhase&&name===normal.destination+'.json'){assert.equal(pending.length,1);assert.equal(fingerprint(pending),record.pendingSha256);}else assert.equal(pending.length,0,'Preserve unrelated queued writes');
 }
 async function command(args,input=''){return new Promise((resolve,reject)=>{const c=spawn(exe,[...args,'--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});let out='',err='';const timer=setTimeout(()=>{c.kill();reject(Error('Member write check timed out'));},60000);c.stdout.on('data',b=>out+=b);c.stderr.on('data',b=>err+=b);c.on('error',reject);c.on('close',code=>{clearTimeout(timer);code?reject(Error('Member CLI failed: '+err.trim())):resolve(out.trim());});c.stdin.end(input);});}
 const result=async (args,input='')=>JSON.parse(await command(args,input));
 const agent=spawn(exe,['agent-serve','--username','ownership_member','--config-dir',profile],{windowsHide:true,stdio:['pipe','pipe','pipe']});let ready=false;
 try{
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Member agent readiness timeout')),60000);agent.stdout.on('data',b=>{if(String(b).includes('ready')){ready=true;clearTimeout(timer);resolve();}});agent.stderr.resume();agent.on('error',reject);agent.on('close',()=>{clearTimeout(timer);if(!ready)reject(Error('Member agent exited'));});agent.stdin.end(JSON.stringify({account_secret:'07'.repeat(32),master_password:'fictitious password 127vaults'})+'\n');});
-  const offline=phase==='windows-queue';
+  const offline=phase===queuePhase;
   if(offline)await assert.rejects(command(['device','list']),/unavailable while offline/);else await command(['device','list']);
   const get=()=>result(['item','get',normal.destinationItem,'--vault',normal.destination]);
   const edit=async(title,username)=>result(['item','edit',normal.destinationItem,'--vault',normal.destination,'--json','-'],JSON.stringify({title,username,website:normal.website,password:normal.password,customFields:[]})+'\n');
   const check=async(title,username)=>{const item=await get();assert.equal(item.title,title);assert.equal(item.username,username);assert.equal(item.website,normal.website);assert.equal(item.password,'[redacted]');assert.deepEqual(item.customFields,[]);assert.equal(await command(['item','get',normal.destinationItem,'--vault',normal.destination,'--password','password']),normal.password);};
-  if(['windows-baseline','linux-baseline'].includes(phase)){
+  if([baselinePhase,peerBaselinePhase].includes(phase)){
     await command(['sync']);await check(normal.title,normal.username);
-    if(phase==='linux-baseline'){assert.notEqual(enrolled.device,record.windowsDevice);record.linuxDevice=enrolled.device;}
+    if(phase===peerBaselinePhase){assert.notEqual(enrolled.device,record[writerKey]);record[peerKey]=enrolled.device;}
   }else if(offline){
     await check(normal.title,normal.username);assert.equal((await edit(record.localTitle,record.localUsername)).queued,true);
     const pending=(await replica()).pending;assert.equal(pending.length,1);assert.equal(pending[0].operation.itemId,normal.destinationItem);
     record.operationId=pending[0].operation.opId;record.pendingSha256=fingerprint(pending);
-    await writeFile(join(work,'member-offline-conflict-original-request.json'),JSON.stringify(pending,null,2)+'\n',{flag:'wx',mode:0o600});
+    await writeFile(join(work,recordName.replace('.json','-original-request.json')),JSON.stringify(pending,null,2)+'\n',{flag:'wx',mode:0o600});
     await check(record.localTitle,record.localUsername);
-  }else if(phase==='linux-peer'){
-    assert.equal(enrolled.device,record.linuxDevice);await command(['sync']);await check(normal.title,normal.username);
+  }else if(phase===peerPhase){
+    assert.equal(enrolled.device,record[peerKey]);await command(['sync']);await check(normal.title,normal.username);
     assert.notEqual((await edit(record.serverTitle,record.serverUsername)).queued,true);await check(record.serverTitle,record.serverUsername);
-  }else if(phase==='windows-review-merge'){
-    assert.equal(enrolled.device,record.windowsDevice);const synced=await result(['sync']);assert.equal(synced.pending,1);assert.equal(synced.conflicts.length,1);
+  }else if(phase===reviewPhase){
+    assert.equal(enrolled.device,record[writerKey]);const synced=await result(['sync']);assert.equal(synced.pending,1);assert.equal(synced.conflicts.length,1);
     assert.equal(fingerprint((await replica()).pending),record.pendingSha256);
     const compared=await result(['conflict','compare',record.operationId,'--vault',normal.destination]);assert.equal(compared.operationId,record.operationId);assert.equal(compared.itemId,normal.destinationItem);
     assert.equal(compared.draft.title,record.localTitle);assert.equal(compared.draft.username,record.localUsername);assert.equal(compared.server.title,record.serverTitle);assert.equal(compared.server.username,record.serverUsername);
@@ -57,7 +61,7 @@ try{
     assert.equal(fingerprint((await replica()).pending),record.pendingSha256);record.comparisonPreservedExactRequest=true;
     await command(['conflict','merge',record.operationId,'--vault',normal.destination,'--base','local','--field-source','title=server']);
     await check(record.serverTitle,record.localUsername);record.explicitSelectedFieldMerge=true;
-  }else if(phase==='linux-verify-restore'){
+  }else if(phase===restorePhase){
     await command(['sync']);await check(record.serverTitle,record.localUsername);await edit(normal.title,normal.username);await check(normal.title,normal.username);record.nativeRestored=true;
   }else{await command(['sync']);await check(normal.title,normal.username);assert.equal(record.nativeRestored,true);record.baselineRestored=true;record.status='passed';}
   if(!offline){const settled=await result(['sync']);assert.equal(settled.pending,0);assert.deepEqual(settled.conflicts,[]);assert.equal((await result(['sync-review'])).items.length,0);}

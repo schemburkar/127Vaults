@@ -577,3 +577,19 @@ Syntax and combined member/native/web/P1/extension-negative cleanup verification
 pass. Original server healthy, owned project/processes stopped and revoked draft
 unchanged. Reverse/multiple-pending/GUI/loss/physical and other client/operational
 gates remain open. No runtime package change, browser grant or push.
+
+## Resumed goal: reverse member offline overlap / field merge
+
+The goal's authoritative state was active after the earlier requested pause, so
+work resumed with the saved next task. Actual selected Linux offline queue →
+Windows overlapping peer → Linux redacted/exact-preserving comparison and
+explicit field merge → Windows read/restore → Linux final verification passed.
+Both genuinely enrolled profiles finish settled; prior Windows-direction records
+and original encrypted request snapshots are preserved separately.
+
+[Evidence](server-a-member-offline-reverse-2026-10-15.md). Shared helper now takes
+explicit --reverse and guards actual OS/device phase order. Combined checker
+verifies both directions, current member replica settlement, existing native/web/
+P1/extension-negative evidence and full cleanup/original/revoked-data preservation.
+Broader multi-queue/GUI/loss/settings/client/physical/intended-host gates remain
+open. No browser permission, runtime artifact or Windows policy change; no push.

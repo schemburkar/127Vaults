@@ -1,3 +1,5 @@
+Subsequent resume: the goal later reported active and work resumed. See [reverse member offline evidence](server-a-member-offline-reverse-2026-10-15.md) and the newest restart checkpoint. The stop instructions/state below describe the earlier saved pause.
+
 # User-requested stop and restart checkpoint — October 15, 2026
 
 Stopped at the user's request because usage is low. Internal release is **not
