@@ -31,17 +31,31 @@
     "tls:renew": "node server.mjs tls renew",
     "check:contracts": "tsc -p tsconfig.contracts.json",
     "check:desktop": "node scripts/check-desktop.mjs",
-    "check:public-intake": "node --check apps/public-intake/src/server.mjs && node --check apps/public-intake/src/trials.mjs && node --check apps/public-intake/src/cloudflare-email.mjs && node --check public-website/access-admin.mjs && node --check public-website/trial.mjs && node --check scripts/ops/prepare-private-trial.mjs",
+    "check:public-intake": "node --check apps/public-intake/src/server.mjs && node --check apps/public-intake/src/trials.mjs && node --check apps/public-intake/src/cloudflare-email.mjs && node --check public-website/access-admin.mjs && node --check public-website/trial.mjs && node --check scripts/ops/prepare-private-trial.mjs && node --check apps/public-intake/src/validate-request.mjs && node scripts/cloudflare/check.mjs",
     "check": "node --check scripts/dev.mjs && node --check scripts/mvp-startup.mjs && node --check scripts/mvp-acceptance.mjs && node --check scripts/build-fixture.mjs && pnpm check:public-intake && pnpm -r check && pnpm check:contracts",
     "check:rust:core": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo run -p vaults-crypto --example feasibility && cargo build -p vaults-crypto --target wasm32-unknown-unknown",
     "check:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
-    "test": "pnpm -r test && node --test tests/internal/structure.test.mjs scripts/mvp-startup.test.mjs apps/public-intake/test/*.test.mjs public-website/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs && node public-website/validate-releases.mjs",
+    "test": "pnpm -r test && node --test tests/internal/structure.test.mjs scripts/mvp-startup.test.mjs apps/public-intake/test/*.test.mjs public-website/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs scripts/cloudflare/*.test.mjs && node public-website/validate-releases.mjs",
     "test:internal": "node tests/internal/run.mjs",
     "test:internal:check": "node --test tests/internal/structure.test.mjs",
     "test:internal:audit": "node tests/internal/audit/release-gap-audit.mjs --basic",
-    "test:internal:audit:extended": "node tests/internal/audit/release-gap-audit.mjs"
+    "test:internal:audit:extended": "node tests/internal/audit/release-gap-audit.mjs",
+    "cloudflare:plan": "node scripts/cloudflare/deploy.mjs plan",
+    "cloudflare:dry-run": "node scripts/cloudflare/deploy.mjs dry-run",
+    "cloudflare:provision": "node scripts/cloudflare/deploy.mjs provision",
+    "cloudflare:upload": "node scripts/cloudflare/deploy.mjs upload",
+    "cloudflare:deploy": "node scripts/cloudflare/deploy.mjs deploy",
+    "cloudflare:all": "node scripts/cloudflare/deploy.mjs all",
+    "cloudflare:verify": "node scripts/cloudflare/deploy.mjs verify",
+    "cloudflare:backup": "node scripts/cloudflare/deploy.mjs backup",
+    "cloudflare:check": "node scripts/cloudflare/check.mjs",
+    "cloudflare:test": "node --test apps/public-intake/test/cloudflare-worker.test.mjs scripts/cloudflare/*.test.mjs"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "@aws-sdk/client-s3": "3.1152.0",
+    "@aws-sdk/lib-storage": "3.1152.0",
+    "miniflare": "4.20260730.0",
+    "typescript": "5.9.3",
+    "wrangler": "4.151.1"
   }
 }

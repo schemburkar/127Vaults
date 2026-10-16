@@ -9,8 +9,10 @@ export function createCloudflareTrialMailer({ accountId, apiToken, from, fetchIm
         || typeof text !== 'string' || text.length > 12000) throw Error('Invalid invitation.');
       const response = await fetchImpl(`https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`, {
         method: 'POST', headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, from, subject, text }), redirect: 'error', signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({ to, from, subject, text }), redirect: 'manual', signal: AbortSignal.timeout(15000),
       });
+      // Workers supports manual/follow, but not redirect:error. Never follow a provider redirect with credentials.
+      if (response.status >= 300 && response.status < 400) throw Error('Email submission was not confirmed.');
       const value = await response.json();
       if (!response.ok || value.success !== true) throw Error('Email submission was not confirmed.');
       const result = value.result;

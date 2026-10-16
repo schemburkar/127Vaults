@@ -2,6 +2,10 @@
 
 ## Private friend trials
 
+For Cloudflare hosting, see the [Worker/D1/R2 deployment runbook](../docs/release/cloudflare-access-deployment.md).
+The deployment scripts stage an explicit allowlist from this folder, excluding
+tests, build scripts, documentation and legacy simulated-checkout pages.
+
 The local site now includes access-admin.html for the protected operator inbox and trial.html for manually approved unpaid ten-day trials. Configure the same-origin intake API; static hosting alone cannot receive requests or issue licenses. The public release catalogue stays empty. See [private trial setup](../docs/release/private-friend-trials.md).
 
 

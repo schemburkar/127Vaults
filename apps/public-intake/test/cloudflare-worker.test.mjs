@@ -1,0 +1,290 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createHash, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { Miniflare } from 'miniflare';
+import { verifyLicenseFile, verifyLicenseRevocationFile } from '../../server/src/license-status.mjs';
+import { encryptionKey, limiterKey, seal, unseal } from '../cloudflare/crypto.mjs';
+import { TrialStore } from '../cloudflare/store.mjs';
+import { handleRequest, prune } from '../cloudflare/worker.mjs';
+import { stageAssets } from '../../../scripts/cloudflare/config.mjs';
+
+const origin = 'https://trial.example.com';
+const admin = '/api/access-admin/requests';
+const root = fileURLToPath(new URL('../../../', import.meta.url));
+async function fixture(t, options = {}) {
+  const issuerPrivateKey = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const publicKeys = { trial: createPublicKey(issuerPrivateKey).export({ type: 'spki', format: 'pem' }) };
+  const operatorToken = randomBytes(32).toString('base64url'), intakeKey = randomBytes(32).toString('hex');
+  const archive = 'synthetic private archive', sha256 = createHash('sha256').update(archive).digest('hex');
+  const catalogue = { schemaVersion: 1, sourceRevision: 'a'.repeat(40), issuerPublicKeys: publicKeys,
+    artifacts: [{ id: 'server', filename: 'server.tar', label: 'Server', sizeBytes: Buffer.byteLength(archive), sha256,
+      objectKey: 'releases/test/server.tar', etag: createHash('md5').update(archive).digest('hex') }] };
+  const catalogueSource = JSON.stringify(catalogue);
+  const bindings = { PUBLIC_INTAKE_ORIGIN: origin, OPERATOR_TOKEN: operatorToken, INTAKE_KEY: intakeKey,
+    TRIAL_ISSUER_KEY_ID: 'trial', TRIAL_ISSUER_PRIVATE_KEY: issuerPrivateKey, TRIAL_CATALOGUE_KEY: 'releases/test/catalogue.json',
+    TRIAL_SOURCE_REVISION: 'a'.repeat(40), TRIAL_CATALOGUE_SHA256: createHash('sha256').update(catalogueSource).digest('hex'),
+    ...(options.bindings ?? {}) };
+  const mfOptions = { modules: true, modulesRoot: root, scriptPath: fileURLToPath(new URL('../cloudflare/worker.mjs', import.meta.url)),
+    modulesRules: [{ type: 'ESModule', include: ['**/*.mjs'], fallthrough: true }],
+    compatibilityDate: '2026-07-01', bindings, d1Databases: ['DB'], r2Buckets: ['ARTIFACTS'],
+    ...(options.assetsDirectory ? { assets: { directory: options.assetsDirectory, binding: 'ASSETS',
+      routerConfig: { has_user_worker: true, static_routing: { user_worker: ['/api/*'] } },
+      assetConfig: { html_handling: 'none', not_found_handling: 'none',
+        redirects: { version: 1, rules: {}, staticRules: { '/': { status: 200, to: '/index.html', lineNumber: 1 } } } } } }
+      : { serviceBindings: { ASSETS: () => new Response('static website') } }),
+    ...(options.outboundService ? { outboundService: options.outboundService } : {}),
+    ...(options.persistDirectory ? { d1Persist: join(options.persistDirectory, 'd1'), r2Persist: join(options.persistDirectory, 'r2') } : {}) };
+  const mf = new Miniflare(mfOptions);
+  let disposed = false;
+  const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
+  t.after(dispose);
+  const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
+  const sql = await readFile(new URL('../cloudflare/migrations/0001_trials.sql', import.meta.url), 'utf8');
+  for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
+  const object = await bucket.put('releases/test/server.tar', archive, { customMetadata: { sha256 } });
+  assert.equal(object.etag, catalogue.artifacts[0].etag);
+  await bucket.put(bindings.TRIAL_CATALOGUE_KEY, catalogueSource);
+  const get = (path, token, cookie) => mf.dispatchFetch(origin + path, { headers: {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}),
+  } });
+  const post = (path, input, token, from = origin) => mf.dispatchFetch(origin + path, { method: 'POST', headers: {
+    Origin: from, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }, body: JSON.stringify(input) });
+  const requestInput = { email: 'friend@example.com', plan: 'personal', organization: '', website: '', requestedSeats: 3, consent: true };
+  const submit = async (email = requestInput.email) => {
+    assert.equal((await post('/api/waitlist', { ...requestInput, email })).status, 202);
+    const inbox = await get(admin, operatorToken); assert.equal(inbox.status, 200, await inbox.clone().text());
+    return (await inbox.json()).requests.find(row => row.email === email).id;
+  };
+  const approve = async id => {
+    const response = await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken);
+    assert.equal(response.status, 200, await response.clone().text());
+    const value = await response.json(); return { ...value, token: value.link.split('.').at(-1), base: `/api/trials/${id}` };
+  };
+  return { mf, dispose, mfOptions, db, bucket, bindings, operatorToken, intakeKey, publicKeys, catalogue, archive, sha256,
+    get, post, submit, approve, requestInput, env: { ...bindings, DB: db, ARTIFACTS: bucket } };
+}
+
+test('Cloudflare runtime: request, approval, R2 cookie download, compatible license, rotation and closure', async t => {
+  const f = await fixture(t);
+  assert.equal(await (await f.get('/')).text(), 'static website');
+  assert.equal((await f.get(admin)).status, 401);
+  assert.equal((await f.get('/api/access-admin/readiness')).status, 401);
+  const readiness = await f.get('/api/access-admin/readiness', f.operatorToken);
+  assert.equal(readiness.status, 200, await readiness.clone().text());
+  assert.equal((await readiness.json()).ready, true);
+  assert.equal((await f.post('/api/waitlist', f.requestInput, null, 'https://evil.example')).status, 403);
+  const id = await f.submit(), a = await f.approve(id);
+  assert.equal((await f.post(`${admin}/${id}/approve`, { maxUsers: 5 }, f.operatorToken)).status, 409);
+  assert.equal((await f.get(a.base)).status, 401);
+  const view = await (await f.get(a.base, a.token)).json();
+  assert.equal(view.artifacts[0].objectKey, undefined); assert.equal(view.artifacts[0].etag, undefined);
+  assert.equal(view.artifacts[0].sha256, f.sha256);
+  assert.equal(await (await f.get(`${a.base}/artifacts/server`, a.token)).text(), f.archive);
+  const ticket = await f.post(`${a.base}/ticket`, {}, a.token);
+  assert.match(ticket.headers.get('set-cookie'), /Secure; HttpOnly; SameSite=Strict/);
+  const cookie = ticket.headers.get('set-cookie').split(';')[0];
+  assert.equal(await (await f.get(`${a.base}/artifacts/server`, null, cookie)).text(), f.archive);
+  const installationId = randomUUID();
+  const activation = await f.post(`${a.base}/activate`, { installationId }, a.token);
+  assert.equal(activation.status, 200, await activation.clone().text());
+  const dates = await activation.json(); assert.equal(Date.parse(dates.expiresAt) - Date.parse(dates.activatedAt), 10 * 86400000);
+  const license = await (await f.get(`${a.base}/license`, a.token)).text();
+  const payload = verifyLicenseFile(license, f.publicKeys, installationId); assert.equal(payload.maxActiveUsers, 5);
+  assert.equal((await f.post(`${a.base}/activate`, { installationId: randomUUID() }, a.token)).status, 409);
+  assert.equal((await f.post(`${a.base}/activate`, { installationId }, a.token)).status, 200);
+  assert.equal(await (await f.get(`${a.base}/license`, a.token)).text(), license);
+  const archived = await f.post(`${admin}/${id}/archive`, {}, f.operatorToken); assert.equal(archived.status, 200);
+  assert.equal((await (await f.get(admin, f.operatorToken)).json()).requests[0].state, 'approved');
+  const rotate = await (await f.post(`${admin}/${id}/rotate`, {}, f.operatorToken)).json();
+  const nextToken = rotate.link.split('.').at(-1);
+  assert.equal((await f.get(a.base, a.token)).status, 401);
+  assert.equal((await f.get(`${a.base}/artifacts/server`, null, cookie)).status, 401);
+  assert.equal(await (await f.get(`${a.base}/license`, nextToken)).text(), license);
+  await f.bucket.put(f.catalogue.artifacts[0].objectKey, 'changed bytes', { customMetadata: { sha256: f.sha256 } });
+  assert.equal((await f.get(`${a.base}/artifacts/server`, nextToken)).status, 503);
+  assert.equal((await f.post(`${admin}/${id}/close`, {}, f.operatorToken)).status, 200);
+  assert.equal((await f.get(a.base, nextToken)).status, 404);
+  const revocation = await (await f.get(`${admin}/${id}/revocation`, f.operatorToken)).text();
+  verifyLicenseRevocationFile(revocation, f.publicKeys, installationId, payload.licenseId);
+  const saved = await f.db.prepare('SELECT * FROM access_requests WHERE id = ?').bind(id).first();
+  assert.ok(!saved.contact.includes('friend@example.com')); assert.ok(!saved.trial.includes(installationId));
+  assert.ok(!saved.trial.includes(nextToken));
+  assert.equal((await f.post(`${admin}/${id}/erase`, {}, f.operatorToken)).status, 200);
+  assert.equal((await f.db.prepare('SELECT contact FROM access_requests WHERE id = ?').bind(id).first()).contact, null);
+  assert.equal((await (await f.get(admin, f.operatorToken)).json()).requests.length, 0);
+});
+
+test('D1 concurrency: one approval, one installation binding, stale writes refused, limiter atomic', async t => {
+  const f = await fixture(t), id = await f.submit();
+  const approvals = await Promise.all(Array.from({ length: 5 }, () => f.post(`${admin}/${id}/approve`, { maxUsers: 3 }, f.operatorToken)));
+  assert.equal(approvals.filter(r => r.status === 200).length, 1);
+  assert.ok(approvals.every(r => [200, 409].includes(r.status)));
+  const a = await approvals.find(r => r.status === 200).json(), token = a.link.split('.').at(-1), base = `/api/trials/${id}`;
+  const installations = [randomUUID(), randomUUID()];
+  const activations = await Promise.all(installations.map(installationId => f.post(`${base}/activate`, { installationId }, token)));
+  assert.equal(activations.filter(r => r.status === 200).length, 1);
+  assert.equal(activations.filter(r => r.status === 409).length, 1);
+  const contactKey = await encryptionKey(f.intakeKey, 'contacts'), trialKey = await encryptionKey(f.intakeKey, 'trials');
+  const store = new TrialStore(f.db, contactKey, trialKey, () => Date.now(), await limiterKey(f.intakeKey));
+  const stale = await store.get(id), fresh = await store.get(id);
+  await store.save(fresh, { ...fresh.trial, state: 'closed' });
+  await assert.rejects(store.save(stale, { ...stale.trial, state: 'approved' }), /state_changed/);
+  const limits = await Promise.all(Array.from({ length: 12 }, () => store.allow('atomic-test', 'same-ip', 3, 3600000)));
+  assert.equal(limits.filter(Boolean).length, 3);
+});
+
+test('retention closes old links and erases contact while retaining compatible signed revocation', async t => {
+  const f = await fixture(t), id = await f.submit(), a = await f.approve(id), installationId = randomUUID();
+  await f.post(`${a.base}/activate`, { installationId }, a.token);
+  const license = verifyLicenseFile(await (await f.get(`${a.base}/license`, a.token)).text(), f.publicKeys, installationId);
+  await f.db.prepare('UPDATE access_requests SET received_at = ? WHERE id = ?').bind(Date.now() - 91 * 86400000, id).run();
+  await prune(f.env);
+  const row = await f.db.prepare('SELECT * FROM access_requests WHERE id = ?').bind(id).first();
+  assert.equal(row.contact, null);
+  const record = await unseal(row.trial, await encryptionKey(f.intakeKey, 'trials'), `trial:${id}`);
+  assert.equal(record.state, 'closed'); assert.equal(record.invitation, undefined);
+  verifyLicenseRevocationFile(record.revocation, f.publicKeys, installationId, license.licenseId);
+});
+
+test('encrypted records bind ciphertext to both record ID and purpose', async () => {
+  const key = await encryptionKey(randomBytes(32).toString('hex'), 'contacts');
+  const envelope = await seal({ email: 'private@example.com' }, key, 'contact:a');
+  await assert.rejects(unseal(envelope, key, 'contact:b'));
+  assert.equal((await unseal(envelope, key, 'contact:a')).email, 'private@example.com');
+});
+
+test('Worker email claims survive concurrent sends, ambiguous replies and closure during provider I/O', { timeout: 15000 }, async t => {
+  let announce, finish;
+  let reached = new Promise(resolve => { announce = resolve; });
+  let gate = new Promise(resolve => { finish = resolve; });
+  let sent = 0, ambiguous = false, recipient = 'friend@example.com';
+  const f = await fixture(t, { bindings: { CF_ACCOUNT_ID: 'a'.repeat(32),
+    TRIAL_EMAIL_FROM: 'trials@example.com', TRIAL_EMAIL_API_TOKEN: 'x'.repeat(32) },
+    outboundService: async request => {
+      sent++; announce();
+      assert.equal(request.url, `https://api.cloudflare.com/client/v4/accounts/${'a'.repeat(32)}/email/sending/send`);
+      const message = await request.json(); assert.equal(message.to, recipient);
+      assert.equal(message.from, 'trials@example.com'); assert.match(message.text, /trial.html#/);
+      await gate;
+      return Response.json(ambiguous ? { success: false } : { success: true, result: { queued: [recipient] } });
+    } });
+  const id = await f.submit(), a = await f.approve(id);
+  const pending = f.post(`${admin}/${id}/send-invitation`, {}, f.operatorToken);
+  await Promise.race([reached, pending.then(async response => { throw Error(`Email finished before provider: ${response.status} ${await response.text()}`); })]);
+  assert.equal((await f.post(`${admin}/${id}/send-invitation`, {}, f.operatorToken)).status, 409);
+  assert.equal((await f.post(`${admin}/${id}/close`, {}, f.operatorToken)).status, 200);
+  finish(); assert.equal((await pending).status, 200); assert.equal(sent, 1);
+  const row = (await (await f.get(admin, f.operatorToken)).json()).requests[0];
+  assert.equal(row.state, 'closed'); assert.equal(row.canPreviewInvitation, false);
+  assert.equal((await f.get(a.base, a.token)).status, 404);
+
+  const next = await f.submit('second@example.com'); await f.approve(next);
+  // A provider error is still recorded before returning, and never authorizes automatic retries.
+  reached = new Promise(resolve => { announce = resolve; });
+  gate = Promise.resolve(); ambiguous = true; recipient = 'second@example.com';
+  const response = await f.post(`${admin}/${next}/send-invitation`, {}, f.operatorToken);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).emailState, 'unknown');
+  assert.equal((await f.post(`${admin}/${next}/send-invitation`, {}, f.operatorToken)).status, 409);
+  recipient = 'third@example.com'; ambiguous = false;
+  const third = await f.submit(recipient); await f.approve(third);
+  const queued = await f.post(`${admin}/${third}/send-invitation`, {}, f.operatorToken);
+  assert.equal((await queued.json()).emailState, 'queued');
+});
+
+test('Worker validation refuses oversized and malformed input, honeypots, wrong methods and stale releases', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.post('/api/waitlist', { ...f.requestInput, email: 'invalid' })).status, 400);
+  assert.equal((await f.post('/api/waitlist', { ...f.requestInput, organization: 'x'.repeat(3000) })).status, 413);
+  assert.equal((await f.post('/api/waitlist', { ...f.requestInput, website: 'bot' })).status, 202);
+  assert.equal((await (await f.get(admin, f.operatorToken)).json()).requests.length, 0);
+  assert.equal((await f.mf.dispatchFetch(origin + '/api/waitlist', { method: 'DELETE' })).status, 405);
+  const id = await f.submit(), a = await f.approve(id);
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'));
+  const row = await store.get(id); await store.save(row, { ...row.trial, releaseHash: 'b'.repeat(64) });
+  assert.equal((await f.get(a.base, a.token)).status, 409);
+  assert.equal((await f.post(`${admin}/${id}/rotate`, {}, f.operatorToken)).status, 409);
+  await f.bucket.put(f.bindings.TRIAL_CATALOGUE_KEY, JSON.stringify({ ...f.catalogue, sourceRevision: 'b'.repeat(40) }));
+  assert.equal((await f.get(a.base, a.token)).status, 503);
+  assert.equal((await f.get('/api/access-admin/readiness', f.operatorToken)).status, 503);
+  // Unactivated contact erasure/closure must not depend on an available release bucket.
+  assert.equal((await f.post(`${admin}/${id}/close`, {}, f.operatorToken)).status, 200);
+  assert.equal((await f.post(`${admin}/${id}/erase`, {}, f.operatorToken)).status, 200);
+});
+
+test('removing email sender disables sending despite a retained Worker secret', async t => {
+  const f = await fixture(t, { bindings: { TRIAL_EMAIL_API_TOKEN: 'x'.repeat(32) } });
+  const id = await f.submit(); await f.approve(id);
+  const inbox = await (await f.get(admin, f.operatorToken)).json();
+  assert.equal(inbox.emailEnabled, false);
+  assert.equal((await f.post(`${admin}/${id}/send-invitation`, {}, f.operatorToken)).status, 503);
+});
+
+test('private installer downloads support authorized resume and HEAD without bypassing closure', async t => {
+  const f = await fixture(t), id = await f.submit(), a = await f.approve(id);
+  const download = (method, range, token = a.token) => f.mf.dispatchFetch(origin + a.base + '/artifacts/server', {
+    method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(range ? { Range: range } : {}) },
+  });
+  assert.equal((await download('HEAD', null, '')).status, 401);
+  const info = await download('HEAD'); assert.equal(info.status, 200); assert.equal(await info.text(), '');
+  assert.equal(info.headers.get('content-length'), String(f.archive.length));
+  const part = await download('GET', 'bytes=3-10'); assert.equal(part.status, 206);
+  assert.equal(await part.text(), f.archive.slice(3, 11));
+  assert.equal(part.headers.get('content-range'), `bytes 3-10/${f.archive.length}`);
+  const suffix = await download('GET', 'bytes=-5'); assert.equal(await suffix.text(), f.archive.slice(-5));
+  const rest = await download('GET', 'bytes=5-'); assert.equal(await rest.text(), f.archive.slice(5));
+  for (const range of ['bytes=999-', 'bytes=8-3', 'bytes=0-1,3-4', 'bytes=-0', 'items=0-1']) {
+    const bad = await download('GET', range); assert.equal(bad.status, 416);
+    assert.equal(bad.headers.get('content-range'), `bytes */${f.archive.length}`);
+  }
+  await f.post(`${admin}/${id}/close`, {}, f.operatorToken);
+  assert.equal((await download('GET', 'bytes=3-10')).status, 404);
+  assert.equal((await download('HEAD')).status, 404);
+});
+
+test('actual static asset routing serves public HTML and modules while API and excluded files remain protected', async t => {
+  const directory = await mkdtemp(join(tmpdir(), '127v-worker-assets-'));
+  const assets = join(directory, 'site'); await stageAssets(assets);
+  const f = await fixture(t, { assetsDirectory: assets });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const path of ['/', '/index.html', '/get-started.html', '/access-admin.html', '/trial.html', '/trial.mjs', '/site.css']) {
+    const response = await f.get(path); assert.equal(response.status, 200, path);
+  }
+  for (const path of ['/build-pages.mjs', '/availability.test.mjs', '/README.md', '/mock-checkout.html', '/customer-account.html', '/issuer.pem']) {
+    assert.equal((await f.get(path)).status, 404, path);
+  }
+  assert.equal((await f.get(admin)).status, 401);
+  const id = await f.submit(); assert.ok(id); // API routing still invokes the authenticated Worker.
+});
+
+test('durable D1/R2 state survives a fresh Worker runtime without issuing another license', async t => {
+  const directory = await mkdtemp(join(tmpdir(), '127v-worker-restart-'));
+  const f = await fixture(t, { persistDirectory: directory }), id = await f.submit(), a = await f.approve(id);
+  const installationId = randomUUID(); await f.post(`${a.base}/activate`, { installationId }, a.token);
+  const license = await (await f.get(`${a.base}/license`, a.token)).text();
+  await f.dispose();
+  const restarted = new Miniflare(f.mfOptions); t.after(() => restarted.dispose());
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const options = { headers: { Authorization: `Bearer ${a.token}` } };
+  assert.equal(await (await restarted.dispatchFetch(origin + a.base + '/license', options)).text(), license);
+  assert.equal(await (await restarted.dispatchFetch(origin + a.base + '/artifacts/server', options)).text(), f.archive);
+  const again = await restarted.dispatchFetch(origin + a.base + '/activate', { method: 'POST', headers: {
+    Origin: origin, 'Content-Type': 'application/json', Authorization: `Bearer ${a.token}`,
+  }, body: JSON.stringify({ installationId }) });
+  assert.equal(again.status, 200);
+  assert.equal(await (await restarted.dispatchFetch(origin + a.base + '/license', options)).text(), license);
+});
+
+test('expired download tickets and invitation links cannot authorize a new request', async t => {
+  const f = await fixture(t), id = await f.submit(), a = await f.approve(id);
+  const response = await f.post(`${a.base}/ticket`, {}, a.token), cookie = response.headers.get('set-cookie').split(';')[0];
+  const download = new Request(origin + a.base + '/artifacts/server', { headers: { Cookie: cookie } });
+  assert.equal((await handleRequest(download, f.env, { now: () => Date.now() + 6 * 60000 })).status, 401);
+  const expired = new Request(origin + a.base, { headers: { Authorization: `Bearer ${a.token}` } });
+  assert.equal((await handleRequest(expired, f.env, { now: () => Date.now() + 31 * 86400000 })).status, 404);
+});

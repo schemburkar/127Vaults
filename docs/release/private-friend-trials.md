@@ -169,6 +169,12 @@ window; a rolling catalogue migration is not implemented by link rotation.
 
 ## Host the site and API
 
+For an entirely Cloudflare-hosted access/distribution service, use the separate
+[Worker + D1 + private R2 deployment target](cloudflare-access-deployment.md).
+Its scripts automate provisioning, verified multipart uploads, secrets and custom
+domain deployment. The Node/filesystem deployment below remains supported; it
+does not need to be run alongside the Worker. Neither option hosts testers' vaults.
+
 The smallest deployment is one private directory of artifacts plus the existing
 Node.js 24 intake process, behind the same HTTPS origin as the static website.
 `deploy/public-trial.env.example` lists the configuration. Set those environment

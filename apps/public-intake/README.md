@@ -1,5 +1,15 @@
 # Public waitlist intake (experimental)
 
+## Cloudflare deployment target
+
+The separate `cloudflare/worker.mjs` target runs the access/trial APIs in Workers,
+with encrypted D1 records and private R2 artifact streaming. It serves the existing
+website through Static Assets and uses the existing operator bearer key; no VPS,
+Tunnel or Cloudflare Access is required. See the [Cloudflare deployment runbook](../../docs/release/cloudflare-access-deployment.md)
+for account prerequisites, offline validation, automated provisioning, multipart
+uploads, secrets, deployment, verification and backup. This hosts distribution
+and licensing only, never the tester's vault server.
+
 ## Unpaid private trials
 
 A separate manually approved trial path is now available with PUBLIC_TRIALS=1 (keep the simulated checkout disabled). The operator inbox at /access-admin.html can review/export/erase requests, approve ten-day trials and rotate/close links. The recipient page activates one installation-bound license and streams approved private downloads. A manual Send invitation button uses Cloudflare Email Sending when configured; copy/email remains available. Approval does not automatically send email. See [the setup and operating guide](../../docs/release/private-friend-trials.md).

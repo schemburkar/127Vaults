@@ -7,7 +7,7 @@ test('Cloudflare adapter sends only the fixed server sender and classifies actua
   const mailer = createCloudflareTrialMailer({ accountId: 'a'.repeat(32), apiToken: 'synthetic-token-for-local-tests', from: 'trials@example.com',
     fetchImpl: async (url, options) => {
       assert.equal(url, `https://api.cloudflare.com/client/v4/accounts/${'a'.repeat(32)}/email/sending/send`);
-      assert.equal(options.redirect, 'error'); assert.ok(options.signal);
+      assert.equal(options.redirect, 'manual'); assert.ok(options.signal);
       assert.deepEqual(JSON.parse(options.body), { to: 'friend@example.com', from: 'trials@example.com', subject: 'Trial', text: 'Private link' });
       return Response.json({ success: true, result });
     } });
@@ -25,4 +25,10 @@ test('Cloudflare configuration and provider failure never become a successful se
   const mailer = createCloudflareTrialMailer({ accountId: 'b'.repeat(32), apiToken: 'synthetic-token-for-local-tests', from: 'trials@example.com',
     fetchImpl: async () => Response.json({ success: false, errors: [{ message: 'private provider diagnostic' }] }, { status: 403 }) });
   await assert.rejects(mailer.sendInvitation({ to: 'friend@example.com', subject: 'Trial', text: 'Link' }), /not confirmed/);
+  const redirect = createCloudflareTrialMailer({ accountId: 'b'.repeat(32), apiToken: 'synthetic-token-for-local-tests', from: 'trials@example.com',
+    fetchImpl: async (_url, options) => {
+      assert.equal(options.redirect, 'manual');
+      return new Response('', { status: 302, headers: { Location: 'https://other.example' } });
+    } });
+  await assert.rejects(redirect.sendInvitation({ to: 'friend@example.com', subject: 'Trial', text: 'Link' }), /not confirmed/);
 });
