@@ -37,7 +37,8 @@
     "test": "pnpm -r test && node --test tests/internal/structure.test.mjs scripts/mvp-startup.test.mjs public-website/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs && node public-website/validate-releases.mjs",
     "test:internal": "node tests/internal/run.mjs",
     "test:internal:check": "node --test tests/internal/structure.test.mjs",
-    "test:internal:audit": "node tests/internal/audit/release-gap-audit.mjs"
+    "test:internal:audit": "node tests/internal/audit/release-gap-audit.mjs --basic",
+    "test:internal:audit:extended": "node tests/internal/audit/release-gap-audit.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3"

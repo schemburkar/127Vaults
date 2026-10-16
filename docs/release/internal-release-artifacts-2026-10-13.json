@@ -1,17 +1,17 @@
 {
-  "verifiedAt": "2026-10-15T16:12:24.878Z",
-  "acceptance": "candidate only; CLI-b/Desktop-d queue-review fix rebuilt; actual Linux GUI production budget recovery and both OS member CLI verification pass; broader and physical matrix remains open",
+  "verifiedAt": "2026-10-16T04:52:58.850Z",
+  "acceptance": "Ready for a functionality-first local private internal trial under the October 16 basic-sanity criterion. Individual item deletion is a disclosed implementation follow-up under original minimum scope; no full matrix, physical, public-distribution or production-secret signoff is claimed.",
   "artifacts": [
     {
-      "path": "server/internal-20261015-a/linux-amd64",
+      "path": "server/internal-20261015-b/linux-amd64",
       "product": "server",
       "platform": "linux-amd64",
-      "sourceRevision": "cbb1be02e68e484c82334cd4389dcc4b09f64cf2",
+      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
       "files": [
         {
           "name": "127vaults-server-0.0.0-linux-amd64.tar",
-          "sizeBytes": 835057152,
-          "sha256": "db56bf303df88353ba4940acf6189cb49a1a6a153a725dd6f7b203064ef1a012"
+          "sizeBytes": 835059200,
+          "sha256": "c2b559f762cf6821e58281185acaa390452c986816fa144f46bde9f9c1dea760"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -31,15 +31,15 @@
       ]
     },
     {
-      "path": "desktop/internal-20261015-d/windows",
+      "path": "desktop/internal-20261015-e/windows",
       "product": "desktop",
       "platform": "windows",
-      "sourceRevision": "cd67ab2c224df758f173fd393590c4586386f8b8",
+      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-windows-x64.exe",
-          "sizeBytes": 5142630,
-          "sha256": "746ec7887b2b12fcbadfddb8251eb04dc42a3b788b30e36cee9d1913f5a10d3b"
+          "sizeBytes": 5138033,
+          "sha256": "8693bed0083c87cb8742e23c9fd4a2e0174fea6ac32d9ebc527d25dfcde8f378"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -59,20 +59,20 @@
       ]
     },
     {
-      "path": "desktop/internal-20261015-d/linux",
+      "path": "desktop/internal-20261015-e/linux",
       "product": "desktop",
       "platform": "linux",
-      "sourceRevision": "cd67ab2c224df758f173fd393590c4586386f8b8",
+      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.AppImage",
-          "sizeBytes": 86014456,
-          "sha256": "92ca36de3a460f7c0c2bd5ee2122c10a4b19166d5e87943d963e90b3393d228a"
+          "sizeBytes": 86022648,
+          "sha256": "e6822a09ed0529dbe75605accb061fe8b4b4591005aa8fd87ea69ae4fb4c6a4e"
         },
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.deb",
-          "sizeBytes": 11210564,
-          "sha256": "92aa11cfdca86178c8e03ce8cc1630896a4da02f410c7a7d03513918378f1012"
+          "sizeBytes": 11210930,
+          "sha256": "dd56a94a1489301982a8de5551aa67806cd8b349a48445471ef25fb2525c8430"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -176,32 +176,47 @@
       ]
     }
   ],
-  "pendingRuntimeChanges": [
+  "pendingRuntimeChanges": [],
+  "candidateArtifacts": [],
+  "supersededArtifacts": [
     {
-      "description": "Desktop/web license expiry and renewal warnings refresh during a live session",
-      "products": [
-        "server/web",
-        "desktop"
-      ],
-      "sourceFiles": [
-        "apps/desktop/src/app.tsx",
-        "apps/web/mvp-client.mjs"
-      ],
-      "validation": "Web 74 tests; Desktop 33 tests; web and Desktop type/build checks passed",
-      "packageAcceptance": "Desktop-e Windows/Linux and server-b rebuilt and checksum-verified from a574a62; actual live-session acceptance remains pending before selection; server-b existing-installation upgrade passed with preserved identity/configuration, exact encrypted digest, independent decrypted reads/history and a fresh backup restore rehearsal; live GUI refresh acceptance still pending"
-    }
-  ],
-  "candidateArtifacts": [
+      "path": "server/internal-20261015-a/linux-amd64",
+      "product": "server",
+      "platform": "linux-amd64",
+      "sourceRevision": "cbb1be02e68e484c82334cd4389dcc4b09f64cf2",
+      "files": [
+        {
+          "name": "127vaults-server-0.0.0-linux-amd64.tar",
+          "sizeBytes": 835057152,
+          "sha256": "db56bf303df88353ba4940acf6189cb49a1a6a153a725dd6f7b203064ef1a012"
+        },
+        {
+          "name": "LICENSE-POLICY.md",
+          "sizeBytes": 6422,
+          "sha256": "95de5da42b8786034f9eb443307aad8bfb4d1b93eda0d1ac9cf32ed1e1d1d2f1"
+        },
+        {
+          "name": "README.md",
+          "sizeBytes": 17775,
+          "sha256": "0ade97b468dc65fe362497170fde623aff30544d514be6eb5de6a4423fc6e8b8"
+        },
+        {
+          "name": "verify-release.mjs",
+          "sizeBytes": 2401,
+          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+        }
+      ]
+    },
     {
-      "path": "desktop/internal-20261015-e/windows",
+      "path": "desktop/internal-20261015-d/windows",
       "product": "desktop",
       "platform": "windows",
-      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
+      "sourceRevision": "cd67ab2c224df758f173fd393590c4586386f8b8",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-windows-x64.exe",
-          "sizeBytes": 5138033,
-          "sha256": "8693bed0083c87cb8742e23c9fd4a2e0174fea6ac32d9ebc527d25dfcde8f378"
+          "sizeBytes": 5142630,
+          "sha256": "746ec7887b2b12fcbadfddb8251eb04dc42a3b788b30e36cee9d1913f5a10d3b"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -221,20 +236,20 @@
       ]
     },
     {
-      "path": "desktop/internal-20261015-e/linux",
+      "path": "desktop/internal-20261015-d/linux",
       "product": "desktop",
       "platform": "linux",
-      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
+      "sourceRevision": "cd67ab2c224df758f173fd393590c4586386f8b8",
       "files": [
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.AppImage",
-          "sizeBytes": 86022648,
-          "sha256": "e6822a09ed0529dbe75605accb061fe8b4b4591005aa8fd87ea69ae4fb4c6a4e"
+          "sizeBytes": 86014456,
+          "sha256": "92ca36de3a460f7c0c2bd5ee2122c10a4b19166d5e87943d963e90b3393d228a"
         },
         {
           "name": "127vaults-desktop-0.0.0-linux-x64.deb",
-          "sizeBytes": 11210930,
-          "sha256": "dd56a94a1489301982a8de5551aa67806cd8b349a48445471ef25fb2525c8430"
+          "sizeBytes": 11210564,
+          "sha256": "92aa11cfdca86178c8e03ce8cc1630896a4da02f410c7a7d03513918378f1012"
         },
         {
           "name": "LICENSE-POLICY.md",
@@ -252,34 +267,10 @@
           "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
         }
       ]
-    },
-    {
-      "path": "server/internal-20261015-b/linux-amd64",
-      "product": "server",
-      "platform": "linux-amd64",
-      "sourceRevision": "a574a62e6afd9423be4636db5f5f941d4ab037bf",
-      "files": [
-        {
-          "name": "127vaults-server-0.0.0-linux-amd64.tar",
-          "sizeBytes": 835059200,
-          "sha256": "c2b559f762cf6821e58281185acaa390452c986816fa144f46bde9f9c1dea760"
-        },
-        {
-          "name": "LICENSE-POLICY.md",
-          "sizeBytes": 6422,
-          "sha256": "95de5da42b8786034f9eb443307aad8bfb4d1b93eda0d1ac9cf32ed1e1d1d2f1"
-        },
-        {
-          "name": "README.md",
-          "sizeBytes": 17775,
-          "sha256": "0ade97b468dc65fe362497170fde623aff30544d514be6eb5de6a4423fc6e8b8"
-        },
-        {
-          "name": "verify-release.mjs",
-          "sizeBytes": 2401,
-          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
-        }
-      ]
     }
+  ],
+  "validationLimitations": [
+    "Desktop-e type/build and 33 product tests pass; latest live Windows GUI and dedicated unlocked expiry/renewal ceremony not claimed",
+    "Extension positive web permissions/passkey ceremonies and physical/intended-host acceptance remain separate"
   ]
 }

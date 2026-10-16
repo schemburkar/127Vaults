@@ -224,16 +224,25 @@
   "functionalAssessment": {
     "asOf": "2026-10-16",
     "source": "docs/release/internal-functional-readiness-2026-10-16.md",
-    "status": "basic sanity passed; item deletion requirement awaiting user",
+    "status": "ready for local internal trial",
     "confirmedUnfixedP1Defects": [],
     "missingCapabilities": [
       {
         "name": "Individual private-item deletion",
         "assessment": "API/CLI/UI absent; vault archive/move exists",
-        "internalReleaseRequirement": "User question pending; not part of the previously documented minimum flow"
+        "internalReleaseRequirement": "Follow-up under the previously documented minimum scope; optional user scope question remains open and can make this the next implementation task"
       }
     ],
     "testingBar": "Basic functional sanity; original exhaustive matrix retained as coverage backlog, not automatic missing-feature blockers",
-    "sanityRecord": "C:/Projects/127Vaults-license-isolated-20261015-a/functional-sanity-2026-10-16.json"
-  }
+    "sanityRecord": "C:/Projects/127Vaults-license-isolated-20261015-a/functional-sanity-2026-10-16.json",
+    "selectedPackages": "server/web-b, Desktop-e Windows/Linux, CLI-b Windows/Linux, extension-a",
+    "scopeQuestion": "No answer received; use original documented minimum scope and disclose missing individual-item deletion as follow-up",
+    "releaseLimitations": [
+      "Private experimental internal trial only; no public distribution, signing or production-secret readiness claim",
+      "Latest physical Windows GUI, optional extension/passkey grants and intended-host acceptance are separate manual/setup follow-ups",
+      "Detailed matrix remains partial and is not represented as fully tested"
+    ],
+    "completionBasis": "Core functionality exists across all seven surfaces; prior reproduced P1 defects fixed; six current packages checksum-verified; basic server/web/CLI/admin runtime, extension syntax/manifest and public-site checks passed; Desktop-e builds and existing 33 product tests passed; local changes committed without pushing"
+  },
+  "decisionScope": "Original exhaustive coverage matrix only; current functionality-first internal-release decision is functionalAssessment.status"
 }

@@ -1,4 +1,4 @@
-# Internal release: functionality first
+# Internal release: ready for local internal trial
 
 The user changed the acceptance bar on October 16: prioritize implemented
 functionality and applicable P1 defects, with basic sanity checks rather than the
@@ -17,8 +17,9 @@ and server/web-b; CLI-b and extension-a remain compatible retained packages.
 One concrete capability is absent: **individual item deletion**. Vault
 archive/restore/move exists, but the private item API refuses DELETE and CLI/UI
 does not expose an item-delete action. The documented minimum internal flow did
-not require that action. The user has been asked whether it belongs in this cut;
-do not silently implement a destructive protocol change or silently call it done.
+not require that action. The user has been asked whether it belongs in this cut. In the absence of a new
+requirement, it remains an explicit follow-up under the original documented
+minimum scope; it is not implemented or represented as complete.
 
 | Surface | Existing implemented core | Basic evidence / limitation |
 | --- | --- | --- |
@@ -51,12 +52,30 @@ fixed one stale side-effect import in the Linux GUI suite wrapper after the
 directory reorganization; it now validates that import form too. This is test
 wiring repair, not a product-feature fix.
 
-## Next decision
+## Local handoff
 
-If individual item deletion is required, implement its authenticated encrypted
-transaction and client actions with a focused sanity/regression check. If deferred,
-record that scope choice and finish the functionality-oriented package handoff.
-Keep Windows GUI launch, extension permission/passkey ceremonies and physical
-acceptance visibly separate; no permission was granted or policy bypassed here.
-Do not start further exhaustive collision/history/license permutations merely
-because the older coverage ledger marks them partial.
+The functionality-first local internal trial is ready. No confirmed unfixed P1
+implementation defect remains from this assessment. This is basic internal
+acceptance, not complete matrix coverage or production/public-release signoff.
+
+Selected packages are under `C:/Projects/127Vaults-Releases`:
+
+| Product | Selected directory |
+| --- | --- |
+| Server, web/PWA, admin | `server/internal-20261015-b/linux-amd64` |
+| Desktop Windows/Linux | `desktop/internal-20261015-e/windows`, `desktop/internal-20261015-e/linux` |
+| CLI Windows/Linux | `cli/internal-20261015-b/windows`, `cli/internal-20261015-b/linux` |
+| Chromium extension | `extension/internal-20261014-a/chromium` |
+| Public site | Repository `public-website/`, local private preview; intake/download publishing closed |
+
+The inventory preserves prior versions with their own historical evidence. Do
+not apply older fixture mutators to the upgraded server-b installation. Queues
+are empty; fixtures are stopped; the previously existing original installation
+was not started or changed. No remote push or publication was performed.
+
+Individual item deletion is the known implementation follow-up if the user wants
+it in the cut. Physical/intended-host checks are user-owned separate follow-ups.
+Windows GUI launch and optional extension/passkey grants remain explicit setup/
+manual-check limitations; no permission grant or policy bypass is inferred.
+Use `pnpm test:internal:audit` for the basic read-only handoff check. The extended
+matrix is retained separately; do not replay all its scenarios by default.

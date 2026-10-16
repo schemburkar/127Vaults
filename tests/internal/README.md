@@ -27,12 +27,17 @@ pnpm test:internal --list
 pnpm test:internal --list --suite licensing
 pnpm test:internal:check
 pnpm test:internal:audit
+pnpm test:internal:audit:extended
 ```
 
 `test:internal:check` checks suite layout, syntax, imports and safe discovery;
-it does not run application scenarios. The audit reads existing guarded local
-evidence and retained state; it requires the documented Windows/WSL fixture paths.
-It does not start a server or accept the release on its own.
+it does not run application scenarios. The default audit checks current selected
+package hashes and the basic functional sanity record. The optional extended
+audit reconciles the older detailed matrix and historical guarded fixture state;
+it requires the documented Windows/WSL fixtures. Neither starts a server or
+accepts a release on its own. Use the functionality-first readiness assessment
+for the current internal handoff; partial extended coverage is not automatically
+missing functionality.
 
 To explicitly select one workflow (arguments depend on that entry):
 
