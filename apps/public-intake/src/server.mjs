@@ -10,6 +10,7 @@ import { createCustomerAccountHandler, pruneCustomerAccounts } from './customer-
 import { SmtpMailer } from '../../server/src/smtp.mjs';
 import { createTrialHandler, loadTrialArtifacts, pruneAccessRequests } from './trials.mjs';
 import { withFileLock } from './durable-limit.mjs';
+import { createCloudflareTrialMailer } from './cloudflare-email.mjs';
 
 const plans = new Set(['personal', 'commercial', 'cloud', 'undecided']);
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
@@ -97,7 +98,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   let trials;
   if (env.PUBLIC_TRIALS === '1') {
     if (env.PUBLIC_MOCK_SELFHOST === '1') throw Error('Unpaid trials and simulated checkout cannot be enabled together.');
+    const emailConfigured = [env.PUBLIC_TRIAL_CF_ACCOUNT_ID, env.PUBLIC_TRIAL_CF_API_TOKEN_FILE, env.PUBLIC_TRIAL_EMAIL_FROM].some(Boolean);
+    const trialMailer = emailConfigured ? createCloudflareTrialMailer({ accountId: env.PUBLIC_TRIAL_CF_ACCOUNT_ID,
+      apiToken: (await readFile(env.PUBLIC_TRIAL_CF_API_TOKEN_FILE, 'utf8')).trim(), from: env.PUBLIC_TRIAL_EMAIL_FROM }) : null;
     trials = createTrialHandler({ origin: env.PUBLIC_INTAKE_ORIGIN, key,
+      mailer: trialMailer,
       dataFile: env.PUBLIC_INTAKE_DATA_FILE, dataDir: env.PUBLIC_TRIAL_DATA_DIR,
       operatorToken: (await readFile(env.PUBLIC_TRIAL_OPERATOR_TOKEN_FILE, 'utf8')).trim(),
       issuerPrivateKey: await readFile(env.PUBLIC_TRIAL_ISSUER_KEY_FILE, 'utf8'),

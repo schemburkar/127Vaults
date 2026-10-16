@@ -16,11 +16,57 @@ supports refresh, export, decline, erasure, approval, link replacement and closu
 It is separate from the private vault-server admin console.
 
 Approval defaults to five users, adjustable from 1 to 100. It creates a random
-256-bit bearer link valid for 30 days and an email-ready message. Copy and send
-that message yourself to the displayed requester address. There is no outbound
-email integration in this slice. Manually confirm the recipient before sharing;
+256-bit bearer link valid for 30 days and an email-ready message. Use Review
+invitation, then Send invitation when Cloudflare email is configured, or copy
+and send that message yourself to the displayed requester address. Approval
+alone never sends email. Manually confirm the recipient before sharing;
 the initial request email is contact information, not a verified identity.
 Anyone with the link can use it; a hard-to-guess path is not identity verification.
+
+## Manual Cloudflare invitation email
+
+Cloudflare Email Sending (beta) supports transactional email through its REST API
+or a Workers binding. Arbitrary-recipient sending requires Workers Paid and an
+onboarded sending domain using Cloudflare DNS. Sending to verified destination
+addresses in the account is also supported on the free plan. See the official
+[overview](https://developers.cloudflare.com/email-service/) and
+[domain setup](https://developers.cloudflare.com/email-service/get-started/send-emails/).
+
+In Compute > Email Service > Email Sending, onboard the sending domain and verify
+the required DNS records. Create an account-scoped API token with Email Sending
+permission. Keep the token in a protected file outside the checkout/static root.
+Configure the intake service with all three values from the environment example:
+
+```text
+PUBLIC_TRIAL_CF_ACCOUNT_ID=<your Cloudflare account ID>
+PUBLIC_TRIAL_CF_API_TOKEN_FILE=/srv/127vaults-private/cloudflare-email-token
+PUBLIC_TRIAL_EMAIL_FROM=trials@your-verified-domain.example
+```
+
+Restart the service. The request card now offers Review invitation and Send
+invitation. The recipient always comes from the saved request, and message/link
+come from the approved encrypted invitation; the browser cannot supply an
+arbitrary recipient, sender or body. The token never goes to the browser. The
+integration uses Cloudflare's [REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
+from the current Node intake backend; it does not itself migrate filesystem
+storage or the trial backend to Workers/D1/R2.
+
+The inbox records accepted, queued, bounced or unknown outcomes. Accepted means
+Cloudflare reported immediate delivery to the mail server, not that the person
+read it; queued is not confirmed inbox delivery. The send attempt is saved before
+contacting Cloudflare, so a double-click, restart, timeout or lost reply cannot
+automatically send the same invitation twice. For an unknown/interrupted result,
+check Cloudflare activity first. If another email is needed, explicitly replace
+the private link and send a new invitation; the old link stops working. The
+license activation/expiry is unchanged. Three attempts per request per hour are
+allowed across link replacements. No background automatic sending is enabled.
+
+The encrypted trial record now retains the approved message/link for review and
+delivery. Closing/erasing removes that message; old approvals without a saved
+message need a link replacement before the button can send. Manual copy/email
+continues to work without any Cloudflare credentials. Local tests simulate the
+provider response; real DNS onboarding, credentials and delivery are unverified
+until deployed and tested with an explicitly chosen real recipient.
 
 The recipient downloads the approved server/Desktop/CLI/extension packages,
 initializes and starts the server, and reads its installation ID locally. They

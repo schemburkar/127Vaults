@@ -2,7 +2,7 @@
 
 ## Unpaid private trials
 
-A separate manually approved trial path is now available with PUBLIC_TRIALS=1 (keep the simulated checkout disabled). The operator inbox at /access-admin.html can review/export/erase requests, approve ten-day trials and rotate/close links. The recipient page activates one installation-bound license and streams approved private downloads. Email is prepared for manual sending; it is not sent automatically. See [the setup and operating guide](../../docs/release/private-friend-trials.md).
+A separate manually approved trial path is now available with PUBLIC_TRIALS=1 (keep the simulated checkout disabled). The operator inbox at /access-admin.html can review/export/erase requests, approve ten-day trials and rotate/close links. The recipient page activates one installation-bound license and streams approved private downloads. A manual Send invitation button uses Cloudflare Email Sending when configured; copy/email remains available. Approval does not automatically send email. See [the setup and operating guide](../../docs/release/private-friend-trials.md).
 
 
 This is a separate HTTP API intended to sit behind a reviewed HTTPS reverse proxy at the public website's origin. The static website sends `GET` and `POST` requests to `/api/waitlist`. `npx serve` serves only the static pages, so the form stays disabled in that preview.

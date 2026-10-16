@@ -23,9 +23,13 @@ test('real request → operator approval → private downloads → durable 10-da
   const catalogueFile = join(dir, 'catalogue.json'); await writeFile(catalogueFile, JSON.stringify(catalogue));
   await loadTrialArtifacts(catalogueFile);
   let at = new Date('2026-10-16T10:00:00.000Z');
+  const sent = [];
+  let emailFailure = false;
   const origin = 'https://127vaults.example';
   const options = { origin, key, dataFile, dataDir: join(dir, 'trials'), operatorToken, issuerPrivateKey,
-    issuerKeyId: 'trial', catalogue, now: () => at };
+    issuerKeyId: 'trial', catalogue, now: () => at, mailer: { sendInvitation: async message => {
+      sent.push(message); if (emailFailure) throw Error('lost reply'); return { state: 'queued' };
+    } } };
   let trials = createTrialHandler(options);
   const waitlist = createIntakeHandler({ origin, key, dataFile });
   const server = createServer((req, res) => req.url === '/api/waitlist' ? waitlist(req, res) : trials(req, res));
@@ -47,6 +51,15 @@ test('real request → operator approval → private downloads → durable 10-da
     assert.match(approval.link, /^https:\/\/127vaults.example\/trial.html#/);
     assert.equal((await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken)).status, 409);
     const token = approval.link.split('.').at(-1), base = `/api/trials/${id}`;
+    assert.equal(sent.length, 0); // Approval alone must never email a requester.
+    assert.equal((await get(`${admin}/${id}/invitation`)).status, 401);
+    assert.equal((await (await get(`${admin}/${id}/invitation`, operatorToken)).json()).message, approval.message);
+    assert.equal((await post(`${admin}/${id}/send-invitation`, { to: 'other@example.com' }, operatorToken)).status, 400);
+    assert.equal((await post(`${admin}/${id}/send-invitation`, {}, token)).status, 401);
+    const emailSent = await (await post(`${admin}/${id}/send-invitation`, {}, operatorToken)).json();
+    assert.equal(emailSent.emailState, 'queued'); assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, 'friend@example.com'); assert.ok(sent[0].text.includes(approval.link));
+    assert.equal((await post(`${admin}/${id}/send-invitation`, {}, operatorToken)).status, 409);
     assert.equal((await get(base)).status, 401);
     const view = await (await get(base, token)).json();
     assert.equal(view.payment, 'none'); assert.equal(view.artifacts[0].path, undefined);
@@ -67,6 +80,8 @@ test('real request → operator approval → private downloads → durable 10-da
       licenseSource: firstLicense, keySource: JSON.stringify(issuerPublicKeys), now: at });
     assert.match(await readFile(envPath, 'utf8'), /VAULTS_LICENSE_FILE=/);
     trials = createTrialHandler(options); // Process restart uses the same persisted approval and license.
+    assert.equal((await post(`${admin}/${id}/send-invitation`, {}, operatorToken)).status, 409);
+    assert.equal(sent.length, 1);
     at = new Date(at.getTime() + 86400000);
     assert.equal((await post(`${base}/activate`, { installationId }, token)).status, 200);
     assert.equal(await (await get(`${base}/license`, token)).text(), firstLicense);
@@ -74,6 +89,10 @@ test('real request → operator approval → private downloads → durable 10-da
     assert.equal(licenseStatus(license, new Date(activation.expiresAt)).mode, 'read-only');
     const rotated = await (await post(`${admin}/${id}/rotate`, {}, operatorToken)).json();
     const nextToken = rotated.link.split('.').at(-1);
+    emailFailure = true;
+    assert.equal((await (await post(`${admin}/${id}/send-invitation`, {}, operatorToken)).json()).emailState, 'unknown');
+    assert.equal((await post(`${admin}/${id}/send-invitation`, {}, operatorToken)).status, 409);
+    assert.equal(sent.length, 2);
     assert.equal((await get(base, token)).status, 401);
     assert.equal((await get(`${base}/artifacts/server`, null, cookie)).status, 401);
     assert.equal(await (await get(`${base}/license`, nextToken)).text(), firstLicense);

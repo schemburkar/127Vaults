@@ -81,10 +81,27 @@ Follow the [operating guide](private-friend-trials.md): choose the real host/dom
 deploy the static site and Node intake service under the same HTTPS origin,
 configure protected keys/data/catalogue paths, edge abuse controls and operator
 access, and verify one actual browser download on that deployment. Send the
-prepared email yourself. Caddy configuration and environment examples are included.
+prepared email yourself, or configure the manual Cloudflare Send invitation button
+described below. Caddy configuration and environment examples are included.
 Private disk is implemented; Cloudflare can front the origin. An R2 adapter is
 optional future work, not part of this completed local delivery implementation.
 
 These are unsigned private experimental packages for fictitious vault data.
 Physical recipient installation, public signing/legal distribution, production
 secrets, payments and a tamper-proof self-hosted entitlement system are unclaimed.
+
+## Cloudflare email follow-up
+
+The protected request inbox now supports Review invitation and Send invitation
+through Cloudflare Email Sending REST. Approval alone does not send. The sender
+is configured server-side; the recipient and fixed message come from the approved
+request. The encrypted invitation survives a restart for review and sending.
+The inbox records accepted, queued, bounced and unknown outcomes. A persisted
+attempt prevents duplicate sending after repeated clicks, restart or a lost
+provider reply; an explicit link replacement is required for a fresh attempt.
+
+Syntax checks and all 13 intake/provider/website tests passed. Provider tests use
+injected HTTP responses; there was no Cloudflare API call, actual email, domain
+onboarding or account-plan change. Configure the domain, account ID, protected
+API token and sender using the [guide](private-friend-trials.md). No client/server
+installer rebuild is required for this public intake/site-only follow-up.

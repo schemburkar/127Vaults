@@ -95,7 +95,7 @@ export async function loadTrialArtifacts(catalogueFile) {
 }
 
 export function createTrialHandler({ origin, key, dataFile, dataDir, operatorToken,
-  issuerPrivateKey, issuerKeyId, catalogue, now = () => new Date() }) {
+  issuerPrivateKey, issuerKeyId, catalogue, mailer = null, now = () => new Date() }) {
   if (new URL(origin).origin !== origin || !origin.startsWith('https://') || key?.length !== 32
     || !dataFile || !dataDir || !/^[A-Za-z0-9_-]{43,128}$/.test(operatorToken ?? '')
     || !/^[A-Za-z0-9_-]{1,40}$/.test(issuerKeyId ?? '')) throw Error('Invalid trial configuration.');
@@ -120,6 +120,9 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
   const allow = createDurableLimit({ directory: join(dataDir, 'request-limits'), now: () => now().getTime() });
   const summary = record => ({ state: record?.state ?? 'requested', maxUsers: record?.maxUsers,
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt,
+    emailState: record?.emailState ?? 'not_sent', emailAttemptedAt: record?.emailAttemptedAt,
+    canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
+    canPreviewInvitation: Boolean(record?.invitation),
     activatedAt: record?.activatedAt, expiresAt: record?.expiresAt, installationId: record?.installationId });
   return async (req, res) => {
     try {
@@ -138,9 +141,9 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       if (path === '/api/access-admin/requests' && req.method === 'GET') {
         const requests = await readAccessRequests(dataFile, key);
         return json(res, 200, { requests: await Promise.all(requests.map(async request => ({ ...request,
-          ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision });
+          ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer) });
       }
-      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
       const [, , id, action] = route;
       const result = await withFileLock(join(dataDir, `${id}.lock`), async () => {
@@ -148,9 +151,29 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
         if (admin) {
           const request = (await readAccessRequests(dataFile, key)).find(row => row.id === id);
           if (!request) return json(res, 404, { error: 'not_found' });
+          if (action === 'invitation' && req.method === 'GET' && record?.state === 'approved' && record.invitation) {
+            return json(res, 200, { email: request.email, subject: record.invitation.subject, message: record.invitation.text });
+          }
           if (action === 'revocation' && req.method === 'GET' && record?.revocation) return download(res, 'trial-revocation.json', record.revocation);
           if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
           const input = await body(req);
+          if (action === 'send-invitation') {
+            if (Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
+            if (!mailer) return json(res, 503, { error: 'email_not_configured' });
+            if (record?.state !== 'approved' || !record.invitation || now().getTime() >= Date.parse(record.linkExpiresAt)
+              || record.releaseHash !== releaseHash) return json(res, 409, { error: 'invitation_unavailable' });
+            if (record.emailState) return json(res, 409, { error: 'email_already_attempted', emailState: record.emailState });
+            if (!await allow('trial-invitation', id, 3, 3600000)) return json(res, 429, { error: 'rate_limited' });
+            // Persist before network I/O. A crash or lost provider reply must not auto-send twice.
+            record.emailState = 'sending'; record.emailAttemptedAt = now().toISOString();
+            await save(id, record);
+            try {
+              const result = await mailer.sendInvitation({ to: request.email, ...record.invitation });
+              record.emailState = ['accepted', 'queued', 'bounced'].includes(result?.state) ? result.state : 'unknown';
+            } catch { record.emailState = 'unknown'; }
+            await save(id, record);
+            return json(res, 200, summary(record));
+          }
           if (action === 'approve' || action === 'rotate') {
             if ((action === 'approve' && record) || (action === 'rotate' && record?.state !== 'approved')) return json(res, 409, { error: 'state_changed' });
             if (action === 'approve' && (Object.keys(input).join(',') !== 'maxUsers'
@@ -163,11 +186,13 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
               ticketHash: null, ticketUntil: 0,
               sourceRevision: record?.sourceRevision ?? catalogue.sourceRevision,
               releaseHash: record?.releaseHash ?? releaseHash };
-            await save(id, record);
             const link = `${origin}/trial.html#${id}.${token}`;
+            record.invitation = { subject: 'Your private 10-day 127Vaults trial',
+              text: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` };
+            delete record.emailState; delete record.emailAttemptedAt;
+            await save(id, record);
             return json(res, 200, { ...summary(record), link, email: request.email,
-              subject: 'Your private 10-day 127Vaults trial',
-              message: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` });
+              subject: record.invitation.subject, message: record.invitation.text });
           }
           if (!['close', 'reject', 'erase'].includes(action) || Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
           if (action === 'reject' && record?.license) return json(res, 409, { error: 'close_activated_trial' });
@@ -177,6 +202,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
               installationId: record.installationId, licenseId: payload.licenseId, revokedAt: 'now', now: now() });
           }
           record = { ...record, state: action === 'reject' ? 'rejected' : 'closed', closedAt: now().toISOString(), tokenHash: null };
+          delete record.invitation;
           await save(id, record);
           if (action === 'erase') {
             await withFileLock(`${dataFile}.lock`, async () => {

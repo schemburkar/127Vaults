@@ -31,7 +31,7 @@
     "tls:renew": "node server.mjs tls renew",
     "check:contracts": "tsc -p tsconfig.contracts.json",
     "check:desktop": "node scripts/check-desktop.mjs",
-    "check:public-intake": "node --check apps/public-intake/src/server.mjs && node --check apps/public-intake/src/trials.mjs && node --check public-website/access-admin.mjs && node --check public-website/trial.mjs && node --check scripts/ops/prepare-private-trial.mjs",
+    "check:public-intake": "node --check apps/public-intake/src/server.mjs && node --check apps/public-intake/src/trials.mjs && node --check apps/public-intake/src/cloudflare-email.mjs && node --check public-website/access-admin.mjs && node --check public-website/trial.mjs && node --check scripts/ops/prepare-private-trial.mjs",
     "check": "node --check scripts/dev.mjs && node --check scripts/mvp-startup.mjs && node --check scripts/mvp-acceptance.mjs && node --check scripts/build-fixture.mjs && pnpm check:public-intake && pnpm -r check && pnpm check:contracts",
     "check:rust:core": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo run -p vaults-crypto --example feasibility && cargo build -p vaults-crypto --target wasm32-unknown-unknown",
     "check:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
