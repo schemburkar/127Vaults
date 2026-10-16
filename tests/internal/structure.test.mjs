@@ -15,7 +15,7 @@ test('categorized fixture entry points retain valid syntax, imports and URL depe
   const url=new URL(entry.path,root),source=await readFile(url,'utf8');
   await assert.rejects(access(new URL(entry.previousPath,root)),e=>e.code==='ENOENT');
   await run(process.execPath,['--check',fileURLToPath(url)],{windowsHide:true});
-  for(const match of source.matchAll(/(?:from\s+|import\s*\(|new URL\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g))await access(new URL(match[1],url));
+  for(const match of source.matchAll(/(?:from\s+|import\s*(?:\(\s*)?|new URL\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g))await access(new URL(match[1],url));
   assert.ok(!source.includes('scripts/internal-'),'Stale runner reference: '+entry.path);
  }
 });

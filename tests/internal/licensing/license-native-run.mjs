@@ -8,14 +8,14 @@ import {verifyRelease} from '../../../scripts/release/verify-release.mjs';
 import {verify} from '../../../deploy/install.mjs';
 import {issueSelfHostedLicense} from '../../../scripts/ops/issue-self-hosted-license.mjs';
 import {issueLicenseRevocation} from '../../../scripts/ops/issue-license-revocation.mjs';
-const work='C:/Projects/127Vaults-license-isolated-20261015-a',repo='C:/Projects/127Vaults';
-assert.equal(process.platform,'win32');assert.ok(process.argv[2]===undefined||['--peer-only','--upgrade-server'].includes(process.argv[2]));const base=JSON.parse(await readFile(work+'/evidence.json','utf8'));
+const work='C:/Projects/127Vaults-license-isolated-20261015-a',repo='C:/Projects/127Vaults';const sanity=process.argv[2]==='--sanity-server-b';
+assert.equal(process.platform,'win32');assert.ok(process.argv[2]===undefined||['--peer-only','--upgrade-server','--sanity-server-b'].includes(process.argv[2]));const base=JSON.parse(await readFile(work+'/evidence.json','utf8'));
 assert.equal(base.status,'passed');assert.equal(base.fixturePort,12900);assert.equal(base.checks.length,7);
 assert.ok(!['vaults-test-632a4442dfd2','vaults-test-a0540f7d9c99'].includes(base.sourceProject));
-await assert.rejects(access(work+'/server-b-upgrade-evidence.json'),error=>error.code==='ENOENT','This fixture is already upgraded; do not restart its old server-a bundle. Extend an explicitly guarded server-b phase instead.');
-let bundle=work+'/extracted/127vaults-server-0.0.0-linux-amd64';const identity=work+'/identity';
+if(!sanity)await assert.rejects(access(work+'/server-b-upgrade-evidence.json'),error=>error.code==='ENOENT','This fixture is already upgraded; do not restart its old server-a bundle. Extend an explicitly guarded server-b phase instead.');
+let bundle=work+(sanity?'/extracted-b':'/extracted')+'/127vaults-server-0.0.0-linux-amd64';const identity=work+'/identity';
 assert.equal(/^VAULTS_PROJECT=(.+)$/m.exec(await readFile(bundle+'/.env','utf8'))[1],base.sourceProject);
-const manifest=JSON.parse(await readFile(bundle+'/manifest.json','utf8'));assert.equal(manifest.revision,'cbb1be02e68e484c82334cd4389dcc4b09f64cf2');assert.ok(!manifest.files['issuer-keys.json'],'Do not replace pinned issuer keys');
+const manifest=JSON.parse(await readFile(bundle+'/manifest.json','utf8'));assert.equal(manifest.revision,sanity?'a574a62e6afd9423be4636db5f5f941d4ab037bf':'cbb1be02e68e484c82334cd4389dcc4b09f64cf2');assert.ok(!manifest.files['issuer-keys.json'],'Do not replace pinned issuer keys');
 async function run(args,cwd=bundle,env=process.env){return new Promise((resolve,reject)=>{const c=spawn(process.execPath,args,{cwd,env,windowsHide:true,stdio:['ignore','pipe','pipe']});let out='',err='';c.stdout.on('data',b=>out+=b);c.stderr.on('data',b=>err+=b);c.on('error',reject);c.on('close',async code=>{if(code){await writeFile(work+'/license-failure-'+Date.now()+'.log',err,{flag:'wx',mode:0o600});reject(Error('License rehearsal operation failed; private diagnostic retained'));}else resolve(out.trim());});});}
 const operator=(action,...args)=>run(['server.mjs','install',action,'--private-dir',identity,'--compose-provider',repo+'/.tools/compose/Scripts/podman-compose.exe',...args]);
 const ca=await readFile(identity+'/ca/ca.crt');
@@ -27,7 +27,16 @@ async function issue(sequence,expiresAt){const signed=issueSelfHostedLicense({pr
 try{
  await operator('start');assert.equal(execFileSync('podman',['inspect',base.sourceProject+'_server_1','--format','{{.Image}}'],{encoding:'utf8',windowsHide:true}).trim().replace(/^sha256:/,''),manifest.imageIds[manifest.image]);await ready();
 
- if(process.argv[2]==='--upgrade-server'){
+ if(sanity){
+ const prior=JSON.parse(await readFile(work+'/server-b-upgrade-evidence.json','utf8'));assert.equal(prior.installation,base.installation);assert.equal(prior.serverImageId,manifest.imageIds[manifest.image]);
+ const independent=JSON.parse(await run([repo+'/tests/internal/licensing/license-server-probe.mjs',work,'read-native'],repo,{...process.env,NODE_EXTRA_CA_CERTS:identity+'/ca/ca.crt'}));assert.deepEqual(independent,prior.after);
+ await probe('sanity');
+ const http=(path,{method='GET',body,headers={}}={})=>new Promise((resolve,reject)=>{const r=request('https://127.0.0.1:12900'+path,{ca,method,timeout:10000,headers:{origin:'https://127.0.0.1:12900',...(body?{'content-type':'application/json'}:{}),...headers}},response=>{let text='';response.on('data',b=>text+=b);response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,text}));});r.on('error',reject);r.on('timeout',()=>r.destroy(Error('Sanity timeout')));r.end(body&&JSON.stringify(body));});
+ const web=await http('/');assert.equal(web.status,200);assert.match(web.text,/127Vaults/);const client=await http('/app/mvp-client.mjs');assert.equal(client.status,200);assert.match(client.text,/monitorLicenseStatus/);assert.match(client.text,/30000/);
+ const adminPage=await http('/admin/');assert.equal(adminPage.status,200);const login=await http('/api/admin/session',{method:'POST',body:{username:'localowner',password:'synthetic-internal-admin-password'}});assert.equal(login.status,200);const actor=JSON.parse(login.text),cookie=login.headers['set-cookie'][0].split(';')[0];assert.equal((await http('/api/admin/users',{headers:{cookie}})).status,200);assert.equal((await http('/api/admin/session',{method:'DELETE',headers:{cookie,'x-127v-admin-csrf':actor.csrf}})).status,200);
+ await writeFile(work+'/functional-sanity-2026-10-16.json',JSON.stringify({status:'passed',sourceRevision:manifest.revision,installation:base.installation,independent,checks:['Existing server-b installation starts under its pinned CA','Independent owner authenticates/decrypts retained data; exact ciphertext digest preserved','Actual packaged CLI-b unlock/sync/redacted and explicit-secret read; queue empty','Web entry and rebuilt license-refresh client served','Admin page, operator sign-in, account listing and sign-out'],at:new Date().toISOString()},null,2)+'\n',{flag:'wx'});console.log('Basic server/web/CLI/admin functional sanity passed.');
+ }else if(process.argv[2]==='--upgrade-server'){
+
  const native=JSON.parse(await readFile(work+'/native-license-baseline.json','utf8'));const replica=JSON.parse(await readFile(work+'/native-cli-windows-b/replicas/'+native.vaultId+'.json','utf8'));assert.deepEqual(replica.pending,[]);assert.deepEqual(replica.conflicts,[]);
  const peer=async()=>JSON.parse(await run([repo+'/tests/internal/licensing/license-server-probe.mjs',work,'read-native'],repo,{...process.env,NODE_EXTRA_CA_CERTS:identity+'/ca/ca.crt'}));
  const before=await peer();

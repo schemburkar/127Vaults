@@ -213,6 +213,27 @@
       "decision": "Intended-host and physical installation/CA/OS-lock/SMTP acceptance will be handled separately by the user. Local acceptance may use this machine or WSL and must not depend on a fixed deployment host.",
       "source": "Direct user answer to intended-host acceptance question in this thread",
       "limits": "No permission grant for extension/passkeys or bypass of a denied launcher; remaining applicable local gates unchanged."
+    },
+    {
+      "date": "2026-10-16",
+      "decision": "Prioritize functionality and applicable P1 implementation gaps for internal release, with basic sanity testing rather than rigorous exhaustive coverage.",
+      "source": "Updated user-provided active goal",
+      "limits": "Keep real failures and known missing capabilities explicit; no implied extension/passkey grant or permission-policy bypass."
     }
-  ]
+  ],
+  "functionalAssessment": {
+    "asOf": "2026-10-16",
+    "source": "docs/release/internal-functional-readiness-2026-10-16.md",
+    "status": "basic sanity passed; item deletion requirement awaiting user",
+    "confirmedUnfixedP1Defects": [],
+    "missingCapabilities": [
+      {
+        "name": "Individual private-item deletion",
+        "assessment": "API/CLI/UI absent; vault archive/move exists",
+        "internalReleaseRequirement": "User question pending; not part of the previously documented minimum flow"
+      }
+    ],
+    "testingBar": "Basic functional sanity; original exhaustive matrix retained as coverage backlog, not automatic missing-feature blockers",
+    "sanityRecord": "C:/Projects/127Vaults-license-isolated-20261015-a/functional-sanity-2026-10-16.json"
+  }
 }

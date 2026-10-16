@@ -5,7 +5,7 @@ import {spawn,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {verifyRelease} from '../../../scripts/release/verify-release.mjs';
 const [phase]=process.argv.slice(2),work='C:/Projects/127Vaults-license-isolated-20261015-a',profile=work+'/native-cli-windows-b';
-assert.equal(process.platform,'win32');assert.ok(['enroll','queue-grace','retry-grace','finish-grace','queue-revoked','retry-revoked','finish-revoked'].includes(phase));
+assert.equal(process.platform,'win32');assert.ok(['sanity','enroll','queue-grace','retry-grace','finish-grace','queue-revoked','retry-revoked','finish-revoked'].includes(phase));
 const base=JSON.parse(await readFile(work+'/evidence.json','utf8'));assert.equal(base.installation,'9865ecb1-2e46-475f-bc91-5f7b8e71b7cf');
 const exe='C:/Projects/127Vaults-lifecycle-isolated-20261015-a/candidate-server-20261015-a/cli-budget-b/127vaults-cli-0.0.0-windows-x64/127vaults.exe';
 const release='C:/Projects/127Vaults-Releases/cli/internal-20261015-b/windows',manifest=await verifyRelease(release);assert.equal(manifest.sourceRevision,'cd67ab2c224df758f173fd393590c4586386f8b8');
@@ -26,7 +26,12 @@ const agent=spawn(exe,['agent-serve','--username','owner_127','--config-dir',pro
 try{
  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Agent readiness timeout')),60000);agent.stdout.on('data',b=>{if(String(b).includes('ready')){ready=true;clearTimeout(timer);resolve();}});agent.stderr.resume();agent.on('error',reject);agent.on('close',()=>{clearTimeout(timer);if(!ready)reject(Error('Agent exited'));});agent.stdin.end(JSON.stringify({account_secret:'07'.repeat(32),master_password:'fictitious password 127vaults'})+'\n');});
  await command(['device','list']);
- if(phase==='enroll'){
+ if(phase==='sanity'){
+  const baseline=JSON.parse(await readFile(work+'/native-license-baseline.json','utf8'));
+  const synced=await json(['sync']);assert.equal(synced.pending,0);assert.deepEqual(synced.conflicts,[]);
+  const item=await json(['item','get',baseline.itemId,'--vault',baseline.vaultId]);assert.equal(item.title,baseline.title);assert.equal(item.password,'[redacted]');assert.equal((await json(['item','list','--vault',baseline.vaultId])).length,1);
+  assert.match(await command(['item','get',baseline.itemId,'--vault',baseline.vaultId,'--password','password']),/^race-[ab]$/);
+ }else if(phase==='enroll'){
   await command(['sync']);const vaults=await json(['vault','list']);assert.equal(vaults.length,1);const vaultId=vaults[0].vaultId,items=await json(['item','list','--vault',vaultId]);assert.equal(items.length,1);const item=await json(['item','get',items[0].itemId,'--vault',vaultId]);assert.equal(item.password,'[redacted]');
   await writeFile(work+'/native-license-baseline.json',JSON.stringify({vaultId,itemId:item.itemId,title:item.title,website:item.website??'',username:item.username??'',customFields:item.customFields??[],device:enrolled.device,sourceRevision:manifest.sourceRevision,binarySha256:hash(await readFile(exe))},null,2)+'\n',{flag:'wx'});
  }else{
