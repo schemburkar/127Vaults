@@ -151,6 +151,26 @@ artifact upload is needed. State records deployment and verification separately.
 
 ## Storage and authorization behavior
 
+### Website caching
+
+Workers Static Assets provides Cloudflare edge caching automatically, without a
+zone-level Cache Everything rule. Public HTML and `releases.json` retain the
+default `public, max-age=0, must-revalidate` browser policy and ETags, so browsers
+check for updates before reuse. CSS and JavaScript modules use
+`public, max-age=86400, must-revalidate`: a one-day browser lifetime. Staging
+automatically replaces their HTML reference query versions with a digest of the
+approved website content. A changed release therefore requests new asset URLs
+instead of reusing stale browser copies. Cloudflare purges alone cannot clear
+visitors' browser caches. Already-open pages still need to be reloaded.
+
+`trial.html`, `access-admin.html`, and all Worker API responses (including
+authorized installer downloads) retain `no-store`. Static JavaScript contains
+code only; credentials and trial data arrive through uncached APIs. The generated
+`_headers` file carries these settings with every deployment. No extra caching
+service or paid feature is required. `cf rulesets list --zone <domain>` can inspect
+zone overrides; publishing this repository still uses its pinned Wrangler deploy
+script. The installed `cf deploy` uses a different build-output format.
+
 Object keys contain release ID, artifact ID and SHA-256. Catalogues have their
 own content-addressed keys and record the verified R2 ETags. Before deployment,
 every remote object is streamed back and SHA-256 checked. Downloads use an R2

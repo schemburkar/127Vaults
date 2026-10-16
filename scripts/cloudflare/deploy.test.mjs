@@ -53,6 +53,18 @@ test('static staging includes the real website and excludes mock checkout, tests
   assert.deepEqual((await readdir(assets)).sort(), [...assetFiles, '_headers', '_redirects'].sort());
   const headers = await readFile(join(assets, '_headers'), 'utf8');
   assert.match(headers, /Content-Security-Policy/); assert.match(headers, /\/access-admin.html\n  Cache-Control: no-store/);
+  const versions = new Set();
+  for (const name of assetFiles.filter(name => name.endsWith('.html'))) {
+    const html = await readFile(join(assets, name), 'utf8');
+    for (const match of html.matchAll(/(?:src|href)=["'][^"']+\.(?:css|mjs)([^"']*)["']/g)) {
+      assert.match(match[1], /^\?v=[a-f0-9]{20}$/);
+      versions.add(match[1]);
+    }
+  }
+  assert.equal(versions.size, 1);
+  assert.match(headers, /\/site.css\n  Cache-Control: public, max-age=86400, must-revalidate/);
+  const second = join(directory, 'site-repeat'); await stageAssets(second);
+  assert.equal(await readFile(join(assets, 'index.html'), 'utf8'), await readFile(join(second, 'index.html'), 'utf8'));
   await assert.rejects(readFile(join(assets, 'mock-checkout.html')), { code: 'ENOENT' });
 });
 

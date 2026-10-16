@@ -1,4 +1,4 @@
-import { createPublicKey } from 'node:crypto';
+import { createHash, createPublicKey } from 'node:crypto';
 import { chmod, lstat, mkdir, open, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -113,7 +113,24 @@ export function wranglerConfig(config, state, assetsDirectory) {
 export async function stageAssets(directory) {
   // Explicit allowlist: no source tests, README, mock checkout, build scripts, secrets or artifacts become public assets.
   await mkdir(directory, { recursive: false, mode: 0o700 });
-  for (const name of assetFiles) await writeFile(join(directory, name), await readPublicAsset(name), { flag: 'wx' });
+  const sources = new Map();
+  const digest = createHash('sha256');
+  for (const name of assetFiles) {
+    const source = await readPublicAsset(name);
+    sources.set(name, source);
+    digest.update(name).update('\0').update(source).update('\0');
+  }
+  const version = digest.digest('hex').slice(0, 20);
+  for (const [name, source] of sources) {
+    // HTML revalidates on every visit. A content-derived URL bypasses older browser
+    // copies of mutable CSS/modules without relying on a CDN purge.
+    const content = name.endsWith('.html') ? source.toString('utf8').replace(
+      /((?:src|href)=["'])([^"'?#]+\.(?:css|mjs))(?:\?[^"'#]*)?(["'])/g,
+      (match, prefix, path, quote) => sources.has(path.replace(/^(?:\.\/|\/)/, ''))
+        ? `${prefix}${path}?v=${version}${quote}` : match,
+    ) : source;
+    await writeFile(join(directory, name), content, { flag: 'wx' });
+  }
   // Keep .html URLs stable (including private fragment links), but still serve the homepage at /.
   await writeFile(join(directory, '_redirects'), '/ /index.html 200\n');
   await writeFile(join(directory, '_headers'), `/*
@@ -127,7 +144,7 @@ export async function stageAssets(directory) {
 /access-admin.html
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
-`);
+${assetFiles.filter(name => /\.(?:css|mjs)$/.test(name)).map(name => `/${name}\n  Cache-Control: public, max-age=86400, must-revalidate\n`).join('')}`);
 }
 export async function readPublicAsset(name, sourceDirectory = join(repository, 'public-website')) {
   if (!assetFiles.includes(name)) throw Error('File is not approved for public hosting');
