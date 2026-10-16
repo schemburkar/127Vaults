@@ -1,4 +1,10 @@
-# Internal release: ready for local internal trial
+# Internal release: incomplete — required item deletion
+
+The user confirmed on October 16 that individual item deletion is required for
+internal release. This supersedes the readiness conclusion below. Work is paused
+at the user's request; deletion has not been implemented. Resume from
+`internal-release-paused-2026-10-16.md`. Earlier checks remain historical evidence
+for the selected packages, not acceptance of the expanded requirement.
 
 The user changed the acceptance bar on October 16: prioritize implemented
 functionality and applicable P1 defects, with basic sanity checks rather than the

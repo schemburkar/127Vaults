@@ -224,19 +224,19 @@
   "functionalAssessment": {
     "asOf": "2026-10-16",
     "source": "docs/release/internal-functional-readiness-2026-10-16.md",
-    "status": "ready for local internal trial",
+    "status": "incomplete: required individual item deletion; paused by user",
     "confirmedUnfixedP1Defects": [],
     "missingCapabilities": [
       {
         "name": "Individual private-item deletion",
         "assessment": "API/CLI/UI absent; vault archive/move exists",
-        "internalReleaseRequirement": "Follow-up under the previously documented minimum scope; optional user scope question remains open and can make this the next implementation task"
+        "internalReleaseRequirement": "Required for internal release by explicit user answer on 2026-10-16; implementation pending"
       }
     ],
     "testingBar": "Basic functional sanity; original exhaustive matrix retained as coverage backlog, not automatic missing-feature blockers",
     "sanityRecord": "C:/Projects/127Vaults-license-isolated-20261015-a/functional-sanity-2026-10-16.json",
     "selectedPackages": "server/web-b, Desktop-e Windows/Linux, CLI-b Windows/Linux, extension-a",
-    "scopeQuestion": "No answer received; use original documented minimum scope and disclose missing individual-item deletion as follow-up",
+    "scopeQuestion": "User answered: Required for internal release. See internal-release-paused-2026-10-16.md.",
     "releaseLimitations": [
       "Private experimental internal trial only; no public distribution, signing or production-secret readiness claim",
       "Latest physical Windows GUI, optional extension/passkey grants and intended-host acceptance are separate manual/setup follow-ups",
