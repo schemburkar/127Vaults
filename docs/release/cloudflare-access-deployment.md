@@ -231,11 +231,12 @@ schema compatibility before using it. No automatic destructive rollback is provi
   intake syntax checks.
 - `pnpm test` passed across the existing workspace and root suites. The shared
   request validator preserves the Node service's existing behavior.
-- `pnpm cloudflare:test` passed 20 focused checks, using the actual local Workers
+- `pnpm cloudflare:test` passed 21 focused checks, using the actual local Workers
   runtime with D1/R2, a fresh persisted-runtime restart, existing server license
   and revocation verification, concurrent writes, expiry, retention, optional
   email interruption/closure, private HTTP ranges, actual static asset routing,
-  full deployment orchestration and an S3 HTTP multipart-upload rehearsal.
+  full deployment orchestration and an S3 HTTP multipart-upload rehearsal. A
+  separate check uses the newer runtime bundled with the pinned Wrangler CLI.
 - The CLI's offline `plan` and Wrangler `dry-run` were exercised against the
   actual selected 37-file friend-trial catalogue: 945,160,077 bytes, package source
   `69e078a77b843f0f34bb39411d68a43d15aecf29`. Every local artifact hash and the

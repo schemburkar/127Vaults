@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { createHash, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { Miniflare } from 'miniflare';
@@ -38,7 +39,17 @@ async function fixture(t, options = {}) {
       : { serviceBindings: { ASSETS: () => new Response('static website') } }),
     ...(options.outboundService ? { outboundService: options.outboundService } : {}),
     ...(options.persistDirectory ? { d1Persist: join(options.persistDirectory, 'd1'), r2Persist: join(options.persistDirectory, 'r2') } : {}) };
-  const mf = new Miniflare(mfOptions);
+  let mf;
+  if (options.cliRuntime) {
+    const require = createRequire(import.meta.url);
+    const bundled = createRequire(require.resolve('wrangler/package.json'))('miniflare');
+    const directory = fileURLToPath(new URL('../cloudflare/', import.meta.url));
+    const paths = [mfOptions.scriptPath,
+      ...(await readdir(directory)).filter(name => name.endsWith('.mjs') && name !== 'worker.mjs').map(name => join(directory, name)),
+      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
+    mf = new bundled.Miniflare(bundled.convertV4MiniflareOptions({ ...mfOptions, scriptPath: undefined,
+      modulesRules: undefined, modules: paths.map(path => ({ type: 'ESModule', path })) }));
+  } else mf = new Miniflare(mfOptions);
   let disposed = false;
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
@@ -287,4 +298,13 @@ test('expired download tickets and invitation links cannot authorize a new reque
   assert.equal((await handleRequest(download, f.env, { now: () => Date.now() + 6 * 60000 })).status, 401);
   const expired = new Request(origin + a.base, { headers: { Authorization: `Bearer ${a.token}` } });
   assert.equal((await handleRequest(expired, f.env, { now: () => Date.now() + 31 * 86400000 })).status, 404);
+});
+
+test('the runtime bundled with the deployment CLI accepts the same D1/R2 and license flow', async t => {
+  const f = await fixture(t, { cliRuntime: true }), id = await f.submit(), a = await f.approve(id);
+  const installationId = randomUUID();
+  assert.equal((await f.post(`${a.base}/activate`, { installationId }, a.token)).status, 200);
+  const license = await (await f.get(`${a.base}/license`, a.token)).text();
+  assert.equal(verifyLicenseFile(license, f.publicKeys, installationId).maxActiveUsers, 5);
+  assert.equal(await (await f.get(`${a.base}/artifacts/server`, a.token)).text(), f.archive);
 });
