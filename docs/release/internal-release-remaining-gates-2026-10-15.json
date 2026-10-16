@@ -219,30 +219,38 @@
       "decision": "Prioritize functionality and applicable P1 implementation gaps for internal release, with basic sanity testing rather than rigorous exhaustive coverage.",
       "source": "Updated user-provided active goal",
       "limits": "Keep real failures and known missing capabilities explicit; no implied extension/passkey grant or permission-policy bypass."
+    },
+    {
+      "date": "2026-10-16",
+      "decision": "No installer rebuilds are needed if the required feature is tested locally.",
+      "source": "Direct user instruction in this thread",
+      "limits": "Keep old server/Desktop packages explicitly historical; do not claim they contain deletion."
     }
   ],
   "functionalAssessment": {
     "asOf": "2026-10-16",
     "source": "docs/release/internal-functional-readiness-2026-10-16.md",
-    "status": "incomplete: required item deletion implemented in source; package rebuild and sanity pending",
+    "status": "accepted for local code and basic functional checks; installer rebuilds explicitly deferred by user",
     "confirmedUnfixedP1Defects": [],
-    "missingCapabilities": [
-      {
-        "name": "Individual private-item deletion",
-        "assessment": "Implemented in source across API/CLI/Desktop/web/PWA; not yet present in selected release packages",
-        "internalReleaseRequirement": "Required by explicit user answer on 2026-10-16; source checks passed, release acceptance pending"
-      }
-    ],
+    "missingCapabilities": [],
     "testingBar": "Basic functional sanity; original exhaustive matrix retained as coverage backlog, not automatic missing-feature blockers",
     "sanityRecord": "C:/Projects/127Vaults-license-isolated-20261015-a/functional-sanity-2026-10-16.json",
-    "selectedPackages": "server/web-b, Desktop-e Windows/Linux, CLI-b Windows/Linux, extension-a",
-    "scopeQuestion": "User answered Required for internal release; implementation evidence: item-deletion-2026-10-16.md",
+    "selectedPackages": "Historical server/web-b, Desktop-e and CLI-b; completed new CLI-c candidates recorded separately. Local acceptance applies to feature source, not old installers.",
+    "scopeQuestion": "Answered: deletion required; installer rebuilds unnecessary if locally tested",
     "releaseLimitations": [
       "Private experimental internal trial only; no public distribution, signing or production-secret readiness claim",
       "Latest physical Windows GUI, optional extension/passkey grants and intended-host acceptance are separate manual/setup follow-ups",
       "Detailed matrix remains partial and is not represented as fully tested"
     ],
-    "completionBasis": "Not complete: previous package evidence predates required item deletion. Rebuild affected packages and record packaged sanity before acceptance."
+    "completionBasis": "Required deletion implemented; real Core/HTTP/PostgreSQL transaction and migration passed; focused native/PWA queue, retry and conflict tests passed; UI confirmation and session guards checked; local commits only; user explicitly defers installers.",
+    "requiredCapabilities": [
+      {
+        "name": "Individual private-item deletion",
+        "assessment": "Implemented and locally verified across Core/WASM, server, CLI, Desktop and web/PWA",
+        "sourceRevision": "8d95a85229c65991f3e45b4c53a22f58f0120375",
+        "evidence": "docs/release/item-deletion-2026-10-16.md"
+      }
+    ]
   },
   "decisionScope": "Original exhaustive coverage matrix only; current functionality-first internal-release decision is functionalAssessment.status"
 }

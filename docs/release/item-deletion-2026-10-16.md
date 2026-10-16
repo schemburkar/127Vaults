@@ -1,9 +1,9 @@
 # Required individual-item deletion — implementation checkpoint
 
 The user requires item deletion for internal release. The implementation now
-spans Core/WASM, the server, native client/CLI, Desktop and web/PWA. Internal
-release remains incomplete until affected packages are rebuilt and the release
-inventory and packaged sanity evidence are updated.
+spans Core/WASM, the server, native client/CLI, Desktop and web/PWA. The user subsequently waived installer rebuilds when the feature is tested
+locally. Local feature acceptance is complete under that criterion; older
+server/Desktop installers remain explicitly outside this acceptance.
 
 ## Product changes
 
@@ -30,7 +30,7 @@ inventory and packaged sanity evidence are updated.
   explicitly ignored. New regressions cover exact retry, reopened encrypted queue,
   sibling preservation, peer-edit conflict, authenticated empty state and refusal
   of stale/unauthenticated deletion state.
-- Web: 78 tests passed. Desktop: 37 tests passed, including deletion confirmation,
+- Web: 79 tests passed. Desktop: 37 tests passed, including deletion confirmation,
   captured owning vault and stale response refusal. The full mixed run exposed an
   outdated Desktop fixture that omitted the still-displayed item; it was corrected
   and a separate verified-absence regression added. Desktop suite rerun passed.
@@ -47,15 +47,23 @@ The database run used a new disposable container,
 stopped afterwards. No retained release fixture or queued request was modified.
 These are focused product checks, not a claim of physical GUI/manual acceptance.
 
-## Remaining release work
+## Acceptance and deferred builds
 
-1. Build new server/web, Windows/Linux Desktop and CLI packages from the committed
-   implementation. Prior server-b, Desktop-e and CLI-b lack this feature.
-2. Verify package manifests and run basic packaged deletion/reader sanity on
-   disposable synthetic content. Check schema-7 upgrade handling for the server
-   package; do not downgrade or overwrite retained installations.
-3. Update the selected inventory and readiness decision with the resulting
-   evidence, and commit those changes locally without pushing.
+The user's latest instruction is: “no need to rebuild installers if the feature
+is tested locally.” The source feature and focused checks satisfy that criterion.
+The extra PWA rebase regression uses real Core ciphertext to verify unchanged
+rebasing and preservation of peer edits until explicit server/deletion choices.
+
+The already-started CLI internal-20261016-c builds completed for Windows and
+Linux at feature commit 8d95a85; both manifests verified. The packaged Windows
+binary's item-delete help also passed. No new server/Desktop build was started
+after the user waived rebuilds. The earlier server attempt was terminal on a busy
+release-cache lock and produced no package. No active build remains.
+
+Server/web-b and Desktop-e remain historical packages without deletion. Rebuild
+and packaged deployment sanity are deferred follow-ups, not conditions of this
+local acceptance. Schema-7-to-8 dry-run/apply was exercised against the actual
+fresh PostgreSQL fixture, independently of installer rebuilds.
 
 Physical/intended-host acceptance remains the user's separate follow-up. The
 earlier unexplained Windows launcher policy rejection remains uninvestigated;

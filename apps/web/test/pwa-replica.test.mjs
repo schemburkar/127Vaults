@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 import { PwaReplica, collapseQueue, networkUnavailable, replicaRead, recordRevision } from '../src/pwa-replica.mjs';
 
 class MemoryStore {
@@ -81,6 +82,35 @@ test('offline deletion survives restart, removes its encrypted parts, preserves 
   assert.equal(target.method,'DELETE');assert.equal(target.path,`${f.listPath}/${first.itemId}`);
   assert.equal(target.baseline.index,null);assert.equal(target.body.index,undefined);
   f.core.lock();f.core.free();
+});
+
+test('queued deletion rebases unchanged items and preserves peer edits until an explicit choice', async () => {
+ const source=await readFile(new URL('../mvp-client.mjs',import.meta.url),'utf8');
+ const code=source.slice(source.indexOf('async function rebasePendingChanges('),source.indexOf('async function syncInstalled('));
+ for(const choice of ['unchanged','background','cancel','server','mine']){
+  const f=await fixture(),first=f.mutation();await f.replica.enqueue(first.path,first.method,first.body);await f.replica.flush(async()=>({}));
+  const remote=structuredClone(f.replica.state.records),catalogue=remote[f.listPath].catalogue;
+  const deleted=f.core.delete_private_item(f.vault,Buffer.from(catalogue,'base64url'),Buffer.from(first.itemId.replaceAll('-',''),'hex'));
+  await f.replica.enqueue(`${f.listPath}/${first.itemId}`,'DELETE',{requestId:crypto.randomUUID(),baseCatalogueRevision:recordRevision(catalogue,44),catalogue:b64(deleted),signedOperation:{kind:'item.delete',opId:crypto.randomUUID(),vaultId:f.vaultId,itemId:first.itemId,deviceId:'synthetic-device'}});
+  if(choice!=='unchanged'){const peer=f.mutation(catalogue,first.itemId,'Peer updated title');f.replica.project(remote,{...peer});}
+  const before=structuredClone(f.replica.state);
+  const context=vm.createContext({replica:f.replica,root:f.root,core:f.core,sessionGeneration:1,
+   structuredClone,collapseQueue,downloadReplica:async()=>structuredClone(remote),recordRevision,b64,uuid,
+   id:value=>Buffer.from(value.replaceAll('-',''),'hex'),un:value=>Buffer.from(value,'base64url'),crypto,
+   te:new TextEncoder(),td:new TextDecoder(),stable:JSON.stringify,
+   chooseSyncVersion:async()=>choice,signedMutation:async(kind,itemId,_catalogue,_index,_body,{targetVault})=>({kind,itemId,vaultId:targetVault,opId:crypto.randomUUID()}),
+  });
+  vm.runInContext(code+'\nglobalThis.runRebase=rebasePendingChanges;',context);
+  if(['background','cancel'].includes(choice)){
+   await assert.rejects(context.runRebase(choice!=='background'),/SYNC_REVIEW_PENDING/);assert.deepEqual(f.replica.state,before);
+  }else{
+   await context.runRebase(true);
+   assert.equal(f.replica.pending,choice==='server'?0:1);
+   assert.equal(f.replica.read(f.listPath).indices.length,choice==='server'?1:0);
+   if(choice!=='server'){assert.equal(f.replica.state.queue[0].method,'DELETE');assert.equal(f.replica.state.queue[0].body.index,undefined);}
+  }
+  f.core.lock();f.core.free();
+ }
 });
 
 test('offline unlock validates the real wrapped root and rejects a wrong password', async () => {

@@ -23,7 +23,7 @@ if(process.argv.includes('--basic')){
  const sanity=JSON.parse(await readFile(ledger.functionalAssessment.sanityRecord,'utf8'));assert.equal(sanity.status,'passed');assert.equal(sanity.sourceRevision,selected.find(row=>row.product==='server').sourceRevision);assert.equal(sanity.checks.length,5);
  for(const artifact of selected.filter(row=>row.product==='desktop'))assert.equal(artifact.sourceRevision,sanity.sourceRevision);
  assert.ok(ledger.functionalAssessment.source);await access(join(repo,ledger.functionalAssessment.source));
- console.log('Six selected package manifests and basic server/web/CLI/admin sanity record verify. Detailed matrix is coverage backlog; individual item deletion remains a disclosed follow-up.');process.exit(0);
+ console.log('Historical selected package manifests and their basic runtime record verify. Current local-code acceptance: ' + ledger.functionalAssessment.status + '. See the feature evidence note; old installers do not prove item deletion.');process.exit(0);
 }
 await run(process.execPath,[join(repo,'tests/internal/audit/member-acceptance-verify.mjs'),ledger.evidence.candidateWork,'--budget'],{windowsHide:true});
 const current=JSON.parse(await readFile(join(ledger.evidence.candidateWork,ledger.evidence.latestCombined),'utf8'));assert.equal(current.status,'passed');

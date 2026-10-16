@@ -1,6 +1,6 @@
 {
   "verifiedAt": "2026-10-16T04:52:58.850Z",
-  "acceptance": "Incomplete: user requires item deletion; source implementation and focused checks are complete, but selected older packages lack it. Rebuild and packaged sanity pending. See item-deletion-2026-10-16.md.",
+  "acceptance": "Accepted for local code and basic functional checks, including required item deletion. User explicitly waived installer rebuilds when locally tested. Selected server/Desktop artifacts are historical and lack deletion.",
   "artifacts": [
     {
       "path": "server/internal-20261015-b/linux-amd64",
@@ -176,10 +176,65 @@
       ]
     }
   ],
-  "pendingRuntimeChanges": [
-    "Required individual item deletion across Core/WASM, server schema 8 and web/PWA, Windows/Linux Desktop and CLI; package rebuild and sanity pending."
+  "pendingRuntimeChanges": [],
+  "candidateArtifacts": [
+    {
+      "path": "cli/internal-20261016-c/windows",
+      "product": "cli",
+      "platform": "windows",
+      "sourceRevision": "8d95a85229c65991f3e45b4c53a22f58f0120375",
+      "files": [
+        {
+          "name": "127vaults-cli-0.0.0-windows-x64.zip",
+          "sizeBytes": 3152711,
+          "sha256": "ec29494872c2ac32c879c59e9b3d2c67ec77177ef22faeed1e54578bda9a3b43"
+        },
+        {
+          "name": "LICENSE-POLICY.md",
+          "sizeBytes": 6422,
+          "sha256": "95de5da42b8786034f9eb443307aad8bfb4d1b93eda0d1ac9cf32ed1e1d1d2f1"
+        },
+        {
+          "name": "README.md",
+          "sizeBytes": 3469,
+          "sha256": "ac622e5534fdb99da842eaa5425caaf6959eea57041095a4a2515ea4e95c8749"
+        },
+        {
+          "name": "verify-release.mjs",
+          "sizeBytes": 2401,
+          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+        }
+      ]
+    },
+    {
+      "path": "cli/internal-20261016-c/linux",
+      "product": "cli",
+      "platform": "linux",
+      "sourceRevision": "8d95a85229c65991f3e45b4c53a22f58f0120375",
+      "files": [
+        {
+          "name": "127vaults-cli-0.0.0-linux-x64.tar.gz",
+          "sizeBytes": 4314949,
+          "sha256": "58916a6f06cd2a8e0a00b5f0a35252767da9d42f4ea8ab02854d931eb967a5f1"
+        },
+        {
+          "name": "LICENSE-POLICY.md",
+          "sizeBytes": 6300,
+          "sha256": "dfed6164ca665a6db45aae798f781c1b41700f757e46c5ee76448392ac991ebb"
+        },
+        {
+          "name": "README.md",
+          "sizeBytes": 3412,
+          "sha256": "b2e0dd1d8eabd503dc469529e9f63eeb435a16cbb3fce85f2249843b3aa3bfb3"
+        },
+        {
+          "name": "verify-release.mjs",
+          "sizeBytes": 2401,
+          "sha256": "e60b07676f6197f02e72f39db20b7278c1306ea4e47b061e3e2cd9717ff8c8df"
+        }
+      ]
+    }
   ],
-  "candidateArtifacts": [],
   "supersededArtifacts": [
     {
       "path": "server/internal-20261015-a/linux-amd64",
@@ -274,5 +329,14 @@
   "validationLimitations": [
     "Desktop-e type/build and 33 product tests pass; latest live Windows GUI and dedicated unlocked expiry/renewal ceremony not claimed",
     "Extension positive web permissions/passkey ceremonies and physical/intended-host acceptance remain separate"
-  ]
+  ],
+  "deferredRebuilds": [
+    "Server/web and Windows/Linux Desktop installers from deletion feature commit 8d95a85; user explicitly waived rebuilds for this local acceptance."
+  ],
+  "localAcceptance": {
+    "sourceRevision": "8d95a85229c65991f3e45b4c53a22f58f0120375",
+    "evidence": "docs/release/item-deletion-2026-10-16.md",
+    "criterion": "User accepts local feature tests without rebuilding installers",
+    "acceptedAt": "2026-10-16T05:30:49.489Z"
+  }
 }
