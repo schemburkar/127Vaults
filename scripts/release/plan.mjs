@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -85,6 +85,18 @@ export async function createPlan(request) {
   if (ref.startsWith('-')) throw Error('Ref must be a Git commit, branch or tag.');
   const revision = await git(repository, ['rev-parse', '--verify', `${ref}^{commit}`]);
   const source = await inputFingerprint(repository, revision, product);
+  let issuerPublicKeys = null;
+  if (request.issuerPublicKeys) {
+    if (product !== 'server') throw Error('Issuer public keys apply only to server bundles.');
+    issuerPublicKeys = JSON.parse(await readFile(resolve(request.issuerPublicKeys), 'utf8'));
+    if (!issuerPublicKeys || typeof issuerPublicKeys !== 'object' || Array.isArray(issuerPublicKeys)
+      || Object.keys(issuerPublicKeys).length < 1 || Object.keys(issuerPublicKeys).length > 8) throw Error('Invalid issuer public-key catalogue.');
+    for (const [id, pem] of Object.entries(issuerPublicKeys)) {
+      if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || typeof pem !== 'string' || !pem.startsWith('-----BEGIN PUBLIC KEY-----')
+        || createPublicKey(pem).asymmetricKeyType !== 'ed25519') throw Error('Invalid issuer public key.');
+    }
+    source.fingerprint = hash(source.fingerprint + '\0' + JSON.stringify(issuerPublicKeys));
+  }
   const version = numericVersion(request.version || await configuredVersion(repository, revision, product), product);
   const label = labelValue(request.label || `${revision.slice(0, 12)}-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
   const outputRoot = outside(repository, request.outputRoot || resolve(repository, '../127Vaults-Releases'), 'OutputRoot');
@@ -94,7 +106,7 @@ export async function createPlan(request) {
   const nested = rel => !rel || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
   if (nested(cacheRelative) || nested(outputRelative)) throw Error('CacheRoot and OutputRoot must be separate directories, neither nested inside the other.');
   return { product, platforms, revision, ref, label, packageVersion: version, inputFingerprint: source.fingerprint,
-    inputEntries: source.entries, builderFingerprint: await builderFingerprint(), repository, outputRoot, cacheRoot,
+    inputEntries: source.entries, issuerPublicKeys, builderFingerprint: await builderFingerprint(), repository, outputRoot, cacheRoot,
     engine: request.engine || 'podman', force: Boolean(request.force || request.refreshImages), refreshImages: Boolean(request.refreshImages),
     compatibility: { api: 'v1', nativeMessaging: ['desktop', 'cli', 'extension'].includes(product) ? 1 : null,
       minimumServerVersion: null, status: 'informational; version compatibility policy is not yet defined' },

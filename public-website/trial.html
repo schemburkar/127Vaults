@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Your private trial — 127Vaults</title><link rel="stylesheet" href="site.css?v=3"><link rel="stylesheet" href="trial.css"><script src="theme.mjs?v=2" type="module"></script><script src="trial.mjs" type="module"></script></head>
+<body>
+  <a class="skip" href="#main">Skip to content</a><header class="site-header"><div class="container header-inner"><a class="wordmark" href="index.html"><span class="brand-mark">127</span><span>127Vaults</span></a><span>A private invitation</span></div></header>
+  <main id="main" class="container trial-main"><span class="kicker">10 DAYS. YOUR OWN SERVER.</span><h1>A little room to try it.</h1><p>Your personal invitation to an unpaid self-hosted trial. No checkout, card details or subscription. Use fictitious data only while this release is experimental.</p><p id="trial-status" role="status" aria-live="polite">Opening your invitation…</p>
+    <div id="trial-content" hidden>
+      <section class="access-card"><h2>1. Choose your packages</h2><p>Install the server once, then connect Desktop, CLI or the extension from your trusted computers. Downloads are private experimental builds and are not publicly signed releases.</p><p id="trial-release"></p><div id="trial-artifacts" class="trial-grid"></div></section>
+      <section class="access-card"><h2>2. Prepare your server</h2><p>Extract the server archive. Install Node.js 24 and Podman or Docker with Compose on the server machine. From the extracted folder, run:</p><pre><code>node install.mjs doctor
+node server.mjs install init
+node server.mjs install start
+node server.mjs install identify</code></pre><p>For another computer to connect, select a reachable private address and certificate names during initialization. See the included README for host, bind and network options. Keep the server private; do not forward it to the public Internet.</p><p>Copy only the installation UUID printed by <code>identify</code> below. Never enter a bootstrap code, account secret, password or private key on this website.</p>
+        <form id="trial-activate"><label class="access-field" for="installation-id">Server installation ID<input id="installation-id" autocomplete="off" spellcheck="false" required placeholder="UUID from install identify"></label><label class="access-consent"><input id="bind-confirm" type="checkbox" required><span>This is my trial server. Activation binds the license to this installation and starts the 10 days.</span></label><button class="button primary" type="submit">Activate my 10-day trial</button></form><p id="trial-dates"></p><div id="trial-license" hidden><button class="button primary" id="download-license" type="button">Download my license</button><button class="button" id="download-keys" type="button">Download public issuer keys</button></div>
+      </section>
+      <section class="access-card"><h2>3. Install the license and connect</h2><p>Save the license in the extracted server folder, then run:</p><pre><code>node server.mjs install license --file trial-license.json
+node server.mjs install start
+node server.mjs install status
+node server.mjs install bootstrap</code></pre><p>The server bundle already pins the issuer’s public key. Create your vault owner on your server’s HTTPS web app using its local bootstrap code. Your request email is not a vault account.</p><p>On another computer, verify and trust the server’s public CA certificate and use its exact HTTPS address and installation ID. Approve new Desktop or CLI devices from an already trusted session. The extension connects to an unlocked web, Desktop or CLI source.</p><a class="inline-cta" href="setup-guide.html">Follow the client setup guide</a><p id="trial-terms">Your license allows 10 days of server writes, followed by the existing 30-day read-only period. Encrypted data is retained. Offline clients may queue edits that the expired server refuses. Contact your inviter to continue; downloading again never restarts the trial.</p></section>
+    </div>
+  </main>
+</body></html>

@@ -1,5 +1,10 @@
 # Public waitlist intake (experimental)
 
+## Unpaid private trials
+
+A separate manually approved trial path is now available with PUBLIC_TRIALS=1 (keep the simulated checkout disabled). The operator inbox at /access-admin.html can review/export/erase requests, approve ten-day trials and rotate/close links. The recipient page activates one installation-bound license and streams approved private downloads. Email is prepared for manual sending; it is not sent automatically. See [the setup and operating guide](../../docs/release/private-friend-trials.md).
+
+
 This is a separate HTTP API intended to sit behind a reviewed HTTPS reverse proxy at the public website's origin. The static website sends `GET` and `POST` requests to `/api/waitlist`. `npx serve` serves only the static pages, so the form stays disabled in that preview.
 
 The API accepts contact email, intended plan, optional organization, and consent. Cloud requests also require a planned vault-user count from 1 to 1,000. This is seat interest for follow-up, not a seat purchase or entitlement. It writes encrypted JSON Lines records with AES-256-GCM. It does not create a vault user, customer account, purchase, or license. It never asks for vault credentials.

@@ -8,6 +8,8 @@ import { createMockSelfHostHandler, pruneMockOrders } from './mock-selfhost.mjs'
 import { createDurableLimit, pruneDurableLimits } from './durable-limit.mjs';
 import { createCustomerAccountHandler, pruneCustomerAccounts } from './customer-account.mjs';
 import { SmtpMailer } from '../../server/src/smtp.mjs';
+import { createTrialHandler, loadTrialArtifacts, pruneAccessRequests } from './trials.mjs';
+import { withFileLock } from './durable-limit.mjs';
 
 const plans = new Set(['personal', 'commercial', 'cloud', 'undecided']);
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
@@ -71,12 +73,14 @@ export function createIntakeHandler({ origin, key, dataFile, now = () => Date.no
       }
       if (!input.trapped) {
         const flags = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0);
-        const file = await open(dataFile, flags, 0o600);
-        try {
-          if (!(await file.stat()).isFile()) throw new Error('invalid target');
-          await file.writeFile(encryptRequest(input, key));
-          await file.sync();
-        } finally { await file.close(); }
+        await withFileLock(`${dataFile}.lock`, async () => {
+          const file = await open(dataFile, flags, 0o600);
+          try {
+            if (!(await file.stat()).isFile()) throw new Error('invalid target');
+            await file.writeFile(encryptRequest(input, key));
+            await file.sync();
+          } finally { await file.close(); }
+        });
       }
       reply(res, 202, { received: true });
     } catch { reply(res, 503, { error: 'unavailable' }); }
@@ -90,6 +94,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const limitDirs = [resolve(dirname(env.PUBLIC_INTAKE_DATA_FILE), 'request-limits')];
   let mock;
   let customer;
+  let trials;
+  if (env.PUBLIC_TRIALS === '1') {
+    if (env.PUBLIC_MOCK_SELFHOST === '1') throw Error('Unpaid trials and simulated checkout cannot be enabled together.');
+    trials = createTrialHandler({ origin: env.PUBLIC_INTAKE_ORIGIN, key,
+      dataFile: env.PUBLIC_INTAKE_DATA_FILE, dataDir: env.PUBLIC_TRIAL_DATA_DIR,
+      operatorToken: (await readFile(env.PUBLIC_TRIAL_OPERATOR_TOKEN_FILE, 'utf8')).trim(),
+      issuerPrivateKey: await readFile(env.PUBLIC_TRIAL_ISSUER_KEY_FILE, 'utf8'),
+      issuerKeyId: env.PUBLIC_TRIAL_ISSUER_KEY_ID ?? 'trial',
+      catalogue: await loadTrialArtifacts(env.PUBLIC_TRIAL_CATALOGUE_FILE) });
+    limitDirs.push(resolve(env.PUBLIC_TRIAL_DATA_DIR, 'request-limits'));
+    const pruneRequests = () => pruneAccessRequests({ dataFile: env.PUBLIC_INTAKE_DATA_FILE, key })
+      .catch(() => process.stderr.write('Access request retention failed; inspect the protected data store.\n'));
+    await pruneRequests();
+    setInterval(pruneRequests, 86400000).unref();
+  }
   if (env.PUBLIC_MOCK_SELFHOST === '1') {
     const smtpPassword = (await readFile(env.PUBLIC_MOCK_SMTP_PASSWORD_FILE, 'utf8')).trim();
     const mailer = new SmtpMailer({ host: env.PUBLIC_MOCK_SMTP_HOST,
@@ -121,7 +140,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   await pruneLimits();
   setInterval(pruneLimits, 86400000).unref();
   createServer((req, res) => {
-    if (req.url?.startsWith('/api/customer/')) {
+    if (req.url?.startsWith('/api/trials/') || req.url?.startsWith('/api/access-admin/')) {
+      if (trials) Promise.resolve(trials(req, res)).catch(() => reply(res, 503, { error: 'unavailable' }));
+      else reply(res, 404, { error: 'not_found' });
+    } else if (req.url?.startsWith('/api/customer/')) {
       if (customer) Promise.resolve(customer(req, res)).catch(() => reply(res, 503, { error: 'unavailable' }));
       else reply(res, 404, { error: 'not_found' });
     } else if (req.url?.startsWith('/api/selfhost/mock')) {

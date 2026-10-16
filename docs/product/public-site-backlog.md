@@ -1,5 +1,10 @@
 # Public site and commercial onboarding backlog
 
+## Unpaid internal trial slice — 2026-10-16
+
+Implemented operator request inbox/export/erasure, manual approval/decline, rotating private links, authenticated downloads and one installation-bound ten-day unpaid license. The recipient uses shared approved binaries plus a custom signed license; no payment is fabricated. [Setup and boundaries](../release/private-friend-trials.md). This closes the local friend-trial workflow gap; public commerce, public signing, privacy/legal review and live deployment remain separate. Contact retention is 90 days when trial intake is enabled. Email delivery remains manual.
+
+
 Updated 2026-10-06. The static site presents plans, a waitlist, and release availability. [Architecture](../architecture/public-access-and-licensing.md) separates commercial contact from vault accounts. No public purchase or artifact is live.
 
 Copy checkpoint, 2026-10-06: shared-vault sales claims were removed. The Work

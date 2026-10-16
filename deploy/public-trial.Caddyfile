@@ -1,0 +1,24 @@
+# Run Caddy on the same host as the loopback intake service.
+# Set PUBLIC_SITE_HOST (hostname only) and PUBLIC_SITE_ROOT (static folder only).
+{$PUBLIC_SITE_HOST} {
+  root * {$PUBLIC_SITE_ROOT}
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    X-Frame-Options DENY
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+  }
+  @api path /api/waitlist /api/trials/* /api/access-admin/*
+  handle @api {
+    reverse_proxy 127.0.0.1:3101
+  }
+  @privatePages path /trial.html /access-admin.html
+  header @privatePages Cache-Control no-store
+  header @privatePages X-Robots-Tag "noindex, nofollow"
+  handle {
+    file_server
+  }
+  # Deliberately no access-log directive: never log Authorization or cookies.
+  # Put edge IP rate limits and operator-only access controls in front of the API.
+}

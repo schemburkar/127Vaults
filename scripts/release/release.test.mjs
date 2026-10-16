@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { generateKeyPairSync } from 'node:crypto';
 import { createPlan, git, labelValue, numericVersion, targets, inputFingerprint } from './plan.mjs';
 import { acquireLock, runRelease, within } from './release.mjs';
 import { execute, pnpm } from './process.mjs';
@@ -48,6 +49,26 @@ test('target and metadata validation keep label policy separate from native vers
   assert.equal(numericVersion('1.2.3.4', 'extension'), '1.2.3.4');
   for (const value of ['beta-1', '01.2.3', '1.2.70000']) assert.throws(() => numericVersion(value, 'desktop'));
   assert.throws(() => numericVersion('0.0.0', 'extension'));
+});
+
+test('server trial issuer keys affect cached inputs and private keys cannot be supplied as public keys', async () => {
+  const item = await fixture();
+  try {
+    await mkdir(join(item.repository, 'apps/server'), { recursive: true });
+    await writeFile(join(item.repository, 'apps/server/package.json'), JSON.stringify({ version: '0.0.0' }));
+    await git(item.repository, ['add', '.']); await git(item.repository, ['commit', '-qm', 'server metadata']);
+    const file = join(item.directory, 'issuer-keys.json');
+    const first = generateKeyPairSync('ed25519'), second = generateKeyPairSync('ed25519');
+    await writeFile(file, JSON.stringify({ trial: first.publicKey.export({ type: 'spki', format: 'pem' }) }));
+    const plain = await createPlan({ ...item, product: 'server' });
+    const pinned = await createPlan({ ...item, product: 'server', issuerPublicKeys: file });
+    assert.notEqual(pinned.inputFingerprint, plain.inputFingerprint);
+    await writeFile(file, JSON.stringify({ trial: second.publicKey.export({ type: 'spki', format: 'pem' }) }));
+    assert.notEqual((await createPlan({ ...item, product: 'server', issuerPublicKeys: file })).inputFingerprint, pinned.inputFingerprint);
+    await assert.rejects(createPlan({ ...item, product: 'extension', issuerPublicKeys: file }), /only to server/);
+    await writeFile(file, JSON.stringify({ trial: first.privateKey.export({ type: 'pkcs8', format: 'pem' }) }));
+    await assert.rejects(createPlan({ ...item, product: 'server', issuerPublicKeys: file }));
+  } finally { await cleanup(item.directory); }
 });
 test('source fingerprints follow product inputs and plans do not create output', async () => {
   const item = await fixture();

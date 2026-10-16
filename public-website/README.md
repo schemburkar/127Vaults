@@ -1,5 +1,10 @@
 # 127Vaults public website
 
+## Private friend trials
+
+The local site now includes access-admin.html for the protected operator inbox and trial.html for manually approved unpaid ten-day trials. Configure the same-origin intake API; static hosting alone cannot receive requests or issue licenses. The public release catalogue stays empty. See [private trial setup](../docs/release/private-friend-trials.md).
+
+
 This folder is an independent, static marketing site. It is separate from `apps/web`, the password-manager web client, and has no third-party build dependencies.
 
 The site has eight pages: Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five pages are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root.

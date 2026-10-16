@@ -147,7 +147,10 @@ async function build(plan, platform, attempt) {
   if (plan.product === 'desktop') await packageDesktop(stage, options);
   if (plan.product === 'cli') await packageCli(stage, options);
   if (plan.product === 'server') {
-    await runMakeBundle([join(stage, `127vaults-server-${plan.packageVersion}-linux-amd64`), ...(plan.engine === 'docker' ? ['--docker'] : [])],
+    const issuerFile = join(attempt, 'issuer-keys.json');
+    if (plan.issuerPublicKeys) await writeFile(issuerFile, JSON.stringify(plan.issuerPublicKeys, null, 2) + '\n', { flag: 'wx' });
+    await runMakeBundle([join(stage, `127vaults-server-${plan.packageVersion}-linux-amd64`),
+      ...(plan.issuerPublicKeys ? ['--issuer-public-keys', issuerFile] : []), ...(plan.engine === 'docker' ? ['--docker'] : [])],
       { checkout: source, provenance: { revision: plan.revision, sourceDirty: false },
         image: `localhost/127vaults-server:release-${plan.inputFingerprint.slice(0, 16)}`, refreshImages: plan.refreshImages });
   }
@@ -172,6 +175,7 @@ async function build(plan, platform, attempt) {
   await writeRelease(payload, { product: plan.product, platform, label: plan.label, packageVersion: plan.packageVersion,
     sourceRevision: plan.revision, sourceDirty: false, inputFingerprint: plan.inputFingerprint, builderFingerprint: plan.builderFingerprint,
     builtAt: new Date().toISOString(), toolchain, checks, compatibility: plan.compatibility,
+    ...(plan.issuerPublicKeys ? { issuerPublicKeys: plan.issuerPublicKeys } : {}),
     limitations: ['Unsigned private-test artifacts; public licensing/signing remain pending.', ...(plan.product === 'server' ? ['Native Linux server and Docker clean-host installation are not yet accepted. Web assets ship in this server image.'] : [])] });
   return payload;
 }

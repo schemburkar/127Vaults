@@ -27,10 +27,10 @@ function updateAvailability() {
   const selected = form.querySelector('[name="plan"]:checked')?.value;
   const mock = mockSelfHostOpen && ['personal', 'commercial'].includes(selected);
   button.disabled = !(mock || waitlistOpen);
-  button.textContent = mock ? 'Continue to simulated checkout' : 'Join waitlist';
+  button.textContent = mock ? 'Continue to simulated checkout' : 'Request access';
   status.textContent = mock
     ? 'Supervised test only: checkout is simulated and collects no payment.'
-    : waitlistOpen ? 'The waitlist is open. No payment is collected.'
+    : waitlistOpen ? 'Access requests are open. We review requests for private trials; no payment is collected.'
       : 'The waitlist is not accepting requests from this site yet. Check back for updates.';
 }
 form.querySelectorAll('[name="plan"]').forEach(input => input.addEventListener('change', updateSeats));
@@ -79,5 +79,5 @@ form.addEventListener('submit', async event => {
   } catch {
     status.textContent = 'We could not reach the waitlist. Please try again later.';
   }
-  updateAvailability();
+  button.disabled = !(waitlistOpen || (mockSelfHostOpen && ['personal', 'commercial'].includes(body.plan)));
 });

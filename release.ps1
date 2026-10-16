@@ -8,6 +8,7 @@ param(
     [string]$Ref = 'HEAD',
     [string]$OutputRoot,
     [string]$CacheRoot,
+    [string]$IssuerPublicKeys,
     [ValidateSet('podman','docker')][string]$Engine = 'podman',
     [string]$WslDistro = 'Ubuntu-24.04',
     [string]$WslUser,
@@ -24,7 +25,7 @@ $node = Get-Command node -ErrorAction Stop
 $request = @{
     repository = $PSScriptRoot; product = $Product; platform = $Platform
     label = $Label; version = $Version; ref = $Ref; outputRoot = $OutputRoot
-    cacheRoot = $CacheRoot; engine = $Engine; wslDistro = $WslDistro
+    cacheRoot = $CacheRoot; issuerPublicKeys = $IssuerPublicKeys; engine = $Engine; wslDistro = $WslDistro
     wslUser = $WslUser; linuxCacheRoot = $LinuxCacheRoot; verify = $Verify
     plan = [bool]$Plan; doctor = [bool]$Doctor; force = [bool]$Force
     refreshImages = [bool]$RefreshBaseImages; help = [bool]$Help

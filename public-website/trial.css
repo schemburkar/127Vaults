@@ -1,0 +1,13 @@
+.trial-main { max-width: 1100px; padding-top: 64px; padding-bottom: 80px; }
+.trial-main h1 { font-size: clamp(2.4rem, 6vw, 4.5rem); line-height: 1.08; max-width: 850px; }
+.trial-main > p { max-width: 760px; }
+.trial-main section, .trial-main form.access-card { margin-block: 28px; }
+.trial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 20px; }
+.trial-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.trial-main .access-card { min-width: 0; overflow-wrap: anywhere; }
+.trial-main .button { margin: 8px 8px 4px 0; }
+.trial-main textarea { width: 100%; box-sizing: border-box; padding: 14px; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 12px; font: inherit; resize: vertical; }
+.trial-main pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 18px; border: 1px solid #8886; border-radius: 12px; }
+.trial-artifact { padding: 18px; border: 1px solid #8886; border-radius: 14px; }
+.trial-artifact code { display: block; overflow-wrap: anywhere; font-size: .8rem; margin-block: 12px; }
+[hidden] { display: none !important; }
