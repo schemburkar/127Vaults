@@ -84,3 +84,12 @@ endpoint verification. Account administrators can change public bucket access
 later; local review cannot certify future account settings. Use the dedicated
 bucket and scoped credentials, retain those checks, and complete the documented
 HTTPS request/download/activation rehearsal after DNS/TLS is active.
+
+## Project-local private deployment folder
+
+The later project-local layout uses `.cloudflare-deploy/config.json`,
+`catalogue.json`, `secrets/` and `state/`. This entire folder is excluded from Git
+and Docker build context and is never part of the allowlisted website payload.
+Local keys were copied into restricted directories without replacing the originals.
+Configuration resolves directory junctions before enforcing allowed locations;
+public source folders and overlapping secrets/state directories are refused.

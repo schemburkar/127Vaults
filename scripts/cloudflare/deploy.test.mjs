@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createPublicKey, createHash, randomBytes } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, readdir, rm, symlink, unlink } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { join, parse } from 'node:path';
 import { tmpdir } from 'node:os';
-import { validateConfig, loadSecrets, stageAssets, assetFiles, wranglerConfig } from './config.mjs';
+import { validateConfig, loadConfig, loadSecrets, stageAssets, assetFiles, wranglerConfig, repository, localDeploymentDirectory } from './config.mjs';
 import { assertPrivateBucket, execute, parseBucketNames, provision, runWrangler } from './deploy.mjs';
 
 async function fixture(t) {
@@ -154,4 +155,27 @@ test('encrypted database backup works without local installer files or issuer ac
     assert.ok(args.includes('--skip-confirmation')); exported = true; return '';
   } });
   assert.ok(exported);
+});
+
+test('project-local deployment accepts only the ignored private folder and keeps secrets/state separate', async t => {
+  const { config } = await fixture(t), file = join(localDeploymentDirectory, 'config.json');
+  const value = validateConfig({ ...config, catalogueFile: './catalogue.json', secretsDirectory: './secrets', stateDirectory: './state' }, file);
+  assert.equal(value.catalogueFile, join(localDeploymentDirectory, 'catalogue.json'));
+  assert.equal(value.secretsDirectory, join(localDeploymentDirectory, 'secrets'));
+  assert.equal(value.stateDirectory, join(localDeploymentDirectory, 'state'));
+  for (const directory of [repository, join(repository, 'deploy'), join(repository, 'public-website'), localDeploymentDirectory + '-other']) {
+    assert.throws(() => validateConfig({ ...config, stateDirectory: directory }, file), /outside the repository/);
+  }
+  assert.throws(() => validateConfig({ ...value, stateDirectory: join(value.secretsDirectory, 'state') }, file), /separate directories/);
+  assert.match(execFileSync('git', ['check-ignore', '--no-index', join(localDeploymentDirectory, 'secrets/operator-token')], { cwd: repository, encoding: 'utf8', windowsHide: true }), /\.cloudflare-deploy/);
+  assert.match(await readFile(join(repository, '.dockerignore'), 'utf8'), /^\.cloudflare-deploy\r?$/m);
+});
+
+test('a directory junction cannot redirect deployment state into public website files', async t => {
+  const { directory, config } = await fixture(t), alias = join(directory, 'website-link');
+  await symlink(join(repository, 'public-website'), alias, process.platform === 'win32' ? 'junction' : 'dir');
+  try {
+    const file = join(directory, 'config.json'); await writeFile(file, JSON.stringify({ ...config, stateDirectory: join(alias, 'private-state') }));
+    await assert.rejects(loadConfig(file), /outside the repository/);
+  } finally { await unlink(alias); }
 });

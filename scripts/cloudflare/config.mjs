@@ -9,14 +9,21 @@ import { validIntakeOrigin } from '../../apps/public-intake/src/intake-origin.mj
 import { issuer } from '../../apps/public-intake/cloudflare/crypto.mjs';
 const run = promisify(execFile);
 export const repository = resolve(fileURLToPath(new URL('../../', import.meta.url)));
+export const localDeploymentDirectory = join(repository, '.cloudflare-deploy');
 export const workerDirectory = join(repository, 'apps/public-intake/cloudflare');
 export const assetFiles = ['index.html', 'product.html', 'security.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
   'trial.mjs', 'access-admin.mjs', 'releases.json'];
-function outside(path, label) {
-  const absolute = resolve(path), rel = relative(repository, absolute);
-  if (!rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel))) throw Error(`${label} must be outside the repository`);
+function contains(directory, path) {
+  const rel = relative(directory, path);
+  return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));
+}
+function deploymentPath(path, label) {
+  const absolute = resolve(path);
+  if (contains(repository, absolute) && !contains(localDeploymentDirectory, absolute)) {
+    throw Error(`${label} must be outside the repository or inside .cloudflare-deploy`);
+  }
   const inverse = relative(absolute, repository);
   if (inverse && !inverse.startsWith('..' + sep) && inverse !== '..' && !isAbsolute(inverse)) throw Error(`${label} must not be an ancestor of the repository`);
   return absolute;
@@ -35,13 +42,31 @@ export function validateConfig(value, file) {
   const base = dirname(resolve(file));
   for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) {
     if (typeof value[name] !== 'string' || !value[name]) throw Error(`Missing ${name}`);
-    value[name] = outside(resolve(base, value[name]), name);
+    value[name] = deploymentPath(resolve(base, value[name]), name);
   }
-  const rel = relative(value.stateDirectory, value.secretsDirectory);
-  if (!rel || (!rel.startsWith('..' + sep) && !isAbsolute(rel))) throw Error('Keep secrets outside the generated state directory');
+  if (contains(value.stateDirectory, value.secretsDirectory) || contains(value.secretsDirectory, value.stateDirectory)) {
+    throw Error('Keep secrets outside the generated state directory and use separate directories');
+  }
   return value;
 }
-export async function loadConfig(file) { return validateConfig(JSON.parse(await readFile(file, 'utf8')), file); }
+async function physicalPath(path) {
+  let parent = path;
+  const missing = [];
+  while (true) {
+    try { return resolve(await realpath(parent), ...missing.reverse()); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const next = dirname(parent); if (next === parent) throw error;
+      missing.push(relative(next, parent)); parent = next;
+    }
+  }
+}
+export async function loadConfig(file) {
+  const value = validateConfig(JSON.parse(await readFile(file, 'utf8')), file);
+  // Also validate physical paths: a junction must not redirect private deployment files into public source/assets.
+  for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) value[name] = await physicalPath(value[name]);
+  return validateConfig(value, file);
+}
 export async function protectedDirectory(directory) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   if (process.platform === 'win32') {

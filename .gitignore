@@ -15,6 +15,7 @@
 .dev.vars
 .dev.vars.*
 .wrangler/
+/.cloudflare-deploy/
 !.env.example
 *.pem
 *.key

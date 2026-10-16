@@ -1,7 +1,7 @@
 # Cloudflare access website and private installer delivery
 
 Before first publication, see the [publication security review](cloudflare-publication-security-review-2026-10-16.md).
-Run `pnpm cloudflare:audit <external-config.json>` to repeat the publication checks
+Run `pnpm cloudflare:audit .cloudflare-deploy/config.json` to repeat the publication checks
 offline. These checks also run automatically before deployment operations.
 
 Scope: public marketing/access website, encrypted access requests, operator inbox,
@@ -52,8 +52,8 @@ bucket or release. State is pinned to account, database, bucket and Worker names
 ## One-time account setup
 
 1. Put the chosen domain's DNS zone in the intended Cloudflare account. Complete
-   nameserver onboarding and choose an unused hostname, for example
-   `https://trial.yourdomain.com`. The custom domain must be in that account;
+   nameserver onboarding. Our public hostname is
+   `https://127vaults.com`. The custom domain must be in that account;
    resolve any conflicting existing DNS/service attachment before deployment.
 2. Enable R2 billing/usage for that account. Use Standard storage. Enabling R2
    may require billing details even if actual usage stays within the free tier.
@@ -101,24 +101,42 @@ and SHA-256 metadata. Reuse the selected friend-trial catalogue only after its
 normal release verification; historical packages lacking required features are
 not substituted by the Cloudflare scripts.
 
-Copy `deploy/cloudflare.example.json` to a protected external directory and edit
+Copy `deploy/cloudflare.example.json` to `.cloudflare-deploy/config.json` and edit
 the account ID, hostname, resource names, release ID and paths. Relative paths
 resolve against that configuration file, not the current shell directory.
-Catalogue, secrets and generated state must all be outside this checkout.
-Keep secret and state directories separate. The state directory receives
+Use this layout inside the project:
+
+```text
+.cloudflare-deploy/
+  config.json
+  catalogue.json
+  secrets/
+    intake-key
+    operator-token
+    issuer.pem
+  state/
+```
+
+Paths in that configuration can be `./catalogue.json`, `./secrets` and `./state`.
+The entire `.cloudflare-deploy/` folder is excluded from Git, Docker build context
+and public website staging. It is the only allowed private deployment directory
+inside the checkout; external protected directories remain supported. Directory
+junctions/symlinks are resolved before validation, so they cannot redirect private
+files into public source folders. Keep secret and state directories separate.
+Protect `.cloudflare-deploy/` before copying existing keys there. The state directory receives
 restricted Windows ACLs or Unix mode 0700; do not place it in a web-served folder.
 The scripts read existing secrets without replacing their contents or permissions.
 
 Example invocation, after editing your external configuration:
 
 ```powershell
-pnpm cloudflare:plan C:/Private/127vaults-cloudflare/config.json
-pnpm cloudflare:dry-run C:/Private/127vaults-cloudflare/config.json
-pnpm cloudflare:provision C:/Private/127vaults-cloudflare/config.json
+pnpm cloudflare:plan .cloudflare-deploy/config.json
+pnpm cloudflare:dry-run .cloudflare-deploy/config.json
+pnpm cloudflare:provision .cloudflare-deploy/config.json
 # Create the bucket-scoped R2 credentials and set them in this process's environment.
-pnpm cloudflare:upload C:/Private/127vaults-cloudflare/config.json
-pnpm cloudflare:deploy C:/Private/127vaults-cloudflare/config.json
-pnpm cloudflare:verify C:/Private/127vaults-cloudflare/config.json
+pnpm cloudflare:upload .cloudflare-deploy/config.json
+pnpm cloudflare:deploy .cloudflare-deploy/config.json
+pnpm cloudflare:verify .cloudflare-deploy/config.json
 ```
 
 Once account and R2 credentials are ready, `pnpm cloudflare:all <config.json>`
