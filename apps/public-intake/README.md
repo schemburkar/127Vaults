@@ -11,7 +11,7 @@ The API accepts contact email, intended plan, optional organization, and consent
 
 For a disposable local test, set `PUBLIC_INTAKE_ORIGIN` to the exact HTTPS website origin, `PUBLIC_INTAKE_KEY_FILE` to a protected file containing a 64-character random hex key, and `PUBLIC_INTAKE_DATA_FILE` to an absolute path for the encrypted records. `PUBLIC_INTAKE_PORT` defaults to 3101. Run `node apps/public-intake/src/server.mjs`; it binds to loopback only. A reverse proxy must terminate HTTPS and route `/api/waitlist` to it. Do not expose this process directly to the Internet.
 
-Before production, add durable abuse controls, key rotation and recovery, export/deletion tooling, backup/retention policy, privacy notice and consent records, monitored mail delivery, and deployment review. These are release gates, not optional operations tasks.
+The unpaid-trial path adds operator export/erasure and 90-day contact retention. General public intake still needs reviewed edge abuse controls, key rotation and recovery, backup/retention policy, legal privacy copy, monitored mail delivery and deployment review. The private trial slice is not general public launch approval.
 
 ## Supervised self-hosted signup simulation
 
@@ -27,4 +27,4 @@ The opt-in simulation now also exposes `customer-account.html` and `/api/custome
 
 Order and account data are encrypted at rest with domain-separated keys derived from the intake key. Pending test orders are pruned after 30 days, licensed test orders 90 days after their current license expiry, unverified customer records after one day, and verified customer records after one year since last sign-in. The scheduled cleanup runs at startup and daily. The customer can erase their account and linked test orders through the account page; this does not remove an installed license. Hashed request-limit records persist across process restarts and are pruned after 48 hours. Run one intake instance against a data directory; the file store is not a distributed rate limiter. A public reverse proxy still needs IP-aware edge abuse controls and monitored SMTP.
 
-The standalone waitlist uses a separate encrypted append-only file and is not covered by customer-account erasure. Its retention/export/deletion workflow, legal privacy notice, key rotation, and off-host recovery remain launch gates. Do not enable the mock service on a public production site.
+The standalone waitlist uses a separate encrypted append-only file and is not covered by customer-account erasure. When unpaid trials are enabled, its contact rows are available through the operator inbox and support erasure and 90-day retention. Legal privacy review, key rotation and off-host recovery remain general launch gates. Do not enable the mock service on a public production site.

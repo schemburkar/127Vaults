@@ -46,6 +46,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (command === 'init' && input && !output) {
       const directory = outside(repository, input, 'Trial secrets directory');
       await mkdir(directory, { recursive: false, mode: 0o700 });
+      if (process.platform === 'win32') {
+        const { stdout } = await run('whoami.exe', [], { windowsHide: true });
+        const identity = stdout.trim();
+        if (!identity || /[\r\n]/.test(identity)) throw Error('Cannot identify the trial operator.');
+        // Node's Unix mode bits do not restrict inherited Windows directory ACLs.
+        await run('icacls.exe', [directory, '/inheritance:r', '/grant:r', `${identity}:(OI)(CI)F`,
+          '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F'], { windowsHide: true });
+      }
       const { privateKey } = generateKeyPairSync('ed25519');
       const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
       const keys = { trial: createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }) };
