@@ -43,6 +43,37 @@ test('web discards an old license response after locking or switching sessions',
   assert.equal(h.calls.length, 2); h.stop();
 });
 
+async function deletionHarness(confirm = true) {
+  const source=await readFile(new URL('../mvp-client.mjs',import.meta.url),'utf8');
+  const code=source.slice(source.indexOf('async function deleteItem() {'),source.indexOf('async function save(event'));
+  const calls=[],events=[],values=[],context=vm.createContext({
+    root:{},vault:{},vaultId:'owning-vault',sessionGeneration:1,busy:false,
+    currentItem:{itemId:'selected-item',index:{title:'Selected'}},catalogue:new Uint8Array(80),
+    core:{delete_private_item:()=>new Uint8Array(80)},id:value=>value,uuid:()=> 'revision',b64:()=> 'encrypted-catalogue',
+    signedMutation:async(...args)=>{calls.push(['sign',...args]);return{kind:'item.delete'}},
+    call:async(...args)=>{calls.push(['call',...args]);return{}},
+    window:{confirm:()=>confirm,dispatchEvent:event=>events.push(event)},CustomEvent,
+    crypto,Date,confirmDiscard:()=>true,setBusy:value=>values.push(value),clearItem:()=>events.push('clear'),
+    reload:async()=>{},updateSessionDates:()=>{},toast:()=>{},safeError:String,replica:null,
+  });
+  vm.runInContext(code+'\nglobalThis.runDelete = deleteItem;',context);
+  return{run:()=>context.runDelete(),calls,events,values,context};
+}
+test('web deletion confirmation protects cancellation and sends only a signed catalogue to the owning item',async()=>{
+  const cancelled=await deletionHarness(false);await cancelled.run();assert.equal(cancelled.calls.length,0);
+  const h=await deletionHarness();await h.run();
+  assert.equal(h.calls[0][1],'item.delete');const request=h.calls[1];
+  assert.equal(request[1],'/api/v1/vaults/owning-vault/items/selected-item');assert.equal(request[2].method,'DELETE');
+  assert.equal(request[2].body.index,undefined);assert.equal(request[2].body.body,undefined);
+  assert.ok(h.events.includes('clear'));assert.equal(h.values.at(-1),false);
+});
+test('web deletion response from a locked session cannot clear a newly opened item',async()=>{
+  const h=await deletionHarness();let complete;
+  h.context.call=()=>new Promise(resolve=>{complete=resolve});
+  const done=h.run();await new Promise(setImmediate);h.context.sessionGeneration++;complete({});await done;
+  assert.equal(h.events.length,0);
+});
+
 test("WebCrypto digests are converted with a bound constructor call", async () => {
   const source = await readFile(
     new URL("../mvp-client.mjs", import.meta.url),

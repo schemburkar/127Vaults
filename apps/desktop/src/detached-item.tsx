@@ -26,9 +26,12 @@ export function DetachedItem() {
       } catch { if (!disposed) { disposed = true; active.current = false; setItem(null); setRevealed({}); setMessage("This item is unavailable. Reopen it from the main window."); } }
     };
     const subscription = listen("vaults-locked", clear);
+    const deletion = listen<{ vaultId: string; itemId: string }>("vaults-item-deleted", event => {
+      if (event.payload.vaultId === vaultId && event.payload.itemId === itemId) clear();
+    });
     void refresh();
     const timer = setInterval(() => void refresh(), 2000);
-    return () => { disposed = true; active.current = false; clearInterval(timer); void subscription.then(unlisten => unlisten()); };
+    return () => { disposed = true; active.current = false; clearInterval(timer); void subscription.then(unlisten => unlisten()); void deletion.then(unlisten => unlisten()); };
   }, [vaultId, itemId]);
   const secret = (field: string) => invoke<string>("item_secret", { vaultId, itemId, field });
   const copy = async (field: string, value: string, hidden: boolean) => {

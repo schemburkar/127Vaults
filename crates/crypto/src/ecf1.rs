@@ -577,6 +577,35 @@ impl Core {
             body: enc_body.envelope,
         })
     }
+    /// Removes exactly one item from an authenticated catalogue.
+    /// The returned catalogue advances the revision and preserves every sibling
+    /// commitment. Existing ciphertext cannot be opened against this new state.
+    /// # Errors
+    /// Rejects an invalid handle, unauthenticated catalogue, or absent item.
+    pub fn delete_private_item(
+        &self,
+        vault: KeyHandle,
+        old_catalogue: &[u8],
+        item: [u8; 16],
+    ) -> Result<Vec<u8>, Error> {
+        let key = self.keys.get(&vault).ok_or(Error::InvalidHandle)?;
+        if key.kind != Kind::Vault {
+            return Err(Error::InvalidHandle);
+        }
+        let mut catalogue =
+            Catalogue::decode(old_catalogue, &key.bytes, key.tenant, key.vault, key.epoch)
+                .map_err(record_error)?;
+        let position = catalogue
+            .entries
+            .iter()
+            .position(|entry| entry.item == item)
+            .ok_or(Error::InvalidInput)?;
+        catalogue.entries.remove(position);
+        catalogue.base = catalogue.revision;
+        catalogue.revision = random_revision().map_err(record_error)?;
+        catalogue.encode(&key.bytes).map_err(record_error)
+    }
+
     /// Authenticates a catalogue, including an empty one, and returns its item IDs.
     /// # Errors
     /// Rejects an invalid vault handle, scope, catalogue encoding or authentication.
@@ -1189,6 +1218,63 @@ mod tests {
             c.decrypt_private_part(vh, &proposal.catalogue, proposal.item, &bad, 3)
                 .unwrap_err(),
             Error::AuthenticationFailed
+        );
+    }
+    #[test]
+    fn private_item_deletion_authenticates_and_preserves_siblings() {
+        let mut core = Core::new();
+        let root = core
+            .create_root(&template(1), b"password", &[9; 32])
+            .unwrap()
+            .handle
+            .unwrap();
+        let directory = core.create_empty_directory(root).unwrap();
+        let vault = core.create_private_vault(root, &directory).unwrap();
+        let handle = vault.vault.handle.unwrap();
+        let first = core
+            .upsert_private_item(handle, &vault.catalogue, None, b"first", b"secret one")
+            .unwrap();
+        let second = core
+            .upsert_private_item(handle, &first.catalogue, None, b"second", b"secret two")
+            .unwrap();
+        let budget = core.remaining_creation_budget();
+        let deleted = core
+            .delete_private_item(handle, &second.catalogue, first.item)
+            .unwrap();
+        assert_eq!(core.remaining_creation_budget(), budget);
+        assert_eq!(
+            core.verify_private_catalogue(handle, &deleted).unwrap(),
+            vec![second.item]
+        );
+        assert_eq!(&deleted[60..76], &second.catalogue[44..60]);
+        assert_ne!(&deleted[44..60], &second.catalogue[44..60]);
+        assert_eq!(
+            &*core
+                .decrypt_private_part(handle, &deleted, second.item, &second.body, 3)
+                .unwrap(),
+            b"secret two"
+        );
+        assert!(
+            core.decrypt_private_part(handle, &deleted, first.item, &first.body, 3)
+                .is_err()
+        );
+        assert!(
+            core.delete_private_item(handle, &deleted, first.item)
+                .is_err()
+        );
+        let mut tampered = second.catalogue.clone();
+        *tampered.last_mut().unwrap() ^= 1;
+        assert!(
+            core.delete_private_item(handle, &tampered, first.item)
+                .is_err()
+        );
+        let empty = core
+            .delete_private_item(handle, &deleted, second.item)
+            .unwrap();
+        assert!(
+            core.verify_private_catalogue(handle, &empty)
+                .unwrap()
+                .is_empty()
         );
     }
     #[test]

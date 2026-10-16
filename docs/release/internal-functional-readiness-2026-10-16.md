@@ -1,9 +1,14 @@
 # Internal release: incomplete — required item deletion
 
+Current implementation and remaining package work: [item deletion checkpoint](item-deletion-2026-10-16.md).
+Work has resumed. Deletion is implemented in source and focused checks pass;
+the selected older packages still lack it, so release acceptance remains open.
+The earlier assessment below is historical.
+
 The user confirmed on October 16 that individual item deletion is required for
-internal release. This supersedes the readiness conclusion below. Work is paused
-at the user's request; deletion has not been implemented. Resume from
-`internal-release-paused-2026-10-16.md`. Earlier checks remain historical evidence
+internal release. This supersedes the readiness conclusion below. The earlier
+paused checkpoint is `internal-release-paused-2026-10-16.md`; work has since
+resumed as recorded above. Earlier checks remain historical evidence
 for the selected packages, not acceptance of the expanded requirement.
 
 The user changed the acceptance bar on October 16: prioritize implemented

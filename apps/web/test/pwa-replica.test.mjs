@@ -58,6 +58,31 @@ test('offline queue survives restart, updates encrypted catalogue/body, and cont
   f.core.lock(); f.core.free();
 });
 
+test('offline deletion survives restart, removes its encrypted parts, preserves siblings and retries exactly', async () => {
+  const f=await fixture(),first=f.mutation();
+  await f.replica.enqueue(first.path,first.method,first.body);
+  const sibling=f.mutation(undefined,undefined,'Sibling');await f.replica.enqueue(sibling.path,sibling.method,sibling.body);
+  const before=structuredClone(f.replica.state.queue),catalogue=f.replica.read(f.listPath).catalogue;
+  const deleted=f.core.delete_private_item(f.vault,Buffer.from(catalogue,'base64url'),Buffer.from(first.itemId.replaceAll('-',''),'hex'));
+  const body={requestId:crypto.randomUUID(),baseCatalogueRevision:recordRevision(catalogue,44),catalogue:b64(deleted),signedOperation:{kind:'item.delete',opId:crypto.randomUUID(),vaultId:f.vaultId,itemId:first.itemId,deviceId:'synthetic-device'}};
+  await f.replica.enqueue(`${f.listPath}/${first.itemId}`,'DELETE',body);
+  const reopened=await new PwaReplica({scope:'synthetic-device',store:f.store}).load();
+  assert.deepEqual(reopened.state.queue.slice(0,2),before);
+  assert.deepEqual(reopened.read(f.listPath).indices.map(row=>row.itemId),[sibling.itemId]);
+  assert.throws(()=>reopened.read(`${f.listPath}/${first.itemId}`),/OFFLINE_DATA_UNAVAILABLE/);
+  const ids=f.core.verify_private_catalogue(f.vault,deleted);assert.equal(ids.length,16);
+  const requests=[];const send=async(path,options)=>{requests.push({path,...structuredClone(options)});if(options.method==='DELETE')throw Error('SERVER_TIMEOUT');return{}};
+  await assert.rejects(reopened.flush(send),/SERVER_TIMEOUT/);
+  const remaining=structuredClone(reopened.state.queue);assert.equal(remaining.length,1);
+  await assert.rejects(reopened.flush(send),/SERVER_TIMEOUT/);
+  assert.deepEqual(requests.at(-1),requests.at(-2));assert.deepEqual(reopened.state.queue,remaining);
+  const collapsed=collapseQueue([...before,{...remaining[0]}]);
+  const target=collapsed.find(entry=>entry.body.signedOperation.itemId===first.itemId);
+  assert.equal(target.method,'DELETE');assert.equal(target.path,`${f.listPath}/${first.itemId}`);
+  assert.equal(target.baseline.index,null);assert.equal(target.body.index,undefined);
+  f.core.lock();f.core.free();
+});
+
 test('offline unlock validates the real wrapped root and rejects a wrong password', async () => {
   const f = await fixture(), record = f.replica.state.unlock;
   f.core.lock();

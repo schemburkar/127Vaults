@@ -757,7 +757,7 @@ function ItemDetail() {
             <h2 id="view-title" />
             <a id="view-url" className="text-sm text-[#E0BB95] hover:underline" target="_blank" rel="noreferrer" />
           </div>
-          <div className="flex flex-wrap items-center gap-1"><IconButton id="favorite-item" label="Add to favorites" aria-pressed={false}><Star size={17} /></IconButton><Button id="duplicate-item" variant="ghost">Duplicate</Button><Button id="edit-item" variant="secondary">
+          <div className="flex flex-wrap items-center gap-1"><IconButton id="favorite-item" label="Add to favorites" aria-pressed={false}><Star size={17} /></IconButton><Button id="duplicate-item" variant="ghost">Duplicate</Button><Button id="delete-item" variant="ghost">Delete</Button><Button id="edit-item" variant="secondary">
             Edit
           </Button><span id="item-workspace-actions" className="inline-flex items-center gap-1" /></div>
         </div>

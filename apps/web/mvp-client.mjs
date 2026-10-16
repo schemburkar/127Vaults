@@ -188,7 +188,7 @@ async function call(path, options = {}) {
       replica.local = true; updateSessionDates(); return replica.read(path);
     }
   }
-  const writable = (path === '/api/v1/vault-settings' && method === 'PUT') || (path === '/api/v1/vaults' && method === 'POST') || (/^\/api\/v1\/vaults\/[0-9a-f-]+\/items(?:\/[0-9a-f-]+)?$/.test(path) && ['POST', 'PUT'].includes(method));
+  const writable = (path === '/api/v1/vault-settings' && method === 'PUT') || (path === '/api/v1/vaults' && method === 'POST') || (/^\/api\/v1\/vaults\/[0-9a-f-]+\/items(?:\/[0-9a-f-]+)?$/.test(path) && ['POST', 'PUT', 'DELETE'].includes(method));
   if (writable) {
     if (!replica.state.snapshotAt) {
       if (replica.local) throw Error('OFFLINE_DATA_UNAVAILABLE');
@@ -931,7 +931,9 @@ async function verifyOfflineHistory() {
     if (generation !== sessionGeneration || replica !== activeReplica) throw Error('LOCKED');
     const checkpoints = activeReplica.state.records[`/api/v1/vaults/${row.vaultId}/checkpoint`];
     if (checkpoints) await verifyCheckpoints(checkpoints.checkpoints, history, { tenantId: authContext.tenantId, vaultId: row.vaultId, publicKey: checkpoints.checkpointPublicKey });
-    if (latest && latest.kind !== 'item.delete') {
+    if (latest?.kind === 'item.delete') {
+      await verifyLatestPayload(history, listed.catalogue);
+    } else if (latest) {
       const path = `/api/v1/vaults/${row.vaultId}/items`, listed = activeReplica.read(path);
       const index = listed.indices.find(item => item.itemId === latest.itemId);
       if (!index) throw Error('SYNC_PAYLOAD_MISMATCH');
@@ -993,7 +995,9 @@ async function downloadReplica() {
       // concurrent save is a retryable torn snapshot, not signature corruption.
       if ((await remoteCall(listPath)).catalogue !== listed.catalogue) throw Error('BASE_CHANGED');
       const latest = operations.operations.at(-1)?.operation;
-      if (latest && latest.kind !== 'item.delete') {
+      if (latest?.kind === 'item.delete') {
+        await verifyLatestPayload(operations, listed.catalogue);
+      } else if (latest) {
         const latestIndex = listed.indices.find(summary => summary.itemId === latest.itemId);
         if (!latestIndex) throw Error('SYNC_PAYLOAD_MISMATCH');
         await verifyLatestPayload(operations, listed.catalogue, latestIndex.envelope, records[`${listPath}/${latest.itemId}`].envelope);
@@ -1107,6 +1111,12 @@ async function rebasePendingChanges(interactive) {
       const sourceId = entry.body.signedOperation.vaultId, itemId = entry.body.signedOperation.itemId;
       let targetVault = sourceId, recovering = false;
       const sourceRow = oldState.records['/api/v1/vaults'].vaultEnvelopes.find(row => row.vaultId === sourceId);
+      if (entry.method === 'DELETE' && !fresh['/api/v1/vaults'].vaultEnvelopes.some(row => row.vaultId === sourceId && !row.retired)) {
+        if (!interactive) throw Error('SYNC_REVIEW_PENDING');
+        const choice = await chooseSyncVersion('Queued deletion belongs to a removed vault', 'This deletion cannot be applied to a removed vault. Use server version to discard this deletion, or review later to preserve it.');
+        check(); if (choice === 'server') continue;
+        throw Error('SYNC_REVIEW_PENDING');
+      }
       if (!fresh['/api/v1/vaults'].vaultEnvelopes.some(row => row.vaultId === sourceId && !row.retired)) {
         if (!interactive) throw Error('SYNC_REVIEW_PENDING');
         if (!recoveryTargets.has(sourceId)) {
@@ -1127,6 +1137,28 @@ async function rebasePendingChanges(interactive) {
         const decode = (handle, catalogue, indexEnvelope, bodyEnvelope) => ({ itemId,
           index: JSON.parse(td.decode(core.decrypt_private_part(handle, un(catalogue), id(itemId), un(indexEnvelope), 4))),
           body: JSON.parse(td.decode(core.decrypt_private_part(handle, un(catalogue), id(itemId), un(bodyEnvelope), 3))) });
+        if (entry.method === 'DELETE') {
+          const listed = fresh[listPath], summary = listed.indices.find(row => row.itemId === itemId);
+          if (!summary) continue; // Verified server state already has no such item.
+          const server = decode(targetHandle, listed.catalogue, summary.envelope, fresh[`${listPath}/${itemId}`].envelope);
+          const base = entry.baseline?.index && entry.baseline?.body
+            ? decode(sourceVault, entry.baseline.catalogue, entry.baseline.index, entry.baseline.body) : null;
+          if (stable(base) !== stable(server)) {
+            if (!interactive) throw Error('SYNC_REVIEW_PENDING');
+            const choice = await chooseSyncVersion('Delete an item changed on another device?', `Your queued deletion targets “${server.index.title || 'Untitled item'}”. Keep my offline changes deletes the current server version, including its passwords and passkeys. Use server version discards this deletion.`);
+            check(); if (choice === 'server') continue;
+            if (choice !== 'mine') throw Error('SYNC_REVIEW_PENDING');
+          }
+          const deleted = core.delete_private_item(targetHandle, un(listed.catalogue), id(itemId));
+          const signedOperation = await signedMutation('item.delete', itemId, deleted, undefined, undefined,
+            { targetVault, history: fresh[`/api/v1/vaults/${targetVault}/operations`] });
+          check();
+          next.path = `${listPath}/${itemId}`; next.method = 'DELETE';
+          next.baseline = { catalogue: listed.catalogue, index: summary.envelope, body: fresh[`${listPath}/${itemId}`].envelope };
+          next.body = { requestId: crypto.randomUUID(), baseCatalogueRevision: recordRevision(listed.catalogue,44), catalogue: b64(deleted), signedOperation };
+          activeReplica.project(fresh, next); planned.push(next);
+          continue;
+        }
         let local = decode(sourceVault, entry.body.catalogue, entry.body.index, entry.body.body);
         const base = !recovering && entry.baseline?.index && entry.baseline?.body ? decode(sourceVault, entry.baseline.catalogue, entry.baseline.index, entry.baseline.body) : null;
         const listed = fresh[listPath], summary = !recovering && listed.indices.find(row => row.itemId === itemId);
@@ -1572,7 +1604,7 @@ async function signedMutation(
         .reverse()
         .find((x) => x.operation.deviceId === signingIdentity.deviceId)?.operation
         .opId ?? null,
-    framed = cat(
+    framed = kind === 'item.delete' ? cat(be(catalogueBytes.length, 4), catalogueBytes) : cat(
       be(catalogueBytes.length, 4),
       catalogueBytes,
       be(indexBytes.length, 4),
@@ -1985,6 +2017,34 @@ async function selectVault(nextVaultId, preserveFavorites = false) {
   clearItem();
   try { await reload(); }
   catch (error) { toast("Vault could not be opened", safeError(error), "error"); }
+}
+async function deleteItem() {
+  if (!root || !currentItem?.itemId || busy || !confirmDiscard()) return;
+  const selected = currentItem, targetVault = vaultId, generation = sessionGeneration;
+  if (!window.confirm(`Permanently delete “${selected.index.title || 'Untitled item'}”? This removes its passwords and passkeys. Offline deletion will sync when connected.`)) return;
+  setBusy(true);
+  let accepted = false;
+  try {
+    const next = core.delete_private_item(vault, catalogue, id(selected.itemId));
+    const signedOperation = await signedMutation('item.delete', selected.itemId, next);
+    if (generation !== sessionGeneration || !root) throw Error('LOCKED');
+    await call(`/api/v1/vaults/${targetVault}/items/${selected.itemId}`, { method: 'DELETE', body: {
+      requestId: crypto.randomUUID(), baseCatalogueRevision: uuid(catalogue.slice(44,60)),
+      catalogue: b64(next), signedOperation,
+    } });
+    accepted = true;
+    if (generation !== sessionGeneration || !root) return;
+    catalogue = next; clearItem();
+    window.dispatchEvent(new CustomEvent('vaults:item-deleted', { detail: { itemId: selected.itemId, vaultId: targetVault } }));
+    lastLocalChange = new Date();
+    await reload();
+    updateSessionDates();
+    toast(replica?.pending ? 'Deletion saved on this device' : 'Item deleted', replica?.pending ? 'The encrypted deletion will sync when connected.' : 'The item has been removed.', 'success');
+  } catch (error) {
+    if (generation !== sessionGeneration || error.message === 'LOCKED') return;
+    toast(accepted ? 'Deletion saved; refresh needs attention' : 'Deletion needs attention',
+      `${safeError(error)} Sync and review pending changes before retrying.`, 'error');
+  } finally { if (generation === sessionGeneration) setBusy(false); }
 }
 async function save(event, retry = false) {
   event.preventDefault();
@@ -2540,6 +2600,7 @@ $("nav-favorites").onclick = async () => {
 };
 $("item-form").addEventListener('input', () => updateSessionDates());
 $("edit-item").onclick = () => beginEdit();
+$("delete-item").onclick = () => void deleteItem();
 $("cancel-edit").onclick = () => {
   if (!confirmDiscard()) return;
   currentItem

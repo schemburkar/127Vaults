@@ -665,6 +665,213 @@ fn session_with_real_missing_item_drafts(
 }
 
 #[test]
+fn offline_item_delete_preserves_siblings_and_exact_request_across_restart() {
+    let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
+    session.online = false;
+    session
+        .item_upsert(&vault_id, None, "Sibling", "", "", "sibling-secret", &[])
+        .unwrap();
+    let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+    let result = session.item_delete(&vault_id, &item_id).unwrap();
+    assert_eq!(result["queued"], true);
+    let after = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(after.pending.len(), before.pending.len() + 1);
+    assert_eq!(after.pending[0], before.pending[0]);
+    let deletion = after.pending.last().unwrap();
+    assert_eq!(deletion.operation["kind"], "item.delete");
+    assert_eq!(
+        deletion.operation["previousDeviceOpId"],
+        before.pending[0].operation["opId"]
+    );
+    assert!(deletion.request.get("index").is_none());
+    assert!(deletion.request.get("body").is_none());
+    let catalogue = URL_SAFE_NO_PAD
+        .decode(deletion.request["catalogue"].as_str().unwrap())
+        .unwrap();
+    let mut framed = u32::try_from(catalogue.len())
+        .unwrap()
+        .to_be_bytes()
+        .to_vec();
+    framed.extend_from_slice(&catalogue);
+    assert_eq!(
+        deletion.operation["payloadHash"],
+        hex::encode(Sha256::digest(framed))
+    );
+    vaults_protocol::signed_sync::verify_operation(
+        &deletion.operation,
+        &session.signing.verifying_key().to_bytes(),
+        &session.tenant_id,
+        &vault_id,
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        session
+            .item_list(&vault_id)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(session.item_get(&vault_id, &item_id, None).is_err());
+    let review = session.sync_review().unwrap();
+    assert_eq!(review["items"][1]["kind"], "item.delete");
+    assert!(!review.to_string().contains("sibling-secret"));
+    let reopened = crate::replica::ReplicaStore::new(&session.profile_dir)
+        .load(&vault_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(reopened.pending, after.pending);
+    assert!(session.item_delete(&vault_id, &item_id).is_err());
+    assert_eq!(
+        session.replica_store.load(&vault_id).unwrap().unwrap(),
+        after
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
+fn native_reader_accepts_authenticated_deletion_and_refuses_stale_or_unauthenticated_catalogues() {
+    for scenario in ["deleted", "resurrection", "bad-mac"] {
+        let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
+        let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+        session.online = false;
+        session.item_delete(&vault_id, &item_id).unwrap();
+        let local = session.replica_store.load(&vault_id).unwrap().unwrap();
+        let operation = local.pending[0].operation.clone();
+        let mut responses = initial_snapshot_responses(if scenario == "resurrection" {
+            &before
+        } else {
+            &local
+        });
+        responses[2] = (
+            200,
+            json!({"cursor":1,"hasMore":false,"operations":[{"cursor":1,"operation":operation}],"devicePublicKeys":{session.device_id.clone():URL_SAFE_NO_PAD.encode(session.signing.verifying_key().to_bytes())}}),
+        );
+        if scenario == "resurrection" {
+            responses.insert(2, (200, json!({"envelope":before.items[0].body})));
+            responses.pop();
+        }
+        if scenario == "bad-mac" {
+            let mut bad = URL_SAFE_NO_PAD.decode(&local.catalogue).unwrap();
+            *bad.last_mut().unwrap() ^= 1;
+            responses[1].1["catalogue"] = json!(URL_SAFE_NO_PAD.encode(bad));
+            responses.truncate(2);
+        }
+        let (origin, worker) = fixture(responses);
+        session.origin.clone_from(&origin);
+        session.sync_transport = Some(HttpSyncTransport::new(
+            session.client.clone(),
+            origin,
+            session.cookie.clone(),
+            session.csrf.clone(),
+        ));
+        session.online = true;
+        let result = session.hydrate_replicas();
+        if scenario == "deleted" {
+            assert!(result.is_ok(), "{result:?}");
+        } else {
+            assert!(result.is_err());
+            assert_eq!(
+                session.replica_store.load(&vault_id).unwrap().unwrap(),
+                local
+            );
+        }
+        worker.join().unwrap();
+        session.online = false;
+        std::fs::remove_dir_all(&session.profile_dir).unwrap();
+    }
+}
+
+#[test]
+fn queued_deletion_meeting_remote_edit_remains_an_explicit_conflict() {
+    let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
+    session.online = false;
+    let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+    session.item_delete(&vault_id, &item_id).unwrap();
+    let mut current = session.replica_store.load(&vault_id).unwrap().unwrap();
+    let deletion = current.pending[0].clone();
+    let (_, handle, _) = session.open_vault(&vault_id).unwrap();
+    let edited = session
+        .core
+        .upsert_private_item(
+            handle,
+            &URL_SAFE_NO_PAD.decode(&before.catalogue).unwrap(),
+            Some(uuid_bytes(&item_id).unwrap()),
+            br#"{"title":"Peer edit","website":"https://fixture.invalid"}"#,
+            br#"{"username":"peer","password":"peer-secret","customFields":[]}"#,
+        )
+        .unwrap();
+    current.catalogue = URL_SAFE_NO_PAD.encode(edited.catalogue);
+    current.items = before.items;
+    current.items[0].index = URL_SAFE_NO_PAD.encode(edited.index);
+    current.items[0].body = URL_SAFE_NO_PAD.encode(edited.body);
+    current.mark_stale(&deletion.operation, &item_id);
+    session.replica_store.commit(&current).unwrap();
+    assert_eq!(session.rebase_nonoverlapping_conflicts().unwrap(), 0);
+    let after = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(after.pending, current.pending);
+    assert_eq!(after.items, current.items);
+    assert_eq!(after.conflicts[0]["kind"], "delete-edit-divergence");
+    let operation_id = deletion.operation["opId"].as_str().unwrap();
+    assert_eq!(
+        session
+            .conflict_draft(&vault_id, &item_id, operation_id)
+            .unwrap()["deleted"],
+        true
+    );
+    assert!(
+        session
+            .item_upsert_resolving(
+                &vault_id,
+                &item_id,
+                operation_id,
+                "Bad merge",
+                "",
+                "",
+                "",
+                &[]
+            )
+            .is_err()
+    );
+    assert_eq!(
+        session.replica_store.load(&vault_id).unwrap().unwrap(),
+        after
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
+fn deletion_delivery_failure_keeps_exact_request_and_sync_retries_delete() {
+    let (origin, worker) = fixture(vec![(503, json!({})), (503, json!({})), (503, json!({}))]);
+    let (mut session, vault_id, item_id) = session_with_editable_item(&origin);
+    assert!(
+        session
+            .item_delete(&vault_id, &item_id)
+            .unwrap_err()
+            .contains("503")
+    );
+    let before = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert!(session.sync_now().is_err());
+    assert_eq!(
+        session
+            .replica_store
+            .load(&vault_id)
+            .unwrap()
+            .unwrap()
+            .pending,
+        before.pending
+    );
+    let requests = worker.join().unwrap();
+    assert!(requests[0].line.starts_with("DELETE /api/v1/vaults/"));
+    assert!(requests[1].line.starts_with("DELETE /api/v1/vaults/"));
+    assert_eq!(requests[0].body, requests[1].body);
+    session.online = false;
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn sync_review_authenticates_long_queue_without_changing_requests() {
     let (mut session, vault_id, first_id, _, _) = session_with_real_missing_item_drafts(false);
     for index in 0..64 {

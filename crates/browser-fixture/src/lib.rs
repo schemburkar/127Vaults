@@ -367,6 +367,19 @@ impl ExperimentalEcf1Core {
         })
     }
     /// # Errors
+    /// Rejects an invalid handle, unauthenticated catalogue, or absent item.
+    pub fn delete_private_item(
+        &self,
+        vault: &ExperimentalVault,
+        catalogue: &[u8],
+        item: &[u8],
+    ) -> Result<Vec<u8>, JsError> {
+        let id = item.try_into().map_err(|_| JsError::new("INVALID_INPUT"))?;
+        self.core
+            .delete_private_item(vault.handle, catalogue, id)
+            .map_err(ecf1_error)
+    }
+    /// # Errors
     /// Rejects an invalid handle or an unauthenticated catalogue.
     pub fn verify_private_catalogue(
         &self,

@@ -671,6 +671,33 @@ fn item_save(
 }
 
 #[tauri::command]
+fn item_delete(
+    state: tauri::State<'_, DesktopState>,
+    vault_id: String,
+    item_id: String,
+    resolving_operation_id: Option<String>,
+) -> Result<Value, String> {
+    with_session(&state, |session| {
+        let result = if let Some(operation) = resolving_operation_id {
+            let (_, pending_item) = session.conflict_item_id(&vault_id, &operation)?;
+            if pending_item != item_id {
+                return Err("pending deletion item does not match".to_owned());
+            }
+            if session.conflict_draft(&vault_id, &item_id, &operation)?["deleted"] != true {
+                return Err("pending operation is not a deletion".to_owned());
+            }
+            session.resolve_conflict(&vault_id, &operation, "local")?
+        } else {
+            session.item_delete(&vault_id, &item_id)?
+        };
+        if session.is_online() {
+            session.sync_now()?;
+        }
+        Ok(json!({"result":result,"items":session.item_list(&vault_id)?}))
+    })
+}
+
+#[tauri::command]
 fn replica_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
     with_session(&state, |session| session.replica_status())
 }
@@ -873,6 +900,7 @@ fn main() {
             item_get,
             item_secret,
             item_save,
+            item_delete,
             replica_status,
             sync_review,
             sync,

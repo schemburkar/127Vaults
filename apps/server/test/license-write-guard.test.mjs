@@ -17,6 +17,8 @@ test('license gate covers vault writes and invitations while keeping access and 
   }
   assert.equal(isLicensedWrite('PUT', '/api/v1/vault-settings'), true);
   assert.equal(isLicensedWrite('PUT', '/api/v1/vaults/abc/items/def'), true);
+  assert.equal(isLicensedWrite('DELETE', '/api/v1/vaults/abc/items/def'), true);
+  assert.equal(isLicensedWrite('DELETE', '/api/v1/vaults/abc/items'), false);
   for (const path of ['/api/v1/auth/', '/api/v1/session', '/api/v1/vaults/abc/restore',
     '/api/v1/devices/rotate-account-secret', '/api/v1/onboarding/register']) {
     assert.equal(isLicensedWrite('POST', path), false, path);

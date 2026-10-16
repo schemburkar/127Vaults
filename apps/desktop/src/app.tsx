@@ -46,6 +46,7 @@ import {
 type Summary = { code: string; itemId: string; title: string; website: string; vaultId?: string; itemType?: string; createdAt?: number; updatedAt?: number; favorite?: boolean };
 type CustomField = { id: string; label: string; type: string; value: string };
 type Item = Omit<Summary, "code"> & {
+  deleted?: boolean;
   username: string;
   password: string;
   customFields: CustomField[];
@@ -317,6 +318,7 @@ export function App() {
 
   const lock = async (reason = "Locked") => {
     syncReviewGeneration.current += 1;
+    setSaving(false);
     window.dispatchEvent(new Event("vaults:clear-generator"));
     openRequest.current++;
     setItemTabs([]);
@@ -839,6 +841,34 @@ export function App() {
       }
     } finally { setSaving(false); }
   };
+  const deleteItem = async (draft = selected, destination = itemVaultId, operationId: string | null = null) => {
+    if (!draft?.itemId || !destination || saving || busy) return;
+    if (!window.confirm(`Permanently delete “${draft.title || "Untitled item"}”? This also removes its passwords and passkeys. Offline deletion will sync when connected.`)) return;
+    const generation = syncReviewGeneration.current;
+    setSaving(true);
+    try {
+      const response = await invoke<{ result: { queued?: boolean }; items: Summary[] }>("item_delete", {
+        vaultId: destination, itemId: draft.itemId, resolvingOperationId: operationId,
+      });
+      if (generation !== syncReviewGeneration.current) return;
+      const nextItems = viewMode === "single" ? response.items : await listVisibleItems();
+      if (generation !== syncReviewGeneration.current) return;
+      setItems(nextItems);
+      setItemTabs(current => current.filter(row => row.itemId !== draft.itemId || row.vaultId !== destination));
+      setSelected(null); setEditing(false); setEditOriginal(null); setConflict(null);
+      await emit("vaults-item-deleted", { vaultId: destination, itemId: draft.itemId }).catch(() => {});
+      dirtyRef.current = false;
+      await refreshSyncStatus();
+      if (generation !== syncReviewGeneration.current) return;
+      setLastLocalChange(new Date());
+      notify("success", response.result.queued ? "Deletion saved on this device" : "Item deleted",
+        response.result.queued ? "It will sync when connected." : "The item has been removed.");
+    } catch (error) {
+      if (generation !== syncReviewGeneration.current) return;
+      await refreshSyncStatus();
+      notify("error", "Deletion needs attention", `${friendlyError(error)} Review pending changes before retrying.`);
+    } finally { if (generation === syncReviewGeneration.current) setSaving(false); }
+  };
   const synchronize = async () => {
     if (syncInFlight.current) return;
     if (!confirmDiscard()) return;
@@ -874,7 +904,13 @@ export function App() {
         setEditing(false);
         setItems(result.items);
       } else {
-        setItems(viewMode === "single" ? result.items : await listVisibleItems(result.vaults.filter((row) => !row.retired)));
+        const visible = viewMode === "single" ? result.items : await listVisibleItems(result.vaults.filter((row) => !row.retired));
+        setItems(visible);
+        if (selected?.itemId && !visible.some(row => row.itemId === selected.itemId && (row.vaultId ?? vaultId) === itemVaultId)) {
+          await emit("vaults-item-deleted", { vaultId: itemVaultId, itemId: selected.itemId }).catch(() => {});
+          setItemTabs(current => current.filter(row => row.itemId !== selected.itemId || row.vaultId !== itemVaultId));
+          setSelected(null); setEditing(false); setEditOriginal(null);
+        }
       }
       setSyncState("idle");
       await refreshSyncStatus();
@@ -887,7 +923,7 @@ export function App() {
       if (pendingConflict && !conflict) {
         // Opening review must not rebind the item still displayed underneath it.
         const draft = await invoke<Item>("conflict_draft", { vaultId: pendingConflict.vaultId, itemId: pendingConflict.itemId, operationId: pendingConflict.operationId });
-        setConflict({ vaultId: pendingConflict.vaultId, draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
+        setConflict({ vaultId: pendingConflict.vaultId, draft, operationId: pendingConflict.operationId, kind: pendingConflict.kind, message: draft.deleted ? "Your queued deletion meets a server change. Keep the server item, or explicitly delete its current version." : pendingConflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. The queued edit is preserved until you discard it." : "Your queued edit meets a change from another device." });
       }
       const needsReview = result.conflicts.length || result.pending || result.vaultSettings?.pending || result.vaultSettings?.conflict;
       notify(needsReview ? "info" : "success", needsReview ? "Sync needs review" : "Sync complete", needsReview ? "Some changes are still waiting. Open Review sync for affected items and fields." : `${result.accepted} pending change${result.accepted === 1 ? "" : "s"} accepted.`);
@@ -1056,7 +1092,7 @@ export function App() {
       if (generation !== syncReviewGeneration.current) return;
       setSyncReviewOpen(false);
       setConflict({ vaultId: row.vaultId, draft, operationId: row.operationId, kind: row.conflict.kind,
-        message: row.conflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. Your queued edit is still saved locally." : `Review queued changes to ${row.title || "Untitled item"}. Changed fields: ${row.fields.join(", ") || "not determined"}.` });
+        message: draft.deleted ? "Your queued deletion meets a server change. Keep the server item, or explicitly delete its current version." : row.conflict.kind === "delete-edit-divergence" ? "This item was deleted on another device. Your queued edit is still saved locally." : `Review queued changes to ${row.title || "Untitled item"}. Changed fields: ${row.fields.join(", ") || "not determined"}.` });
     } catch (error) { notify("error", "Could not review item", friendlyError(error)); }
   };
   useEffect(() => { if (unlocked) void refreshSyncStatus(); }, [unlocked]);
@@ -1880,7 +1916,7 @@ export function App() {
                       {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                     </p>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" disabled={saving} onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" disabled={saving} onClick={beginEditing}>Edit</Button><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" disabled={saving} onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" disabled={saving} onClick={beginEditing}>Edit</Button><IconButton label="Delete item" disabled={saving || busy} onClick={() => void deleteItem()}><Trash2 size={17} /></IconButton><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
                       <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
                     </div>
                   </div>
@@ -2224,8 +2260,9 @@ export function App() {
               </div>
             )}
             <div className="ui-dialog-actions ui-dialog-actions-stack">
-              {!["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button disabled={conflictBusy} onClick={() => void prepareMerge()}>{conflictBusy ? "Loading server version…" : "Compare and select fields…"}</Button>)}
-              {!["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && (
+              {conflict.draft.deleted && <Button disabled={saving} onClick={() => void deleteItem(conflict.draft, conflict.vaultId ?? vaultId, conflict.operationId ?? null)}>Delete current server version…</Button>}
+              {!conflict.draft.deleted && !["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && (conflict.server ? <Button onClick={applyMerge}>Save selected fields</Button> : <Button disabled={conflictBusy} onClick={() => void prepareMerge()}>{conflictBusy ? "Loading server version…" : "Compare and select fields…"}</Button>)}
+              {!conflict.draft.deleted && !["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && (
               <Button
                 onClick={() => {
                   if (conflict.server) {
@@ -2254,7 +2291,7 @@ export function App() {
                   }
                 }}
               >
-                {conflict.kind === "unsynced-create" ? "Discard queued creation…" : conflict.kind === "delete-edit-divergence" ? "Discard queued edit…" : "Use server version"}
+                {conflict.draft.deleted ? "Keep server version and discard deletion" : conflict.kind === "unsynced-create" ? "Discard queued creation…" : conflict.kind === "delete-edit-divergence" ? "Discard queued edit…" : "Use server version"}
               </Button>
               <Button variant="ghost" onClick={() => { setConflict(null); if (conflict.kind === "delete-edit-divergence") setEditing(false); }}>
                 {["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") ? "Keep queued change and close" : "Cancel and keep editing"}

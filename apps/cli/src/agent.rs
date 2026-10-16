@@ -515,6 +515,10 @@ fn dispatch(
             request.password.as_deref().unwrap_or(""),
             &request.custom_fields,
         ),
+        "item.delete" => session.item_delete(
+            &vault_selector(session, request.vault.as_deref())?,
+            request.item.as_deref().ok_or("item is required")?,
+        ),
         "item.edit" => session.item_upsert(
             &vault_selector(session, request.vault.as_deref())?,
             request.item.as_deref(),

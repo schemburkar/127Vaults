@@ -224,25 +224,25 @@
   "functionalAssessment": {
     "asOf": "2026-10-16",
     "source": "docs/release/internal-functional-readiness-2026-10-16.md",
-    "status": "incomplete: required individual item deletion; paused by user",
+    "status": "incomplete: required item deletion implemented in source; package rebuild and sanity pending",
     "confirmedUnfixedP1Defects": [],
     "missingCapabilities": [
       {
         "name": "Individual private-item deletion",
-        "assessment": "API/CLI/UI absent; vault archive/move exists",
-        "internalReleaseRequirement": "Required for internal release by explicit user answer on 2026-10-16; implementation pending"
+        "assessment": "Implemented in source across API/CLI/Desktop/web/PWA; not yet present in selected release packages",
+        "internalReleaseRequirement": "Required by explicit user answer on 2026-10-16; source checks passed, release acceptance pending"
       }
     ],
     "testingBar": "Basic functional sanity; original exhaustive matrix retained as coverage backlog, not automatic missing-feature blockers",
     "sanityRecord": "C:/Projects/127Vaults-license-isolated-20261015-a/functional-sanity-2026-10-16.json",
     "selectedPackages": "server/web-b, Desktop-e Windows/Linux, CLI-b Windows/Linux, extension-a",
-    "scopeQuestion": "User answered: Required for internal release. See internal-release-paused-2026-10-16.md.",
+    "scopeQuestion": "User answered Required for internal release; implementation evidence: item-deletion-2026-10-16.md",
     "releaseLimitations": [
       "Private experimental internal trial only; no public distribution, signing or production-secret readiness claim",
       "Latest physical Windows GUI, optional extension/passkey grants and intended-host acceptance are separate manual/setup follow-ups",
       "Detailed matrix remains partial and is not represented as fully tested"
     ],
-    "completionBasis": "Core functionality exists across all seven surfaces; prior reproduced P1 defects fixed; six current packages checksum-verified; basic server/web/CLI/admin runtime, extension syntax/manifest and public-site checks passed; Desktop-e builds and existing 33 product tests passed; local changes committed without pushing"
+    "completionBasis": "Not complete: previous package evidence predates required item deletion. Rebuild affected packages and record packaged sanity before acceptance."
   },
   "decisionScope": "Original exhaustive coverage matrix only; current functionality-first internal-release decision is functionalAssessment.status"
 }

@@ -48,6 +48,19 @@ test('the newest signed payload binds the downloaded catalogue, index and body',
   await assert.rejects(verifyQueuedOperation({...entry,body:{...entry.body,body:Buffer.from('modified').toString('base64url')}},options),/SYNC_PAYLOAD_MISMATCH/);
   await assert.rejects(verifyLatestPayload(records,parts[0].toString('base64url'),parts[1].toString('base64url'),Buffer.from('different').toString('base64url')),/SYNC_PAYLOAD_MISMATCH/);
 });
+test('signed deletion binds the remaining catalogue and cannot carry replacement ciphertext',async()=>{
+  const catalogue=Buffer.from('authenticated remaining catalogue'),length=Buffer.alloc(4);length.writeUInt32BE(catalogue.length);
+  const operation=signed({kind:'item.delete',payloadHash:createHash('sha256').update(length).update(catalogue).digest('hex')});
+  const records=history([operation]);await verify(records);
+  const privateKey=await crypto.subtle.importKey('pkcs8',key.privateKey.export({format:'der',type:'pkcs8'}),'Ed25519',false,['sign']);
+  const entry={method:'DELETE',path:`/api/v1/vaults/${vaultId}/items/${operation.itemId}`,body:{catalogue:catalogue.toString('base64url'),signedOperation:operation}};
+  await verifyQueuedOperation(entry,{tenantId,deviceId,privateKey});
+  await verifyLatestPayload(records,entry.body.catalogue);
+  await assert.rejects(verifyQueuedOperation({...entry,method:'PUT'},{tenantId,deviceId,privateKey}),/INVALID_SYNC_HISTORY/);
+  await assert.rejects(verifyQueuedOperation({...entry,body:{...entry.body,index:'unexpected'}},{tenantId,deviceId,privateKey}),/INVALID_SYNC_HISTORY/);
+  await assert.rejects(verifyLatestPayload(records,Buffer.from('tampered').toString('base64url')),/SYNC_PAYLOAD_MISMATCH/);
+});
+
 test('checkpoint verification handles multiple missed checkpoints and authenticates their operation heads',async()=>{
   const operation=signed(),records=history([operation]);
   const first=createSignedCheckpoint({tenantId,vaultId,epoch:1,cursor:0,previousCheckpointHash:'0'.repeat(64),operationHeadHash:'0'.repeat(64)},key.privateKey);

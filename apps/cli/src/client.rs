@@ -1746,6 +1746,15 @@ impl Session {
         if keep != "local" {
             return Err("choose server or local".to_owned());
         }
+        if self.replica_store.load(&vault_id)?.is_some_and(|replica| {
+            replica.pending.iter().any(|entry| {
+                entry.operation["opId"] == operation_id && entry.operation["kind"] == "item.delete"
+            })
+        }) {
+            self.conflict_compare(&vault_id, &item_id, operation_id)?;
+            let result = self.item_delete_resolving(&vault_id, &item_id, operation_id)?;
+            return Ok(json!({"resolved":operation_id,"kept":"local","result":result}));
+        }
         let draft = self.conflict_draft(&vault_id, &item_id, operation_id)?;
         let result = self.item_upsert_resolving(
             &vault_id,
@@ -1792,6 +1801,24 @@ impl Session {
                 entry.operation["opId"] == operation_id && entry.operation["itemId"] == item_id
             })
             .ok_or("pending conflict is unavailable")?;
+        if pending.operation["kind"] == "item.delete" {
+            let base = pending
+                .base_item
+                .as_ref()
+                .ok_or("pending deletion has no baseline")?;
+            let mut draft = self.decrypt_item_parts(
+                vault_id,
+                item_id,
+                pending
+                    .base_catalogue
+                    .as_deref()
+                    .ok_or("pending deletion has no catalogue")?,
+                &base.index,
+                &base.body,
+            )?;
+            draft["deleted"] = json!(true);
+            return Ok(draft);
+        }
         let catalogue = pending.request["catalogue"]
             .as_str()
             .ok_or("pending item is invalid")?
@@ -1962,6 +1989,8 @@ impl Session {
                     &path,
                     if create {
                         reqwest::Method::POST
+                    } else if pending.operation["kind"] == "item.delete" {
+                        reqwest::Method::DELETE
                     } else {
                         reqwest::Method::PUT
                     },
@@ -2114,6 +2143,32 @@ impl Session {
                     &base_item.index,
                     &base_item.body,
                 )?;
+                if pending.operation["kind"] == "item.delete" {
+                    let remote = self.decrypt_item_parts(
+                        &replica.vault_id,
+                        item_id,
+                        &replica.catalogue,
+                        &remote_item.index,
+                        &remote_item.body,
+                    )?;
+                    if base == remote {
+                        self.item_delete_resolving(&replica.vault_id, item_id, operation_id)?;
+                        self.hydrate_replicas()?;
+                        rebased += 1;
+                    } else {
+                        self.replica_store.update(&replica.vault_id, |current| {
+                            if let Some(row) = current
+                                .conflicts
+                                .iter_mut()
+                                .find(|row| row["operationId"] == operation_id)
+                            {
+                                row["kind"] = json!("delete-edit-divergence");
+                            }
+                            Ok(())
+                        })?;
+                    }
+                    continue;
+                }
                 let local = self.conflict_draft(&replica.vault_id, item_id, operation_id)?;
                 let remote = self.decrypt_item_parts(
                     &replica.vault_id,
@@ -2255,6 +2310,10 @@ impl Session {
             let handle = opened.handle.ok_or("vault key unavailable")?;
             let catalogue_response = self.get(&format!("/api/v1/vaults/{vault_id}/items"))?;
             let catalogue = bytes(&catalogue_response, "catalogue")?;
+            let committed_ids = self
+                .core
+                .verify_private_catalogue(handle, &catalogue)
+                .map_err(|_| "catalogue verification failed; local replica was preserved")?;
             let revision = uuid::Uuid::from_bytes(
                 catalogue
                     .get(44..60)
@@ -2318,6 +2377,17 @@ impl Session {
                 .sync_transport
                 .as_ref()
                 .ok_or("sync transport unavailable")?;
+            if items.len() != committed_ids.len()
+                || committed_ids.iter().any(|id| {
+                    items
+                        .iter()
+                        .filter(|item| item.item_id == uuid::Uuid::from_bytes(*id).to_string())
+                        .count()
+                        != 1
+                })
+            {
+                return Err("catalogue item set mismatch; local replica was preserved".to_owned());
+            }
             let sync = crate::sync_transport::pull_history(transport, &vault_id)?;
             let operations = sync["operations"]
                 .as_array()
@@ -2378,6 +2448,29 @@ impl Session {
                     vaults_protocol::signed_sync::next_operation_head(&operation_head, operation)
                         .map_err(str::to_owned)?;
                 operation_heads.push(operation_head.clone());
+            }
+            if operations.iter().any(|row| {
+                row["operation"]["kind"] == "item.delete"
+                    && items
+                        .iter()
+                        .any(|item| row["operation"]["itemId"] == item.item_id)
+            }) {
+                return Err(
+                    "deleted item reappeared in server catalogue; local replica was preserved"
+                        .to_owned(),
+                );
+            }
+            if let Some(last) = operations.last().map(|row| &row["operation"])
+                && last["kind"] == "item.delete"
+            {
+                let mut framed = u32::try_from(catalogue.len())
+                    .map_err(|_| "invalid catalogue")?
+                    .to_be_bytes()
+                    .to_vec();
+                framed.extend_from_slice(&catalogue);
+                if last["payloadHash"] != hex::encode(Sha256::digest(framed)) {
+                    return Err("deletion catalogue does not match signed history; local replica was preserved".to_owned());
+                }
             }
             let checkpoint_response = transport.checkpoint(&vault_id)?;
             let checkpoint_key = checkpoint_response["checkpointPublicKey"]
@@ -2604,6 +2697,42 @@ impl Session {
                 let item_id = pending.operation["itemId"]
                     .as_str()
                     .ok_or("invalid pending item")?;
+                if pending.operation["kind"] == "item.delete" {
+                    let catalogue = URL_SAFE_NO_PAD
+                        .decode(
+                            pending.request["catalogue"]
+                                .as_str()
+                                .ok_or("pending deletion has no catalogue")?,
+                        )
+                        .map_err(|_| "invalid deletion catalogue")?;
+                    let remaining = self
+                        .core
+                        .verify_private_catalogue(vault, &catalogue)
+                        .map_err(|_| "deletion catalogue verification failed")?;
+                    if remaining.contains(&uuid_bytes(item_id)?) {
+                        return Err("deletion catalogue still contains the item".to_owned());
+                    }
+                    let base = pending
+                        .base_item
+                        .as_ref()
+                        .ok_or("pending deletion has no baseline")?;
+                    let label = self.decrypt_item_parts_with_key(
+                        vault,
+                        item_id,
+                        pending
+                            .base_catalogue
+                            .as_deref()
+                            .ok_or("pending deletion has no catalogue")?,
+                        &base.index,
+                        &base.body,
+                    )?;
+                    rows.push(json!({"vaultId":replica.vault_id,"itemId":item_id,
+                        "operationId":pending.operation["opId"],"title":label["title"],
+                        "kind":"item.delete","fields":["deletion"],
+                        "conflict":replica.conflicts.iter().find(|row|row["operationId"] == pending.operation["opId"]),
+                        "error":replica.sync_error}));
+                    continue;
+                }
                 let local = self.decrypt_item_parts_with_key(
                     vault,
                     item_id,
@@ -2986,6 +3115,87 @@ impl Session {
         password: &str,
         custom_fields: &[Value],
     ) -> Result<Value, String> {
+        self.item_mutate_at_id(
+            vault_selector,
+            item_selector,
+            create_id,
+            false,
+            title,
+            website,
+            username,
+            password,
+            custom_fields,
+        )
+    }
+
+    /// Queues a signed deletion before attempting delivery. Sibling mutations
+    /// retain their exact requests and deletion never creates replacement items.
+    pub fn item_delete(&mut self, vault: &str, item: &str) -> Result<Value, String> {
+        self.item_mutate_at_id(vault, Some(item), None, true, "", "", "", "", &[])
+    }
+
+    fn item_delete_resolving(
+        &mut self,
+        vault: &str,
+        item: &str,
+        operation_id: &str,
+    ) -> Result<Value, String> {
+        let before = self
+            .replica_store
+            .load(vault)?
+            .ok_or("local replica is unavailable")?;
+        if !before.pending.iter().any(|entry| {
+            entry.operation["opId"] == operation_id
+                && entry.operation["itemId"] == item
+                && entry.operation["kind"] == "item.delete"
+        }) || !before
+            .conflicts
+            .iter()
+            .any(|row| row["operationId"] == operation_id)
+        {
+            return Err("pending deletion conflict is unavailable".to_owned());
+        }
+        self.replica_store.update(vault, |current| {
+            current
+                .pending
+                .retain(|entry| entry.operation["opId"] != operation_id);
+            current
+                .conflicts
+                .retain(|row| row["operationId"] != operation_id);
+            Ok(())
+        })?;
+        let result = self.item_delete(vault, item);
+        if result.is_err() {
+            let current = self
+                .replica_store
+                .load(vault)?
+                .ok_or("local replica is unavailable")?;
+            if !current.pending.iter().any(|entry| {
+                entry.operation["itemId"] == item
+                    && !before
+                        .pending
+                        .iter()
+                        .any(|old| old.operation["opId"] == entry.operation["opId"])
+            }) {
+                self.replica_store.commit(&before)?;
+            }
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn item_mutate_at_id(
+        &mut self,
+        vault_selector: &str,
+        item_selector: Option<&str>,
+        create_id: Option<&str>,
+        deleting: bool,
+        title: &str,
+        website: &str,
+        username: &str,
+        password: &str,
+        custom_fields: &[Value],
+    ) -> Result<Value, String> {
         if item_selector.is_some() && create_id.is_some() {
             return Err("item operation is invalid".to_owned());
         }
@@ -3100,10 +3310,20 @@ impl Session {
         )
         .map_err(|_| "invalid item")?;
         // Both index and body must fit before consuming either encryption slot.
-        if self.core.remaining_creation_budget() < 2 {
+        if !deleting && self.core.remaining_creation_budget() < 2 {
             return Err("Encryption session limit reached. Lock and unlock, then retry this edit. Existing queued changes are preserved.".to_owned());
         }
-        let made = if let Some(id) = create_id {
+        let made = if deleting {
+            let id = item.ok_or("item is required")?;
+            self.core
+                .delete_private_item(vault, &catalogue, id)
+                .map(|catalogue| vaults_crypto::ecf1::PrivateItemCreated {
+                    item: id,
+                    catalogue,
+                    index: Vec::new(),
+                    body: Vec::new(),
+                })
+        } else if let Some(id) = create_id {
             self.core.upsert_private_item_at_id(
                 vault,
                 &catalogue,
@@ -3151,7 +3371,8 @@ impl Session {
                     .and_then(|operation| operation["opId"].as_str())
             });
         let mut payload = Vec::new();
-        for part in [&made.catalogue, &made.index, &made.body] {
+        let parts = [&made.catalogue, &made.index, &made.body];
+        for part in parts.into_iter().take(if deleting { 1 } else { 3 }) {
             payload.extend_from_slice(
                 &u32::try_from(part.len())
                     .map_err(|_| "item too large")?
@@ -3159,7 +3380,7 @@ impl Session {
             );
             payload.extend_from_slice(part);
         }
-        let operation_body = json!({"protocolVersion":1,"tenantId":self.tenant_id,"vaultId":vault_id,"deviceId":self.device_id,"epoch":self.epoch,"causalBase":cursor,"previousDeviceOpId":previous,"kind":if resolved_item.is_some(){"item.update"}else{"item.create"},"itemId":new_id,"payloadHash":hex::encode(Sha256::digest(payload))});
+        let operation_body = json!({"protocolVersion":1,"tenantId":self.tenant_id,"vaultId":vault_id,"deviceId":self.device_id,"epoch":self.epoch,"causalBase":cursor,"previousDeviceOpId":previous,"kind":if deleting {"item.delete"} else if resolved_item.is_some(){"item.update"}else{"item.create"},"itemId":new_id,"payloadHash":hex::encode(Sha256::digest(payload))});
         let op_id = hex::encode(Sha256::digest(
             vaults_protocol::signed_sync::canonical_bytes(&operation_body)
                 .map_err(str::to_owned)?,
@@ -3179,6 +3400,11 @@ impl Session {
         );
         signed.insert("signature".to_owned(), Value::String(signature));
         let mut body = json!({"requestId":uuid::Uuid::new_v4(),"baseCatalogueRevision":base,"catalogue":URL_SAFE_NO_PAD.encode(&made.catalogue),"index":URL_SAFE_NO_PAD.encode(&made.index),"body":URL_SAFE_NO_PAD.encode(&made.body),"signedOperation":Value::Object(signed)});
+        if deleting {
+            let fields = body.as_object_mut().ok_or("invalid item request")?;
+            fields.remove("index");
+            fields.remove("body");
+        }
         if resolved_item.is_none() {
             body.as_object_mut()
                 .ok_or("invalid item request")?
@@ -3194,7 +3420,11 @@ impl Session {
                 created_at: created_at.as_u64(),
                 updated_at: Some(now),
             };
-            if let Some(existing) = replica.items.iter_mut().find(|row| row.item_id == new_id) {
+            if deleting {
+                replica.items.retain(|row| row.item_id != new_id);
+            } else if let Some(existing) =
+                replica.items.iter_mut().find(|row| row.item_id == new_id)
+            {
                 *existing = next;
             } else {
                 replica.items.push(next);
@@ -3223,7 +3453,9 @@ impl Session {
         };
         let result = self.post_auth(
             &path,
-            if resolved_item.is_some() {
+            if deleting {
+                reqwest::Method::DELETE
+            } else if resolved_item.is_some() {
                 reqwest::Method::PUT
             } else {
                 reqwest::Method::POST
@@ -3312,6 +3544,13 @@ impl Session {
                     && entry.operation["itemId"] == item_selector
             })
             .ok_or("pending conflict is unavailable")?;
+        if before.pending.iter().any(|entry| {
+            entry.operation["opId"] == operation_id && entry.operation["kind"] == "item.delete"
+        }) {
+            return Err(
+                "queued deletion requires an explicit delete or server-version choice".to_owned(),
+            );
+        }
         if before.conflicts.iter().any(|row| {
             row["operationId"] == operation_id && row["kind"] == "delete-edit-divergence"
         }) {

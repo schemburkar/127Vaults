@@ -8,7 +8,8 @@ export function isLicensedWrite(method, path) {
   if (method === 'PUT' && path === '/api/v1/vault-settings') return true;
   if (method === 'POST' && path === '/api/v1/invitations') return true;
   if (!vaultPath.test(path)) return false;
-  return method === 'POST' || method === 'PUT';
+  return method === 'POST' || method === 'PUT' ||
+    (method === 'DELETE' && /^\/api\/v1\/vaults\/[0-9a-f-]+\/items\/[0-9a-f-]+$/.test(path));
 }
 
 function sessionCookie(req) {

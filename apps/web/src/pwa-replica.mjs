@@ -15,7 +15,7 @@ function assertQueuedEntry(entry) {
   if (!entry || !entry.body || typeof entry.body !== 'object') throw Error('LOCAL_REPLICA_INVALID');
   const match = typeof entry.path === 'string' && entry.path.match(itemPath);
   if (entry.path === '/api/v1/vault-settings' && entry.method === 'PUT' || entry.path === '/api/v1/vaults' && entry.method === 'POST') return;
-  if (!match || !['POST', 'PUT'].includes(entry.method) || (entry.method === 'PUT') !== !!match[2]
+  if (!match || !['POST', 'PUT', 'DELETE'].includes(entry.method) || (entry.method !== 'POST') !== !!match[2]
     || entry.body.signedOperation?.vaultId !== match[1] || entry.body.signedOperation?.itemId !== (match[2] || entry.body.itemId)) throw Error('LOCAL_REPLICA_INVALID');
 }
 export const replicaRead = path => path === '/api/v1/vaults' || path === '/api/v1/vault-settings' || itemPath.test(keyFor(path)) || /^\/api\/v1\/vaults\/[0-9a-f-]+\/operations\?/.test(path);
@@ -27,8 +27,10 @@ export function collapseQueue(queue) {
     if (!positions.has(key)) { positions.set(key, output.length); output.push(entry); continue; }
     const position = positions.get(key), first = output[position];
     entry.baseline = first.baseline;
-    entry.path = first.path; entry.method = first.method;
-    if (match && first.method === 'POST') entry.body.itemId = first.body.itemId;
+    if (entry.method !== 'DELETE') {
+      entry.path = first.path; entry.method = first.method;
+      if (match && first.method === 'POST') entry.body.itemId = first.body.itemId;
+    }
     output[position] = entry;
   }
   return output;
@@ -178,7 +180,7 @@ export class PwaReplica {
       return;
     }
     const match = path.match(itemPath);
-    if (!match || !['POST', 'PUT'].includes(method)) throw Error('ONLINE_REQUIRED');
+    if (!match || !['POST', 'PUT', 'DELETE'].includes(method) || (method === 'DELETE' && !match[2])) throw Error('ONLINE_REQUIRED');
     const [, vaultId, existingId] = match;
     const itemId = existingId || body.itemId, listPath = `/api/v1/vaults/${vaultId}/items`;
     const listed = records[listPath];
@@ -186,8 +188,13 @@ export class PwaReplica {
     listed.catalogue = body.catalogue;
     const previous = listed.indices.find(row => row.itemId === itemId);
     listed.indices = listed.indices.filter(row => row.itemId !== itemId);
-    listed.indices.push({ itemId, envelope: body.index, createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now() });
-    records[`${listPath}/${itemId}`] = { envelope: body.body };
+    if (method === 'DELETE') {
+      if (!previous) throw Error('ITEM_NOT_FOUND');
+      delete records[`${listPath}/${itemId}`];
+    } else {
+      listed.indices.push({ itemId, envelope: body.index, createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now() });
+      records[`${listPath}/${itemId}`] = { envelope: body.body };
+    }
     const operations = records[`/api/v1/vaults/${vaultId}/operations`];
     if (!operations || !body.signedOperation) throw Error('OFFLINE_DATA_UNAVAILABLE');
     operations.cursor++;

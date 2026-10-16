@@ -44,11 +44,20 @@ export function ItemWorkspace() {
     };
     const closeWindows = () => { for (const popout of windows.current) { popout.window.close(); } windows.current = []; };
     const locked = () => { closeWindows(); setPopouts([]); setSelected(null); setTabs([]); };
+    const deleted = (event: Event) => {
+      const key = keyOf((event as CustomEvent<Tab>).detail);
+      setTabs(current => current.filter(tab => keyOf(tab) !== key));
+      for (const popout of windows.current) if (popout.key === key) popout.window.close();
+      windows.current = windows.current.filter(popout => popout.key !== key);
+      setPopouts(current => current.filter(popout => popout.key !== key));
+      setSelected(current => current && keyOf(current) === key ? null : current);
+    };
     window.addEventListener("vaults:detail-item", update);
     window.addEventListener("vaults:locked", locked);
+    window.addEventListener("vaults:item-deleted", deleted);
     window.addEventListener("beforeunload", closeWindows);
     const timer = setInterval(() => setPopouts(current => current.filter(popout => !popout.window.closed)), 1000);
-    return () => { clearInterval(timer); closeWindows(); window.removeEventListener("vaults:detail-item", update); window.removeEventListener("vaults:locked", locked); window.removeEventListener("beforeunload", closeWindows); };
+    return () => { clearInterval(timer); closeWindows(); window.removeEventListener("vaults:detail-item", update); window.removeEventListener("vaults:locked", locked); window.removeEventListener("vaults:item-deleted", deleted); window.removeEventListener("beforeunload", closeWindows); };
   }, []);
   const open = async (tab: Tab) => { try { await actions().openWorkspaceItem(tab); } catch { toast("Item could not be opened. Try syncing and select it again."); } };
   const popOut = () => {

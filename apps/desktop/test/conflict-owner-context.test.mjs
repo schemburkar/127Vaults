@@ -10,7 +10,7 @@ function harness(handler){
  const shown={itemId:'shown-item',title:'Shown item',customFields:[]},row={vaultId:'conflict-owner',itemId:'queued-item',operationId:'queued-op',title:'Queued item',fields:['title'],conflict:{kind:'field-overlap'}};
  const context=vm.createContext({selected:shown,vaultId:'shown-owner',itemVaultId:'shown-owner',viewMode:'all',online:true,conflict:null,syncInFlight:{current:false},syncReviewGeneration:{current:1},confirmDiscard:()=>true,friendlyError:String,
   invoke:async command=>command==='sync'?{vaults:[{vaultId:'shown-owner'},{vaultId:'conflict-owner'}],items:[],conflicts:[{...row,kind:'field-overlap'}],pending:1,accepted:0}:{itemId:row.itemId,title:row.title,customFields:[]},
-  refreshSyncStatus:async()=>{},listVisibleItems:async()=>[],notify:()=>{},
+  refreshSyncStatus:async()=>{},listVisibleItems:async()=>[{...shown,vaultId:'shown-owner'}],notify:()=>{},emit:async()=>{},
  });
  for(const setter of new Set(handler.match(/set[A-Z]\w+/g)))context[setter]=value=>{context[setter.slice(3,4).toLowerCase()+setter.slice(4)]=value;};
  vm.runInContext(ts.transpileModule(handler+'\nglobalThis.run='+ (handler===review?'reviewQueuedItem':'synchronize')+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
@@ -19,6 +19,13 @@ function harness(handler){
 for(const [name,handler]of [['queued review',review],['sync review',sync]])test(`${name} captures conflict owner without rebinding the displayed item's next save`,async()=>{
  const h=harness(handler);await h.context.run(h.row);
  assert.equal(h.context.selected,h.shown);assert.equal(h.context.itemVaultId,'shown-owner');assert.equal(h.context.vaultId,'shown-owner');assert.equal(h.context.conflict.vaultId,'conflict-owner');assert.equal(h.context.conflict.operationId,'queued-op');
+});
+
+test('sync clears displayed details when the verified item is absent',async()=>{
+ const h=harness(sync),events=[];h.context.listVisibleItems=async()=>[];
+ h.context.emit=async(name,args)=>events.push({name,args});
+ await h.context.run();assert.equal(h.context.selected,null);
+ assert.equal(events[0].name,'vaults-item-deleted');assert.equal(events[0].args.itemId,'shown-item');
 });
 test('accepting the server copy opens it with its captured owner while browsing another vault',async()=>{
  const handler=source.slice(source.indexOf('  const useServerVersion ='),source.indexOf('  const copyValue ='));

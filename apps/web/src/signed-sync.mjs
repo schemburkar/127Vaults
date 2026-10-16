@@ -64,8 +64,8 @@ export async function verifySyncHistory(history, { tenantId, vaultId, knownKeys 
 
 export async function verifyLatestPayload(history, catalogue, index, body) {
   const last = history.operations.at(-1)?.operation;
-  if (!last || last.kind === 'item.delete') return;
-  const chunks = [catalogue, index, body].map(un), framed = new Uint8Array(chunks.reduce((size, chunk) => size + 4 + chunk.length, 0));
+  if (!last) return;
+  const chunks = (last.kind === 'item.delete' ? [catalogue] : [catalogue, index, body]).map(un), framed = new Uint8Array(chunks.reduce((size, chunk) => size + 4 + chunk.length, 0));
   let offset = 0;
   for (const chunk of chunks) { new DataView(framed.buffer).setUint32(offset, chunk.length); offset += 4; framed.set(chunk, offset); offset += chunk.length; }
   if (await digest(framed) !== last.payloadHash) throw Error('SYNC_PAYLOAD_MISMATCH');
@@ -75,7 +75,9 @@ export async function verifyQueuedOperation(entry, { tenantId, deviceId, private
   const path = entry.path.match(/^\/api\/v1\/vaults\/([0-9a-f-]+)\/items(?:\/([0-9a-f-]+))?$/);
   if (!path || !operation || operation.tenantId !== tenantId || operation.deviceId !== deviceId
     || operation.vaultId !== path[1] || operation.itemId !== (path[2] || entry.body.itemId)
-    || operation.kind !== (entry.method === 'POST' ? 'item.create' : 'item.update')) invalid();
+    || !['POST','PUT','DELETE'].includes(entry.method)
+    || operation.kind !== (entry.method === 'POST' ? 'item.create' : entry.method === 'DELETE' ? 'item.delete' : 'item.update')
+    || (entry.method === 'DELETE' && (!path[2] || 'index' in entry.body || 'body' in entry.body))) invalid();
   const body = Object.fromEntries(['protocolVersion', 'tenantId', 'vaultId', 'deviceId', 'epoch', 'causalBase', 'previousDeviceOpId', 'kind', 'itemId', 'payloadHash'].map(key => [key, operation[key]]));
   if (operation.clientTime !== undefined) body.clientTime = operation.clientTime;
   if (await digest(encoder.encode(canonical(body))) !== operation.opId) invalid();

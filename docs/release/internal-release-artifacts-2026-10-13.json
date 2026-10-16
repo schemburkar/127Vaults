@@ -1,6 +1,6 @@
 {
   "verifiedAt": "2026-10-16T04:52:58.850Z",
-  "acceptance": "Ready for a functionality-first local private internal trial under the October 16 basic-sanity criterion. Individual item deletion is a disclosed implementation follow-up under original minimum scope; no full matrix, physical, public-distribution or production-secret signoff is claimed.",
+  "acceptance": "Incomplete: user requires item deletion; source implementation and focused checks are complete, but selected older packages lack it. Rebuild and packaged sanity pending. See item-deletion-2026-10-16.md.",
   "artifacts": [
     {
       "path": "server/internal-20261015-b/linux-amd64",
@@ -176,7 +176,9 @@
       ]
     }
   ],
-  "pendingRuntimeChanges": [],
+  "pendingRuntimeChanges": [
+    "Required individual item deletion across Core/WASM, server schema 8 and web/PWA, Windows/Linux Desktop and CLI; package rebuild and sanity pending."
+  ],
   "candidateArtifacts": [],
   "supersededArtifacts": [
     {

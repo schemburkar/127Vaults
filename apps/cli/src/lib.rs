@@ -334,6 +334,15 @@ pub enum CollectionCommand {
 }
 #[derive(Debug, Subcommand)]
 pub enum ItemCommand {
+    /// Permanently delete one item (also supports a durable offline request).
+    Delete {
+        #[arg(long)]
+        vault: Option<String>,
+        /// Unique item title, generated I-code, or internal UUID.
+        id: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     List {
         #[arg(long)]
         vault: Option<String>,
@@ -1850,6 +1859,22 @@ pub fn run(cli: Cli) -> Result<String, String> {
             let config_dir = effective_config_dir(&config_dir);
             let (title, website, username, password, custom_fields) = item_fields_from_args(input)?;
             serde_json::to_string_pretty(&agent::call(&config_dir,"item.create",serde_json::json!({"vault":vault,"title":title,"website":website,"username":username,"password":password.as_str(),"customFields":custom_fields}))?)
+            .map_err(|_| "could not encode result".to_owned())
+        }
+        Command::Item {
+            command:
+                ItemCommand::Delete {
+                    vault,
+                    id,
+                    config_dir,
+                },
+        } => {
+            let config_dir = effective_config_dir(&config_dir);
+            serde_json::to_string_pretty(&agent::call(
+                &config_dir,
+                "item.delete",
+                serde_json::json!({"vault":vault,"item":id}),
+            )?)
             .map_err(|_| "could not encode result".to_owned())
         }
         Command::Lock { config_dir } | Command::Logout { config_dir } => {

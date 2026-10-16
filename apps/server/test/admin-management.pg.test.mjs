@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createCipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
-import { schemaSql, schemaV6Checksum, schemaChecksum } from '../src/schema.mjs';
+import { schemaSql, schemaV6Checksum, schemaV7Checksum, schemaV8MigrationSql } from '../src/schema.mjs';
 import { migrateSchema6To7 } from '../src/schema-migration.mjs';
 import { readSeatUsage } from '../src/license-seats.mjs';
 import { createServer } from 'node:http';
@@ -35,8 +35,8 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
   const account = async id => (await pool.query('SELECT server_role,suspended_at FROM vaults.accounts WHERE tenant_id=$1 AND id=$2', [tenant, id])).rows[0];
   try {
     const migration = await readFile(new URL('../src/schema-v7-migration.sql', import.meta.url), 'utf8');
-    assert.ok(schemaSql.endsWith(`\n${migration}`));
-    await pool.query(schemaSql.slice(0, -migration.length - 1));
+    assert.ok(schemaSql.endsWith(`\n${migration}\n${schemaV8MigrationSql}`));
+    await pool.query(schemaSql.slice(0, -migration.length - schemaV8MigrationSql.length - 2));
     await pool.query('INSERT INTO vaults.installation(id) VALUES($1)', [tenant]);
     for (const [id, username, role] of [[owner, 'OriginalOwner', 'owner'], [alice, 'AliceUser', 'user'], [bob, 'BobUser', 'user']]) {
       await pool.query("INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state) VALUES($1,$2,$3,$3,$4,$5,'active')", [tenant, id, username, `${username}@example.invalid`, role]);
@@ -57,7 +57,7 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
       assert.equal((await pool.query('SELECT version FROM vaults.schema_version')).rows[0].version, 6);
       assert.equal((await pool.query("SELECT to_regclass('vaults.ownership_grants') name")).rows[0].name, null);
       assert.deepEqual(await migrateSchema6To7(migrationClient), { from: 6, to: 7, dryRun: false });
-      assert.deepEqual((await pool.query('SELECT version,checksum FROM vaults.schema_version')).rows[0], { version: 7, checksum: schemaChecksum });
+      assert.deepEqual((await pool.query('SELECT version,checksum FROM vaults.schema_version')).rows[0], { version: 7, checksum: schemaV7Checksum });
     } finally { migrationClient.release(); }
     const ciphertext = (await pool.query('SELECT account_id,opaque_record,wrapped_root_envelope FROM vaults.authentication_credentials ORDER BY account_id')).rows;
     assert.equal((await authStore.authenticate({ token: tokens.get(alice), now: new Date() })).accountId, alice);
