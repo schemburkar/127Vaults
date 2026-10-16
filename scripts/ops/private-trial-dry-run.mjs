@@ -53,8 +53,7 @@ const server = createServer(async (req, res) => {
     const file = resolve(root, '.' + decodeURIComponent(path === '/' ? '/index.html' : path));
     const rel = relative(root, file), type = mime[extname(file)];
     if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel) || !type) { res.writeHead(404); res.end(); return; }
-    let content = await readFile(file);
-    if (extname(file) === '.html') content = Buffer.from(content.toString().replace('<body>', '<body><aside style="padding:12px;background:#f8d67a;color:#111;text-align:center;font:600 15px system-ui">LOCAL DRY RUN · Emails are saved locally, never sent. Use fictitious details.</aside>'));
+    const content = await readFile(file);
     res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin', 'X-Frame-Options': 'DENY' });
     res.end(req.method === 'HEAD' ? undefined : content);

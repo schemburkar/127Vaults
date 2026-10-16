@@ -2,7 +2,8 @@
 
 The local launcher serves the public website and real encrypted intake/trial API
 at one loopback origin. Email is simulated into an encrypted local outbox; it
-never contacts Cloudflare or sends a real message. The pages carry a dry-run banner.
+never contacts Cloudflare or sends a real message. Simulation is identified on
+the email action and result; pages use their normal published layout.
 It preserves existing requests, licenses and retained release fixtures.
 
 ```powershell
