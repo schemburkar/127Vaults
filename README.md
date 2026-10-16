@@ -9,6 +9,12 @@ properties are design goals, not claims about the current experimental build.
 
 ## Current status
 
+The local fictitious-data internal release is accepted across server, web/PWA,
+Desktop, CLI, extension, admin console and public site under the functionality-first
+criterion. See the [current decision and checks](docs/release/internal-functional-readiness-2026-10-16.md).
+Individual encrypted-item deletion is included in source; older server/Desktop
+installers predate it and their rebuild remains deferred.
+
 The fictitious-data internal MVP now has private HTTPS, OPAQUE authentication,
 owner/invited-user onboarding, and encrypted PostgreSQL vault create/list/read/
 update paths. It remains experimental: do not use real credentials, and do not

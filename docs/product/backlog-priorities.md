@@ -1,5 +1,7 @@
 # Backlog priority review
 
+Current scope (2026-10-16): the user selected functionality-first internal acceptance with basic sanity checks. [Local code is accepted](../release/internal-functional-readiness-2026-10-16.md), including required individual-item deletion. The exhaustive matrix and supported-release conditions below remain coverage/follow-up work rather than the current internal-release criterion. No additional confirmed applicable P1 implementation blocker remains recorded.
+
 Updated 2026-10-13. The user selected an internal fictitious-data release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
 
 See the [internal release candidate evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). Installed extension password-fill matrices pass on Windows Edge and Linux Chrome; basic installed desktop GUI acceptance passes on both platforms. Physical OS lock/idle, clean-machine/Linux package lifecycle, wider settings/device/type cases and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).

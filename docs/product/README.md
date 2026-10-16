@@ -1,5 +1,7 @@
 # Product work index
 
+Current local internal-release decision (2026-10-16): [accepted for local code and basic functional checks](../release/internal-functional-readiness-2026-10-16.md). The wider backlog acceptance conditions below remain open for supported/public release; they do not override the current functionality-first internal cut.
+
 Current internal cut (2026-10-12): Windows and Linux are required across desktop
 and CLI; server, web/PWA, extension and admin management writes are selected.
 See [candidate evidence and open acceptance](../release/internal-release-readiness-2026-10-12.md).

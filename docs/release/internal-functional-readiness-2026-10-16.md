@@ -40,3 +40,25 @@ public deployment, signing or production-secret readiness claim.
 
 All retained installations, queues and backups were preserved. The new disposable
 PostgreSQL container was stopped after its test; no containers remain running.
+
+## Final local recheck — October 16, 2026
+
+Verified clean local `main` at `f720f13` before this documentation reconciliation.
+No new runtime gap was established; feature implementation remains `8d95a85`.
+The following existing checks were rerun and exited successfully:
+
+- `pnpm check`: all workspace syntax/type checks, web/Desktop builds, native
+  Desktop check and API contracts.
+- `pnpm test`: workspace product suites, internal suite structure, startup,
+  public site, deployment, operator and release checks; public catalogue valid.
+- `cargo test --workspace`: Core 19, browser binding 1, CLI 88 and protocol 2
+  passed. One explicitly opt-in live device test remained ignored.
+- `cargo fmt --check`: passed.
+- `pnpm test:internal:audit`: historical selected artifact hashes and basic
+  runtime records verified. This audit does not claim those installers contain
+  deletion; the focused source/real PostgreSQL evidence above covers deletion.
+
+No new fixture scripts, installer rebuilds, permissions, deployments or remote
+pushes were needed. Optional database/browser/physical checks were not repeated
+by these commands. Historical pause and product-priority documents now point to
+this current decision, while preserving their wider acceptance backlog.

@@ -1,5 +1,7 @@
 # Paused checkpoint — October 16, 2026
 
+Historical checkpoint, superseded by [completed deletion and local internal acceptance](internal-functional-readiness-2026-10-16.md). The resume list below describes work that was pending at the pause, not the current implementation.
+
 Stopped at the user's request. Internal release is incomplete: the user explicitly
 requires individual private-item deletion. No deletion implementation was made
 before this checkpoint. No remote push was performed.
