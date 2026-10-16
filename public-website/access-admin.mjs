@@ -1,6 +1,30 @@
 const $ = id => document.getElementById(id);
 let token = '';
 let emailDryRun = false;
+let activeMenu = null;
+function closeMenu(restoreFocus = false) {
+  if (!activeMenu) return;
+  const { popup, trigger } = activeMenu;
+  activeMenu = null;
+  popup.hidePopover(); trigger.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) trigger.focus();
+}
+function openMenu(popup, trigger, last = false) {
+  if (activeMenu?.popup === popup) { closeMenu(true); return; }
+  closeMenu(); activeMenu = { popup, trigger };
+  popup.showPopover(); trigger.setAttribute('aria-expanded', 'true');
+  const rect = trigger.getBoundingClientRect(), gap = 6, edge = 12;
+  const left = Math.max(edge, Math.min(rect.right - popup.offsetWidth, innerWidth - popup.offsetWidth - edge));
+  const below = rect.bottom + gap;
+  const top = below + popup.offsetHeight <= innerHeight - edge ? below : Math.max(edge, rect.top - popup.offsetHeight - gap);
+  popup.style.left = `${left}px`; popup.style.top = `${top}px`;
+  const buttons = popup.querySelectorAll('button:not(:disabled)');
+  buttons[last ? buttons.length - 1 : 0]?.focus();
+}
+window.addEventListener('resize', () => closeMenu());
+document.addEventListener('scroll', event => {
+  if (activeMenu && !activeMenu.popup.contains(event.target)) closeMenu();
+}, true);
 const status = message => { $('desk-status').textContent = message; };
 async function api(path = '', value) {
   const response = await fetch(`/api/access-admin/requests${path}`, { method: value === undefined ? 'GET' : 'POST',
@@ -24,6 +48,8 @@ async function refresh() {
   emailDryRun = data.emailDryRun === true;
   $('operator-login').hidden = true; $('inbox').hidden = false;
   $('logout').hidden = false;
+  closeMenu();
+  document.querySelectorAll('.request-menu-items').forEach(popup => popup.remove());
   $('requests').replaceChildren();
   const view = $('request-view').value;
   const rows = data.requests.filter(row => view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
@@ -48,14 +74,42 @@ async function refresh() {
     if (row.expiresAt) { const expiry = document.createElement('small'); expiry.textContent = `Expires ${new Date(row.expiresAt).toLocaleDateString()}`; state.append(expiry); }
     const emailStates = { not_sent: 'Not sent', accepted: 'Accepted', queued: 'Queued', bounced: 'Bounced', sending: 'Sending', unknown: 'Unconfirmed' };
     cell(row.state === 'approved' ? (emailDryRun && row.emailState !== 'not_sent' ? 'Simulated' : emailStates[row.emailState] || '—') : '—');
-    const actionCell = cell(''), menu = document.createElement('details'); menu.className = 'request-menu';
-    const menuLabel = document.createElement('summary'); menuLabel.textContent = 'Actions'; menuLabel.setAttribute('aria-label', `Actions for ${row.email}`);
-    const menuItems = document.createElement('div'); menuItems.className = 'request-menu-items'; menu.append(menuLabel, menuItems); actionCell.append(menu);
+    const actionCell = cell(''), menuLabel = document.createElement('button');
+    menuLabel.type = 'button'; menuLabel.className = 'request-menu-trigger'; menuLabel.textContent = 'Actions';
+    menuLabel.setAttribute('aria-label', `Actions for ${row.email}`); menuLabel.setAttribute('aria-haspopup', 'menu');
+    menuLabel.setAttribute('aria-expanded', 'false'); menuLabel.setAttribute('aria-controls', `request-actions-${row.id}`);
+    const menuItems = document.createElement('div'); menuItems.className = 'request-menu-items';
+    menuItems.id = `request-actions-${row.id}`; menuItems.setAttribute('popover', 'auto'); menuItems.setAttribute('role', 'menu');
+    menuItems.setAttribute('aria-label', `Actions for ${row.email}`);
+    actionCell.append(menuLabel); document.body.append(menuItems);
+    menuLabel.addEventListener('click', () => openMenu(menuItems, menuLabel));
+    menuLabel.addEventListener('keydown', event => {
+      if (['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); openMenu(menuItems, menuLabel, event.key === 'ArrowUp'); }
+    });
+    menuItems.addEventListener('toggle', event => {
+      if (event.newState === 'closed') {
+        menuLabel.setAttribute('aria-expanded', 'false');
+        if (activeMenu?.popup === menuItems) activeMenu = null;
+      }
+    });
+    menuItems.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); closeMenu(true); return; }
+      if (event.key === 'Tab') { closeMenu(true); return; }
+      const buttons = [...menuItems.querySelectorAll('button:not(:disabled)')];
+      const index = buttons.indexOf(document.activeElement);
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+          : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next]?.focus();
+      }
+    });
     const act = (label, action, value, confirmation) => {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+      button.setAttribute('role', 'menuitem'); button.tabIndex = -1;
       button.addEventListener('click', async () => {
         if (confirmation && !confirm(confirmation)) return;
-        menu.open = false;
+        closeMenu();
         button.disabled = true;
         try {
           const response = await api(`/${row.id}/${action}`, typeof value === 'function' ? value() : value);
@@ -114,7 +168,7 @@ $('export').addEventListener('click', async () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000); status('Requests exported.');
   } catch (error) { status(error.message); }
 });
-$('logout').addEventListener('click', () => { token = ''; clearInvitation(); $('requests').replaceChildren(); $('inbox').hidden = true; $('logout').hidden = true; $('operator-login').hidden = false; status('Signed out.'); });
+$('logout').addEventListener('click', () => { closeMenu(); document.querySelectorAll('.request-menu-items').forEach(popup => popup.remove()); token = ''; clearInvitation(); $('requests').replaceChildren(); $('inbox').hidden = true; $('logout').hidden = true; $('operator-login').hidden = false; status('Signed out.'); });
 $('hide-invite').addEventListener('click', clearInvitation);
 $('copy-invite').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(`To: ${$('invite-to').value}\nSubject: ${$('invite-subject').value}\n\n${$('invite-message').value}`); status('Email message copied. Send it from your email client.'); }
