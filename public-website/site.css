@@ -48,9 +48,8 @@ html[data-theme='light'] main > section:nth-of-type(odd) { background: #ffffff45
 .site-header { background: var(--page); border-bottom: 1px solid var(--border); }
 .header-inner { min-height: 76px; display: flex; align-items: center; gap: 34px; }
 .wordmark { display: inline-flex; align-items: center; gap: 12px; font: 600 21px 'Segoe UI', system-ui, sans-serif; letter-spacing: -.035em; white-space: nowrap; }
-.brand-mark { display: block; flex: 0 0 auto; width: 40px; height: 40px; }
-.brand-name { word-spacing: .08em; }
-.brand-number { font-weight: 750; font-variant-numeric: lining-nums; letter-spacing: -.045em; }
+.brand-wordmark { display: block; flex: 0 0 auto; width: 164px; height: auto; }
+html[data-theme='light'] .brand-wordmark { filter: brightness(0); }
 .site-header nav { display: flex; gap: 32px; margin-left: auto; color: var(--muted); font-size: 13px; }
 .site-header nav a:hover, .site-header nav a[aria-current='page'] { color: var(--highlight); }
 .site-header nav a[aria-current='page']::after { content: ''; display: block; height: 2px; margin-top: 8px; background: var(--highlight); }
@@ -183,7 +182,7 @@ h1 em { color: var(--highlight); font-style: normal; }
 footer { padding-block: 25px 18px; border-top: 1px solid var(--border); background: var(--page); }
 .footer-inner { display: flex; align-items: center; gap: 24px; }
 .footer-inner .wordmark { font-size: 15px; }
-.footer-inner .brand-mark { width: 31px; height: 31px; font-size: 10px; }
+.footer-inner .brand-wordmark { width: 140px; }
 .footer-inner p { color: var(--muted); font-size: 11px; margin: 0 auto 0 10px; }
 .footer-inner > span { color: var(--muted); font-size: 11px; }
 .footer-links { display: flex; gap: 24px; padding-top: 15px; color: var(--muted); font-size: 12px; }
