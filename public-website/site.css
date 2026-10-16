@@ -47,8 +47,10 @@ html[data-theme='light'] main > section:nth-of-type(odd) { background: #ffffff45
 
 .site-header { background: var(--page); border-bottom: 1px solid var(--border); }
 .header-inner { min-height: 76px; display: flex; align-items: center; gap: 34px; }
-.wordmark { display: inline-flex; align-items: center; gap: 12px; font: 800 19px Manrope, sans-serif; letter-spacing: -.055em; white-space: nowrap; }
-.brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--brand-red); color: white; font-size: 12px; letter-spacing: -.05em; }
+.wordmark { display: inline-flex; align-items: center; gap: 12px; font: 600 21px 'Segoe UI', system-ui, sans-serif; letter-spacing: -.035em; white-space: nowrap; }
+.brand-mark { display: block; flex: 0 0 auto; width: 40px; height: 40px; }
+.brand-name { word-spacing: .08em; }
+.brand-number { font-weight: 750; font-variant-numeric: lining-nums; letter-spacing: -.045em; }
 .site-header nav { display: flex; gap: 32px; margin-left: auto; color: var(--muted); font-size: 13px; }
 .site-header nav a:hover, .site-header nav a[aria-current='page'] { color: var(--highlight); }
 .site-header nav a[aria-current='page']::after { content: ''; display: block; height: 2px; margin-top: 8px; background: var(--highlight); }

@@ -34,8 +34,7 @@ async function fixture(t, options = {}) {
     compatibilityDate: '2026-07-01', bindings, d1Databases: ['DB'], r2Buckets: ['ARTIFACTS'],
     ...(options.assetsDirectory ? { assets: { directory: options.assetsDirectory, binding: 'ASSETS',
       routerConfig: { has_user_worker: true, static_routing: { user_worker: ['/api/*'] } },
-      assetConfig: { html_handling: 'none', not_found_handling: 'none',
-        redirects: { version: 1, rules: {}, staticRules: { '/': { status: 200, to: '/index.html', lineNumber: 1 } } } } } }
+      assetConfig: { html_handling: 'drop-trailing-slash', not_found_handling: 'none' } } }
       : { serviceBindings: { ASSETS: () => new Response('static website') } }),
     ...(options.outboundService ? { outboundService: options.outboundService } : {}),
     ...(options.persistDirectory ? { d1Persist: join(options.persistDirectory, 'd1'), r2Persist: join(options.persistDirectory, 'r2') } : {}) };
@@ -180,7 +179,7 @@ test('Worker email claims survive concurrent sends, ambiguous replies and closur
       sent++; announce();
       assert.equal(request.url, `https://api.cloudflare.com/client/v4/accounts/${'a'.repeat(32)}/email/sending/send`);
       const message = await request.json(); assert.equal(message.to, recipient);
-      assert.equal(message.from, 'trials@example.com'); assert.match(message.text, /trial.html#/);
+      assert.equal(message.from, 'trials@example.com'); assert.match(message.text, /trial#/);
       await gate;
       return Response.json(ambiguous ? { success: false } : { success: true, result: { queued: [recipient] } });
     } });
@@ -263,8 +262,12 @@ test('actual static asset routing serves public HTML and modules while API and e
   const assets = join(directory, 'site'); await stageAssets(assets);
   const f = await fixture(t, { assetsDirectory: assets });
   t.after(() => rm(directory, { recursive: true, force: true }));
-  for (const path of ['/', '/index.html', '/get-started.html', '/access-admin.html', '/trial.html', '/trial.mjs', '/site.css']) {
+  for (const path of ['/', '/get-started', '/access-admin', '/trial', '/trial.mjs', '/site.css']) {
     const response = await f.get(path); assert.equal(response.status, 200, path);
+  }
+  for (const [from, to] of [['/index.html', '/'], ['/pricing.html', '/pricing'], ['/pricing/', '/pricing'], ['/trial.html', '/trial']]) {
+    const response = await f.mf.dispatchFetch(origin + from, { redirect: 'manual' }); assert.equal(response.status, 307, from);
+    assert.equal(new URL(response.headers.get('location'), origin).pathname, to);
   }
   for (const path of ['/build-pages.mjs', '/availability.test.mjs', '/README.md', '/mock-checkout.html', '/customer-account.html', '/issuer.pem']) {
     assert.equal((await f.get(path)).status, 404, path);

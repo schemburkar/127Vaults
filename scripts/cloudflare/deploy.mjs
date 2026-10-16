@@ -150,7 +150,7 @@ export async function execute(command, config, { run = runWrangler, createClient
     const readiness = await (await check('/api/access-admin/readiness', 200, { Authorization: `Bearer ${secrets.OPERATOR_TOKEN}` })).json();
     if (!readiness.ready || readiness.sourceRevision !== catalogue.sourceRevision || readiness.artifacts !== catalogue.artifacts.length) throw Error('Deployed release readiness differs from the selected catalogue');
     await check('/', 200);
-    for (const path of ['/trial.html', '/access-admin.html']) {
+    for (const path of ['/trial', '/access-admin']) {
       const page = await check(path, 200);
       if (!page.headers.get('cache-control')?.includes('no-store')) throw Error(`Protected page cache headers missing: ${path}`);
     }

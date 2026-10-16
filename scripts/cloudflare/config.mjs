@@ -14,7 +14,7 @@ export const workerDirectory = join(repository, 'apps/public-intake/cloudflare')
 export const assetFiles = ['index.html', 'product.html', 'security.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
-  'trial.mjs', 'access-admin.mjs', 'releases.json'];
+  'trial.mjs', 'access-admin.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg'];
 function contains(directory, path) {
   const rel = relative(directory, path);
   return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));
@@ -100,7 +100,7 @@ export function wranglerConfig(config, state, assetsDirectory) {
   return { name: config.workerName, account_id: config.accountId, main: join(workerDirectory, 'worker.mjs'),
     compatibility_date: '2026-07-01', workers_dev: false, preview_urls: false, upload_source_maps: false,
     routes: [{ pattern: new URL(config.origin).hostname, custom_domain: true }],
-    assets: { directory: assetsDirectory, binding: 'ASSETS', run_worker_first: ['/api/*'], html_handling: 'none', not_found_handling: 'none' },
+    assets: { directory: assetsDirectory, binding: 'ASSETS', run_worker_first: ['/api/*'], html_handling: 'drop-trailing-slash', not_found_handling: 'none' },
     d1_databases: [{ binding: 'DB', database_name: config.databaseName, database_id: state.databaseId, migrations_dir: join(workerDirectory, 'migrations') }],
     r2_buckets: [{ binding: 'ARTIFACTS', bucket_name: config.bucketName }],
     vars: { PUBLIC_INTAKE_ORIGIN: config.origin, TRIAL_ISSUER_KEY_ID: config.issuerKeyId,
@@ -125,14 +125,17 @@ export async function stageAssets(directory) {
     // HTML revalidates on every visit. A content-derived URL bypasses older browser
     // copies of mutable CSS/modules without relying on a CDN purge.
     const content = name.endsWith('.html') ? source.toString('utf8').replace(
-      /((?:src|href)=["'])([^"'?#]+\.(?:css|mjs))(?:\?[^"'#]*)?(["'])/g,
+      /(href=["'])([a-z0-9-]+)\.html(?=[?#"'])/g,
+      (match, prefix, page) => sources.has(`${page}.html`) ? `${prefix}/${page === 'index' ? '' : page}` : match,
+    ).replace(
+      /((?:src|href)=["'])([^"'?#]+\.(?:css|mjs|svg))(?:\?[^"'#]*)?(["'])/g,
       (match, prefix, path, quote) => sources.has(path.replace(/^(?:\.\/|\/)/, ''))
         ? `${prefix}${path}?v=${version}${quote}` : match,
     ) : source;
     await writeFile(join(directory, name), content, { flag: 'wx' });
   }
-  // Keep .html URLs stable (including private fragment links), but still serve the homepage at /.
-  await writeFile(join(directory, '_redirects'), '/ /index.html 200\n');
+  // Native HTML handling serves / and extensionless paths and redirects legacy URLs.
+  await writeFile(join(directory, '_redirects'), '# HTML canonicalization uses assets.html_handling.\n');
   await writeFile(join(directory, '_headers'), `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
@@ -141,10 +144,16 @@ export async function stageAssets(directory) {
 /trial.html
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
+/trial
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
 /access-admin.html
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
-${assetFiles.filter(name => /\.(?:css|mjs)$/.test(name)).map(name => `/${name}\n  Cache-Control: public, max-age=86400, must-revalidate\n`).join('')}`);
+/access-admin
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+${assetFiles.filter(name => /\.(?:css|mjs|svg)$/.test(name)).map(name => `/${name}\n  Cache-Control: public, max-age=86400, must-revalidate\n`).join('')}`);
 }
 export async function readPublicAsset(name, sourceDirectory = join(repository, 'public-website')) {
   if (!assetFiles.includes(name)) throw Error('File is not approved for public hosting');

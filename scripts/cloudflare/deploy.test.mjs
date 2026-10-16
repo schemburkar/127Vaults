@@ -56,6 +56,7 @@ test('static staging includes the real website and excludes mock checkout, tests
   const versions = new Set();
   for (const name of assetFiles.filter(name => name.endsWith('.html'))) {
     const html = await readFile(join(assets, name), 'utf8');
+    assert.doesNotMatch(html, /href=["'][a-z0-9-]+\.html(?:[?#"'])/);
     for (const match of html.matchAll(/(?:src|href)=["'][^"']+\.(?:css|mjs)([^"']*)["']/g)) {
       assert.match(match[1], /^\?v=[a-f0-9]{20}$/);
       versions.add(match[1]);
@@ -144,7 +145,7 @@ test('full deployment orchestration orders provisioning, migrations, verified up
     if (path === '/api/waitlist') return Response.json({ open: true }, { headers: { 'Cache-Control': 'no-store' } });
     if (path === '/api/access-admin/requests') return Response.json({}, { status: options.headers.Authorization ? 200 : 401 });
     if (path === '/api/access-admin/readiness') return Response.json({ ready: true, sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.length });
-    return new Response('', { status: ['/', '/trial.html', '/access-admin.html'].includes(path) ? 200 : 404,
+    return new Response('', { status: ['/', '/trial', '/access-admin'].includes(path) ? 200 : 404,
       headers: { 'Cache-Control': 'no-store' } });
   };
   await execute('all', config, { run, upload, fetchImpl, createClient: () => ({ destroy() { steps.push('close-client'); } }) });

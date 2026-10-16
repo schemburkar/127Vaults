@@ -153,6 +153,13 @@ artifact upload is needed. State records deployment and verification separately.
 
 ### Website caching
 
+Public pages use extensionless URLs such as `/pricing` and `/downloads`, with `/`
+for the homepage. Native Static Assets `drop-trailing-slash` handling redirects
+legacy `.html` and trailing-slash URLs. Staging rewrites internal HTML navigation
+to canonical paths, and new Cloudflare trial invitations use `/trial#...`.
+Existing invitation fragments are retained by browsers across the legacy redirect.
+Both legacy and canonical trial/admin paths have `no-store` header rules.
+
 Workers Static Assets provides Cloudflare edge caching automatically, without a
 zone-level Cache Everything rule. Public HTML and `releases.json` retain the
 default `public, max-age=0, must-revalidate` browser policy and ETags, so browsers

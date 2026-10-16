@@ -21,14 +21,15 @@ function page({ file, title, description, label, heading, intro, content }) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#04071d">
   <meta name="description" content="${description}">
-  <title>${title} — 127Vaults</title>
+  <title>${title} — 127 Vaults</title>
   <link rel="stylesheet" href="site.css?v=3">
   <script src="theme.mjs?v=2" type="module"></script>${file === "product.html" ? '\n  <script src="tour.mjs?v=2" type="module"></script>' : ""}
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header class="site-header"><div class="container header-inner">
-    <a class="wordmark" href="index.html" aria-label="127Vaults home"><span class="brand-mark">127</span><span>127Vaults</span></a>
+    <a class="wordmark" href="index.html" aria-label="127 Vaults home"><img class="brand-mark" src="brand-mark.svg" alt="" width="40" height="40"><span class="brand-name"><span class="brand-number">127</span> Vaults</span></a>
     <nav aria-label="Main navigation">${links}</nav>
     <a class="header-link" href="get-started.html">Get access</a>
   </div></header>
@@ -36,7 +37,7 @@ function page({ file, title, description, label, heading, intro, content }) {
     <section class="page-hero"><div class="container"><span class="kicker">${label}</span><h1>${heading}</h1><p>${intro}</p></div></section>
     ${content}
   </main>
-  <footer><div class="container footer-inner"><a class="wordmark" href="index.html"><span class="brand-mark">127</span><span>127Vaults</span></a><p>Your vaults. Your devices. Your server or ours.</p><span>© 127Vaults</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" title="Switch theme"><svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z"/></svg></button></div><div class="container footer-links">${nav.map(([href, text]) => `<a href="${href}">${text}</a>`).join('')}</div></footer>
+  <footer><div class="container footer-inner"><a class="wordmark" href="index.html"><img class="brand-mark" src="brand-mark.svg" alt="" width="40" height="40"><span class="brand-name"><span class="brand-number">127</span> Vaults</span></a><p>Your vaults. Your devices. Your server or ours.</p><span>© 127Vaults</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" title="Switch theme"><svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z"/></svg></button></div><div class="container footer-links">${nav.map(([href, text]) => `<a href="${href}">${text}</a>`).join('')}</div></footer>
 </body>
 </html>`;
 }
