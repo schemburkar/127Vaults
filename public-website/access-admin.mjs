@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
 let token = '';
+let emailDryRun = false;
 const status = message => { $('desk-status').textContent = message; };
 async function api(path = '', value) {
   const response = await fetch(`/api/access-admin/requests${path}`, { method: value === undefined ? 'GET' : 'POST',
@@ -20,8 +21,9 @@ function clearInvitation() {
 }
 async function refresh() {
   const data = await (await api()).json();
+  emailDryRun = data.emailDryRun === true;
   $('operator-login').hidden = true; $('inbox').hidden = false;
-  $('release-revision').textContent = `Approved release source: ${data.sourceRevision}. ${data.emailEnabled ? 'Cloudflare email is configured. Invitations send only when you click Send invitation.' : 'Email sending is not configured. Copy invitations into your email client.'}`;
+  $('release-revision').textContent = `Approved release source: ${data.sourceRevision}. ${emailDryRun ? 'Local email simulation. No real email will be sent.' : data.emailEnabled ? 'Cloudflare email is configured. Invitations send only when you click Send invitation.' : 'Email sending is not configured. Copy invitations into your email client.'}`;
   $('requests').replaceChildren();
   const rows = data.requests.reverse();
   status(rows.length ? `${rows.length} access request${rows.length === 1 ? '' : 's'}.` : 'No requests yet. New submissions will appear here after refresh.');
@@ -38,6 +40,7 @@ async function refresh() {
         sending: 'An email attempt is in progress or was interrupted. Refresh; replace the link before retrying.',
         unknown: 'Email delivery is unconfirmed. Check Cloudflare activity; replace the link before retrying.' };
       email.textContent = states[row.emailState] ?? 'Email status unavailable.'; card.append(email);
+      if (emailDryRun && row.emailState !== 'not_sent') email.textContent = `Local simulation: ${row.emailState}. No real email was sent.`;
     }
     const act = (label, action, value, confirmation) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'button'; button.textContent = label;
@@ -54,6 +57,7 @@ async function refresh() {
           const data = await response.json();
           await refresh();
           if (action === 'send-invitation') {
+            if (emailDryRun) { status(`Dry-run email result: ${data.emailState}. Saved locally; no real email was sent.`); return; }
             status(data.emailState === 'accepted' ? 'Invitation accepted by the recipient mail server.'
               : data.emailState === 'queued' ? 'Cloudflare queued the invitation. This does not confirm inbox delivery.'
                 : data.emailState === 'bounced' ? 'The invitation bounced. Contact the requester separately.'
@@ -78,7 +82,7 @@ async function refresh() {
     }
     if (row.state === 'approved') {
       if (row.canPreviewInvitation) act('Review invitation', 'invitation', undefined);
-      if (row.canSendEmail) act('Send invitation', 'send-invitation', {}, `Send the approved 10-day trial invitation to ${row.email} through Cloudflare?`);
+      if (row.canSendEmail) act(emailDryRun ? 'Send invitation (dry run)' : 'Send invitation', 'send-invitation', {}, emailDryRun ? `Simulate the invitation to ${row.email}? No real email will be sent.` : `Send the approved 10-day trial invitation to ${row.email} through Cloudflare?`);
       act('Replace private link', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
       act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
     }

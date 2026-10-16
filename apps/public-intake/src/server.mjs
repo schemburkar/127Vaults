@@ -11,6 +11,7 @@ import { SmtpMailer } from '../../server/src/smtp.mjs';
 import { createTrialHandler, loadTrialArtifacts, pruneAccessRequests } from './trials.mjs';
 import { withFileLock } from './durable-limit.mjs';
 import { createCloudflareTrialMailer } from './cloudflare-email.mjs';
+import { validIntakeOrigin } from './intake-origin.mjs';
 
 const plans = new Set(['personal', 'commercial', 'cloud', 'undecided']);
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
@@ -47,8 +48,8 @@ export function encryptRequest(request, key, now = new Date()) {
     ciphertext: encrypted.toString('base64url'), tag: cipher.getAuthTag().toString('base64url') }) + '\n';
 }
 
-export function createIntakeHandler({ origin, key, dataFile, now = () => Date.now() }) {
-  if (!origin?.startsWith('https://') || !dataFile || key?.length !== 32) throw new Error('intake configuration is incomplete');
+export function createIntakeHandler({ origin, key, dataFile, now = () => Date.now(), allowLoopbackHttp = false }) {
+  if (!validIntakeOrigin(origin, allowLoopbackHttp) || !dataFile || key?.length !== 32) throw new Error('intake configuration is incomplete');
   const allow = createDurableLimit({ directory: resolve(dirname(dataFile), 'request-limits'), now });
   return async (req, res) => {
     if (req.url !== '/api/waitlist') { reply(res, 404, { error: 'not_found' }); return; }

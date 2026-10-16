@@ -6,6 +6,17 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createIntakeHandler, validateRequest } from '../src/server.mjs';
+import { validIntakeOrigin } from '../src/intake-origin.mjs';
+
+test('HTTP dry runs require explicit opt-in and stay on loopback origins', () => {
+  assert.equal(validIntakeOrigin('https://public.example'), true);
+  assert.equal(validIntakeOrigin('http://localhost:12951'), false);
+  assert.equal(validIntakeOrigin('http://localhost:12951', true), true);
+  assert.equal(validIntakeOrigin('http://127.0.0.1:12951', true), true);
+  for (const origin of ['http://192.168.1.50:12951', 'http://public.example', 'http://localhost.attacker.example', 'http://localhost:12951/path']) {
+    assert.equal(validIntakeOrigin(origin, true), false);
+  }
+});
 
 test('waitlist accepts a consented request without storing plaintext and rejects cross-origin POST', async () => {
   const dir = await mkdtemp(join(tmpdir(), '127v-intake-'));

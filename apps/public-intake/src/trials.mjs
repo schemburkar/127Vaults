@@ -8,6 +8,7 @@ import { seal, unseal } from './mock-selfhost.mjs';
 import { withFileLock, createDurableLimit } from './durable-limit.mjs';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
 import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
+import { validIntakeOrigin } from './intake-origin.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const idPattern = /^[a-f0-9]{64}$/;
@@ -95,8 +96,8 @@ export async function loadTrialArtifacts(catalogueFile) {
 }
 
 export function createTrialHandler({ origin, key, dataFile, dataDir, operatorToken,
-  issuerPrivateKey, issuerKeyId, catalogue, mailer = null, now = () => new Date() }) {
-  if (new URL(origin).origin !== origin || !origin.startsWith('https://') || key?.length !== 32
+  issuerPrivateKey, issuerKeyId, catalogue, mailer = null, now = () => new Date(), allowLoopbackHttp = false }) {
+  if (!validIntakeOrigin(origin, allowLoopbackHttp) || key?.length !== 32
     || !dataFile || !dataDir || !/^[A-Za-z0-9_-]{43,128}$/.test(operatorToken ?? '')
     || !/^[A-Za-z0-9_-]{1,40}$/.test(issuerKeyId ?? '')) throw Error('Invalid trial configuration.');
   const issuer = createPrivateKey(issuerPrivateKey);
@@ -141,7 +142,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       if (path === '/api/access-admin/requests' && req.method === 'GET') {
         const requests = await readAccessRequests(dataFile, key);
         return json(res, 200, { requests: await Promise.all(requests.map(async request => ({ ...request,
-          ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer) });
+          ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
       }
       const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
@@ -219,7 +220,8 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
         // A new deployment cannot silently replace the artifacts approved for this request.
         if (record.releaseHash !== releaseHash) return json(res, 409, { error: 'release_changed_contact_operator' });
         const cookiePath = `/api/trials/${id}/artifacts/`;
-        const ticket = (req.headers.cookie ?? '').split(';').map(v => v.trim()).find(v => v.startsWith('__Secure-127v-trial='))?.slice('__Secure-127v-trial='.length);
+        const cookieName = origin.startsWith('https:') ? '__Secure-127v-trial' : '127v-trial-local';
+        const ticket = (req.headers.cookie ?? '').split(';').map(v => v.trim()).find(v => v.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
         const ticketValid = action?.startsWith('artifacts/') && req.method === 'GET'
           && record.ticketHash && equal(hash(ticket ?? ''), record.ticketHash) && now().getTime() < record.ticketUntil;
         if (!ticketValid && (!bearer || !equal(hash(bearer), record.tokenHash))) return json(res, 401, { error: 'access_required' });
@@ -230,7 +232,8 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
           const value = randomBytes(32).toString('base64url');
           record.ticketHash = hash(value); record.ticketUntil = now().getTime() + 5 * 60000;
           await save(id, record);
-          return json(res, 200, { ready: true }, { 'Set-Cookie': `__Secure-127v-trial=${value}; Path=${cookiePath}; Max-Age=300; Secure; HttpOnly; SameSite=Strict` });
+          const secure = origin.startsWith('https:');
+          return json(res, 200, { ready: true }, { 'Set-Cookie': `${secure ? '__Secure-127v-trial' : '127v-trial-local'}=${value}; Path=${cookiePath}; Max-Age=300; ${secure ? 'Secure; ' : ''}HttpOnly; SameSite=Strict` });
         }
         if (action === 'activate' && req.method === 'POST') {
           const input = await body(req);
