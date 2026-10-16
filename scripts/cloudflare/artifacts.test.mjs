@@ -92,7 +92,9 @@ test('artifact preflight refuses local tampering and traversal identifiers', asy
   const directory = await mkdtemp(join(tmpdir(), '127v-r2-preflight-')); t.after(() => rm(directory, { recursive: true, force: true }));
   await mkdir(join(directory, 'artifact'));
   const file = join(directory, 'catalogue.json');
-  await writeFile(file, JSON.stringify({ artifacts: [{ id: 'server', path: join(directory, 'artifact'), sizeBytes: 1, sha256: 'a'.repeat(64) }] }));
+  await writeFile(file, JSON.stringify({ schemaVersion: 1, sourceRevision: 'a'.repeat(40), issuerPublicKeys: {
+    trial: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }),
+  }, artifacts: [{ id: 'server', filename: 'server.tar', label: 'Server', path: join(directory, 'artifact'), sizeBytes: 1, sha256: 'a'.repeat(64) }] }));
   await assert.rejects(checkLocalCatalogue(file), /Local checksum mismatch/);
   assert.throws(() => objectKey('../escape', { id: 'server' }), /Invalid release ID/);
   assert.ok(await readFile(file, 'utf8'));

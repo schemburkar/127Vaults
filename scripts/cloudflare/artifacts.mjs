@@ -11,7 +11,7 @@ export function objectKey(releaseId, asset) {
   return `releases/${releaseId}/${asset.id}/${asset.sha256}/${asset.filename}`;
 }
 export async function checkLocalCatalogue(file) {
-  const catalogue = JSON.parse(await readFile(file, 'utf8'));
+  const catalogue = validateCatalogue(JSON.parse(await readFile(file, 'utf8')), { local: true });
   const cloud = { ...catalogue, artifacts: [] };
   for (const asset of catalogue.artifacts ?? []) {
     if (typeof asset.path !== 'string') throw Error('Local catalogue requires artifact paths');
@@ -39,6 +39,7 @@ export async function remoteHash(client, bucket, key, etag) {
   return digest.digest('hex');
 }
 export async function uploadArtifacts({ client, bucket, releaseId, catalogue, log = console.log }) {
+  validateCatalogue(catalogue, { local: true });
   const artifacts = [];
   for (const asset of catalogue.artifacts) {
     const key = objectKey(releaseId, asset);

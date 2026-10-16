@@ -1,5 +1,9 @@
 # Cloudflare access website and private installer delivery
 
+Before first publication, see the [publication security review](cloudflare-publication-security-review-2026-10-16.md).
+Run `pnpm cloudflare:audit <external-config.json>` to repeat the publication checks
+offline. These checks also run automatically before deployment operations.
+
 Scope: public marketing/access website, encrypted access requests, operator inbox,
 manual approvals, ten-day installation-bound licenses, private installer downloads,
 and optional manual invitation email. The vault server, PostgreSQL, vault web client
@@ -30,6 +34,7 @@ separate reviewed migration, retaining record IDs, keys, binding and expiry.
 
 | Command | Action |
 | --- | --- |
+| `audit` | Scan publication inputs for configured credentials and validate file boundaries; no remote changes |
 | `plan` | Verify all local package hashes and pinned issuer, describe the deployment; no remote changes |
 | `dry-run` | Stage an allowlisted website and compile with Wrangler; no remote changes |
 | `provision` | Create/reuse D1 and R2, enforce private r2.dev, reject bucket custom domains, apply D1 migrations |

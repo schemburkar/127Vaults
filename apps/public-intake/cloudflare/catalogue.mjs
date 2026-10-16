@@ -1,19 +1,32 @@
 import { hash } from './crypto.mjs';
 
-export function publicArtifact({ objectKey: _, etag: __, path: ___, ...asset }) { return asset; }
-export function validateCatalogue(value) {
+const publicFields = new Set(['id', 'filename', 'label', 'sha256', 'sizeBytes', 'sourceRevision', 'product', 'platform', 'supporting']);
+export function publicArtifact(asset) {
+  // Retain field ordering for existing release identities, but never forward arbitrary operator configuration.
+  return Object.fromEntries(Object.entries(asset).filter(([key]) => publicFields.has(key)));
+}
+export function validateCatalogue(value, { local = false } = {}) {
   if (value?.schemaVersion !== 1 || !/^[a-f0-9]{40,64}$/.test(value.sourceRevision)
+    || Object.keys(value).some(key => !['schemaVersion', 'sourceRevision', 'issuerPublicKeys', 'requiredFeatureRevision', 'artifacts'].includes(key))
     || !Array.isArray(value.artifacts) || !value.artifacts.length || value.artifacts.length > 100
-    || !value.issuerPublicKeys || typeof value.issuerPublicKeys !== 'object') throw Error('Invalid catalogue');
+    || !value.issuerPublicKeys || typeof value.issuerPublicKeys !== 'object' || Array.isArray(value.issuerPublicKeys)
+    || !Object.keys(value.issuerPublicKeys).length || Object.keys(value.issuerPublicKeys).length > 8
+    || Object.entries(value.issuerPublicKeys).some(([id, pem]) => !/^[A-Za-z0-9_-]{1,40}$/.test(id)
+      || typeof pem !== 'string' || !/^-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\r?\n?$/.test(pem))) throw Error('Invalid catalogue');
   const ids = new Set();
   for (const asset of value.artifacts) {
-    if (!/^[a-z0-9-]{1,60}$/.test(asset.id) || ids.has(asset.id)
+    if (!asset || typeof asset !== 'object' || Object.keys(asset).some(key => !publicFields.has(key)
+      && !(local ? key === 'path' : ['objectKey', 'etag'].includes(key)))
+      || !/^[a-z0-9-]{1,60}$/.test(asset.id) || ids.has(asset.id)
       || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,150}$/.test(asset.filename)
+      || (!/\.(?:tar(?:\.gz)?|zip|exe|AppImage|deb|md|mjs|json)$/.test(asset.filename) && asset.filename !== 'SHA256SUMS')
+      || /(?:^|[_.-])(?:secret|secrets|token|credentials|requests|backup|revocation|trial-license)(?:[_.-]|$)/i.test(asset.filename)
       || typeof asset.label !== 'string' || asset.label.length > 240
       || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1
-      || typeof asset.objectKey !== 'string' || !/^[A-Za-z0-9/_.-]{1,500}$/.test(asset.objectKey)
-      || asset.objectKey.split('/').some(part => !part || part === '.' || part === '..')
-      || !/^[a-f0-9-]{1,100}$/i.test(asset.etag ?? '') || Object.hasOwn(asset, 'path')) throw Error('Invalid artifact');
+      || (local ? typeof asset.path !== 'string' || !asset.path :
+        typeof asset.objectKey !== 'string' || !/^[A-Za-z0-9/_.-]{1,500}$/.test(asset.objectKey)
+        || asset.objectKey.split('/').some(part => !part || part === '.' || part === '..')
+        || !/^[a-f0-9-]{1,100}$/i.test(asset.etag ?? ''))) throw Error('Invalid artifact');
     ids.add(asset.id);
   }
   if (!ids.has('server')) throw Error('Missing server artifact');

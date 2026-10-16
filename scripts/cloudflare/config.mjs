@@ -1,5 +1,6 @@
 import { createPublicKey } from 'node:crypto';
-import { chmod, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -72,7 +73,7 @@ export async function loadSecrets(config, catalogue) {
 export function wranglerConfig(config, state, assetsDirectory) {
   if (!/^[a-f0-9-]{36}$/i.test(state.databaseId ?? '')) throw Error('Provision the D1 database first');
   return { name: config.workerName, account_id: config.accountId, main: join(workerDirectory, 'worker.mjs'),
-    compatibility_date: '2026-07-01', workers_dev: false, preview_urls: false,
+    compatibility_date: '2026-07-01', workers_dev: false, preview_urls: false, upload_source_maps: false,
     routes: [{ pattern: new URL(config.origin).hostname, custom_domain: true }],
     assets: { directory: assetsDirectory, binding: 'ASSETS', run_worker_first: ['/api/*'], html_handling: 'none', not_found_handling: 'none' },
     d1_databases: [{ binding: 'DB', database_name: config.databaseName, database_id: state.databaseId, migrations_dir: join(workerDirectory, 'migrations') }],
@@ -87,7 +88,7 @@ export function wranglerConfig(config, state, assetsDirectory) {
 export async function stageAssets(directory) {
   // Explicit allowlist: no source tests, README, mock checkout, build scripts, secrets or artifacts become public assets.
   await mkdir(directory, { recursive: false, mode: 0o700 });
-  for (const name of assetFiles) await copyFile(join(repository, 'public-website', name), join(directory, name));
+  for (const name of assetFiles) await writeFile(join(directory, name), await readPublicAsset(name), { flag: 'wx' });
   // Keep .html URLs stable (including private fragment links), but still serve the homepage at /.
   await writeFile(join(directory, '_redirects'), '/ /index.html 200\n');
   await writeFile(join(directory, '_headers'), `/*
@@ -102,4 +103,16 @@ export async function stageAssets(directory) {
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
 `);
+}
+export async function readPublicAsset(name, sourceDirectory = join(repository, 'public-website')) {
+  if (!assetFiles.includes(name)) throw Error('File is not approved for public hosting');
+  const source = join(sourceDirectory, name), info = await lstat(source);
+  if (!info.isFile() || info.isSymbolicLink()
+    || relative(await realpath(sourceDirectory), await realpath(source)) !== name) throw Error(`Public asset is not a regular direct file: ${name}`);
+  const handle = await open(source, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const current = await handle.stat();
+    if (!current.isFile() || current.dev !== info.dev || current.ino !== info.ino) throw Error('Public asset changed during validation');
+    return await handle.readFile();
+  } finally { await handle.close(); }
 }

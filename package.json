@@ -49,7 +49,8 @@
     "cloudflare:verify": "node scripts/cloudflare/deploy.mjs verify",
     "cloudflare:backup": "node scripts/cloudflare/deploy.mjs backup",
     "cloudflare:check": "node scripts/cloudflare/check.mjs",
-    "cloudflare:test": "node --test apps/public-intake/test/cloudflare-worker.test.mjs scripts/cloudflare/*.test.mjs"
+    "cloudflare:test": "node --test apps/public-intake/test/cloudflare-worker.test.mjs scripts/cloudflare/*.test.mjs",
+    "cloudflare:audit": "node scripts/cloudflare/deploy.mjs audit"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1152.0",

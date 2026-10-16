@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, loadSecrets, protectedDirectory, repository, saveJson, stageAssets, wranglerConfig } from './config.mjs';
 import { checkLocalCatalogue, r2Client, uploadArtifacts } from './artifacts.mjs';
 import { catalogueIdentity } from '../../apps/public-intake/cloudflare/catalogue.mjs';
+import { auditPublication } from './publication.mjs';
 const require = createRequire(import.meta.url);
 const cli = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
 
@@ -70,7 +71,7 @@ async function render(config, state) {
 }
 export async function execute(command, config, { run = runWrangler, createClient = r2Client,
   upload = uploadArtifacts, fetchImpl = fetch } = {}) {
-  if (!['plan', 'provision', 'upload', 'deploy', 'all', 'dry-run', 'backup', 'verify'].includes(command)) throw Error('Unknown command');
+  if (!['audit', 'plan', 'provision', 'upload', 'deploy', 'all', 'dry-run', 'backup', 'verify'].includes(command)) throw Error('Unknown command');
   // An encrypted backup must remain possible even when local installers or issuer keys are temporarily unavailable.
   if (command === 'backup') {
     await protectedDirectory(config.stateDirectory);
@@ -82,6 +83,8 @@ export async function execute(command, config, { run = runWrangler, createClient
   // No remote call is made by plan or dry-run. Validate bytes and issuer before any remote mutation.
   const catalogue = await checkLocalCatalogue(config.catalogueFile);
   const secrets = await loadSecrets(config, catalogue);
+  const publication = await auditPublication(catalogue, secrets);
+  if (command === 'audit') { console.log(JSON.stringify({ ...publication, configuredSecretMatches: 0, remoteChanges: false }, null, 2)); return; }
   if (command === 'plan') {
     console.log(JSON.stringify({ origin: config.origin, worker: config.workerName, database: config.databaseName,
       privateBucket: config.bucketName, releaseId: config.releaseId, artifacts: catalogue.artifacts.length,
@@ -160,7 +163,7 @@ export async function execute(command, config, { run = runWrangler, createClient
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [command, file] = process.argv.slice(2);
   if (!command || !file || process.argv.length !== 4) {
-    console.error('Use: node scripts/cloudflare/deploy.mjs <plan|dry-run|provision|upload|deploy|all|verify|backup> <external-config.json>');
+    console.error('Use: node scripts/cloudflare/deploy.mjs <audit|plan|dry-run|provision|upload|deploy|all|verify|backup> <external-config.json>');
     process.exitCode = 1;
   } else {
     try { await execute(command, await loadConfig(resolve(file))); }
