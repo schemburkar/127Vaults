@@ -23,29 +23,39 @@ async function refresh() {
   const data = await (await api()).json();
   emailDryRun = data.emailDryRun === true;
   $('operator-login').hidden = true; $('inbox').hidden = false;
-  $('release-revision').textContent = `Approved release source: ${data.sourceRevision}. ${emailDryRun ? 'Local email simulation. No real email will be sent.' : data.emailEnabled ? 'Cloudflare email is configured. Invitations send only when you click Send invitation.' : 'Email sending is not configured. Copy invitations into your email client.'}`;
+  $('logout').hidden = false;
   $('requests').replaceChildren();
-  const rows = data.requests.reverse();
-  status(rows.length ? `${rows.length} access request${rows.length === 1 ? '' : 's'}.` : 'No requests yet. New submissions will appear here after refresh.');
+  const view = $('request-view').value;
+  const rows = data.requests.filter(row => view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
+  status(`${rows.length} request${rows.length === 1 ? '' : 's'}`);
+  if (!rows.length) {
+    const empty = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 8;
+    cell.className = 'desk-empty'; cell.textContent = view === 'archived' ? 'No archived requests.' : 'No requests to show.';
+    empty.append(cell); $('requests').append(empty);
+  }
   for (const row of rows) {
-    const card = document.createElement('article'); card.className = 'access-card';
-    const heading = document.createElement('h2'); heading.textContent = row.email;
-    const detail = document.createElement('p'); detail.textContent = `${row.plan} · ${row.organization || 'Individual'} · ${new Date(row.receivedAt).toLocaleString()}`;
-    const state = document.createElement('p'); state.textContent = `${row.state}${row.expiresAt ? ` · Trial expires ${new Date(row.expiresAt).toLocaleString()}` : ''}`;
-    card.append(heading, detail, state);
-    if (row.state === 'approved') {
-      const email = document.createElement('p');
-      const states = { not_sent: 'Invitation not sent by this site.', accepted: 'Invitation accepted by the recipient mail server.',
-        queued: 'Cloudflare queued the invitation; inbox delivery is not yet confirmed.', bounced: 'The invitation bounced. Contact the requester separately.',
-        sending: 'An email attempt is in progress or was interrupted. Refresh; replace the link before retrying.',
-        unknown: 'Email delivery is unconfirmed. Check Cloudflare activity; replace the link before retrying.' };
-      email.textContent = states[row.emailState] ?? 'Email status unavailable.'; card.append(email);
-      if (emailDryRun && row.emailState !== 'not_sent') email.textContent = `Local simulation: ${row.emailState}. No real email was sent.`;
-    }
+    const card = document.createElement('tr');
+    const cell = value => { const td = document.createElement('td'); td.textContent = value; card.append(td); return td; };
+    const email = cell(row.email); email.className = 'request-email';
+    cell(row.organization || '—'); cell(row.plan.charAt(0).toUpperCase() + row.plan.slice(1));
+    const requested = cell(''); const time = document.createElement('time'); time.dateTime = row.receivedAt;
+    time.textContent = new Date(row.receivedAt).toLocaleString(); requested.append(time);
+    const usersCell = cell(row.maxUsers ?? '—');
+    const state = cell(''); const badge = document.createElement('span'); badge.className = 'request-state';
+    badge.textContent = row.state === 'rejected' ? 'Declined' : row.state === 'requested' ? 'Pending' : row.state.charAt(0).toUpperCase() + row.state.slice(1);
+    state.append(badge);
+    if (row.archivedAt) { const archived = document.createElement('small'); archived.textContent = 'Archived'; state.append(archived); }
+    if (row.expiresAt) { const expiry = document.createElement('small'); expiry.textContent = `Expires ${new Date(row.expiresAt).toLocaleDateString()}`; state.append(expiry); }
+    const emailStates = { not_sent: 'Not sent', accepted: 'Accepted', queued: 'Queued', bounced: 'Bounced', sending: 'Sending', unknown: 'Unconfirmed' };
+    cell(row.state === 'approved' ? (emailDryRun && row.emailState !== 'not_sent' ? 'Simulated' : emailStates[row.emailState] || '—') : '—');
+    const actionCell = cell(''), menu = document.createElement('details'); menu.className = 'request-menu';
+    const menuLabel = document.createElement('summary'); menuLabel.textContent = 'Actions'; menuLabel.setAttribute('aria-label', `Actions for ${row.email}`);
+    const menuItems = document.createElement('div'); menuItems.className = 'request-menu-items'; menu.append(menuLabel, menuItems); actionCell.append(menu);
     const act = (label, action, value, confirmation) => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'button'; button.textContent = label;
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
       button.addEventListener('click', async () => {
         if (confirmation && !confirm(confirmation)) return;
+        menu.open = false;
         button.disabled = true;
         try {
           const response = await api(`/${row.id}/${action}`, typeof value === 'function' ? value() : value);
@@ -67,18 +77,18 @@ async function refresh() {
           if (data.message && data.email) {
             clearInvitation(); $('invite-to').value = data.email; $('invite-subject').value = data.subject; $('invite-message').value = data.message;
             $('invitation').hidden = false; $('invite-message').focus();
-            status('Review the invitation. Use Send invitation on the request card, or copy it into your email client.');
+            status('Invitation ready to review.');
           } else status(data.hasRevocation ? 'Link closed. Download the signed revocation and install it on the trial server to revoke its installed license.' : 'Request updated.');
         } catch (error) { status(error.message); }
         finally { button.disabled = false; }
       });
-      card.append(button);
+      menuItems.append(button);
     };
     if (row.state === 'requested') {
-      const label = document.createElement('label'); label.className = 'access-field'; label.textContent = 'Maximum vault users';
-      const users = document.createElement('input'); users.type = 'number'; users.min = '1'; users.max = '100'; users.value = '5'; label.append(users); card.append(label);
-      act('Approve 10-day trial', 'approve', () => ({ maxUsers: Number(users.value) }), `Approve an unpaid self-hosted trial for ${row.email}? Cloud hosting is not included.`);
-      act('Decline request', 'reject', {}, 'Decline this access request?');
+      const users = document.createElement('input'); users.type = 'number'; users.min = '1'; users.max = '100'; users.value = String(row.maxUsers ?? 5);
+      users.className = 'request-users'; users.setAttribute('aria-label', `Maximum vault users for ${row.email}`); usersCell.replaceChildren(users);
+      act('Approve', 'approve', () => ({ maxUsers: Number(users.value) }), `Approve a 10-day trial for ${row.email}?`);
+      act('Decline', 'reject', {}, 'Decline this access request?');
     }
     if (row.state === 'approved') {
       if (row.canPreviewInvitation) act('Review invitation', 'invitation', undefined);
@@ -87,7 +97,7 @@ async function refresh() {
       act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
     }
     if (row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);
-    act('Erase contact request', 'erase', {}, 'Erase this contact request and close its link? Minimal license/revocation records are retained. Save any required revocation first.');
+    act(row.archivedAt ? 'Restore to inbox' : 'Archive', row.archivedAt ? 'unarchive' : 'archive', {});
     $('requests').append(card);
   }
 }
@@ -96,14 +106,15 @@ $('operator-login').addEventListener('submit', async event => {
   try { await refresh(); } catch (error) { token = ''; status(error.message); }
 });
 $('refresh').addEventListener('click', () => refresh().catch(error => status(error.message)));
+$('request-view').addEventListener('change', () => { clearInvitation(); refresh().catch(error => status(error.message)); });
 $('export').addEventListener('click', async () => {
   try {
     const response = await api(); const url = URL.createObjectURL(await response.blob());
     const a = document.createElement('a'); a.href = url; a.download = '127vaults-access-requests.json'; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000); status('Requests exported. Keep the contact export private and delete it when no longer needed.');
+    setTimeout(() => URL.revokeObjectURL(url), 1000); status('Requests exported.');
   } catch (error) { status(error.message); }
 });
-$('logout').addEventListener('click', () => { token = ''; clearInvitation(); $('requests').replaceChildren(); $('inbox').hidden = true; $('operator-login').hidden = false; status('Signed out.'); });
+$('logout').addEventListener('click', () => { token = ''; clearInvitation(); $('requests').replaceChildren(); $('inbox').hidden = true; $('logout').hidden = true; $('operator-login').hidden = false; status('Signed out.'); });
 $('hide-invite').addEventListener('click', clearInvitation);
 $('copy-invite').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(`To: ${$('invite-to').value}\nSubject: ${$('invite-subject').value}\n\n${$('invite-message').value}`); status('Email message copied. Send it from your email client.'); }

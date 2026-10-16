@@ -120,6 +120,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
   }
   const allow = createDurableLimit({ directory: join(dataDir, 'request-limits'), now: () => now().getTime() });
   const summary = record => ({ state: record?.state ?? 'requested', maxUsers: record?.maxUsers,
+    archivedAt: record?.archivedAt ?? null,
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt,
     emailState: record?.emailState ?? 'not_sent', emailAttemptedAt: record?.emailAttemptedAt,
     canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
@@ -144,7 +145,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
         return json(res, 200, { requests: await Promise.all(requests.map(async request => ({ ...request,
           ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
       }
-      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
       const [, , id, action] = route;
       const result = await withFileLock(join(dataDir, `${id}.lock`), async () => {
@@ -158,6 +159,12 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
           if (action === 'revocation' && req.method === 'GET' && record?.revocation) return download(res, 'trial-revocation.json', record.revocation);
           if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
           const input = await body(req);
+          if (action === 'archive' || action === 'unarchive') {
+            if (Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
+            record = { state: 'requested', ...record, archivedAt: action === 'archive' ? now().toISOString() : null };
+            await save(id, record);
+            return json(res, 200, summary(record));
+          }
           if (action === 'send-invitation') {
             if (Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
             if (!mailer) return json(res, 503, { error: 'email_not_configured' });
@@ -176,7 +183,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
             return json(res, 200, summary(record));
           }
           if (action === 'approve' || action === 'rotate') {
-            if ((action === 'approve' && record) || (action === 'rotate' && record?.state !== 'approved')) return json(res, 409, { error: 'state_changed' });
+            if ((action === 'approve' && record && record.state !== 'requested') || (action === 'rotate' && record?.state !== 'approved')) return json(res, 409, { error: 'state_changed' });
             if (action === 'approve' && (Object.keys(input).join(',') !== 'maxUsers'
               || !Number.isSafeInteger(input.maxUsers) || input.maxUsers < 1 || input.maxUsers > 100)) return json(res, 400, { error: 'invalid_request' });
             if (action === 'rotate' && Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });

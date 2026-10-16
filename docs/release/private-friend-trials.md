@@ -15,6 +15,14 @@ Open it with the operator access key from the protected token file. The inbox
 supports refresh, export, decline, erasure, approval, link replacement and closure.
 It is separate from the private vault-server admin console.
 
+The inbox presents one request per table row, with email, organization, plan,
+requested date/time, user limit, status, invitation status and an Actions menu.
+Refresh and Export sit above the table; Sign out is in the page header. Archive
+moves a row out of Inbox without deleting contact data or closing an approved
+trial. Select Archived or All requests to find it and Restore to inbox to return
+it. Archive/restore preserve the existing license, invitation and expiry. Contact
+erasure remains an explicit backend capability; the routine row action is Archive.
+
 Approval defaults to five users, adjustable from 1 to 100. It creates a random
 256-bit bearer link valid for 30 days and an email-ready message. Use Review
 invitation, then Send invitation when Cloudflare email is configured, or copy

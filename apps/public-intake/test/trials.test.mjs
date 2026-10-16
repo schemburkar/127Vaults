@@ -45,6 +45,9 @@ test('real request → operator approval → private downloads → durable 10-da
     const inbox = await (await get(admin, operatorToken)).json();
     assert.equal(inbox.requests[0].email, 'friend@example.com');
     const id = inbox.requests[0].id;
+    assert.equal((await (await post(`${admin}/${id}/archive`, {}, operatorToken)).json()).state, 'requested');
+    assert.ok((await (await get(admin, operatorToken)).json()).requests[0].archivedAt);
+    assert.equal((await (await post(`${admin}/${id}/unarchive`, {}, operatorToken)).json()).archivedAt, null);
     assert.equal((await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken, 'https://other.example')).status, 403);
     const approval = await (await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken)).json();
     assert.match(approval.message, /unpaid/);
@@ -75,6 +78,9 @@ test('real request → operator approval → private downloads → durable 10-da
     const firstLicense = await (await get(`${base}/license`, token)).text();
     const license = verifyLicenseFile(firstLicense, issuerPublicKeys, installationId);
     assert.equal(license.maxActiveUsers, 5); assert.equal(licenseStatus(license, at).mode, 'active');
+    await post(`${admin}/${id}/archive`, {}, operatorToken);
+    assert.equal(await (await get(`${base}/license`, token)).text(), firstLicense);
+    await post(`${admin}/${id}/unarchive`, {}, operatorToken);
     const envPath = join(dir, '.env'); await writeFile(envPath, 'VAULTS_PROJECT=trial\n');
     await installLicenseFiles({ runtimeDir: join(dir, 'runtime'), envPath, installationId,
       licenseSource: firstLicense, keySource: JSON.stringify(issuerPublicKeys), now: at });
