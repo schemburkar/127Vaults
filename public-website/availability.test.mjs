@@ -9,6 +9,11 @@ test('Cloud availability appears on its disabled plan button', () => {
     const html = readFileSync(new URL(`./${page}.html`, import.meta.url), 'utf8');
     assert.doesNotMatch(html, /availability-note/, page);
     if (page === "pricing" || page === "index") assert.match(html, /<button class="plan-cta" type="button" disabled>Coming Soon<\/button>/);
+    else if (page === 'get-started') {
+      assert.match(html, /id="cloud-coming-soon"/);
+      assert.match(html, /Cloud is coming soon/);
+      assert.doesNotMatch(html, /value="undecided"/);
+    }
     else assert.doesNotMatch(html, /coming soon/i, page);
   }
 });

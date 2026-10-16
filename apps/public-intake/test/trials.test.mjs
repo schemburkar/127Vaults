@@ -40,10 +40,11 @@ test('real request → operator approval → private downloads → durable 10-da
     Origin: requestOrigin, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(value) });
   const admin = '/api/access-admin/requests';
   try {
-    assert.equal((await post('/api/waitlist', { email: 'friend@example.com', organization: '', plan: 'personal', website: '', consent: true })).status, 202);
+    assert.equal((await post('/api/waitlist', { email: 'friend@example.com', organization: '', plan: 'personal', requestedSeats: 3, website: '', consent: true })).status, 202);
     assert.equal((await get(admin)).status, 401);
     const inbox = await (await get(admin, operatorToken)).json();
     assert.equal(inbox.requests[0].email, 'friend@example.com');
+    assert.equal(inbox.requests[0].requestedSeats, 3);
     const id = inbox.requests[0].id;
     assert.equal((await (await post(`${admin}/${id}/archive`, {}, operatorToken)).json()).state, 'requested');
     assert.ok((await (await get(admin, operatorToken)).json()).requests[0].archivedAt);

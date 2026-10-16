@@ -23,7 +23,15 @@ trial. Select Archived or All requests to find it and Restore to inbox to return
 it. Archive/restore preserve the existing license, invitation and expiry. Contact
 erasure remains an explicit backend capability; the routine row action is Archive.
 
-Approval defaults to five users, adjustable from 1 to 100. It creates a random
+Personal requests collect email and a requested user count (1–100). Commercial
+requests additionally require a contact name and organization. Cloud is coming
+soon and cannot submit requests; Not sure is no longer offered. Billing address,
+tax IDs and payment details are not collected for this unpaid trial. Existing
+encrypted requests remain readable, including older rows without user counts.
+
+Approval defaults to the requested user count, adjustable from 1 to 100; older
+requests without a count start at one. The grid shows requested users separately
+from the approved limit. Approval creates a random
 256-bit bearer link valid for 30 days and an email-ready message. Use Review
 invitation, then Send invitation when Cloudflare email is configured, or copy
 and send that message yourself to the displayed requester address. Approval

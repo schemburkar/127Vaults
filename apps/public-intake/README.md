@@ -7,7 +7,7 @@ A separate manually approved trial path is now available with PUBLIC_TRIALS=1 (k
 
 This is a separate HTTP API intended to sit behind a reviewed HTTPS reverse proxy at the public website's origin. The static website sends `GET` and `POST` requests to `/api/waitlist`. `npx serve` serves only the static pages, so the form stays disabled in that preview.
 
-The API accepts contact email, intended plan, optional organization, and consent. Cloud requests also require a planned vault-user count from 1 to 1,000. This is seat interest for follow-up, not a seat purchase or entitlement. It writes encrypted JSON Lines records with AES-256-GCM. It does not create a vault user, customer account, purchase, or license. It never asks for vault credentials.
+The API accepts Personal and Commercial access requests with contact email, a required vault-user count from 1 to 100, and consent. Commercial also requires contact name and organization. Cloud and undecided submissions are rejected. This is requested trial capacity, not a purchase or entitlement. It writes encrypted JSON Lines records with AES-256-GCM. The intake operation does not create a vault user, customer account, purchase, or license. It never asks for vault credentials. Older encrypted records remain readable.
 
 For a disposable local test, set `PUBLIC_INTAKE_ORIGIN` to the exact HTTPS website origin, `PUBLIC_INTAKE_KEY_FILE` to a protected file containing a 64-character random hex key, and `PUBLIC_INTAKE_DATA_FILE` to an absolute path for the encrypted records. `PUBLIC_INTAKE_PORT` defaults to 3101. Run `node apps/public-intake/src/server.mjs`; it binds to loopback only. A reverse proxy must terminate HTTPS and route `/api/waitlist` to it. Do not expose this process directly to the Internet.
 

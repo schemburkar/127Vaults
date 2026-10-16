@@ -26,14 +26,14 @@ test('waitlist accepts a consented request without storing plaintext and rejects
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/api/waitlist`;
   try {
-    const body = JSON.stringify({ email: 'Alex@Example.com', organization: '', plan: 'personal', consent: true, website: '' });
+    const body = JSON.stringify({ email: 'Alex@Example.com', organization: '', plan: 'personal', requestedSeats: 2, consent: true, website: '' });
     const denied = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://other.example' }, body });
     assert.equal(denied.status, 403);
     const accepted = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://127vaults.example' }, body });
     assert.equal(accepted.status, 202);
-    const cloud = JSON.stringify({ email: 'buyer@example.com', organization: '', plan: 'cloud', requestedSeats: 10,
+    const commercial = JSON.stringify({ email: 'buyer@example.com', contactName: 'Alex Example', organization: 'Example Team', plan: 'commercial', requestedSeats: 10,
       consent: true, website: '' });
-    assert.equal((await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://127vaults.example' }, body: cloud })).status, 202);
+    assert.equal((await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://127vaults.example' }, body: commercial })).status, 202);
     const saved = await readFile(file, 'utf8');
     assert.ok(!saved.includes('Alex@Example.com'));
     assert.ok(!saved.includes('alex@example.com'));
@@ -44,18 +44,25 @@ test('waitlist accepts a consented request without storing plaintext and rejects
     decipher.setAuthTag(Buffer.from(entry.tag, 'base64url'));
     const detail = JSON.parse(Buffer.concat([decipher.update(Buffer.from(entry.ciphertext, 'base64url')), decipher.final()]).toString());
     assert.equal(detail.requestedSeats, 10);
-    assert.equal(detail.plan, 'cloud');
+    assert.equal(detail.plan, 'commercial');
+    assert.equal(detail.contactName, 'Alex Example');
+    assert.equal(detail.organization, 'Example Team');
   } finally {
     await new Promise(resolve => server.close(resolve));
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('Cloud seat interest requires a bounded integer and other plans cannot smuggle seats', () => {
-  const request = { email: 'buyer@example.com', organization: '', plan: 'cloud', consent: true, website: '' };
+test('self-hosted requests require user counts, commercial contacts, and reject unavailable plans', () => {
+  const request = { email: 'buyer@example.com', organization: '', plan: 'personal', consent: true, website: '' };
   assert.equal(validateRequest({ ...request, requestedSeats: 1 }).requestedSeats, 1);
-  for (const requestedSeats of [0, 1001, 1.5, '10', null]) {
+  for (const requestedSeats of [0, 101, 1.5, '10', null, undefined]) {
     assert.equal(validateRequest({ ...request, requestedSeats }), null);
   }
-  assert.equal(validateRequest({ ...request, plan: 'personal', requestedSeats: 10 }), null);
+  assert.equal(validateRequest({ ...request, requestedSeats: 10 }).requestedSeats, 10);
+  for (const plan of ['cloud', 'undecided']) assert.equal(validateRequest({ ...request, plan, requestedSeats: 1 }), null);
+  assert.equal(validateRequest({ ...request, plan: 'commercial', requestedSeats: 5 }), null);
+  assert.equal(validateRequest({ ...request, plan: 'commercial', requestedSeats: 5, organization: 'Team' }), null);
+  assert.equal(validateRequest({ ...request, plan: 'commercial', requestedSeats: 5, contactName: 'Alex' }), null);
+  assert.equal(validateRequest({ ...request, plan: 'commercial', requestedSeats: 5, contactName: 'Alex', organization: 'Team' }).contactName, 'Alex');
 });

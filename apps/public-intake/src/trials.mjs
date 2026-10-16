@@ -183,6 +183,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
             return json(res, 200, summary(record));
           }
           if (action === 'approve' || action === 'rotate') {
+            if (action === 'approve' && !['personal', 'commercial'].includes(request.plan)) return json(res, 409, { error: 'plan_unavailable' });
             if ((action === 'approve' && record && record.state !== 'requested') || (action === 'rotate' && record?.state !== 'approved')) return json(res, 409, { error: 'state_changed' });
             if (action === 'approve' && (Object.keys(input).join(',') !== 'maxUsers'
               || !Number.isSafeInteger(input.maxUsers) || input.maxUsers < 1 || input.maxUsers > 100)) return json(res, 400, { error: 'invalid_request' });

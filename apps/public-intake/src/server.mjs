@@ -13,7 +13,7 @@ import { withFileLock } from './durable-limit.mjs';
 import { createCloudflareTrialMailer } from './cloudflare-email.mjs';
 import { validIntakeOrigin } from './intake-origin.mjs';
 
-const plans = new Set(['personal', 'commercial', 'cloud', 'undecided']);
+const plans = new Set(['personal', 'commercial']);
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
 const reply = (res, status, body) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
@@ -23,17 +23,21 @@ const reply = (res, status, body) => {
 
 export function validateRequest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
-    || Object.keys(value).some(key => !['consent', 'email', 'organization', 'plan', 'website', 'requestedSeats'].includes(key))
+    || Object.keys(value).some(key => !['consent', 'email', 'organization', 'contactName', 'plan', 'website', 'requestedSeats'].includes(key))
     || ['consent', 'email', 'organization', 'plan', 'website'].some(key => !Object.hasOwn(value, key))) return null;
   const email = String(value.email ?? '').trim().toLowerCase();
   const organization = String(value.organization ?? '').trim();
+  const contactName = typeof value.contactName === 'string' ? value.contactName.trim() : '';
   if (typeof value.email !== 'string' || !emailPattern.test(email) || email.length > 254
     || typeof value.organization !== 'string' || organization.length > 120
     || typeof value.website !== 'string' || value.website.length > 200
     || !plans.has(value.plan) || value.consent !== true
-    || (value.plan === 'cloud' && (!Number.isSafeInteger(value.requestedSeats) || value.requestedSeats < 1 || value.requestedSeats > 1000))
-    || (value.plan !== 'cloud' && value.requestedSeats !== undefined && value.requestedSeats !== null)) return null;
-  return { email, organization, plan: value.plan, requestedSeats: value.plan === 'cloud' ? value.requestedSeats : null,
+    || !Number.isSafeInteger(value.requestedSeats) || value.requestedSeats < 1 || value.requestedSeats > 100
+    || (value.contactName !== undefined && typeof value.contactName !== 'string')
+    || contactName.length > 120 || /[\x00-\x1f\x7f]/.test(contactName)
+    || (value.plan === 'commercial' && (!organization || !contactName))) return null;
+  return { email, organization, contactName: value.plan === 'commercial' ? contactName : null,
+    plan: value.plan, requestedSeats: value.requestedSeats,
     trapped: value.website !== '' };
 }
 
@@ -42,7 +46,7 @@ export function encryptRequest(request, key, now = new Date()) {
   const nonce = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   const plaintext = Buffer.from(JSON.stringify({ email: request.email, organization: request.organization,
-    plan: request.plan, requestedSeats: request.requestedSeats, receivedAt: now.toISOString() }));
+    contactName: request.contactName ?? null, plan: request.plan, requestedSeats: request.requestedSeats, receivedAt: now.toISOString() }));
   const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return JSON.stringify({ version: 1, nonce: nonce.toString('base64url'),
     ciphertext: encrypted.toString('base64url'), tag: cipher.getAuthTag().toString('base64url') }) + '\n';

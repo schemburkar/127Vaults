@@ -55,7 +55,7 @@ async function refresh() {
   const rows = data.requests.filter(row => view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
   status(`${rows.length} request${rows.length === 1 ? '' : 's'}`);
   if (!rows.length) {
-    const empty = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 8;
+    const empty = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 9;
     cell.className = 'desk-empty'; cell.textContent = view === 'archived' ? 'No archived requests.' : 'No requests to show.';
     empty.append(cell); $('requests').append(empty);
   }
@@ -63,9 +63,11 @@ async function refresh() {
     const card = document.createElement('tr');
     const cell = value => { const td = document.createElement('td'); td.textContent = value; card.append(td); return td; };
     const email = cell(row.email); email.className = 'request-email';
+    if (row.contactName) { const name = document.createElement('small'); name.textContent = row.contactName; email.append(name); }
     cell(row.organization || '—'); cell(row.plan.charAt(0).toUpperCase() + row.plan.slice(1));
     const requested = cell(''); const time = document.createElement('time'); time.dateTime = row.receivedAt;
     time.textContent = new Date(row.receivedAt).toLocaleString(); requested.append(time);
+    cell(row.requestedSeats ?? '—');
     const usersCell = cell(row.maxUsers ?? '—');
     const state = cell(''); const badge = document.createElement('span'); badge.className = 'request-state';
     badge.textContent = row.state === 'rejected' ? 'Declined' : row.state === 'requested' ? 'Pending' : row.state.charAt(0).toUpperCase() + row.state.slice(1);
@@ -139,9 +141,9 @@ async function refresh() {
       menuItems.append(button);
     };
     if (row.state === 'requested') {
-      const users = document.createElement('input'); users.type = 'number'; users.min = '1'; users.max = '100'; users.value = String(row.maxUsers ?? 5);
+      const users = document.createElement('input'); users.type = 'number'; users.min = '1'; users.max = '100'; users.value = String(row.maxUsers ?? row.requestedSeats ?? 1);
       users.className = 'request-users'; users.setAttribute('aria-label', `Maximum vault users for ${row.email}`); usersCell.replaceChildren(users);
-      act('Approve', 'approve', () => ({ maxUsers: Number(users.value) }), `Approve a 10-day trial for ${row.email}?`);
+      if (['personal', 'commercial'].includes(row.plan)) act('Approve', 'approve', () => ({ maxUsers: Number(users.value) }), `Approve a 10-day trial for ${row.email}?`);
       act('Decline', 'reject', {}, 'Decline this access request?');
     }
     if (row.state === 'approved') {
