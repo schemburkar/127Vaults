@@ -42,7 +42,7 @@ form.addEventListener('submit', async event => {
     if (response.status === 202) {
       form.reset();
       form.querySelector(`[name="plan"][value="${selectedPlan}"]`).checked = true;
-      message = 'Request received. We’ll contact you about your trial.';
+      message = 'Request received. We’ll contact you about availability and next steps.';
     } else message = response.status === 429 ? 'Too many requests. Please try again later.'
       : 'We could not accept your request. Check your details and try again.';
   } catch { message = 'We could not send your request. Please try again.'; }
