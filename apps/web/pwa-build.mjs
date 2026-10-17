@@ -31,7 +31,7 @@ export function pwaBuild() {
         this.emitFile({ type: 'asset', fileName: name, source: bytes });
         assets.push(`/${name}`);
       }
-      for (const name of ['manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png']) {
+      for (const name of ['brand-mark.svg', 'wordmark.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png']) {
         digest.update(readFileSync(new URL(`public/${name}`, import.meta.url)));
         assets.push(`/${name}`);
       }

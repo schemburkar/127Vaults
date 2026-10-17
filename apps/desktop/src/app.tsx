@@ -1318,6 +1318,7 @@ export function App() {
     return (
       <main className="ui-access-shell grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
         <section className="ui-access-card w-full max-w-lg rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
+          <div className="mb-6 flex items-center justify-center gap-3"><img src="/brand-mark.svg" alt="" width="40" height="40" /><img src="/wordmark.svg" alt="127 Vaults" width="127" height="40" /></div>
           {registrationSuccess ? (
             <div className="grid min-h-[28rem] place-content-center text-center">
               <div className="mx-auto grid size-20 place-items-center rounded-full bg-emerald-400/15 text-emerald-300">
@@ -1439,9 +1440,7 @@ export function App() {
     return (
       <main className="ui-access-shell grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
         <section className="ui-access-card w-full max-w-md rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
-          <div className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-[#9D1F32]">
-            <LockKeyhole />
-          </div>
+          <div className="mx-auto mb-5 flex items-center justify-center gap-3"><img src="/brand-mark.svg" alt="" width="56" height="56" /><img src="/wordmark.svg" alt="127 Vaults" width="159" height="50" /></div>
           <h1 className="text-center text-2xl font-bold">Unlock 127Vaults</h1>
           <p className="mt-2 text-center text-sm text-slate-400">
             Open your encrypted vault on this device.
@@ -1557,10 +1556,7 @@ export function App() {
     <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
-          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#9D1F32] text-xs font-black">
-            127
-          </span>
-          <strong>127Vaults</strong></button>
+          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><img src="/brand-mark.svg" alt="" className="size-9 shrink-0" /><strong><img src="/wordmark.svg" alt="127 Vaults" width="127" height="40" /></strong></button>
           {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="desktop-license-warning text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
             ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
             : licenseStatus.mode === "revoked"

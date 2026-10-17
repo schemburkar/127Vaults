@@ -517,8 +517,8 @@ function Brand({ entry = false, collapsed = false, onCollapse, compact = false, 
   return (
     <div className={`flex items-center gap-3 ${entry ? "entry-brand mb-8" : "brand relative px-2 pb-7 pt-2 max-[560px]:p-1"}`}>
       {onCollapse && <button type="button" className="sidebar-brand-toggle absolute inset-x-0 top-0 h-12 rounded-xl" aria-label={compact ? "Toggle navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compact ? menuOpen : !collapsed} onClick={onCollapse} />}
-      <i className={`grid shrink-0 place-items-center rounded-xl bg-[#9D1F32] text-[11px] font-black not-italic text-white shadow-sm ${entry ? "size-10" : "size-9"}`}>127</i>
-      <b className="text-[15px] font-bold tracking-[-0.02em] text-white max-[800px]:hidden">127Vaults</b>
+      <img src="/brand-mark.svg" alt="" className={entry ? "size-10 shrink-0" : "size-9 shrink-0"} />
+      <b className="max-[800px]:hidden"><img src="/wordmark.svg" alt="127 Vaults" width="127" height="40" /></b>
       {entry && (
         <span id="state" className="sr-only" aria-live="polite">
           Loading

@@ -116,6 +116,8 @@ const licenseWriteGuard=createLicenseWriteGuard({pool,authenticate,origin:transp
   licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,
   revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const webFiles=new Map([
+  ['/brand-mark.svg',['../../web/dist/brand-mark.svg','image/svg+xml']],
+  ['/wordmark.svg',['../../web/dist/wordmark.svg','image/svg+xml']],
   ['/', ['../../web/dist/index.html','text/html; charset=utf-8']],
   ['/sw.js',['../../web/dist/sw.js','text/javascript; charset=utf-8']],
   ['/manifest.webmanifest',['../../web/dist/manifest.webmanifest','application/manifest+json']],
