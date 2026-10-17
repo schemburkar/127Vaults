@@ -1,6 +1,6 @@
 # Sunrise published consumer flow, 2026-10-17
 
-Status: partial acceptance; server startup blocked by the existing Docker Compose installation. No application builds or package modifications were used.
+Status: partial acceptance; continued on loopback using the existing standalone Compose, then blocked by PostgreSQL initialization on the old Docker installation. Prerequisite updates are in progress. No application builds or package modifications were used.
 
 ## Environment and distribution
 
@@ -61,3 +61,16 @@ An initial Docker executable probe also timed out. One direct `docker --version`
 - Still untested: installation-ID retrieval, trial activation/license download and installation, HTTPS client trust, owner creation, desktop enrollment/unlock, encrypted item operations, sync, offline use, and extension filling.
 - The extension was extracted and verified but has not been loaded into Edge.
 - Invitation bearer tokens, contact email, private keys, bootstrap codes, and account secrets are deliberately excluded from this report.
+
+## Continued loopback run
+
+The user explicitly chose to continue with loopback and requested basic coverage across all clients before considering first-party Tailscale integration.
+
+- Existing `docker-compose` 1.27.4 supports `--no-build`. Invoking that command directly against the shipped Compose file and preserved project created the private backend network, database volume, and database container. No package file was changed.
+- Database startup failed: `initdb` reported `could not execute command ... postgres -V: Cannot allocate memory`. Docker reported `OOMKilled: false`, a 512 MiB container limit, and approximately 6.1 GiB of Docker VM memory. The PostgreSQL binary runs its version command in an ordinary disposable container, but an isolated `initdb` probe using the published capability-drop/no-new-privileges settings reproduces the initialization failure. The precise syscall-level cause has not been established.
+- Stopped the failed database container to avoid repeated initialization attempts. Its volume and installation identity are preserved.
+- Started official Docker Desktop and Microsoft WSL prerequisite downloads through Sunrise's browser. WSL 3.0.3.0 x64 completed and its Authenticode signature validated as Microsoft Corporation. Its interactive installer is open for the human to complete. Docker's browser download reports its full 607 MiB received but has not yet finalized its temporary file; signature verification and installation remain pending. The existing WSL does not recognize `wsl --version`.
+- The published CLI reports a fresh unconfigured/unauthenticated/locked/offline state with secrets redacted.
+- Local CLI generation passed: a 24-character password includes every enabled character class; an eight-digit PIN matches its requested format; a six-word passphrase has six words. Generated values were not included in the report.
+- The user loaded the published Chromium extension in Edge, ID `aljmkcbbeondcmmjjmnhmacpfnppiloe`. Verified extension version 0.1.0 in Edge and registered the packaged native messaging host using its shipped registration script. Actual source access and filling remain pending.
+- Public CA DER SHA-256 for this preserved installation: `EEE2BC2628C1933F0994E6E68FEBBC7734B82A5D79F139AD2B42DAA569491C33`. No CA private key was transferred.
