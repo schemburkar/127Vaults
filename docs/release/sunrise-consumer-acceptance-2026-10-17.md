@@ -59,7 +59,7 @@ An initial Docker executable probe also timed out. One direct `docker --version`
 - Preserve the existing bundle `.env`, private identity directory, and keys. Do not reinitialize or delete them to retry startup.
 - Trial activation has not been submitted; the ten-day license has not started.
 - Still untested: installation-ID retrieval, trial activation/license download and installation, HTTPS client trust, owner creation, desktop enrollment/unlock, encrypted item operations, sync, offline use, and extension filling.
-- The extension was extracted and verified but has not been loaded into Edge.
+- The extension is now loaded into Edge and its packaged connector is registered; source access and filling remain untested.
 - Invitation bearer tokens, contact email, private keys, bootstrap codes, and account secrets are deliberately excluded from this report.
 
 ## Continued loopback run
@@ -74,3 +74,18 @@ The user explicitly chose to continue with loopback and requested basic coverage
 - Local CLI generation passed: a 24-character password includes every enabled character class; an eight-digit PIN matches its requested format; a six-word passphrase has six words. Generated values were not included in the report.
 - The user loaded the published Chromium extension in Edge, ID `aljmkcbbeondcmmjjmnhmacpfnppiloe`. Verified extension version 0.1.0 in Edge and registered the packaged native messaging host using its shipped registration script. Actual source access and filling remain pending.
 - Public CA DER SHA-256 for this preserved installation: `EEE2BC2628C1933F0994E6E68FEBBC7734B82A5D79F139AD2B42DAA569491C33`. No CA private key was transferred.
+
+## Basic client acceptance checklist
+
+Continue on Sunrise only, using `https://127.0.0.1:12780`, the preserved installation, and the published packages. First-party Tailscale discovery/integration is outside this run.
+
+1. Finish the prerequisite installers, rerun doctor, and start the preserved server. Confirm database/server health and loopback binding before activating the trial.
+2. Retrieve the installation UUID; activate the supplied customer invitation; download and install its license using the published flow. Confirm license state and the one-user limit.
+3. Compare the public CA fingerprint with the recorded value, establish client trust, and create a disposable first owner through the published web setup. Keep bootstrap codes, account secrets, recovery material, and passwords outside this report.
+4. In the web client, create a vault named `Sunrise Smoke` and a fictitious login named `Sunrise smoke login`, username `sunrise-smoke@example.invalid`, using a newly generated test password. Confirm save and reopen.
+5. Enroll the installed desktop through the normal approval flow. Confirm the same vault/item, edit a harmless note, sync, and verify the edit in the web client.
+6. Enroll the packaged CLI. List the same vault/item and verify the desktop edit through the normal commands. Confirm CLI status reflects its actual authenticated state.
+7. Open the extension through a real toolbar click on a suitable login page so Edge grants active-tab access. Select an unlocked enrolled source, find the synthetic item, and request filling. Verify field values and that the form is not submitted automatically. An extension popup opened as its own tab is not a valid fill acceptance test.
+8. Stop only the test server, confirm desktop access to the synchronized item offline, restart the same server, and confirm synchronization resumes. Preserve the database volume and identity throughout.
+
+The WSL installer remains with the human operator. On the latest check Docker's download had reached 636,811,696 bytes but retained its `.crdownload` suffix. Do not run it or count installation as passed until the browser finalizes it and its publisher signature is verified.
