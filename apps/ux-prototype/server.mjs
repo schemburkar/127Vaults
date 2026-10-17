@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 const files = {
+  "/brand-mark.svg": ["brand-mark.svg", "image/svg+xml"],
+  "/wordmark.svg": ["wordmark.svg", "image/svg+xml"],
   "/": ["index.html", "text/html; charset=utf-8"],
   "/style.css": ["style.css", "text/css; charset=utf-8"],
   "/app.js": ["app.js", "text/javascript; charset=utf-8"],
@@ -18,7 +20,7 @@ const server = createServer(async (req, res) => {
       "Content-Type": file[1],
       "Cache-Control": "no-store",
       "Content-Security-Policy":
-        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     });
     res.end(body);
   } catch {
