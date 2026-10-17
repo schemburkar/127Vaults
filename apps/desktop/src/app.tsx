@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
+import { createSessionRevocation } from "./session-revocation.mjs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
@@ -56,7 +57,7 @@ type CollectionSummary = { id: string; name: string; vault_ids: string[] };
 type VaultSettings = { collections: CollectionSummary[]; defaultView: { kind: string; id?: string } | null; removalPreference: string | null; pending: boolean; conflict: boolean };
 type RemovalPlan = { pending: boolean; choice?: "archive" | "move" | "restore"; sourceVaultId?: string; destinationVaultId?: string | null; stage?: "copying" | "finalizing"; itemMappings?: { source_item_id: string; destination_item_id: string }[] };
 type RemovalResult = { receipt: { choice?: string; itemCount?: number; restored?: boolean }; vaults: VaultSummary[]; settings: VaultSettings };
-type UnlockResult = { online: boolean; offlineReason: string | null; vaultId: string; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null; secretRemembered: boolean };
+type UnlockResult = { sessionEpoch: number; online: boolean; offlineReason: string | null; vaultId: string; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null; secretRemembered: boolean };
 type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
@@ -133,6 +134,7 @@ function RelatedPicker({ type, onSelect }: { type: ItemType; onSelect: (type: Se
 }
 
 export function App() {
+  const sessionRevocation = useRef(createSessionRevocation());
   const [unlocked, setUnlocked] = useState(false),
     [online, setOnline] = useState(false),
     [editing, setEditing] = useState(false);
@@ -318,6 +320,7 @@ export function App() {
   };
 
   const lock = async (reason = "Locked") => {
+    sessionRevocation.current.lock();
     syncReviewGeneration.current += 1;
     setSaving(false);
     window.dispatchEvent(new Event("vaults:clear-generator"));
@@ -359,6 +362,25 @@ export function App() {
     catch { setStatus("Local lock needs attention. Close the app before leaving this device."); }
     finally { setBusy(false); }
   };
+  useEffect(() => {
+    let dispose: (() => void) | undefined, stopped = false;
+    void listen<{ epoch: number }>("vaults-connector-locked", event => {
+      if (sessionRevocation.current.revoke(event.payload.epoch)) void lock("Client locked. Unlock to continue.");
+    }).then(unlisten => { if (stopped) unlisten(); else dispose = unlisten; });
+    return () => { stopped = true; dispose?.(); };
+  }, []);
+  useEffect(() => {
+    if (!unlocked) return;
+    let last = 0;
+    const activity = (event: Event) => {
+      if (!event.isTrusted || Date.now() - last < 60000) return;
+      last = Date.now();
+      void invoke("session_activity").catch(() => {});
+    };
+    window.addEventListener("pointerdown", activity);
+    window.addEventListener("keydown", activity);
+    return () => { window.removeEventListener("pointerdown", activity); window.removeEventListener("keydown", activity); };
+  }, [unlocked]);
   useEffect(() => {
     void invoke<typeof nativePasskeys>("native_passkey_provider", { action: "status" }).then(setNativePasskeys).catch(() => undefined);
     void invoke<DesktopInfo>("desktop_info")
@@ -455,6 +477,7 @@ export function App() {
         "Master password must be at least 20 characters.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return false;
+    const unlockTicket = sessionRevocation.current.beginUnlock();
     setBusy(true);
     setStatus("Verifying credentials and opening the encrypted replica…");
     await new Promise<void>((resolve) =>
@@ -466,6 +489,7 @@ export function App() {
         accountSecret,
         masterPassword,
       });
+      if (!sessionRevocation.current.acceptUnlock(unlockTicket, result.sessionEpoch)) { await lock("Client locked. Unlock to continue."); return false; }
       setVaultId(result.vaultId);
       setItemVaultId(result.vaultId);
       setViewMode(result.viewKind === "all" ? "all" : result.viewKind === "collection" ? "collection" : "single");
@@ -503,6 +527,7 @@ export function App() {
       if (result.items[0]) await openItem(result.items[0], result.vaultId);
       return result.online;
     } catch (e) {
+      if (wasUnlocked) await lock("Unlock failed; vault locked.");
       const message = String(e);
       const detail =
         message.includes("401") &&
@@ -514,6 +539,7 @@ export function App() {
       notify("error", "Could not unlock the vault", detail);
       return false;
     } finally {
+      sessionRevocation.current.failUnlock(unlockTicket);
       setBusy(false);
     }
   };

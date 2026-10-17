@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { createSessionRevocation } from '../src/session-revocation.mjs';
 
 const source = await readFile(new URL('../src/app.tsx', import.meta.url), 'utf8');
 const start = source.indexOf('  const unlock = async () => {');
@@ -13,14 +14,14 @@ const compile = code => ts.transpileModule(code, { compilerOptions: { target: ts
 
 test('verified desktop unlock presents the vault without awaiting ancillary status', { timeout: 1000 }, async () => {
   const calls = [], values = {};
-  const context = { busy: false, unlocked: false, username: 'fixture', rememberedSecret: true,
+  const context = { sessionRevocation: { current: createSessionRevocation() }, busy: false, unlocked: false, username: 'fixture', rememberedSecret: true,
     showSecretEntry: false, accountSecret: '', masterPassword: 'synthetic-password-long-enough',
     Date, requestAnimationFrame: callback => callback(),
     dragSession: { unlock() {} }, friendlyError: String, notify() {}, openItem: async () => {},
     invoke: async command => {
       calls.push(command);
       if (command !== 'unlock') return new Promise(() => {});
-      return { online: true, vaultId: 'fixture', vaults: [], items: [], settings: { collections: [] }, viewKind: 'all', secretRemembered: true };
+      return { sessionEpoch: 1, online: true, vaultId: 'fixture', vaults: [], items: [], settings: { collections: [] }, viewKind: 'all', secretRemembered: true };
     },
   };
   for (const setter of new Set(unlockSource.match(/set[A-Z]\w+/g))) context[setter] = value => { values[setter] = value; };

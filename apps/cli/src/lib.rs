@@ -44,6 +44,11 @@ pub fn connector_agent_active(config_dir: &std::path::Path) -> bool {
     agent::call(config_dir, "status", serde_json::json!({})).is_ok()
 }
 
+/// Keep an owned connector available during actual desktop interaction.
+pub fn touch_connector_agent(config_dir: &std::path::Path) {
+    let _ = agent::call(config_dir, "replica.status", serde_json::json!({}));
+}
+
 /// Reports whether the unlocked agent supports native OS passkey operations.
 #[must_use]
 pub fn connector_agent_native_capable(config_dir: &std::path::Path) -> bool {

@@ -2,10 +2,15 @@
 #![allow(clippy::needless_pass_by_value)] // Tauri commands deserialize owned IPC arguments.
 
 use serde_json::{Value, json};
+use tauri::{Emitter, Manager};
+mod session_epoch;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use vaults_cli::{
     TrustArgs,
@@ -16,9 +21,19 @@ use vaults_cli::{
 
 #[derive(Default)]
 struct DesktopState {
-    session: Mutex<Option<Session>>,
+    session: Mutex<Option<(u64, Session)>>,
     enrollment: std::sync::Arc<Mutex<Value>>,
-    connector_owned: Mutex<Option<PathBuf>>,
+    connector_owned: Mutex<Option<(u64, PathBuf)>>,
+    connector_seen: Mutex<Option<(u64, PathBuf)>>,
+    epoch: session_epoch::SessionEpoch,
+    unlocking: AtomicBool,
+}
+
+struct UnlockLease<'a>(&'a AtomicBool);
+impl Drop for UnlockLease<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 #[tauri::command]
@@ -70,7 +85,7 @@ fn generate_secret(options: Value) -> Result<String, String> {
 impl Drop for DesktopState {
     fn drop(&mut self) {
         if let Ok(owned) = self.connector_owned.get_mut()
-            && let Some(path) = owned.take()
+            && let Some((_, path)) = owned.take()
         {
             stop_connector_agent(&path);
         }
@@ -305,7 +320,18 @@ fn with_session<T>(
         .session
         .lock()
         .map_err(|_| "desktop vault state is unavailable".to_owned())?;
-    action(guard.as_mut().ok_or("vault is locked")?)
+    let (epoch, session) = guard.as_mut().ok_or("vault is locked")?;
+    let expected = *epoch;
+    if state.epoch.current() != expected {
+        guard.take();
+        return Err("vault is locked".to_owned());
+    }
+    let result = action(session);
+    if state.epoch.current() != expected {
+        guard.take();
+        return Err("vault is locked".to_owned());
+    }
+    result
 }
 
 #[tauri::command]
@@ -315,7 +341,17 @@ async fn unlock(
     account_secret: String,
     master_password: String,
 ) -> Result<Value, String> {
-    if let Some(path) = state
+    if state.unlocking.swap(true, Ordering::AcqRel) {
+        return Err("unlock is already in progress".to_owned());
+    }
+    let _lease = UnlockLease(&state.unlocking);
+    let epoch = state.epoch.advance();
+    state
+        .connector_seen
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable")?
+        .take();
+    if let Some((_, path)) = state
         .connector_owned
         .lock()
         .map_err(|_| "desktop connector state is unavailable".to_owned())?
@@ -327,6 +363,7 @@ async fn unlock(
     // can all be expensive. Keep them off the webview command thread so the
     // unlock progress UI remains responsive.
     let config = config_directory()?;
+    let connector_config = config.clone();
     let supplied_secret = !account_secret.is_empty();
     let (session, result, connector_owned) = tauri::async_runtime::spawn_blocking(move || {
         let secret = if account_secret.is_empty() {
@@ -387,15 +424,67 @@ async fn unlock(
     })
     .await
     .map_err(|_| "the secure unlock worker stopped unexpectedly".to_owned())??;
-    *state
+    commit_unlock(
+        &state,
+        epoch,
+        session,
+        result,
+        connector_owned,
+        connector_config,
+    )
+}
+
+fn commit_unlock(
+    state: &tauri::State<'_, DesktopState>,
+    epoch: u64,
+    session: Session,
+    mut result: Value,
+    connector_owned: Option<PathBuf>,
+    connector_config: PathBuf,
+) -> Result<Value, String> {
+    let mut current = state
         .session
         .lock()
-        .map_err(|_| "desktop vault state is unavailable")? = Some(session);
+        .map_err(|_| "desktop vault state is unavailable")?;
+    if state.epoch.current() != epoch {
+        if let Some(path) = connector_owned {
+            stop_connector_agent(&path);
+        }
+        return Err("unlock was canceled by a lock request".to_owned());
+    }
+    *current = Some((epoch, session));
     *state
         .connector_owned
         .lock()
-        .map_err(|_| "desktop connector state is unavailable".to_owned())? = connector_owned;
+        .map_err(|_| "desktop connector state is unavailable".to_owned())? =
+        connector_owned.map(|path| (epoch, path));
+    *state
+        .connector_seen
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable")? =
+        result["extensionConnectorActive"]
+            .as_bool()
+            .unwrap_or(false)
+            .then_some((epoch, connector_config));
+    result["sessionEpoch"] = json!(epoch);
     Ok(result)
+}
+
+#[tauri::command]
+async fn session_activity(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    let owned = state
+        .connector_seen
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable")?
+        .clone();
+    if let Some((epoch, path)) = owned
+        && state.epoch.current() == epoch
+    {
+        tauri::async_runtime::spawn_blocking(move || vaults_cli::touch_connector_agent(&path))
+            .await
+            .map_err(|_| "desktop activity worker failed")?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -813,12 +902,18 @@ fn conflict_compare(
 
 #[tauri::command]
 fn lock(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    state.epoch.advance();
+    state
+        .connector_seen
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable")?
+        .take();
     state
         .session
         .lock()
         .map_err(|_| "desktop vault state is unavailable".to_owned())?
         .take();
-    if let Some(path) = state
+    if let Some((_, path)) = state
         .connector_owned
         .lock()
         .map_err(|_| "desktop connector state is unavailable".to_owned())?
@@ -893,11 +988,53 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(DesktopState::default())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    let state = handle.state::<DesktopState>();
+                    let owned = state
+                        .connector_seen
+                        .lock()
+                        .ok()
+                        .and_then(|owned| owned.clone());
+                    let Some((epoch, path)) = owned else {
+                        continue;
+                    };
+                    if state.epoch.current() != epoch
+                        || connector_agent_active(&path)
+                        || !state.epoch.revoke(epoch)
+                    {
+                        continue;
+                    }
+                    // Revoke access and notify every window before waiting on an in-flight network operation.
+                    let _ = handle.emit("vaults-connector-locked", json!({"epoch":epoch}));
+                    if let Ok(mut session) = state.session.lock()
+                        && session.as_ref().is_some_and(|(saved, _)| *saved == epoch)
+                    {
+                        session.take();
+                    }
+                    if let Ok(mut owned) = state.connector_owned.lock()
+                        && owned.as_ref().is_some_and(|(saved, _)| *saved == epoch)
+                    {
+                        owned.take();
+                    }
+                    if let Ok(mut seen) = state.connector_seen.lock()
+                        && seen.as_ref().is_some_and(|(saved, _)| *saved == epoch)
+                    {
+                        seen.take();
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             generate_secret,
             native_passkey_provider,
             desktop_info,
             unlock,
+            session_activity,
             item_list,
             vault_list,
             vault_create,
