@@ -45,7 +45,7 @@ async function fixture(t, options = {}) {
     const directory = fileURLToPath(new URL('../cloudflare/', import.meta.url));
     const paths = [mfOptions.scriptPath,
       ...(await readdir(directory)).filter(name => name.endsWith('.mjs') && name !== 'worker.mjs').map(name => join(directory, name)),
-      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
+      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs', 'operator-session.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
     mf = new bundled.Miniflare(bundled.convertV4MiniflareOptions({ ...mfOptions, scriptPath: undefined,
       modulesRules: undefined, modules: paths.map(path => ({ type: 'ESModule', path })) }));
   } else mf = new Miniflare(mfOptions);
@@ -327,4 +327,22 @@ test('the runtime bundled with the deployment CLI accepts the same D1/R2 and lic
   const license = await (await f.get(`${a.base}/license`, a.token)).text();
   assert.equal(verifyLicenseFile(license, f.publicKeys, installationId).maxActiveUsers, 5);
   assert.equal(await (await f.get(`${a.base}/artifacts/server`, a.token)).text(), f.archive);
+});
+
+test('operator key exchange survives refresh via scoped cookie and refuses cross-origin renewal', async t => {
+  const f = await fixture(t);
+  const response = await f.post('/api/access-admin/session', {}, f.operatorToken);
+  assert.equal(response.status, 200);
+  const cookie = response.headers.get('set-cookie').split(';')[0];
+  assert.match(response.headers.get('set-cookie'), /HttpOnly; Secure; SameSite=Strict/);
+  assert.equal((await f.get(admin, undefined, cookie)).status, 200);
+  assert.equal((await f.get(admin, undefined, cookie + 'broken')).status, 401);
+  assert.equal((await f.post('/api/access-admin/session', {}, f.operatorToken, 'https://other.example')).status, 403);
+  const renew = await f.mf.dispatchFetch(origin + '/api/access-admin/session', { method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
+  assert.equal(renew.status, 401);
+  const logout = await f.mf.dispatchFetch(origin + '/api/access-admin/logout', { method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
 });

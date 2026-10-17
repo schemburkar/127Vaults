@@ -10,6 +10,7 @@ import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-l
 import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
 import { validIntakeOrigin } from './intake-origin.mjs';
 import { verifyLicenseFile } from '../../server/src/license-status.mjs';
+import { createOperatorSession, validOperatorSession, clearOperatorSession } from './operator-session.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const idPattern = /^[a-f0-9]{64}$/;
@@ -133,13 +134,22 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       if (!path.startsWith('/api/access-admin/') && !path.startsWith('/api/trials/')) return json(res, 404, { error: 'not_found' });
       const admin = path.startsWith('/api/access-admin/');
       const bearer = /^Bearer ([A-Za-z0-9_-]{43,128})$/.exec(req.headers.authorization ?? '')?.[1];
-      if (admin && !equal(bearer, operatorToken)) {
+      if (admin && !equal(bearer, operatorToken) && !await validOperatorSession(req.headers.cookie, operatorToken, Date.now())) {
         if (!await allow('admin-auth', req.socket.remoteAddress ?? 'unknown', 20, 3600000)) return json(res, 429, { error: 'rate_limited' });
         return json(res, 401, { error: 'access_required' });
       }
       if (!['GET', 'POST'].includes(req.method)) return json(res, 405, { error: 'method_not_allowed' });
       if (req.method === 'POST' && (req.headers.origin !== origin
         || req.headers['content-type']?.split(';')[0] !== 'application/json')) return json(res, 403, { error: 'forbidden' });
+      if (path === '/api/access-admin/session' && req.method === 'POST') {
+        if (Object.keys(await body(req)).length) return json(res, 400, { error: 'invalid_request' });
+        if (!equal(bearer, operatorToken)) return json(res, 401, { error: 'access_required' });
+        return json(res, 200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(operatorToken, Date.now()) });
+      }
+      if (path === '/api/access-admin/logout' && req.method === 'POST') {
+        if (Object.keys(await body(req)).length) return json(res, 400, { error: 'invalid_request' });
+        return json(res, 200, { signedIn: false }, { 'Set-Cookie': clearOperatorSession() });
+      }
       await mkdir(dataDir, { recursive: true, mode: 0o700 });
       if (path === '/api/access-admin/requests' && req.method === 'GET') {
         const requests = await readAccessRequests(dataFile, key);

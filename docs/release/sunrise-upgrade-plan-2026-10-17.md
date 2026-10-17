@@ -48,3 +48,9 @@ Consumer credentials are protected outside Git at `C:\Users\shubh\.codex\sunrise
 Previously passed basic consumer checks: vault/item creation, desktop read/edit, CLI login/read/sync, actual extension fill without submission, offline desktop edit and reconnect sync. New installers and their upgrade preservation are NOT yet accepted on Sunrise. After upgrade, retest those basics plus open-item refresh, locking, native connector and existing device/profile retention; only then run a distinct Tailscale setup/two-machine test.
 
 Mac work remains preparation only: no Mac, Apple Developer account or GitHub repository. Signing/notarization and actual Mac/Chrome acceptance remain gated. Cloudflare private WARP routing remains exploratory; no public tunnel hostname has been enabled. The email-notification request remains a separate aside and must not displace Sunrise acceptance.
+
+## Resumed — operator session follow-up
+
+Weekly usage checked at resume: 80% used, 20% remaining. Both fixed-source server and Linux desktop builds produced release manifests; checksum verification remains pending. Added one-hour, signed, Secure/HttpOnly/SameSite=Strict operator cookies scoped to the admin API. Fresh operator key exchange is required to renew; API actions retain origin checks, and sign-out clears the cookie. No operator key is stored in browser storage. Focused intake/session tests: 17 passed, including expiry/tampering/key rotation, Worker key exchange, cookie-authenticated refresh, cross-origin rejection, renewal rejection and logout.
+
+Additional user request: use the public site's current logo AND wordmark across all apps. This changes affected release sources, so the completed 50b4c4f artifacts are diagnostic predecessors, not the final branded release. Finish branding and build a coherent new snapshot before publishing. No new public deployment or Sunrise upgrade yet.

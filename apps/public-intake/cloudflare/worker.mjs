@@ -5,6 +5,7 @@ import { encryptionKey, limiterKey, equal, hash, issuer, signEnvelope, token, fr
 import { TrialStore, Conflict } from './store.mjs';
 import { validateCatalogue, catalogueIdentity, publicArtifact } from './catalogue.mjs';
 import { byteRange } from './download.mjs';
+import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 
 const day = 86400000;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
@@ -117,9 +118,18 @@ async function dispatch(request, env, now) {
   }
   const admin = path.startsWith('/api/access-admin/');
   if (!admin && !path.startsWith('/api/trials/')) fail(404, 'not_found');
-  if (admin && !await equal(bearer, env.OPERATOR_TOKEN)) {
+  if (admin && !await equal(bearer, env.OPERATOR_TOKEN) && !await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at)) {
     if (!await store.allow('admin-auth', ip, 20, 3600000)) fail(429, 'rate_limited');
     fail(401, 'access_required');
+  }
+  if (path === '/api/access-admin/session' && request.method === 'POST') {
+    empty(await body(request));
+    if (!await equal(bearer, env.OPERATOR_TOKEN)) fail(401, 'access_required');
+    return json(200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(env.OPERATOR_TOKEN, at) });
+  }
+  if (path === '/api/access-admin/logout' && request.method === 'POST') {
+    empty(await body(request));
+    return json(200, { signedIn: false }, { 'Set-Cookie': clearOperatorSession() });
   }
   // Bound trial guessing and abusive downloads, without exposing contact identifiers in the limiter.
   if (!admin && !await store.allow('trial-ip', ip, 600, 3600000)) fail(429, 'rate_limited');
