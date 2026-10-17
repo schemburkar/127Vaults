@@ -1,6 +1,6 @@
 # Sunrise published consumer flow, 2026-10-17
 
-Status: partial acceptance; continued on loopback using the existing standalone Compose, then blocked by PostgreSQL initialization on the old Docker installation. Prerequisite updates are in progress. No application builds or package modifications were used.
+Status: basic online acceptance passed for web, desktop, CLI, and extension using the published packages. Deployment required Podman host workarounds; the published installation flow is not accepted end to end. See the latest checkpoint below; earlier resume points are historical. No application builds or package modifications were used.
 
 ## Environment and distribution
 
@@ -95,3 +95,43 @@ The WSL installer remains with the human operator. On the latest check Docker's 
 The human completed WSL installation. `wsl --version` now reports WSL 3.0.3.0 and kernel 6.18.54.1-1. The Docker download finalized; its Authenticode signature validated as Docker Inc. The downloaded installer reports version 4.95.0.242831, was copied to `C:\Users\shubh\Downloads\127Vaults-Trial\Docker-Desktop-Installer.exe`, and is running in the interactive Sunrise session for the human to complete.
 
 Before that Docker update completes, the CLI still reports version 20.10.2 and cannot reach `docker_engine_linux`. This is not evidence that the new Docker engine has failed: the update has not yet been confirmed complete. Server startup, activation, and client acceptance remain pending. The preserved loopback installation has not been reinitialized.
+
+## Latest checkpoint: Podman and basic client acceptance
+
+The user abandoned the stuck Docker Desktop updater and authorized Podman. Installed official signed Podman 6.1.4 and Podman Desktop 1.30.5. The native Docker Compose 5.6.0 executable matched its official SHA-256. Python `podman-compose` was removed and was not used for this acceptance run. Product packages and container images remained the downloaded release.
+
+The older published Windows operator helper requires a Python Compose provider. For this run, native Compose was invoked manually against the shipped Compose file with the preserved project, identity, and database volume. The locally committed native-provider changes were not substituted into Sunrise's release bundle.
+
+| Check | Result |
+| --- | --- |
+| Server and PostgreSQL | Both healthy under Podman; database schema 8 |
+| Trial activation | Completed through the public invitation; downloaded license passed the shipped signature, installation-binding, date, and sequence verifier |
+| Effective license | Active commercial trial, one active user maximum, expires 2026-10-27 12:33:30 UTC |
+| HTTPS trust | Public CA checked against the recorded certificate fingerprint; human approved Windows trust; no certificate validation bypass |
+| First owner | Created through the published server-hosted browser setup using synthetic test credentials |
+| Web | Created `Sunrise Smoke` and `Sunrise smoke login`; saved and reopened encrypted login |
+| Desktop | Saved verified server trust, enrolled through web approval, unlocked, read the same item, and edited its username |
+| Cross-client sync | Desktop edit appeared in web after sync and reopening the item; the already open web detail pane initially retained its old value |
+| CLI | Enrolled, authenticated, unlocked, listed the vault and item, read the desktop edit, matched the generated password, and synced with zero pending changes/conflicts |
+| Extension | Real Edge toolbar click granted active-tab access; CLI source listed the item and filled the public test form's username and password correctly without submitting |
+| Desktop offline | With only the server stopped, locked desktop reopened its encrypted replica, saved an edit with one change queued, then reconnected and synced that edit to web; zero changes remained pending |
+
+The fill target was `https://the-internet.herokuapp.com/login`. Only synthetic credentials were filled. No form submission or login to that service was attempted. Multiple Edge profiles were open, but the automated test browser contained both the unlocked vault tab and the extension toolbar popup. No browser profile was copied or merged.
+
+### Host adjustments and remaining release findings
+
+- The Podman machine is `sunrise-127vaults`, using WSL with two CPUs and 2 GiB memory. It was switched to rootful Podman to access the Windows bind mounts; the server container still runs as the published non-root `node` user with the shipped restrictions.
+- Podman's Windows API forwarder initially failed on a stale, zero-byte Unix socket. Removing that exact stale socket while the machine was stopped and starting the machine in the signed-in session restored it.
+- TLS files created during the Docker attempt retained root-owned WSL metadata. A metadata-enabled mount of the existing private directory allowed correcting only the live directory/key ownership for UID 1000 and setting the key to mode 0600. The CA, identity, and private key contents were preserved.
+- Podman's isolated `internal: true` bridge did not forward the published port. A verified-CA HTTPS request directly to the container from the VM returned 200, while the VM/Windows published loopback port timed out. This is a release deployment incompatibility, not a successful native Podman installation.
+- To continue client testing without opening an external listener, an operator SSH forward connects Windows `127.0.0.1:12780` to the container through the Podman VM. The scheduled task is `127Vaults-Loopback-Forward`. This is an explicit test-host workaround and must not be represented as the published consumer setup. It depends on the current VM/container addresses and needs repair after address changes.
+- Replacing the WSL relay also interrupted the VM's Windows-loopback SSH listener; the forward task restores that listener as well. The database volume and running VM were preserved.
+- CLI enrollment from the SSH logon could not save its device key in Windows credential storage. Retrying in the actual signed-in interactive session succeeded with `key_storage=os`. A terminal test helper supplied synthetic credentials to the unchanged CLI's normal prompts. No development authentication path was used.
+- Desktop and CLI trust use the SHA-256 of the public CA file bytes (`6B9FBF9160B07D6B38A845A5D83B4AC4EFE83E43D280D65E465B8037309BAB38`), which differs from the certificate DER fingerprint recorded earlier. Both were independently checked on Sunrise; this distinction should be clearer in consumer instructions.
+- The offline attempt exposed a delayed desktop lock and extension source discovery while the server was unavailable; both recovered after the server restarted. A subsequent offline unlock completed with `server request timed out` as its offline reason. Offline read, queued edit, reconnect, and propagation to web then passed. This latency remains a usability finding, rather than an offline-data failure.
+- Both web and desktop could retain stale values in an already open item detail view after synchronization/reconnection. Reopening the item showed the synchronized value. The offline edit was confirmed on both clients after reopening; it was not lost.
+- The extension detected both desktop and CLI sources. Filling was verified from CLI; a separate desktop-source fill was not completed because the toolbar popup would not stay open during the final control attempt. Windows native passkeys, exhaustive CRUD/types, recovery, multi-user sharing, and cross-computer access were outside this basic run.
+
+Final state: server and database running, desktop online, trial active with one user, test vault and item preserved, and no pending desktop edits. The native Compose and loopback-forwarding caveats above remain release blockers for claiming an uninterrupted consumer installation.
+
+Synthetic account secrets and passwords are retained only in restricted operator/test-host files for continuing this run, not in this report or Git. No trial bearer, bootstrap code, account secret, password, or private key is included here. The email-notification aside is separate and has not changed the published deployment.
