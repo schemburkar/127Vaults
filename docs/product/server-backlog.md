@@ -29,6 +29,14 @@ Server readiness has three distinct levels: **internal MVP backend** means the n
 
 The user's deferred manual run still covers SRV-005/009/010. The combined restore part of SRV-003/013 passed locally on 2026-10-12. Recipient preflight implementation and local checks are recorded in [installer evidence](../release/installer-preflight-evidence-2026-10-09.md). An independent crypto/application review and real-secret approval cannot be closed by local implementation alone. No real-world test credentials have been accepted into this checkout.
 
+## SRV-021 — Private Tailscale connectivity
+
+**State:** Open. **Priority:** Do next; user-selected 2026-10-17.
+
+Support an explicitly selected Tailscale IPv4 endpoint in the shared address range (`100.64.0.0/10`), including Sunrise's `100.99.146.58`. Review installer, server and client validation together; accepting the address in only one layer is insufficient. Keep loopback as the default, bind only to the selected interface, preserve exact HTTPS certificate/installation identity and Host/Origin checks, and document tailnet access controls and host firewall requirements. This does not authorize public Internet exposure or wildcard binding.
+
+**Acceptance:** Using published packages, host on one tailnet computer and complete server trust, account/device enrollment, approval, sync and offline-client recovery on another. Verify that unapproved hosts/origins and unintended network interfaces remain inaccessible. Document the supported private-network path and distinguish it from a single-machine loopback setup.
+
 ## SRV-020 — API-first server boundary (post-MVP priority)
 
 **Decision:** Prioritize after MVP acceptance. Preserve the option of a future
