@@ -58,3 +58,14 @@ export async function signEnvelope(privateKey, keyId, domain, payload) {
   return JSON.stringify({ schemaVersion: 1, keyId, payload: base64url(encoded),
     signature: base64url(await crypto.subtle.sign('Ed25519', privateKey, message)) }) + '\n';
 }
+
+export async function verifyLicenseIssuer(source, keys) {
+  try {
+    const envelope = JSON.parse(source), payload = from64(envelope.payload);
+    if (envelope.schemaVersion !== 1 || !keys[envelope.keyId]) return false;
+    const key = await crypto.subtle.importKey('spki', pemBytes(keys[envelope.keyId], 'PUBLIC KEY'), 'Ed25519', false, ['verify']);
+    const prefix = bytes('127Vaults license v1\0'), message = new Uint8Array(prefix.length + payload.length);
+    message.set(prefix); message.set(payload, prefix.length);
+    return await crypto.subtle.verify('Ed25519', key, from64(envelope.signature), message);
+  } catch { return false; }
+}

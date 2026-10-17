@@ -20,7 +20,9 @@ Updated 2026-10-13. Windows and Linux Tauri client; see [desktop scope](../../ap
 
 ## DESK-012 — macOS desktop app
 
-**State:** Open. **Priority:** Do next; user-selected 2026-10-17.
+**State:** Keychain and packaging preparation implemented; Mac build/acceptance gated. **Priority:** Do next; user-selected 2026-10-17.
+
+No Mac or Apple Developer account is available. The user authorized local preparation and a future GitHub Actions route. [Preparation and remaining gates](../release/macos-preparation.md); no Mac artifact has been built or published.
 
 Extend the existing desktop client to macOS. Define the minimum supported macOS version and Apple Silicon/Intel package coverage; provide signed/notarized customer installation packages and public prerequisites/setup instructions. Implement macOS Keychain integration, secure local agent/connector transport, lifecycle and OS lock/idle handling where current native paths support only Windows/Linux. Preserve server trust, device enrollment, encrypted offline replicas, pending edits and cross-client sync semantics.
 

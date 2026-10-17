@@ -309,3 +309,21 @@ tbody td { color: var(--muted); }
 
 button.plan-cta { width: 100%; border: 0; font-family: inherit; text-align: left; }
 button.plan-cta:disabled { cursor: default; filter: none; }
+
+/* The checklist stores completion flags only; stages remain readable without JS. */
+.setup-wizard { max-width: 760px; }
+.setup-wizard [hidden] { display: none !important; }
+.setup-wizard section { margin: 24px 0; padding: 28px; border: 1px solid var(--line); border-radius: 16px; }
+.setup-wizard h2 { font-size: 26px; margin-bottom: 18px; }
+.setup-wizard p, .setup-wizard li { color: var(--muted); line-height: 1.8; font-size: 14px; }
+.setup-wizard p + p, .setup-wizard ul { margin-top: 16px; }
+.setup-wizard ul { padding-left: 22px; }
+.setup-wizard a { color: var(--text); text-decoration: underline; }
+.setup-wizard code { overflow-wrap: anywhere; }
+.setup-check { display: flex; align-items: flex-start; gap: 12px; margin-top: 24px; line-height: 1.6; }
+.setup-check input { margin-top: 5px; accent-color: var(--brand-red); }
+.setup-navigation { display: flex; flex-wrap: wrap; gap: 12px; }
+.setup-navigation button { border: 1px solid var(--line); cursor: pointer; }
+.setup-navigation button:disabled { opacity: .5; cursor: not-allowed; }
+.setup-resume { margin-top: 12px; }
+@media (max-width: 560px) { .setup-wizard section { padding: 18px; } }

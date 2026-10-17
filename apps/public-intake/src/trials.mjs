@@ -9,6 +9,7 @@ import { withFileLock, createDurableLimit } from './durable-limit.mjs';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
 import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
 import { validIntakeOrigin } from './intake-origin.mjs';
+import { verifyLicenseFile } from '../../server/src/license-status.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const idPattern = /^[a-f0-9]{64}$/;
@@ -125,7 +126,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
     emailState: record?.emailState ?? 'not_sent', emailAttemptedAt: record?.emailAttemptedAt,
     canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
     canPreviewInvitation: Boolean(record?.invitation),
-    activatedAt: record?.activatedAt, expiresAt: record?.expiresAt, installationId: record?.installationId });
+    activatedAt: record?.activatedAt, expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt });
   return async (req, res) => {
     try {
       const path = new URL(req.url, origin).pathname;
@@ -145,7 +146,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
         return json(res, 200, { requests: await Promise.all(requests.map(async request => ({ ...request,
           ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
       }
-      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
       const [, , id, action] = route;
       const result = await withFileLock(join(dataDir, `${id}.lock`), async () => {
@@ -182,23 +183,30 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
             await save(id, record);
             return json(res, 200, summary(record));
           }
-          if (action === 'approve' || action === 'rotate') {
+          if (action === 'approve' || action === 'rotate' || action === 'update-release') {
             if (action === 'approve' && !['personal', 'commercial'].includes(request.plan)) return json(res, 409, { error: 'plan_unavailable' });
-            if ((action === 'approve' && record && record.state !== 'requested') || (action === 'rotate' && record?.state !== 'approved')) return json(res, 409, { error: 'state_changed' });
+            if ((action === 'approve' && record && record.state !== 'requested') || (action !== 'approve' && record?.state !== 'approved')) return json(res, 409, { error: 'state_changed' });
             if (action === 'approve' && (Object.keys(input).join(',') !== 'maxUsers'
               || !Number.isSafeInteger(input.maxUsers) || input.maxUsers < 1 || input.maxUsers > 100)) return json(res, 400, { error: 'invalid_request' });
-            if (action === 'rotate' && Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
+            if (action !== 'approve' && Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
+            if (action === 'update-release' && record.license) {
+              try { verifyLicenseFile(record.license, catalogue.issuerPublicKeys, record.installationId); }
+              catch { return json(res, 409, { error: 'license_issuer_changed' }); }
+            }
             const token = randomBytes(32).toString('base64url');
             record = { ...record, state: 'approved', maxUsers: record?.maxUsers ?? input.maxUsers,
               approvedAt: record?.approvedAt ?? now().toISOString(), payment: 'none', trialDays: 10,
               tokenHash: hash(token), linkExpiresAt: new Date(now().getTime() + 30 * 86400000).toISOString(),
               ticketHash: null, ticketUntil: 0,
-              sourceRevision: record?.sourceRevision ?? catalogue.sourceRevision,
-              releaseHash: record?.releaseHash ?? releaseHash };
+              sourceRevision: action === 'update-release' ? catalogue.sourceRevision : record?.sourceRevision ?? catalogue.sourceRevision,
+              releaseHash: action === 'update-release' ? releaseHash : record?.releaseHash ?? releaseHash };
             const link = `${origin}/trial.html#${id}.${token}`;
             record.invitation = { subject: 'Your private 10-day 127Vaults trial',
               text: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` };
             delete record.emailState; delete record.emailAttemptedAt;
+            if (action === 'update-release') record.upgradeOfferedAt = now().toISOString();
+            if (action === 'update-release') record.invitation = { subject: 'Updated 127Vaults packages for your existing installation',
+              text: `Updated packages are available:\n${link}\n\nBack up and upgrade your existing installation. Do not initialize replacement keys or a new database. Your installation binding, signed license and trial expiry are unchanged. This does not start another trial. Use fictitious data only.` };
             await save(id, record);
             return json(res, 200, { ...summary(record), link, email: request.email,
               subject: record.invitation.subject, message: record.invitation.text });

@@ -31,9 +31,11 @@ The user's deferred manual run still covers SRV-005/009/010. The combined restor
 
 ## SRV-021 — Private Tailscale connectivity
 
-**State:** Open. **Priority:** Do next; user-selected 2026-10-17.
+**State:** Implemented discovery/Serve transport; published two-computer acceptance pending. **Priority:** Do next; user-selected 2026-10-17.
 
 Support an explicitly selected Tailscale IPv4 endpoint in the shared address range (`100.64.0.0/10`), including Sunrise's `100.99.146.58`. Review installer, server and client validation together; accepting the address in only one layer is insufficient. Keep loopback as the default, bind only to the selected interface, preserve exact HTTPS certificate/installation identity and Host/Origin checks, and document tailnet access controls and host firewall requirements. This does not authorize public Internet exposure or wildcard binding.
+
+The user's subsequent direction prefers a loopback origin behind a private connector. The prepared mode discovers the endpoint through native Tailscale, retains host-loopback publication, and forwards TLS through Serve. Desktop/CLI peer discovery avoids manual tailnet IP entry. Public Funnel is refused. [Decision and Cloudflare/intranet alternatives](../architecture/private-connectivity.md). Do not mark accepted before the published two-host run.
 
 **Acceptance:** Using published packages, host on one tailnet computer and complete server trust, account/device enrollment, approval, sync and offline-client recovery on another. Verify that unapproved hosts/origins and unintended network interfaces remain inaccessible. Document the supported private-network path and distinguish it from a single-machine loopback setup.
 

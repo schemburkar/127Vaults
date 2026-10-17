@@ -22,7 +22,9 @@ First extension slice: connect to an active web, desktop or CLI client; unlock a
 
 ## EXT-013 — Chrome extension on macOS
 
-**State:** Open. **Priority:** Do next; user-selected 2026-10-17.
+**State:** macOS native-host registration paths prepared; Mac browser/connector acceptance gated. **Priority:** Do next; user-selected 2026-10-17.
+
+See [macOS preparation](../release/macos-preparation.md). Native messaging on a Mac has not been executed; existing Windows/Linux acceptance is not Mac evidence.
 
 Reuse the existing Chromium Manifest V3 extension for Chrome on macOS. Browser API compatibility is a starting point, not evidence of product support. Verify the web-source path independently, then package the macOS native messaging host, Chrome manifest registration with an absolute executable path and exact allowed extension origin, and secure handoff to the DESK-012 Mac desktop agent. Document installation, repair, updates and removal. Include CLI-source integration only when a compatible Mac CLI/native agent is available; do not imply existing Windows/Linux packages work on Mac.
 

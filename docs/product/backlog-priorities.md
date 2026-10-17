@@ -22,7 +22,7 @@ See the [internal release candidate evidence and remaining gates](../release/int
 | DESK-012 in the [desktop backlog](desktop-backlog.md) | Add a supported macOS desktop app with secure native integration, published installation packages and clean-Mac acceptance. |
 | EXT-013 in the [extension backlog](extension-backlog.md) | Support the existing extension in Chrome on macOS, including web-source fill and native messaging to the Mac desktop app, with offline and lock acceptance. |
 
-These are open follow-up items; recording them does not change the published build or interrupt the current consumer acceptance run.
+The user selected these for implementation after the Sunrise basic run. Track actual release/upgrade acceptance in the [upgrade follow-up](../release/sunrise-upgrade-plan-2026-10-17.md). Mac preparation remains gated on a real Mac build, signing and acceptance; source changes alone do not close those rows.
 
 ## Selected P1 closure order
 

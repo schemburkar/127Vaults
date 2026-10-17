@@ -208,6 +208,7 @@ export function App() {
     [masterPassword, setMasterPassword] = useState("");
   const [rememberedSecret, setRememberedSecret] = useState(false);
   const [showSecretEntry, setShowSecretEntry] = useState(false);
+  const [tailnetPeers, setTailnetPeers] = useState<{name:string;address:string}[]>([]);
   const [offlineReason, setOfflineReason] = useState<string | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string } | null>(null);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
@@ -322,8 +323,8 @@ export function App() {
     window.dispatchEvent(new Event("vaults:clear-generator"));
     openRequest.current++;
     setItemTabs([]);
-    await emit("vaults-locked").catch(() => {});
-    await invoke("lock").catch(() => undefined);
+    setBusy(true);
+    void emit("vaults-locked").catch(() => {});
     setHealthOpen(false);
     setPendingChanges(null);
     setSyncConflicts(0);
@@ -354,6 +355,9 @@ export function App() {
     setMasterPassword("");
     dragSession.lock();
     setStatus(reason);
+    try { await invoke("lock"); }
+    catch { setStatus("Local lock needs attention. Close the app before leaving this device."); }
+    finally { setBusy(false); }
   };
   useEffect(() => {
     void invoke<typeof nativePasskeys>("native_passkey_provider", { action: "status" }).then(setNativePasskeys).catch(() => undefined);
@@ -879,6 +883,8 @@ export function App() {
       return;
     }
     try {
+      const selectionAtSync = selected;
+      const selectionGeneration = openRequest.current;
       syncInFlight.current = true;
       setSyncState("syncing");
       setSyncFailure(null);
@@ -910,6 +916,16 @@ export function App() {
           await emit("vaults-item-deleted", { vaultId: itemVaultId, itemId: selected.itemId }).catch(() => {});
           setItemTabs(current => current.filter(row => row.itemId !== selected.itemId || row.vaultId !== itemVaultId));
           setSelected(null); setEditing(false); setEditOriginal(null);
+        } else if (selectionAtSync?.itemId && !editing) {
+          const summary = visible.find(row => row.itemId === selectionAtSync.itemId && (row.vaultId ?? vaultId) === itemVaultId);
+          if (summary) {
+            const fresh = await loadItem(summary, itemVaultId);
+            if (selectionGeneration === openRequest.current) {
+              setSelected(fresh);
+              setRevealed(new Set());
+              setItemTabs(current => current.map(row => row.itemId === summary.itemId && row.vaultId === itemVaultId ? { ...row, ...summary } : row));
+            }
+          }
         }
       }
       setSyncState("idle");
@@ -1346,6 +1362,8 @@ export function App() {
                 {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-5">
                   <h2 className="font-bold">Connect to your private server</h2>
                   <p className="mb-3 mt-1 text-sm text-slate-400">Get the exact HTTPS address, installation ID, public CA certificate file, and SHA-256 CA fingerprint from your server operator. The certificate must match before trust is saved.</p>
+                  <Button variant="secondary" className="mb-3" onClick={() => void invoke<{name:string;address:string}[]>("tailscale_peers").then(peers => { setTailnetPeers(peers); setStatus(peers.length ? "Choose your server, then verify its installation ID and CA." : "No online Tailscale peers found."); }).catch(error => setStatus(friendlyError(error)))}>Find Tailscale servers</Button>
+                  {tailnetPeers.length > 0 && <select aria-label="Tailscale server" className="mb-3 w-full rounded-xl bg-slate-900 p-3" value={trustUrl} onChange={event => setTrustUrl(event.target.value)}><option value="">Choose your server</option>{tailnetPeers.map(peer => <option key={peer.address} value={`https://${peer.address}:12780`}>{peer.name}</option>)}</select>}
                   <div className="grid gap-2">
                     <Input aria-label="Private server URL" placeholder="https://192.168.1.10:12780" value={trustUrl} onChange={event => setTrustUrl(event.target.value)} />
                     <Input aria-label="Installation ID" placeholder="Installation ID" value={trustServerId} onChange={event => setTrustServerId(event.target.value)} />

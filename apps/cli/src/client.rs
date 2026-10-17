@@ -536,7 +536,7 @@ fn stored_signing_key(
     server_id: &str,
     device_id: &str,
 ) -> Result<SigningKey, String> {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     {
         let entry = keyring::Entry::new(
             "127Vaults device identity",
@@ -555,7 +555,7 @@ fn stored_signing_key(
         }
         Ok(SigningKey::from_bytes(&seed))
     }
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         let _ = (config_dir, server_id, device_id);
         Err("OS credential storage is unavailable".to_owned())

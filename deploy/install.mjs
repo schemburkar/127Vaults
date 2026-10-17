@@ -23,11 +23,12 @@ export function parseOptions(args, { directory = import.meta.dirname } = {}) {
   const seen = new Set();
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
-    if (!['--docker', '--json', '--compose-provider', '--endpoint', '--private-dir'].includes(flag)) throw Error(`Unknown option: ${flag}. Use --help.`);
+    if (!['--docker', '--json', '--tailscale', '--compose-provider', '--endpoint', '--private-dir'].includes(flag)) throw Error(`Unknown option: ${flag}. Use --help.`);
     if (seen.has(flag)) throw Error(`Duplicate option: ${flag}.`);
     seen.add(flag);
     if (flag === '--docker') { options.engine = 'docker'; continue; }
     if (flag === '--json') { options.json = true; continue; }
+    if (flag === '--tailscale') { options.tailscale = true; continue; }
     const value = args[++i];
     if (!value || value.startsWith('--') || /[\r\n\0]/.test(value)) throw Error(`${flag} requires a valid value.`);
     if (flag === '--compose-provider') options.provider = value;
@@ -36,7 +37,7 @@ export function parseOptions(args, { directory = import.meta.dirname } = {}) {
       const octets = value.split('.');
       const ipv4 = octets.length === 4 && octets.every(part => /^(0|[1-9]\d{0,2})$/.test(part) && Number(part) <= 255);
       const [a, b] = octets.map(Number);
-      if (value !== 'localhost' && value !== '127.0.0.1' && !(ipv4 && (a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)))) throw Error('Use loopback or a private IPv4 endpoint.');
+      if (value !== 'localhost' && value !== '127.0.0.1' && !(ipv4 && (a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31))) && !(args.includes('--tailscale') && ipv4 && a === 100 && b >= 64 && b <= 127)) throw Error('Use loopback, a private IPv4 endpoint, or discovered Tailscale with --tailscale.');
     }
     if (flag === '--private-dir') {
       options.privateDir = resolve(directory, value);
@@ -65,7 +66,10 @@ export async function inspectInstallation(directory, options) {
       values[key] = matches[0][1].replace(/\r$/, '');
     }
     if (!/^vaults-test-[a-f0-9]{12}$/.test(values.VAULTS_PROJECT) || !isAbsolute(values.VAULTS_TLS_DIR)) throw Error('configuration');
-    parseOptions(['--endpoint', values.VAULTS_ENDPOINT_HOST, '--private-dir', values.VAULTS_TLS_DIR], { directory });
+    const tailscale = /^VAULTS_ACCESS_MODE=tailscale\r?$/m.test(content);
+    parseOptions(['--endpoint', values.VAULTS_ENDPOINT_HOST, '--private-dir', values.VAULTS_TLS_DIR, ...(tailscale ? ['--tailscale'] : [])], { directory });
+    if (options.tailscale && !tailscale) throw Error('Existing installation needs an explicit network migration.');
+    if (tailscale && options.args && !options.args.includes('--tailscale')) options.args.push('--tailscale');
     if (options.endpoint && options.endpoint !== values.VAULTS_ENDPOINT_HOST) {
       return { id: 'installation', status: 'fail', message: 'Requested endpoint differs from the existing installation.', nextStep: 'Use the initialized endpoint. Changing it requires a reviewed certificate and network migration.' };
     }
@@ -137,6 +141,10 @@ export async function diagnose(args, { directory = import.meta.dirname, platform
       const env = options.provider ? { ...process.env, PODMAN_COMPOSE_PROVIDER: options.provider } : undefined;
       let compose = await runProbe(engine, ['compose', 'version'], { cwd: directory, env });
       if (compose.ok) compose = await runProbe(engine, ['compose', 'ls', '--format', 'json'], { cwd: directory, env });
+      if (compose.ok) {
+        const help = await runProbe(engine, ['compose', 'up', '--help'], { cwd: directory, env });
+        compose = help.ok && help.output?.includes('--no-build') ? help : { ok: false, reason: 'unsupported Compose up command' };
+      }
       add('compose', compose.ok ? 'pass' : 'fail', compose.ok ? 'Compose provider can reach the selected engine.' : `Compose provider or engine connection check failed (${compose.reason}).`, compose.ok ? undefined : engine === 'docker' ? 'Install the Docker Compose plugin and verify docker compose ls --format json.' : 'Set up native Compose in Podman Desktop and verify podman compose ls --format json; use --compose-provider <full executable path> to select its native Compose binary. Python is not required.');
     } else add('compose', 'skip', 'Compose discovery requires an available engine executable.');
   }
@@ -166,6 +174,25 @@ export async function main(args, dependencies = {}) {
   const [action = 'help', ...options] = args;
   if (action === 'help' || action === '--help') {
     log('127Vaults private test server\nUse: install.ps1 / bash install.sh <command> [options]\nCommands: verify, doctor, setup, start, status, bootstrap, stop\nOptions: --docker, --compose-provider <path>, --endpoint <private IPv4>, --private-dir <path>\ndoctor --json emits a redacted prerequisite report. Each external probe has a 15-second deadline.\nsetup creates a fresh identity, loads images and starts the server. Existing .env is preserved.');
+    return 0;
+  }
+  if (action === 'upgrade') {
+    const values = {}, rest = [];
+    for (let i = 0; i < options.length; i++) {
+      if (['--from', '--backup-dir', '--backup-key-file'].includes(options[i])) {
+        const flag = options[i], value = options[++i];
+        if (values[flag] || !value || value.startsWith('--')) throw Error('Upgrade requires unique --from, --backup-dir and --backup-key-file paths.');
+        values[flag] = value;
+      } else rest.push(options[i]);
+    }
+    if (!values['--from'] || !values['--backup-dir'] || !values['--backup-key-file']) throw Error('Upgrade requires --from, --backup-dir and --backup-key-file.');
+    if (rest.some(flag => ['--endpoint', '--private-dir', '--tailscale', '--json'].includes(flag))) throw Error('Upgrade preserves the existing network and identity. Configure network changes separately after verification.');
+    parseOptions(rest, {directory});
+    await prerequisites(rest, {...dependencies, directory, inspectState: null});
+    const module = existsSync(resolve(directory, 'lib/upgrade.mjs')) ? new URL('./lib/upgrade.mjs', import.meta.url) : new URL('./upgrade.mjs', import.meta.url);
+    const {upgradeInstallation} = await import(module);
+    await upgradeInstallation({directory,from:values['--from'],backupDirectory:values['--backup-dir'],keyFile:values['--backup-key-file'],options:rest,verify,inspect:inspectInstallation});
+    log('Upgrade verified. Existing identity, users, license and database volume preserved. Verify an authenticated client sync before removing the prior bundle.');
     return 0;
   }
   if (!['verify', 'doctor', 'setup', 'start', 'status', 'bootstrap', 'stop'].includes(action)) throw Error('Unknown command. Use --help.');

@@ -14,7 +14,7 @@ export const workerDirectory = join(repository, 'apps/public-intake/cloudflare')
 export const assetFiles = ['index.html', 'product.html', 'security.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
-  'trial.mjs', 'access-admin.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
+  'trial.mjs', 'access-admin.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
 function contains(directory, path) {
   const rel = relative(directory, path);
   return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));

@@ -1,7 +1,7 @@
 import { validateRequest } from '../src/validate-request.mjs';
 import { validIntakeOrigin } from '../src/intake-origin.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
-import { encryptionKey, limiterKey, equal, hash, issuer, signEnvelope, token, from64 } from './crypto.mjs';
+import { encryptionKey, limiterKey, equal, hash, issuer, signEnvelope, token, from64, verifyLicenseIssuer } from './crypto.mjs';
 import { TrialStore, Conflict } from './store.mjs';
 import { validateCatalogue, catalogueIdentity, publicArtifact } from './catalogue.mjs';
 import { byteRange } from './download.mjs';
@@ -43,7 +43,7 @@ function summary(record, mailer) {
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
     emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
-    expiresAt: record?.expiresAt, installationId: record?.installationId };
+    expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt };
 }
 async function setup(env, now) {
   if (!validIntakeOrigin(env.PUBLIC_INTAKE_ORIGIN) || !/^[A-Za-z0-9_-]{43,128}$/.test(env.OPERATOR_TOKEN ?? '')
@@ -136,7 +136,7 @@ async function dispatch(request, env, now) {
       .map(row => ({ ...row.contact, id: row.id, ...summary(row.trial, mailer) })), emailEnabled: Boolean(mailer),
       sourceRevision: env.TRIAL_SOURCE_REVISION });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
@@ -150,14 +150,15 @@ async function dispatch(request, env, now) {
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
     if (action === 'archive' || action === 'unarchive') {
       empty(input); record = { state: 'requested', ...record, archivedAt: action === 'archive' ? new Date(at).toISOString() : null };
-    } else if (action === 'approve' || action === 'rotate') {
-      if ((action === 'approve' && record && record.state !== 'requested') || (action === 'rotate' && record?.state !== 'approved')) fail(409, 'state_changed');
+    } else if (action === 'approve' || action === 'rotate' || action === 'update-release') {
+      if ((action === 'approve' && record && record.state !== 'requested') || (action !== 'approve' && record?.state !== 'approved')) fail(409, 'state_changed');
       if (action === 'approve') {
         if (!['personal', 'commercial'].includes(row.contact.plan)) fail(409, 'plan_unavailable');
         if (Object.keys(input).join(',') !== 'maxUsers' || !Number.isSafeInteger(input.maxUsers) || input.maxUsers < 1 || input.maxUsers > 100) fail(400, 'invalid_request');
       } else empty(input);
       const { catalogue, identity } = await release(env);
-      if (record?.releaseHash && record.releaseHash !== identity) fail(409, 'release_changed_contact_operator');
+      if (record?.releaseHash && record.releaseHash !== identity && action !== 'update-release') fail(409, 'release_changed_contact_operator');
+      if (action === 'update-release' && record.license && !await verifyLicenseIssuer(record.license, catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
       const value = token();
       record = { ...record, state: 'approved', maxUsers: record?.maxUsers ?? input.maxUsers,
         approvedAt: record?.approvedAt ?? new Date(at).toISOString(), payment: 'none', trialDays: 10,
@@ -167,6 +168,9 @@ async function dispatch(request, env, now) {
       record.invitation = { subject: 'Your private 10-day 127Vaults trial',
         text: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` };
       delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
+      if (action === 'update-release') record.upgradeOfferedAt = new Date(at).toISOString();
+      if (action === 'update-release') record.invitation = { subject: 'Updated 127Vaults packages for your existing installation',
+        text: `Updated packages are available:\n${link}\n\nBack up and upgrade your existing installation. Do not initialize replacement keys or a new database. Your installation binding, signed license and trial expiry are unchanged. This does not start another trial. Use fictitious data only.` };
       await store.save(row, record);
       return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     } else if (action === 'send-invitation') {

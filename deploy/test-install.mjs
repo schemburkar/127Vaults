@@ -4,8 +4,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
+import { isIP } from 'node:net';
 import { resolve, join } from 'node:path';
 import { installLicenseFiles, installRevocationFile } from './license-files.mjs';
+import { discoverTailscale, enableTailnetForward, tailscaleIPv4 } from './private-network.mjs';
 
 export function nextSetupStep({ bootstrapRequired, license, seatUsage }, smtpConfigured) {
   if (!license || license.mode === 'unavailable') return 'Next: inspect the signed license files and persistent clock checkpoint.';
@@ -32,12 +34,15 @@ export function databaseContainerArgs(project) {
 export async function runTestInstall(argv) {
 const action = argv[0];
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
-const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?? '127.0.0.1';
+const useTailscale = argv.includes('--tailscale');
+const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?? (useTailscale ? await discoverTailscale() : '127.0.0.1');
 const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
 const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
 if (!['init', 'start', 'status', 'identify', 'license', 'revoke', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, revoke, stop, bootstrap, or restore.');
-if (!/^(127\.0\.0\.1|localhost|(?:10|192\.168)\.(?:\d{1,3}\.){2}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.){2})$/.test(endpoint)) throw Error('Use loopback or a private IPv4 endpoint.');
+const [endpointA, endpointB] = endpoint.split('.').map(Number);
+if (!['127.0.0.1', 'localhost'].includes(endpoint) && !(isIP(endpoint) === 4 &&
+  (endpointA === 10 || (endpointA === 192 && endpointB === 168) || (endpointA === 172 && endpointB >= 16 && endpointB <= 31))) && !(useTailscale && tailscaleIPv4(endpoint))) throw Error('Use loopback, a private IPv4 endpoint, or discovered Tailscale with --tailscale.');
 
 async function run(program, argv, { quiet = false } = {}) {
   const child = spawn(program, argv, { stdio: quiet ? ['ignore', 'pipe', 'pipe'] : 'inherit', windowsHide: true,
@@ -82,6 +87,7 @@ async function runCompose(args, options) {
 }
 async function initialize() {
   if (existsSync('.env')) throw Error('.env already exists; preserving installation identity.');
+  if (useTailscale && await discoverTailscale() !== endpoint) throw Error('Endpoint does not match this online Tailscale device.');
   if (privateDir === resolve('.') || privateDir.startsWith(resolve('.') + '\\') || privateDir.startsWith(resolve('.') + '/')) throw Error('Private directory must be outside the bundle.');
   if (restoredIdentity) {
     for (const name of ['ca/ca.crt', 'ca/ca.key', 'live/server.crt', 'live/server.key', 'runtime/token.key', 'runtime/checkpoint.key', 'runtime/postgres-password', 'runtime/readiness-token']) {
@@ -114,9 +120,9 @@ async function initialize() {
     `VAULTS_SERVER_IP=172.28.${chosenOctet}.2`,
     `VAULTS_DATABASE_IP=172.28.${chosenOctet}.3`,
     `VAULTS_TLS_DIR=${privateDir.replaceAll('\\', '/')}`,
-    `VAULTS_ACCESS_MODE=${endpoint === '127.0.0.1' || endpoint === 'localhost' ? 'loopback' : 'private-lan'}`,
+    `VAULTS_ACCESS_MODE=${useTailscale ? 'tailscale' : endpoint === '127.0.0.1' || endpoint === 'localhost' ? 'loopback' : 'private-lan'}`,
     `VAULTS_ENDPOINT_HOST=${endpoint}`,
-    `VAULTS_PUBLISH_ADDRESS=${endpoint}`,
+    `VAULTS_PUBLISH_ADDRESS=${useTailscale || endpoint === 'localhost' ? '127.0.0.1' : endpoint}`,
     `VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=${process.platform === 'win32' ? '1' : '0'}`,
     ''
   ].join('\n');
@@ -140,7 +146,7 @@ async function restoreDatabase() {
   try {
     await chmod(temporary, 0o700).catch(() => {});
     const metadata = JSON.parse(await run(process.execPath, ['server.mjs', 'envelope', 'open', '--input', input, '--output', dump, '--key-file', key], { quiet: true }));
-    if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-7') {
+    if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-8') {
       throw Error('Database backup does not match this restore identity or supported schema.');
     }
     await run(engine, ['load', '-i', 'postgres-image.tar']);
@@ -164,7 +170,7 @@ async function restoreDatabase() {
       await runCompose(['exec', '-T', 'database', 'rm', '-f', '/tmp/database.dump']).catch(() => {});
     }
     const state = await runCompose(['exec', '-T', 'database', 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', "SELECT i.id::text || ' ' || s.version::text FROM vaults.installation i CROSS JOIN vaults.schema_version s"], { quiet: true });
-    if (state !== `${restoreId} 7`) throw Error('Restored database installation or schema differs from the backup metadata.');
+    if (state !== `${restoreId} 8`) throw Error('Restored database installation or schema differs from the backup metadata.');
     console.log('Database restored into the new project and matched to the restored identity. Run install start, then verify an existing client login and item read.');
   } finally {
     await rm(temporary, { recursive: true, force: true });
@@ -239,6 +245,7 @@ else {
       if (actual !== restoreId) throw Error('Restored database and identity installation IDs differ; server start refused.');
     }
     await runCompose(['up', '-d', '--no-build']);
+    if (/^VAULTS_ACCESS_MODE=tailscale$/m.test(content)) await enableTailnetForward(configuredEndpoint);
     console.log(`Open https://${configuredEndpoint}:12780 after verifying and trusting the local CA.`);
   } else if (action === 'stop') await runCompose(['down']);
   else if (action === 'status') {

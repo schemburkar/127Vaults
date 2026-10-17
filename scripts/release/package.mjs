@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(import.meta.dirname, '../..');
 export const version = '0.1.0';
+export function macSigningReady(env = process.env) {
+  return Boolean(env.APPLE_SIGNING_IDENTITY && env.APPLE_SIGNING_IDENTITY !== '-' &&
+    ((env.APPLE_ID && env.APPLE_PASSWORD && env.APPLE_TEAM_ID) || (env.APPLE_API_ISSUER && env.APPLE_API_KEY && env.APPLE_API_KEY_PATH)));
+}
 export async function run(program, args, options = {}) {
   console.log(`> ${program} ${args.join(' ')}`);
   const child = spawn(program, args, { cwd: root, windowsHide: true,
@@ -65,7 +69,9 @@ export async function packageDesktop(output, options = {}) {
   const packageVersion = options.version ?? version;
   const buildEnvironment = { ...process.env, ...(options.version ? { VAULTS_PACKAGE_VERSION: options.version } : {}) };
   const execute = (program, args, settings = {}) => run(program, args, { cwd: sourceRoot, env: buildEnvironment, ...settings });
-  if (!['win32', 'linux'].includes(process.platform) || process.arch !== 'x64') throw Error('Build desktop natively on Windows/Linux x64.');
+  const mac = process.platform === 'darwin';
+  if (!['win32', 'linux', 'darwin'].includes(process.platform) || (!mac && process.arch !== 'x64') || !['x64', 'arm64'].includes(process.arch)) throw Error('Build desktop natively on Windows/Linux x64 or a Mac with Intel/Apple Silicon.');
+  if (mac && !macSigningReady()) throw Error('Mac distribution requires a Developer ID signing identity and Apple notarization credentials. Compile checks can run without publishing packages.');
   const windows = process.platform === 'win32';
   const suffix = windows ? '.exe' : '';
   const triple = await execute('rustc', ['--print', 'host-tuple'], { capture: true });
@@ -78,7 +84,8 @@ export async function packageDesktop(output, options = {}) {
   }
   const config = join(output, 'tauri-package-config.json');
   await writeFile(config, JSON.stringify({ version: packageVersion, bundle: { active: true,
-    targets: windows ? ['nsis'] : ['deb', 'appimage'],
+    targets: windows ? ['nsis'] : mac ? ['dmg'] : ['deb', 'appimage'],
+    ...(mac ? { macOS: { minimumSystemVersion: '13.0', hardenedRuntime: true } } : {}),
     externalBin: ['binaries/127vaults', 'binaries/127vaults-extension-host'],
     resources: options.minimal ? { [`../../../apps/extension/install-native-host.${windows ? 'ps1' : 'sh'}`]: `install-native-host.${windows ? 'ps1' : 'sh'}` }
       : { '../../../apps/extension/install-native-host.ps1': 'install-native-host.ps1', '../../../apps/extension/install-native-host.sh': 'install-native-host.sh' },
@@ -87,8 +94,8 @@ export async function packageDesktop(output, options = {}) {
   // Invoke the actual JS CLI, avoiding Windows .cmd shell interpolation of user paths.
   await execute(process.execPath, [join(sourceRoot, 'apps/desktop/node_modules/@tauri-apps/cli/tauri.js'), 'build', '--config', config, '--', '--locked'],
     { cwd: join(sourceRoot, 'apps/desktop'), env: { ...buildEnvironment, APPIMAGE_EXTRACT_AND_RUN: '1' } });
-  const platform = windows ? 'windows-x64' : 'linux-x64';
-  if (!options.minimal) {
+  const platform = windows ? 'windows-x64' : mac ? `macos-${process.arch}` : 'linux-x64';
+  if (!options.minimal && !mac) {
   const portable = join(output, `127vaults-clients-${packageVersion}-${platform}`);
   await mkdir(portable);
   for (const name of ['vaults-desktop-poc', '127vaults', '127vaults-extension-host']) {
@@ -100,9 +107,9 @@ export async function packageDesktop(output, options = {}) {
   await copyFile(join(sourceRoot, 'LICENSE-POLICY.md'), join(portable, 'LICENSE-POLICY.md'));
   await archive(portable, `${portable}.${windows ? 'zip' : 'tar.gz'}`, windows);
   }
-  for (const target of windows ? ['nsis'] : ['deb', 'appimage']) {
+  for (const target of windows ? ['nsis'] : mac ? ['dmg'] : ['deb', 'appimage']) {
     const directory = join(sourceRoot, 'target/release/bundle', target);
-    const extension = { nsis: '.exe', msi: '.msi', deb: '.deb', appimage: '.AppImage' }[target];
+    const extension = { nsis: '.exe', msi: '.msi', deb: '.deb', appimage: '.AppImage', dmg: '.dmg' }[target];
     const candidates = (await readdir(directory)).filter(name => name.endsWith(extension) && name.includes(`_${packageVersion}_`));
     if (candidates.length !== 1) throw Error(`Expected one ${target} installer for ${packageVersion}, found ${candidates.length}.`);
     await copyFile(join(directory, candidates[0]), join(output, `127vaults-desktop-${packageVersion}-${platform}${extension}`));

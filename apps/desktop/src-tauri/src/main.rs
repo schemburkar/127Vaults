@@ -167,12 +167,28 @@ fn configure_server_trust(
             "enter the 64-character CA SHA-256 fingerprint from the server operator".to_owned(),
         );
     }
+    let tailscale_ip = url::Url::parse(&url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .filter(|host| {
+            host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| {
+                let o = ip.octets();
+                o[0] == 100 && (64..=127).contains(&o[1])
+            })
+        });
+    if let Some(address) = &tailscale_ip
+        && !vaults_cli::tailscale::discover()?
+            .iter()
+            .any(|peer| &peer.address == address)
+    {
+        return Err("The selected server is not an online Tailscale peer".to_owned());
+    }
     let args = TrustArgs {
         url,
         ca: PathBuf::from(ca_path),
         server_id,
         tailscale_name: None,
-        tailscale_ip: false,
+        tailscale_ip: tailscale_ip.is_some(),
         config_dir: config_directory()?,
     };
     let validation = validate_trust(&args)?;
@@ -183,6 +199,11 @@ fn configure_server_trust(
         return Err("CA fingerprint does not match the operator value".to_owned());
     }
     establish_trust(&args)
+}
+
+#[tauri::command]
+fn tailscale_peers() -> Result<Vec<vaults_cli::tailscale::Peer>, String> {
+    vaults_cli::tailscale::discover()
 }
 
 fn profile(path: &std::path::Path, key: &str) -> Option<String> {
@@ -222,7 +243,7 @@ fn cached_username(config: &Path) -> Option<String> {
     Some(username.to_owned())
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn cached_account_secret(config: &Path, username: &str) -> Option<String> {
     if cached_username(config)?.as_str() != username {
         return None;
@@ -236,12 +257,12 @@ fn cached_account_secret(config: &Path, username: &str) -> Option<String> {
     (secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit())).then_some(secret)
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn cached_account_secret(_config: &Path, _username: &str) -> Option<String> {
     None
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn remember_account_secret(config: &Path, username: &str, secret: &str) -> Result<(), String> {
     let key = secret_cache_key(config, username).ok_or("device identity is unavailable")?;
     let entry = keyring::Entry::new("127Vaults account secret", &key)
@@ -257,7 +278,7 @@ fn remember_account_secret(config: &Path, username: &str, secret: &str) -> Resul
     .map_err(|_| "account secret cache metadata could not be saved".to_owned())
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn remember_account_secret(_config: &Path, _username: &str, _secret: &str) -> Result<(), String> {
     Err("OS credential storage is unavailable".to_owned())
 }
@@ -911,7 +932,8 @@ fn main() {
             lock,
             begin_device_enrollment,
             device_enrollment_status,
-            configure_server_trust
+            configure_server_trust,
+            tailscale_peers
         ])
         .run(tauri::generate_context!())
         .expect("desktop POC runtime failed");

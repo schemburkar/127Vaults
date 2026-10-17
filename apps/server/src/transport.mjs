@@ -14,10 +14,13 @@ export function transportConfig(env) {
   const portText = env.PORT ?? '12780';
   const port = Number(portText);
   if (!/^\d+$/.test(portText) || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT.');
-  if (!['loopback', 'private-lan'].includes(mode)) throw new Error('Unsupported access mode.');
+  if (!['loopback', 'private-lan', 'tailscale'].includes(mode)) throw new Error('Unsupported access mode.');
   if (mode === 'loopback') {
     if (!['127.0.0.1', '::1'].includes(publication)) throw new Error('Loopback mode requires loopback publication.');
     if (!['localhost', '127.0.0.1', '::1'].includes(endpoint)) throw new Error('Loopback endpoint must be localhost or literal loopback.');
+  } else if (mode === 'tailscale') {
+    const [a, b] = endpoint.split('.').map(Number);
+    if (isIP(endpoint) !== 4 || a !== 100 || b < 64 || b > 127 || publication !== '127.0.0.1' || !privateV4(bind)) throw new Error('Tailscale mode requires a tailnet IPv4 endpoint and loopback-only publication.');
   } else if (!privateV4(endpoint) || publication !== endpoint) {
     throw new Error('Private-LAN mode requires one identical private IPv4 endpoint and publication address.');
   }

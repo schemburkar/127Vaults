@@ -150,6 +150,7 @@ async function refresh() {
       if (row.canPreviewInvitation) act('Review invitation', 'invitation', undefined);
       if (row.canSendEmail) act(emailDryRun ? 'Send invitation (dry run)' : 'Send invitation', 'send-invitation', {}, emailDryRun ? `Simulate the invitation to ${row.email}? No real email will be sent.` : `Send the approved 10-day trial invitation to ${row.email} through Cloudflare?`);
       act('Replace private link', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
+      if (row.sourceRevision !== data.sourceRevision) act('Offer updated packages', 'update-release', {}, `Offer release ${data.sourceRevision} and replace the private link? Preserve the existing installation, license, trial activation and expiry. This does not start another trial.`);
       act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
     }
     if (row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);

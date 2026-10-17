@@ -53,8 +53,6 @@ services:
       VAULTS_LICENSE_PUBLIC_KEYS_FILE: ${VAULTS_LICENSE_PUBLIC_KEYS_FILE:-}
       VAULTS_LICENSE_REVOCATION_FILE: ${VAULTS_LICENSE_REVOCATION_FILE:-}
       VAULTS_LICENSE_CLOCK_FILE: /run/runtime/license-clock.json
-    ports:
-      - ${VAULTS_PUBLISH_ADDRESS:-127.0.0.1}:${VAULTS_PUBLISH_PORT:-12780}:12780
     volumes:
       - type: bind
         source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/live
@@ -92,7 +90,40 @@ services:
     networks:
       backend:
         ipv4_address: ${VAULTS_SERVER_IP:?Set VAULTS_SERVER_IP}
+  relay:
+    image: localhost/127vaults-server:test
+    command: [node, apps/server/src/entry.mjs, relay]
+    environment:
+      VAULTS_RELAY_TARGET: ${VAULTS_SERVER_IP:?Set VAULTS_SERVER_IP}
+      VAULTS_ENDPOINT_HOST: ${VAULTS_ENDPOINT_HOST:-127.0.0.1}
+    ports:
+      - ${VAULTS_PUBLISH_ADDRESS:-127.0.0.1}:${VAULTS_PUBLISH_PORT:-12780}:12780
+    volumes:
+      - type: bind
+        source: ${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR}/ca/ca.crt
+        target: /run/secrets/ca.crt
+        read_only: true
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 64m
+    restart: unless-stopped
+    stop_grace_period: 5s
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      backend: {}
+      ingress: {}
+    healthcheck:
+      test: [CMD, node, apps/server/src/entry.mjs, relay-healthcheck]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 networks:
+  ingress: {}
   backend:
     internal: true
     ipam:

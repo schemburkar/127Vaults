@@ -15,9 +15,13 @@ if any(not re.fullmatch('[a-p]{32}', value) for value in ids):
     raise SystemExit('Extension IDs must contain 32 letters a-p.')
 manifest = dict(name='com.127vaults.connector', description='127Vaults local client connector',
     path=str(host), type='stdio', allowed_origins=['chrome-extension://' + value + '/' for value in ids])
-config = pathlib.Path(os.environ.get('XDG_CONFIG_HOME', str(pathlib.Path.home() / '.config')))
-for browser in ['google-chrome', 'chromium', 'microsoft-edge']:
-    directory = config / browser / 'NativeMessagingHosts'
+if sys.platform == 'darwin':
+    support = pathlib.Path.home() / 'Library' / 'Application Support'
+    directories = [support / browser / 'NativeMessagingHosts' for browser in ['Google/Chrome', 'Chromium', 'Microsoft Edge']]
+else:
+    config = pathlib.Path(os.environ.get('XDG_CONFIG_HOME', str(pathlib.Path.home() / '.config')))
+    directories = [config / browser / 'NativeMessagingHosts' for browser in ['google-chrome', 'chromium', 'microsoft-edge']]
+for directory in directories:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / 'com.127vaults.connector.json'
     path.write_text(json.dumps(manifest, indent=2) + '\n')

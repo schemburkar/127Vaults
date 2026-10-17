@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 
 const operator = resolve(process.cwd(), 'server.mjs');
+const { windowsOperatorSid } = await import(existsSync(new URL('../tls.mjs', import.meta.url)) ? '../tls.mjs' : './tls.mjs');
+export const licenseBackupPath = name => /^runtime\/licenses\/(?:[1-9]\d*(?:\.keys)?\.json|[0-9a-f-]{36}\.revocation\.json|highest-sequence)$/.test(name);
 export async function runIdentityBackup(argv) {
 const action = argv[0];
 const args = argv.slice(1);
@@ -22,7 +24,7 @@ const identityFiles = [
   'live/server.key', 'live/server.crt',
   'runtime/token.key', 'runtime/checkpoint.key', 'runtime/postgres-password', 'runtime/readiness-token'
 ];
-const optionalFiles = ['runtime/smtp-password', 'runtime/admin-operators.json'];
+const optionalFiles = ['runtime/smtp-password', 'runtime/admin-operators.json', 'output/license-clock.json'];
 
 async function run(argv) {
   const child = spawn(process.execPath, [operator, 'envelope', ...argv], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
@@ -49,6 +51,15 @@ try {
     const files = {};
     for (const name of identityFiles) files[name] = await readRegular(join(source, name));
     for (const name of optionalFiles) if (existsSync(join(source, name))) files[name] = await readRegular(join(source, name));
+    if (existsSync(join(source, 'runtime', 'licenses'))) {
+      const licenses = await readdir(join(source, 'runtime', 'licenses'));
+      if (licenses.length > 256) throw Error('Too many license records for an identity backup.');
+      for (const file of licenses) {
+        const name = `runtime/licenses/${file}`;
+        if (!licenseBackupPath(name)) throw Error('Unexpected license record; finish any license operation before backup.');
+        files[name] = await readRegular(join(source, name));
+      }
+    }
     const certs = await readdir(join(source, 'ca', 'newcerts'));
     for (const name of certs) {
       if (!/^[0-9A-Fa-f]+\.pem$/.test(name)) throw Error('Unexpected CA archive file.');
@@ -67,18 +78,17 @@ try {
     if (parsed.format !== 1 || parsed.serverId !== header.serverId || !parsed.files || typeof parsed.files !== 'object') throw Error('Identity backup context mismatch.');
     if (options['--server-id'] && options['--server-id'] !== header.serverId) throw Error('Identity and database installation IDs differ.');
     const names = Object.keys(parsed.files);
-    if (identityFiles.some(name => !names.includes(name)) || names.some(name => !identityFiles.includes(name) && !optionalFiles.includes(name) && !/^ca\/newcerts\/[0-9A-Fa-f]+\.pem$/.test(name))) throw Error('Identity backup file set is invalid.');
+    if (identityFiles.some(name => !names.includes(name)) || names.some(name => !identityFiles.includes(name) && !optionalFiles.includes(name) && !licenseBackupPath(name) && !/^ca\/newcerts\/[0-9A-Fa-f]+\.pem$/.test(name))) throw Error('Identity backup file set is invalid.');
     const intended = resolve(destination);
     if (intended !== destination && process.platform === 'win32') throw Error('Restore destination must be an absolute path.');
     await mkdir(intended, { recursive: false, mode: 0o700 });
     try {
       if (process.platform === 'win32') {
-        const operator = process.env.USERDOMAIN && process.env.USERNAME ? `${process.env.USERDOMAIN}\\${process.env.USERNAME}` : process.env.USERNAME;
-        if (!operator) throw Error('Cannot identify the restore operator.');
+        const operator = windowsOperatorSid();
         const acl = spawnSync('icacls', [intended, '/inheritance:r', '/grant:r', `${operator}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '/T', '/C'], { stdio: 'ignore', windowsHide: true });
         if (acl.error || acl.status !== 0) throw Error('Could not restrict the restore directory ACL.');
       }
-      for (const dir of ['ca', 'ca/newcerts', 'live', 'runtime', 'output']) await mkdir(join(intended, dir), { recursive: true, mode: 0o700 });
+      for (const dir of ['ca', 'ca/newcerts', 'live', 'runtime', 'runtime/licenses', 'output']) await mkdir(join(intended, dir), { recursive: true, mode: 0o700 });
       for (const name of names) {
         if (typeof parsed.files[name] !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(parsed.files[name])) throw Error('Malformed identity file.');
         await writeFile(join(intended, name), Buffer.from(parsed.files[name], 'base64'), { flag: 'wx', mode: name.endsWith('.crt') ? 0o644 : 0o600 });

@@ -7,6 +7,14 @@ if (process.env.VAULTS_ACCESS_MODE === 'regional-cloud') {
   throw new Error('Regional Cloud tenancy is not enabled by this server build.');
 }
 switch (command) {
+  case 'relay':
+    if (action) throw new Error('relay takes no action.');
+    await (await import('./private-relay.mjs')).runPrivateRelay();
+    break;
+  case 'relay-healthcheck':
+    if (action) throw new Error('relay-healthcheck takes no action.');
+    await (await import('./private-relay.mjs')).runRelayHealthcheck();
+    break;
   case 'serve':
     if (action) throw new Error('serve takes no action.');
     await (await import('./provision.mjs')).runProvision('initialize');

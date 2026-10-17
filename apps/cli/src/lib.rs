@@ -14,6 +14,7 @@ pub mod client;
 pub mod extension_host;
 pub mod replica;
 mod sync_transport;
+pub mod tailscale;
 pub mod vault_settings;
 
 /// Starts a local unlock agent that the read-only extension connector can use.
@@ -189,6 +190,16 @@ pub enum LicenseCommand {
 #[derive(Debug, Subcommand)]
 pub enum ServerCommand {
     Trust(TrustArgs),
+    /// Discover an online Tailscale server by name and verify its HTTPS identity.
+    Tailscale {
+        server: String,
+        #[arg(long)]
+        ca: PathBuf,
+        #[arg(long)]
+        server_id: String,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -753,7 +764,7 @@ fn profile_value(config_dir: &std::path::Path, key: &str) -> Result<String, Stri
     file_profile_value(&config_dir.join("trust.conf"), key)
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn store_device_key(server_id: &str, device_id: &str, seed: &[u8]) -> Result<(), String> {
     let entry = keyring::Entry::new(
         "127Vaults device identity",
@@ -765,7 +776,7 @@ fn store_device_key(server_id: &str, device_id: &str, seed: &[u8]) -> Result<(),
         .map_err(|_| "OS credential storage rejected the device key".to_owned())
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn store_device_key(_server_id: &str, _device_id: &str, _seed: &[u8]) -> Result<(), String> {
     Err("OS credential storage is not implemented on this platform".to_owned())
 }
@@ -1495,6 +1506,42 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Server {
             command: ServerCommand::Trust(args),
         } => establish_trust(&args),
+        Command::Server {
+            command:
+                ServerCommand::Tailscale {
+                    server,
+                    ca,
+                    server_id,
+                    config_dir,
+                },
+        } => {
+            let peers = tailscale::discover()?;
+            let matches: Vec<_> = peers
+                .iter()
+                .filter(|peer| {
+                    peer.name.eq_ignore_ascii_case(&server)
+                        || peer
+                            .name
+                            .split('.')
+                            .next()
+                            .is_some_and(|name| name.eq_ignore_ascii_case(&server))
+                })
+                .collect();
+            if matches.len() != 1 {
+                return Err(
+                    "Choose one exact online Tailscale server name; no unique match was found"
+                        .to_owned(),
+                );
+            }
+            establish_trust(&TrustArgs {
+                url: format!("https://{}:12780", matches[0].address),
+                ca,
+                server_id,
+                config_dir,
+                tailscale_name: None,
+                tailscale_ip: true,
+            })
+        }
         Command::Status { json, config_dir } => {
             let config_dir = effective_config_dir(&config_dir);
             let status = agent::call(&config_dir, "status", serde_json::json!({})).ok();

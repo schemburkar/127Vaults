@@ -1,6 +1,6 @@
 use std::{
     fs,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -536,6 +536,24 @@ fn dispatch(
     result
 }
 
+fn read_agent_request(stream: &TcpStream) -> Result<Request, String> {
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .map_err(|_| "local agent failed")?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(|_| "local agent failed")?;
+    let reader = stream.try_clone().map_err(|_| "local agent failed")?;
+    let mut input = Zeroizing::new(String::new());
+    BufReader::new(reader)
+        .take(1_048_577)
+        .read_line(&mut input)
+        .map_err(|_| "invalid local agent request")?;
+    if input.len() > 1_048_576 || !input.ends_with('\n') {
+        return Err("invalid local agent request".to_owned());
+    }
+    serde_json::from_str(&input).map_err(|_| "invalid local agent request".to_owned())
+}
 pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<String, String> {
     let mut line = Zeroizing::new(String::new());
     std::io::stdin()
@@ -584,13 +602,9 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
     while last.elapsed() < IDLE_TTL {
         match listener.accept() {
             Ok((mut stream, _)) => {
-                let mut input = Zeroizing::new(String::new());
-                BufReader::new(stream.try_clone().map_err(|_| "local agent failed")?)
-                    .read_line(&mut input)
-                    .map_err(|_| "local agent failed")?;
-                let mut request: Request =
-                    serde_json::from_str(&input).map_err(|_| "invalid local agent request")?;
-                input.zeroize();
+                let Ok(mut request) = read_agent_request(&stream) else {
+                    continue;
+                };
                 let authorized = request.capability.as_bytes() == capability.as_bytes();
                 request.capability.zeroize();
                 let result = if authorized {
@@ -609,12 +623,11 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
                         value: Value::String(error),
                     },
                 };
-                writeln!(
+                let _ = writeln!(
                     stream,
                     "{}",
                     serde_json::to_string(&response).map_err(|_| "local agent failed")?
-                )
-                .map_err(|_| "local agent failed")?;
+                );
                 if stop {
                     break;
                 }
@@ -734,8 +747,22 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
     let mut value = fields.as_object().cloned().unwrap_or_default();
     value.insert("capability".to_owned(), Value::String(capability));
     value.insert("action".to_owned(), Value::String(action.to_owned()));
-    let mut stream = TcpStream::connect(("127.0.0.1", port))
-        .map_err(|_| "unlock session expired; run login again".to_owned())?;
+    let mut stream = TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_secs(2),
+    )
+    .map_err(|_| "unlock session expired; run login again".to_owned())?;
+    let timeout = if matches!(action, "status" | "logout") {
+        2
+    } else {
+        90
+    };
+    stream
+        .set_read_timeout(Some(Duration::from_secs(timeout)))
+        .map_err(|_| "local agent unavailable")?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(|_| "local agent unavailable")?;
     let mut outbound = Value::Object(value);
     serde_json::to_writer(&mut stream, &outbound).map_err(|_| "local agent unavailable")?;
     writeln!(stream).map_err(|_| "local agent unavailable")?;

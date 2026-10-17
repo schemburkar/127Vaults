@@ -18,6 +18,10 @@ async function api(action = '', value) {
   return response;
 }
 function showLicense(record) {
+  const upgrading = Boolean(record.upgradeOfferedAt && record.installationId);
+  $('trial-upgrade').hidden = !upgrading;
+  $('trial-prepare').hidden = upgrading;
+  $('trial-install').hidden = upgrading;
   $('trial-activate').hidden = Boolean(record.installationId);
   $('trial-license').hidden = !record.installationId;
   $('trial-dates').textContent = record.expiresAt

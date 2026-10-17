@@ -1243,6 +1243,7 @@ window.addEventListener('focus', syncOnResume);
 window.addEventListener('pageshow', syncOnResume);
 async function reload({ preserveDraft = false } = {}) {
   if (!preserveDraft && !confirmDiscard()) return;
+  const selectionAtStart = currentItem, reloadGeneration = sessionGeneration;
   syncState = 'syncing'; if (!replica?.pending) syncFailure = ''; updateSessionDates();
   try {
   await refreshReplica();
@@ -1331,6 +1332,13 @@ async function reload({ preserveDraft = false } = {}) {
   $("save").disabled = false;
   if (favoritesOnly) { $("vault-title").textContent = "Favorites"; $("vault-state").textContent = "All active vaults"; }
   if (browseView && !favoritesOnly) { $('vault-title').textContent = browseView.kind === 'all' ? 'All items' : vaultSettings.collections.find(row => row.id === browseView.id)?.name || 'Collection'; $('vault-state').textContent = `${browseItems.length} items across vaults`; $('nav-count').textContent = String(browseItems.length); }
+  if (!preserveDraft && selectionAtStart && currentItem === selectionAtStart && reloadGeneration === sessionGeneration) {
+    const summary = items.find(row => row.row.itemId === selectionAtStart.itemId);
+    if (summary) {
+      const fresh = await fetchItem(summary.row.itemId, summary.index);
+      if (currentItem === selectionAtStart && reloadGeneration === sessionGeneration) displayItem(fresh);
+    } else clearItem();
+  }
   if (!replica?.local && !replica?.pending) lastSynced = new Date();
   syncState = syncFailure ? 'error' : 'idle'; updateSessionDates();
   } catch (error) { syncState = 'error'; syncFailure = safeError(error); updateSessionDates(); throw error; }

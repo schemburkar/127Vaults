@@ -56,7 +56,7 @@ export async function snapshot(plan, attempt) {
 }
 export async function doctor(plan) {
   if (Number(process.versions.node.split('.')[0]) !== 24) throw Error('Release tooling requires Node.js 24.');
-  if (process.arch !== 'x64' && plan.product !== 'extension') throw Error('This first release tool supports x64 builds only.');
+  if (process.arch !== 'x64' && plan.product !== 'extension' && !(process.platform === 'darwin' && plan.product === 'desktop' && process.arch === 'arm64')) throw Error('This build requires x64, or Apple Silicon for Mac desktop.');
   const versions = { node: process.version, git: await execute('git', ['--version'], { capture: true, quiet: true }), platform: process.platform, architecture: process.arch };
   await execute('tar', ['--version'], { capture: true, quiet: true });
   if (process.platform !== 'win32' && plan.product === 'extension') await execute('zip', ['-v'], { capture: true, quiet: true });
@@ -154,7 +154,7 @@ async function build(plan, platform, attempt) {
       { checkout: source, provenance: { revision: plan.revision, sourceDirty: false },
         image: `localhost/127vaults-server:release-${plan.inputFingerprint.slice(0, 16)}`, refreshImages: plan.refreshImages });
   }
-  for (const name of await readdir(stage)) if (/\.(?:zip|tar|gz|exe|deb|AppImage)$/.test(name)) {
+  for (const name of await readdir(stage)) if (/\.(?:zip|tar|gz|exe|deb|AppImage|dmg)$/.test(name)) {
     const info = await lstat(join(stage, name));
     if (info.isFile()) await copyFile(join(stage, name), join(payload, name));
   }

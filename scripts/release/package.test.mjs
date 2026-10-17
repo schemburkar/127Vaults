@@ -3,9 +3,16 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { outputDirectory, packageExtension, writeManifest } from './package.mjs';
+import { outputDirectory, packageExtension, writeManifest, macSigningReady } from './package.mjs';
 import { verifyPackages } from './verify.mjs';
 import { assemble } from './assemble.mjs';
+
+test('Mac distribution refuses absent, ad-hoc, or incomplete notarization credentials', () => {
+  assert.equal(macSigningReady({}),false);
+  assert.equal(macSigningReady({APPLE_SIGNING_IDENTITY:'-'}),false);
+  assert.equal(macSigningReady({APPLE_SIGNING_IDENTITY:'Developer ID Application: Test'}),false);
+  assert.equal(macSigningReady({APPLE_SIGNING_IDENTITY:'Developer ID Application: Test',APPLE_ID:'test',APPLE_PASSWORD:'test',APPLE_TEAM_ID:'test'}),true);
+});
 
 test('packaging refuses output in the source checkout', () => {
   assert.throws(() => outputDirectory(null));

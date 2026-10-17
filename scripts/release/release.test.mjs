@@ -42,6 +42,9 @@ async function cleanup(directory) {
 test('target and metadata validation keep label policy separate from native versions', () => {
   assert.deepEqual(targets('desktop', 'both', 'win32'), ['windows', 'linux']);
   assert.deepEqual(targets('extension'), ['chromium']);
+  assert.deepEqual(targets('desktop', 'native', 'darwin', 'arm64'), ['macos-arm64']);
+  assert.deepEqual(targets('desktop', 'native', 'darwin', 'x64'), ['macos-x64']);
+  assert.throws(() => targets('cli', 'native', 'darwin', 'arm64'), /desktop only/);
   assert.throws(() => targets('web'), /server image/);
   assert.throws(() => targets('server', 'windows'), /portable package/);
   assert.equal(labelValue('friends_october'), 'friends_october');

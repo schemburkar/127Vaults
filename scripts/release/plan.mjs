@@ -40,12 +40,16 @@ export function numericVersion(value, product) {
   }
   return value;
 }
-export function targets(product, requested = 'native', host = process.platform) {
+export function targets(product, requested = 'native', host = process.platform, arch = process.arch) {
   if (!products.includes(product)) throw Error(product === 'web' ? 'Web assets currently ship in the server image. Choose server; independent web deployment is deferred.' : 'Choose desktop, cli, extension or server.');
   if (!['native', 'windows', 'linux', 'both'].includes(requested)) throw Error('Platform must be native, windows, linux or both.');
   if (product === 'extension' || product === 'server') {
     if (requested !== 'native') throw Error(`${product} is one portable package. Omit -Platform.`);
     return [product === 'server' ? 'linux-amd64' : 'chromium'];
+  }
+  if (host === 'darwin' && requested === 'native') {
+    if (product !== 'desktop' || !['arm64','x64'].includes(arch)) throw Error('Mac packaging currently prepares desktop only on Intel or Apple Silicon.');
+    return [`macos-${arch}`];
   }
   const native = host === 'win32' ? 'windows' : host === 'linux' ? 'linux' : null;
   if (!native) throw Error('Native client packaging supports Windows and Linux only.');

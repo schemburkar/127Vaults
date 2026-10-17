@@ -56,6 +56,8 @@ for (const [source, target] of [
   ['deploy/install.ps1', 'install.ps1'],
   ['deploy/install.sh', 'install.sh'],
   ['deploy/test-install.mjs', 'lib/test-install.mjs'],
+  ['deploy/private-network.mjs', 'lib/private-network.mjs'],
+  ['deploy/upgrade.mjs', 'lib/upgrade.mjs'],
   ['deploy/license-files.mjs', 'lib/license-files.mjs'],
   ['apps/server/src/admin/credentials.mjs', 'lib/admin-credentials.mjs'],
   ['apps/server/src/license-status.mjs', 'lib/license-status.mjs'],
@@ -68,7 +70,7 @@ for (const [source, target] of [
 ]) await copyFile(join(checkout, source), join(destination, target));
 if (image !== 'localhost/127vaults-server:test') {
   const compose = await readFile(join(destination, 'compose.test.yaml'), 'utf8');
-  await writeFile(join(destination, 'compose.test.yaml'), compose.replace('localhost/127vaults-server:test', image));
+  await writeFile(join(destination, 'compose.test.yaml'), compose.replaceAll('localhost/127vaults-server:test', image));
 }
 const revision = options.provenance?.revision ?? await run('git', ['rev-parse', 'HEAD'], { capture: true });
 const changed = options.provenance ? options.provenance.sourceDirty : Boolean(await run('git', ['status', '--porcelain'], { capture: true }));
@@ -79,7 +81,7 @@ if (options.provenance) {
   }
 }
 const files = {};
-for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
+for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/private-network.mjs', 'lib/upgrade.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE-POLICY.md']) files[name] = await hash(join(destination, name));
 if (issuerKeys) files['issuer-keys.json'] = await hash(join(destination, 'issuer-keys.json'));
 await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image, ...(options.provenance ? { imageIds } : {}), files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);
