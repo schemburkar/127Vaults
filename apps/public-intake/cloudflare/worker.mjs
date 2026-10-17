@@ -6,6 +6,7 @@ import { TrialStore, Conflict } from './store.mjs';
 import { validateCatalogue, catalogueIdentity, publicArtifact } from './catalogue.mjs';
 import { byteRange } from './download.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
+import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
 
 const day = 86400000;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
@@ -44,7 +45,8 @@ function summary(record, mailer) {
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
     emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
-    expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt };
+    expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
+    requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
 async function setup(env, now) {
   if (!validIntakeOrigin(env.PUBLIC_INTAKE_ORIGIN) || !/^[A-Za-z0-9_-]{43,128}$/.test(env.OPERATOR_TOKEN ?? '')
@@ -90,7 +92,7 @@ function close(record, at) {
   delete next.invitation;
   return next;
 }
-async function dispatch(request, env, now) {
+async function dispatch(request, env, now, schedule) {
   const url = new URL(request.url), path = url.pathname;
   if (url.origin !== env.PUBLIC_INTAKE_ORIGIN) fail(403, 'forbidden');
   if (!path.startsWith('/api/')) {
@@ -112,7 +114,12 @@ async function dispatch(request, env, now) {
     if (!await store.allow('waitlist-email', input.email, 3, 3600000)) fail(429, 'rate_limited');
     if (!input.trapped) {
       const { trapped: _, ...contact } = input;
-      await store.insert(await hash(token()), { ...contact, receivedAt: new Date(at).toISOString() });
+      const id = await hash(token());
+      await store.insert(id, { ...contact, receivedAt: new Date(at).toISOString() });
+      if (requestAlertsEnabled(env)) {
+        const alert = notifyNewAccessRequest(env, store, id, contact, at).catch(() => {});
+        if (schedule) schedule(alert); else await alert;
+      }
     }
     return json(202, { received: true });
   }
@@ -146,7 +153,7 @@ async function dispatch(request, env, now) {
     return json(200, { requests: (await store.list()).filter(row => at - row.receivedAt < 90 * day)
       .map(row => ({ ...row.contact, id: row.id, ...summary(row.trial, mailer),
         updateAvailable: row.trial?.state === 'approved' && row.trial.releaseHash !== identity })), emailEnabled: Boolean(mailer),
-      sourceRevision: catalogue.sourceRevision });
+      sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
   const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
@@ -267,8 +274,9 @@ async function dispatch(request, env, now) {
   }
   fail(404, 'not_found');
 }
-export async function handleRequest(request, env, { now = () => Date.now() } = {}) {
-  try { return await dispatch(request, env, now); }
+export async function handleRequest(request, env, options = {}) {
+  const now = options.now ?? (() => Date.now());
+  try { return await dispatch(request, env, now, typeof options.waitUntil === 'function' ? promise => options.waitUntil(promise) : null); }
   catch (error) {
     if (error instanceof HttpError) return json(error.status, { error: error.message });
     if (error instanceof Conflict) return json(409, { error: 'state_changed' });

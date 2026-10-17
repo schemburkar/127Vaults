@@ -47,6 +47,7 @@ function clearInvitation() {
 async function refresh() {
   const data = await (await api()).json();
   emailDryRun = data.emailDryRun === true;
+  $('request-alert-status').textContent = data.requestAlertsEnabled === true ? 'New-request email alerts are on.' : 'New-request email alerts are off.';
   $('operator-login').hidden = true; $('inbox').hidden = false;
   $('logout').hidden = false;
   closeMenu();
@@ -65,6 +66,7 @@ async function refresh() {
     const cell = value => { const td = document.createElement('td'); td.textContent = value; card.append(td); return td; };
     const email = cell(row.email); email.className = 'request-email';
     if (row.contactName) { const name = document.createElement('small'); name.textContent = row.contactName; email.append(name); }
+    if (row.requestAlertState) { const note = document.createElement('small'); note.textContent = ({ sending: 'Email alert pending', accepted: 'Email alert submitted', unconfirmed: 'Email alert unconfirmed' })[row.requestAlertState] || 'Email alert unconfirmed'; email.append(note); }
     cell(row.organization || '—'); cell(row.plan.charAt(0).toUpperCase() + row.plan.slice(1));
     const requested = cell(''); const time = document.createElement('time'); time.dateTime = row.receivedAt;
     time.textContent = new Date(row.receivedAt).toLocaleString(); requested.append(time);

@@ -30,7 +30,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -38,7 +38,11 @@ export function validateConfig(value, file) {
     || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(value.bucketName) || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(value.releaseId)
     || !/^[A-Za-z0-9_-]{1,40}$/.test(value.issuerKeyId ?? '')
     || (value.location && !['weur', 'eeur', 'apac', 'oc', 'wnam', 'enam'].includes(value.location))
-    || (value.emailFrom && !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.emailFrom))) throw Error('Invalid Cloudflare deployment configuration');
+    || (value.emailFrom && !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.emailFrom))
+    || Boolean(value.requestAlertTo) !== Boolean(value.requestAlertFrom)
+    || (value.requestAlertTo && (!/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertTo)
+      || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertFrom)
+      || value.requestAlertFrom.split('@')[1].toLowerCase() !== new URL(value.origin).hostname))) throw Error('Invalid Cloudflare deployment configuration');
   const base = dirname(resolve(file));
   for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) {
     if (typeof value[name] !== 'string' || !value[name]) throw Error(`Missing ${name}`);
@@ -103,9 +107,11 @@ export function wranglerConfig(config, state, assetsDirectory) {
     assets: { directory: assetsDirectory, binding: 'ASSETS', run_worker_first: ['/api/*'], html_handling: 'drop-trailing-slash', not_found_handling: 'none' },
     d1_databases: [{ binding: 'DB', database_name: config.databaseName, database_id: state.databaseId, migrations_dir: join(workerDirectory, 'migrations') }],
     r2_buckets: [{ binding: 'ARTIFACTS', bucket_name: config.bucketName }],
+    ...(config.requestAlertTo ? { send_email: [{ name: 'REQUEST_ALERTS', destination_address: config.requestAlertTo }] } : {}),
     vars: { PUBLIC_INTAKE_ORIGIN: config.origin, TRIAL_ISSUER_KEY_ID: config.issuerKeyId,
       TRIAL_CATALOGUE_KEY: state.catalogueKey ?? 'not-uploaded', TRIAL_CATALOGUE_SHA256: state.catalogueSha256 ?? 'not-uploaded',
       TRIAL_SOURCE_REVISION: state.sourceRevision ?? 'not-uploaded',
+      ...(config.requestAlertTo ? { REQUEST_ALERT_TO: config.requestAlertTo, REQUEST_ALERT_FROM: config.requestAlertFrom } : {}),
       ...(config.emailFrom ? { CF_ACCOUNT_ID: config.accountId, TRIAL_EMAIL_FROM: config.emailFrom } : {}) },
     triggers: { crons: ['17 * * * *'] }, observability: { enabled: false },
   };

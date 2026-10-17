@@ -295,3 +295,13 @@ schema compatibility before using it. No automatic destructive rollback is provi
   invitation emails were created. Actual account deployment, large HTTPS
   download/install/activation, DNS/TLS, delivery and Free-plan CPU acceptance
   remain deployment checks, not claims established by these local tests.
+
+## New-access-request alerts to the operator
+
+Prepared, disabled by default. Verify the operator destination in Cloudflare Email Service and onboard the sender's domain before enabling. The user selected an Outlook plus-address; keep the actual recipient in the ignored deployment config, not public JavaScript or source. No recipient confirmation or sending capability has been established in this test pass.
+
+After verification, add both `requestAlertTo` (the verified inbox) and `requestAlertFrom` (a sender at the site's own domain) to the currently deployed private configuration. Deployment creates a `REQUEST_ALERTS` send binding restricted to that single recipient. The Worker submits a plain-text summary of a newly persisted request: contact email/name/organization, plan, requested users, timestamp and the normal operator inbox URL. It never includes an operator key, private trial link, license or vault credentials. Honeypots do not send alerts.
+
+The request is saved before sending. Delivery work uses the Worker lifetime extension; provider failure cannot lose the request or turn acceptance into an error. A durable attempt claim prevents automatic resending after an ambiguous result. The access desk reports whether alerts are configured and whether each submission was accepted by the provider or remains unconfirmed. Provider acceptance does not establish inbox delivery. A real verified-inbox test remains required before claiming this feature is enabled.
+
+Cloudflare's current [Workers sending API](https://developers.cloudflare.com/email-service/api/send-emails/workers-api/) supports structured messages, so this needs no extra mail library or sending API token. Its [send binding configuration](https://developers.cloudflare.com/email-service/configuration/send-bindings/) can restrict a binding to one destination; sender/domain and destination verification remain operator setup steps. This is separate from sending trial invitations to arbitrary applicants.

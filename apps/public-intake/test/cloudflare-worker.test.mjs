@@ -45,7 +45,7 @@ async function fixture(t, options = {}) {
     const directory = fileURLToPath(new URL('../cloudflare/', import.meta.url));
     const paths = [mfOptions.scriptPath,
       ...(await readdir(directory)).filter(name => name.endsWith('.mjs') && name !== 'worker.mjs').map(name => join(directory, name)),
-      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs', 'operator-session.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
+      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs', 'operator-session.mjs', 'request-alerts.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
     mf = new bundled.Miniflare(bundled.convertV4MiniflareOptions({ ...mfOptions, scriptPath: undefined,
       modulesRules: undefined, modules: paths.map(path => ({ type: 'ESModule', path })) }));
   } else mf = new Miniflare(mfOptions);
@@ -349,4 +349,40 @@ test('operator key exchange survives refresh via scoped cookie and refuses cross
     headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
   assert.equal(logout.status, 200);
   assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
+});
+
+test('fixed-recipient request alerts are durable, contain only a review summary, and fail without losing the request', async t => {
+  const f = await fixture(t); let sent = [], fail = false;
+  const env = { ...f.env, REQUEST_ALERT_TO: 'ops@example.com', REQUEST_ALERT_FROM: 'requests@trial.example.com',
+    REQUEST_ALERTS: { send: async message => { sent.push(message); if (fail) throw Error('private-provider-error'); return { messageId: 'synthetic-accepted' }; } } };
+  const submit = input => handleRequest(new Request(origin + '/api/waitlist', { method: 'POST', headers: {
+    Origin: origin, 'Content-Type': 'application/json', 'cf-connecting-ip': '192.0.2.10' }, body: JSON.stringify(input) }), env);
+  const response = await submit(f.requestInput); assert.equal(response.status, 202);
+  assert.equal(sent.length, 1); assert.equal(sent[0].to, 'ops@example.com');
+  assert.ok(sent[0].text.includes(f.requestInput.email)); assert.ok(sent[0].text.includes(origin + '/access-admin'));
+  assert.ok(!sent[0].text.includes(f.operatorToken)); assert.ok(!sent[0].text.includes('/trial#'));
+  let inbox = (await (await f.get(admin, f.operatorToken)).json()).requests;
+  assert.equal(inbox[0].requestAlertState, 'accepted');
+  await submit({ ...f.requestInput, website: 'bot trap' }); assert.equal(sent.length, 1);
+  fail = true;
+  assert.equal((await submit({ ...f.requestInput, email: 'another@example.com' })).status, 202);
+  inbox = (await (await f.get(admin, f.operatorToken)).json()).requests;
+  assert.equal(inbox.find(row => row.email === 'another@example.com').requestAlertState, 'unconfirmed');
+  assert.equal(inbox.length, 2);
+});
+
+test('a request alert cannot overwrite a concurrent approval or resend an ambiguous attempt', async t => {
+  const f=await fixture(t);let announce,finish,sends=0;
+  const reached=new Promise(resolve=>{announce=resolve}),gate=new Promise(resolve=>{finish=resolve});
+  const env={...f.env,REQUEST_ALERT_TO:'ops@example.com',REQUEST_ALERT_FROM:'requests@trial.example.com',REQUEST_ALERTS:{send:async()=>{sends++;announce();await gate;return{messageId:'synthetic'}}}};
+  const pending=handleRequest(new Request(origin+'/api/waitlist',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(f.requestInput)}),env);
+  await reached;
+  const row=(await(await f.get(admin,f.operatorToken)).json()).requests[0];
+  await f.approve(row.id);finish();assert.equal((await pending).status,202);
+  const after=(await(await f.get(admin,f.operatorToken)).json()).requests[0];
+  assert.equal(after.state,'approved');assert.equal(after.requestAlertState,'accepted');
+  const store=new TrialStore(f.db,await encryptionKey(f.intakeKey,'contacts'),await encryptionKey(f.intakeKey,'trials'));
+  const {notifyNewAccessRequest}=await import('../src/request-alerts.mjs');
+  await notifyNewAccessRequest(env,store,row.id,f.requestInput,Date.now());
+  assert.equal(sends,1);
 });

@@ -192,3 +192,14 @@ test('a directory junction cannot redirect deployment state into public website 
     await assert.rejects(loadConfig(file), /outside the repository/);
   } finally { await unlink(alias); }
 });
+
+test('request alert binding pins one recipient and requires an origin-owned sender', async t => {
+  const f=await fixture(t), file=join(f.directory,'alerts-config.json');
+  const config=validateConfig({...f.config,requestAlertTo:'ops@example.com',requestAlertFrom:'requests@trial.example.com'},file);
+  const rendered=wranglerConfig(config,{databaseId:'11111111-1111-4111-8111-111111111111'},f.directory);
+  assert.deepEqual(rendered.send_email,[{name:'REQUEST_ALERTS',destination_address:'ops@example.com'}]);
+  assert.equal(rendered.vars.REQUEST_ALERT_TO,'ops@example.com');
+  assert.throws(()=>validateConfig({...f.config,requestAlertTo:'ops@example.com'},file),/Invalid/);
+  assert.throws(()=>validateConfig({...f.config,requestAlertTo:'ops@example.com',requestAlertFrom:'outsider@example.net'},file),/Invalid/);
+  assert.equal(wranglerConfig(f.config,{databaseId:'11111111-1111-4111-8111-111111111111'},f.directory).send_email,undefined);
+});
