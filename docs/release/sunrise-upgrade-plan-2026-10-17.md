@@ -60,3 +60,11 @@ Additional user request: use the public site's current logo AND wordmark across 
 Public-site `brand-mark.svg` and `wordmark.svg` are canonical. Web/PWA, desktop entry/sidebar, extension popup, browser/PWA icons and desktop installer/application icons now use that artwork. Run `node scripts/sync-brand.mjs` after an SVG change; regenerate native icon formats with `pnpm --dir apps/desktop exec tauri icon app-icon.svg`. Raster web/extension icons were rendered from the same canonical SVG. Wordmark remains white on the apps' dark surfaces; sidebar collapse still hides the existing wordmark wrapper. CLI output remains plain text.
 
 Validation: web TypeScript/production build, desktop TypeScript/production UI build, 34 extension/PWA tests and 21 website/deployment tests passed. The one-hour operator session tests passed separately. Original 50b4c4f server and Linux desktop release manifests/hashes both verified, but final branded installers require a new source snapshot.
+
+## Live site and build checkpoint — resumed work
+
+Committed operator-session fix `7d7a788` and shared branding `cae2d7e` locally. Deployed the website/Worker with the existing private download catalogue (no new installer publication). Worker version `cc502c1d-6bbf-46a3-9699-4956180bdba3`. Live key exchange, cookie-authenticated requests refresh and cookie-clearing logout passed; no trial/request state changed. The setup checklist is now deployed too. Email sending remains disabled.
+
+Final branded release source: `cae2d7e23ab29c9bca210a025b0979f399783b38`, label `sunrise-upgrade-20261017-cae2d7e`. Windows queue execution session `41297`: extension completed, then desktop, CLI, server run serially. Linux queue session `42150`: desktop then CLI under WSL Ubuntu-24.04. Request files: `C:\Users\shubh\.127vaults-release-cache\branded-{server,desktop,cli,extension}-request.json` and `branded-{desktop,cli}-linux-request.json`. Same output root as before with the new label. Check sessions/results before restarting; cache locks must not be removed while active. Earlier source 50b4c4f server and Linux desktop packages verified successfully but do not include final branding.
+
+Sunrise SSH is reachable as `sunrise\shubh`. Upgrade, existing-profile client update, two-machine Tailscale acceptance and final private catalogue publication remain outstanding. Mac gates unchanged.
