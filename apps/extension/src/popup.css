@@ -51,3 +51,5 @@ footer button:hover{background:#29334a}
 button:disabled{opacity:.5;cursor:default}
 #disable-passkeys,#passkey-browser,#passkey-cancel{background:transparent;color:#b8c2d7;border-color:#414b63}
 #disable-passkeys:hover,#passkey-browser:hover,#passkey-cancel:hover{background:#29334a;border-color:#e0bb95}
+
+.extension-brand { display: inline-flex; align-items: center; gap: 8px; }
