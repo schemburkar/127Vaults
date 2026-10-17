@@ -89,3 +89,9 @@ Continue on Sunrise only, using `https://127.0.0.1:12780`, the preserved install
 8. Stop only the test server, confirm desktop access to the synchronized item offline, restart the same server, and confirm synchronization resumes. Preserve the database volume and identity throughout.
 
 The WSL installer remains with the human operator. On the latest check Docker's download had reached 636,811,696 bytes but retained its `.crdownload` suffix. Do not run it or count installation as passed until the browser finalizes it and its publisher signature is verified.
+
+## Prerequisite update checkpoint
+
+The human completed WSL installation. `wsl --version` now reports WSL 3.0.3.0 and kernel 6.18.54.1-1. The Docker download finalized; its Authenticode signature validated as Docker Inc. The downloaded installer reports version 4.95.0.242831, was copied to `C:\Users\shubh\Downloads\127Vaults-Trial\Docker-Desktop-Installer.exe`, and is running in the interactive Sunrise session for the human to complete.
+
+Before that Docker update completes, the CLI still reports version 20.10.2 and cannot reach `docker_engine_linux`. This is not evidence that the new Docker engine has failed: the update has not yet been confirmed complete. Server startup, activation, and client acceptance remain pending. The preserved loopback installation has not been reinitialized.
