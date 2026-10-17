@@ -142,9 +142,11 @@ async function dispatch(request, env, now) {
     return json(200, { ready: true, sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.length });
   }
   if (path === '/api/access-admin/requests' && request.method === 'GET') {
+    const { catalogue, identity } = await release(env);
     return json(200, { requests: (await store.list()).filter(row => at - row.receivedAt < 90 * day)
-      .map(row => ({ ...row.contact, id: row.id, ...summary(row.trial, mailer) })), emailEnabled: Boolean(mailer),
-      sourceRevision: env.TRIAL_SOURCE_REVISION });
+      .map(row => ({ ...row.contact, id: row.id, ...summary(row.trial, mailer),
+        updateAvailable: row.trial?.state === 'approved' && row.trial.releaseHash !== identity })), emailEnabled: Boolean(mailer),
+      sourceRevision: catalogue.sourceRevision });
   }
   const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');

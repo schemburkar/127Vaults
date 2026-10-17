@@ -153,8 +153,10 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       await mkdir(dataDir, { recursive: true, mode: 0o700 });
       if (path === '/api/access-admin/requests' && req.method === 'GET') {
         const requests = await readAccessRequests(dataFile, key);
-        return json(res, 200, { requests: await Promise.all(requests.map(async request => ({ ...request,
-          ...summary(await optional(request.id)) }))), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
+        return json(res, 200, { requests: await Promise.all(requests.map(async request => {
+          const record = await optional(request.id);
+          return { ...request, ...summary(record), updateAvailable: record?.state === 'approved' && record.releaseHash !== releaseHash };
+        })), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
       }
       const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });

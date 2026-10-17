@@ -227,13 +227,16 @@ test('Worker validation refuses oversized and malformed input, honeypots, wrong 
   assert.equal((await f.post(`${admin}/${id}/erase`, {}, f.operatorToken)).status, 200);
 });
 
-test('operator can offer a new release without renewing or rebinding an activated trial', async t => {
+test('operator can offer client-only updates without renewing or rebinding an activated trial', async t => {
   const f=await fixture(t),id=await f.submit(),a=await f.approve(id),installationId=randomUUID();
   assert.equal((await f.post(`${a.base}/activate`,{installationId},a.token)).status,200);
   const license=await (await f.get(`${a.base}/license`,a.token)).text();
   const store=new TrialStore(f.db,await encryptionKey(f.intakeKey,'contacts'),await encryptionKey(f.intakeKey,'trials'));
   const row=await store.get(id),expiresAt=row.trial.expiresAt;
-  await store.save(row,{...row.trial,releaseHash:'b'.repeat(64),sourceRevision:'b'.repeat(40)});
+  await store.save(row,{...row.trial,releaseHash:'b'.repeat(64)});
+  const inbox = await (await f.get(admin, f.operatorToken)).json();
+  assert.equal(inbox.requests[0].sourceRevision, inbox.sourceRevision);
+  assert.equal(inbox.requests[0].updateAvailable, true);
   assert.equal((await f.post(`${admin}/${id}/update-release`,{})).status,401);
   const update=await f.post(`${admin}/${id}/update-release`,{},f.operatorToken);
   assert.equal(update.status,200,await update.clone().text());
@@ -242,6 +245,7 @@ test('operator can offer a new release without renewing or rebinding an activate
   assert.equal(data.sourceRevision,'a'.repeat(40));
   assert.equal((await f.get(a.base,a.token)).status,401);
   assert.equal(await (await f.get(`${a.base}/license`,replacement)).text(),license);
+  assert.equal((await (await f.get(admin,f.operatorToken)).json()).requests[0].updateAvailable,false);
 });
 
 test('removing email sender disables sending despite a retained Worker secret', async t => {
