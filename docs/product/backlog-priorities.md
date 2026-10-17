@@ -35,6 +35,10 @@ Admin management writes have been implemented during this window. The contract i
 
 ## Scope boundaries
 
+- API-first server hardening is a user-selected **post-MVP priority**, tracked in
+  [SRV-020](server-backlog.md#srv-020--api-first-server-boundary-post-mvp-priority).
+  It preserves a future independently hosted client option; hosted PWA delivery
+  and cross-origin browser access remain deferred and do not block this MVP.
 - Shared vaults and native iOS/Android/iPad delivery remain excluded. Work is a second private vault.
 - Cloud rows remain P0 **for Cloud**, but Cloud startup remains closed and is outside this self-hosted candidate.
 - Public site commercialization, optional table output, drag-to-fill and wider import/export do not block this internal cut.

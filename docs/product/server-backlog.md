@@ -23,10 +23,41 @@ Updated 2026-10-13. The server is an **experimental internal MVP backend**. A lo
 | SRV-017 | Partial | P1 | Signed license caps count active users and live invitation reservations under a transaction lock. Invitation creation and redemption reject capacity violations. The operator status command and authenticated license API show active, reserved and available seats and guide installation of a higher-cap license. Suspension/reactivation seat accounting now passes schema-7 PostgreSQL checks. Finish live concurrent invitation acceptance, upgraded-license rehearsal and rollback policy. Never delete or alter encrypted vault data when a limit is reached or a license changes. |
 | SRV-018 | Partial | P1 | Signed installation-bound licenses and revocations can be installed locally. `GET /api/v1/license` reports active, grace, locked, revoked and clock state. Seat reservations and vault writes are gated; reads, sign-in and recovery remain available. A persistent high-water clock checkpoint detects backward steps over two minutes. Complete durable server-side license-sequence rollback protection, trusted-time/restore policy, bounded emergency export and full lock semantics before production enforcement. Cover renewal, key rotation, offline clients and restore without touching encrypted data. Coordinate with [commercial flow](../architecture/public-access-and-licensing.md). |
 | SRV-019 | Internal owner/invite path; runtime closed | P0 for Cloud | Implement [shared Cloud tenancy](../architecture/regional-cloud-tenancy.md) end to end. The internal-only overlay creates a tenant catalog with a separate, unlicensed control owner identity, reservation/preparation/bootstrap lifecycle, tenant-scoped rate limiter and PostgreSQL RLS. Separate prepared and active request boundaries mount first vault-user registration, invitations, auth, device, sync, vault and settings handlers. Disposable PostgreSQL verifies four tenants, owner and invited-user enrollment, role restrictions, context reset and cross-host HTTP rejection. Cloud startup remains closed. Complete verified public control-owner linkage and authorization, production OPAQUE/SMTP acceptance, billing entitlement and seat enforcement, public ingress, exhaustive handler tests, client enrollment, tenant-selective restore, deletion, and operational launch evidence before enabling Cloud mode. |
+| SRV-020 | Open; user-selected | Post-MVP priority | Reinforce the API-first server boundary so web/PWA, desktop and CLI consume the same versioned application contract. Keep business rules and authorization in the API, document compatibility, isolate client transport and bind local state to server/account identity. Retain the bundled same-origin web client. A centrally hosted PWA and cross-origin browser access are deferred, not part of this implementation or the MVP gate. See acceptance below. |
 
 Server readiness has three distinct levels: **internal MVP backend** means the narrow fictitious-data flow works; **first release** requires a supported installation and restore path; **public beta for real secrets** additionally requires the security and legal gates. Only the first level is evidenced today.
 
 The user's deferred manual run still covers SRV-005/009/010. The combined restore part of SRV-003/013 passed locally on 2026-10-12. Recipient preflight implementation and local checks are recorded in [installer evidence](../release/installer-preflight-evidence-2026-10-09.md). An independent crypto/application review and real-secret approval cannot be closed by local implementation alone. No real-world test credentials have been accepted into this checkout.
+
+## SRV-020 — API-first server boundary (post-MVP priority)
+
+**Decision:** Prioritize after MVP acceptance. Preserve the option of a future
+client at `vault.127vaults.com` without implementing or deploying that hosted
+client now. This work does not enable the hosted Cloud server offering.
+
+**Acceptance:**
+
+- Review web/PWA, desktop and CLI workflows for UI-specific server behavior or
+  business rules outside the API. Put authoritative validation, authorization and
+  business rules behind the shared versioned API; clients retain presentation,
+  local cryptography and offline behavior.
+- Document the existing `/api/v1` contract, authentication and error semantics,
+  protocol/version compatibility and upgrade behavior. Verify representative
+  workflows through the contract across the supported clients.
+- Keep the bundled web interface as an API consumer. Centralize its request
+  transport and identify same-origin assumptions so a selectable API endpoint can
+  be added later without rewriting application workflows.
+- Make installation identity and account identity explicit in local state and
+  queued work. Prevent cross-installation/account state reuse or transmission;
+  do not silently rebind an enrolled profile to another server.
+- Preserve current HTTPS, Host, Origin, CSRF and authentication boundaries, with
+  regression checks. Do not enable wildcard CORS, loosen cookie policy or add
+  remote browser origins as part of this item.
+
+**Deferred separately:** Hosted-PWA deployment, cross-origin authentication/CORS,
+browser LAN/VPN connectivity, certificate onboarding, shared-origin storage
+isolation and centrally delivered client-update trust require their own design
+and security acceptance before remote browser access is enabled.
 
 ## Localhost server administration page — remaining backlog
 
