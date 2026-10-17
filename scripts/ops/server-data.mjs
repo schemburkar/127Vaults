@@ -7,9 +7,19 @@ import { createWriteStream, existsSync } from 'node:fs';
 import { mkdtemp, rm, chmod, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const operator = resolve(process.cwd(), 'server.mjs');
+const operator = fileURLToPath(new URL(existsSync(new URL('../server.mjs', import.meta.url)) ? '../server.mjs' : '../../server.mjs', import.meta.url));
 export const supportedBackupSchema = value => /^[1-8]$/.test(String(value));
+export async function waitForPostgres(engine, name, run, wait = () => new Promise(done => setTimeout(done, 1000))) {
+  for (let i = 0; i < 30; i++) {
+    // The official image starts a temporary Unix-socket-only bootstrap server.
+    // Wait for final TCP readiness before restoring; that bootstrap server shuts down.
+    try { await run(engine, ['exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'vaults_experimental'], { timeout: 5000 }); return; }
+    catch { await wait(); }
+  }
+  throw Error('Isolated PostgreSQL did not become ready over loopback TCP.');
+}
 export async function runServerData(argv) {
 const args = [...argv];
 const action = args.shift();
@@ -42,7 +52,7 @@ async function run(program, argv, { output, input, timeout = 120000 } = {}) {
   const code = await new Promise((done, reject) => { child.on('error', reject); child.on('close', done); });
   clearTimeout(timer);
   if (output) await new Promise((done, reject) => { output.end(); output.once('finish', done); output.once('error', reject); });
-  if (code !== 0) throw Error(`${program} operation failed (${code}); check the container and operator logs. ${stderr.includes('permission denied') ? 'Permission denied.' : ''}`);
+  if (code !== 0) throw Error(`${program} ${argv[0] === 'exec' ? argv[2] : argv[0] === operator ? argv[1] : argv[0]} operation failed (${code}); check the container and operator logs. ${stderr.includes('permission denied') ? 'Permission denied.' : ''}`);
   return stdout.trim();
 }
 async function cleanTemporary(directory) {
@@ -73,12 +83,7 @@ try {
     const password = randomBytes(32).toString('hex');
     rehearsalContainer = name;
     await run(engine, ['run', '-d', '--name', name, '--network', 'none', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=vaults_experimental', 'postgres:17-bookworm'], { timeout: 120000 });
-    let ready = false;
-    for (let i = 0; i < 30; i++) {
-      try { await run(engine, ['exec', name, 'pg_isready', '-U', 'postgres', '-d', 'vaults_experimental'], { timeout: 5000 }); ready = true; break; }
-      catch { await new Promise(done => setTimeout(done, 1000)); }
-    }
-    if (!ready) throw Error('Isolated PostgreSQL did not become ready.');
+    await waitForPostgres(engine, name, run);
     const empty = await run(engine, ['exec', name, 'psql', '-U', 'postgres', '-d', 'vaults_experimental', '-At', '-c', "SELECT to_regclass('vaults.schema_version') IS NULL"]);
     if (empty !== 't') throw Error('Restore target is not empty.');
     await run(engine, ['cp', dump, `${name}:/tmp/database.dump`]);
@@ -88,7 +93,7 @@ try {
     console.log(`Isolated restore passed: installation, schema, accounts and encrypted item counts = ${state}`);
   }
 } finally {
-  if (rehearsalContainer) await run(engine, ['rm', '-f', rehearsalContainer]).catch(() => {});
+  if (rehearsalContainer) await run(engine, ['rm', '-f', '--volumes', rehearsalContainer]).catch(() => {});
   await cleanTemporary(temporary);
 }
 }
