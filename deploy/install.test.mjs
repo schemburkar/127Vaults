@@ -93,46 +93,70 @@ test('doctor distinguishes installed engine from unreachable connection and chec
     return args[0] === 'info' ? { ok: false, reason: 'timeout', output: 'sensitive engine config' } : healthy;
   };
   const report = await diagnose(['--docker'], dependencies);
-  assert.deepEqual(dependencies.calls, [['docker', ['--version']], ['docker', ['info']], ['docker', ['compose', 'version']]]);
+  assert.deepEqual(dependencies.calls, [['docker', ['--version']], ['docker', ['info']], ['docker', ['compose', 'version']], ['docker', ['compose', 'ls', '--format', 'json']]]);
   assert.equal(report.checks.find(check => check.id === 'engine').status, 'pass');
   assert.match(report.checks.find(check => check.id === 'connection').message, /timeout/);
   assert.equal(report.checks.find(check => check.id === 'compose').status, 'pass');
   assert.equal(report.ready, false);
 });
 
-test('Windows Podman selects a full executable path and does not mutate input options', async () => {
-  const provider = join(tmpdir(), 'Provider With Spaces', 'podman-compose.EXE');
+test('Windows Podman uses configured native Compose without requiring Python discovery', async () => {
   const dependencies = harness({ platform: 'win32' });
-  dependencies.runProbe = async (program, args) => {
-    dependencies.calls.push([program, args]);
-    return program === 'where.exe' ? { ok: true, output: `relative.exe\r\n${provider}\r\n` } : healthy;
-  };
   const args = ['--endpoint', '127.0.0.1'];
   const report = await diagnose(args, dependencies);
   assert.equal(report.ready, true);
   assert.deepEqual(args, ['--endpoint', '127.0.0.1']);
-  assert.deepEqual(report.args, [...args, '--compose-provider', provider]);
-  assert.deepEqual(dependencies.calls.at(-1), [provider, ['--version']]);
+  assert.deepEqual(report.args, args);
+  assert.deepEqual(dependencies.calls.at(-1), ['podman', ['compose', 'ls', '--format', 'json']]);
+  assert.equal(dependencies.calls.some(([program]) => program === 'where.exe'), false);
 });
 
 test('Windows Podman missing provider gives guidance rather than invoking a Docker shim', async () => {
   const dependencies = harness({ platform: 'win32' });
   dependencies.runProbe = async (program, args) => {
     dependencies.calls.push([program, args]);
-    return program === 'where.exe' ? { ok: false, reason: 'missing' } : healthy;
+    return args[0] === 'compose' ? { ok: false, reason: 'exit' } : healthy;
   };
   const report = await diagnose([], dependencies);
   assert.equal(report.ready, false);
   assert.match(report.checks.find(check => check.id === 'compose').nextStep, /full executable path/);
-  assert.equal(dependencies.calls.some(([, args]) => args.includes('compose')), false);
+  assert.match(report.checks.find(check => check.id === 'compose').nextStep, /Python is not required/);
+  assert.equal(dependencies.calls.some(([program]) => program === 'docker' || program === 'where.exe'), false);
 });
 
 test('explicit provider bypasses Windows discovery and healthy prerequisites return resolved options', async () => {
   const dependencies = harness({ platform: 'win32' });
   const args = ['--compose-provider', 'provider.exe'];
+  let provider;
+  dependencies.runProbe = async (program, argv, options) => {
+    dependencies.calls.push([program, argv]);
+    if (argv[0] === 'compose') provider = options.env.PODMAN_COMPOSE_PROVIDER;
+    return healthy;
+  };
   assert.deepEqual(await prerequisites(args, dependencies), args);
   assert.equal(dependencies.calls.some(([program]) => program === 'where.exe'), false);
-  assert.deepEqual(dependencies.calls.at(-1), ['provider.exe', ['--version']]);
+  assert.deepEqual(dependencies.calls.at(-1), ['podman', ['compose', 'ls', '--format', 'json']]);
+  assert.equal(provider, 'provider.exe');
+});
+
+test('doctor rejects a Compose binary that reports a version but cannot reach its engine', async () => {
+  const dependencies = harness({
+    runProbe: async (_program, args) => args.includes('ls')
+      ? { ok: false, reason: 'exit', output: 'private socket path and project names' } : healthy
+  });
+  const report = await diagnose([], dependencies);
+  assert.equal(report.ready, false);
+  assert.equal(report.checks.find(check => check.id === 'compose').status, 'fail');
+  assert.equal(JSON.stringify(report).includes('private socket path'), false);
+});
+
+test('prerequisite subprocess receives an explicitly selected native provider with spaces', async () => {
+  const provider = join(tmpdir(), 'Native Compose', 'docker-compose.exe');
+  const result = await probe(process.execPath, ['-e', 'process.stdout.write(process.env.PODMAN_COMPOSE_PROVIDER)'], {
+    env: { ...process.env, PODMAN_COMPOSE_PROVIDER: provider }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.output, provider);
 });
 
 test('invalid arguments and verify-only never contact the engine', async () => {

@@ -85,7 +85,7 @@ export async function inspectInstallation(directory, options) {
 
 // Probe output may contain host configuration. Keep it internal and never include
 // engine stdout/stderr in diagnostics. A hung provider must not strand doctor.
-export function probe(program, args, { timeoutMs = 15000, cwd } = {}) {
+export function probe(program, args, { timeoutMs = 15000, cwd, env } = {}) {
   return new Promise(done => {
     let output = '';
     let settled = false;
@@ -96,7 +96,7 @@ export function probe(program, args, { timeoutMs = 15000, cwd } = {}) {
       clearTimeout(timer);
       done({ ...result, output: output.trim() });
     };
-    const child = spawn(program, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(program, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', bytes => { output = (output + bytes.toString()).slice(-65536); });
     child.stderr.resume();
@@ -132,17 +132,12 @@ export async function diagnose(args, { directory = import.meta.dirname, platform
     const info = await runProbe(engine, ['info'], { cwd: directory });
     add('connection', info.ok ? 'pass' : 'fail', info.ok ? `${engine} engine is reachable.` : `${engine} engine connection failed (${info.reason}).`, info.ok ? undefined : engine === 'podman' && platform === 'win32' ? 'Start the intended Podman machine with podman machine start; check podman system connection list and rerun doctor.' : engine === 'docker' ? 'Start Docker Desktop or the Docker daemon and verify this operator can run docker info.' : 'Verify this operator can run podman info; check the rootless runtime and configured connection.');
   } else add('connection', 'skip', 'Engine connection requires an available executable.');
-  if (engine === 'podman' && platform === 'win32' && !options.provider) {
-    const discovery = await runProbe('where.exe', ['podman-compose'], { cwd: directory });
-    const candidates = discovery.ok ? discovery.output.split(/\r?\n/) : [];
-    options.provider = candidates.find(path => isAbsolute(path.trim()) && /\.exe$/i.test(path.trim()))?.trim();
-    if (options.provider) options.args.push('--compose-provider', options.provider);
-    else add('compose', 'fail', 'Windows Podman Compose provider was not found.', 'Install podman-compose and pass --compose-provider <full executable path>; avoid the Docker Compose shim.');
-  }
   if (!checks.some(check => check.id === 'compose')) {
     if (options.provider || version.ok) {
-      const compose = await runProbe(options.provider ?? engine, options.provider ? ['--version'] : ['compose', 'version'], { cwd: directory });
-      add('compose', compose.ok ? 'pass' : 'fail', compose.ok ? 'Compose provider is available.' : `Compose provider check failed (${compose.reason}).`, compose.ok ? undefined : engine === 'docker' ? 'Install the Docker Compose plugin and verify docker compose version.' : 'Install a working Podman Compose provider; pass --compose-provider <executable path> if needed.');
+      const env = options.provider ? { ...process.env, PODMAN_COMPOSE_PROVIDER: options.provider } : undefined;
+      let compose = await runProbe(engine, ['compose', 'version'], { cwd: directory, env });
+      if (compose.ok) compose = await runProbe(engine, ['compose', 'ls', '--format', 'json'], { cwd: directory, env });
+      add('compose', compose.ok ? 'pass' : 'fail', compose.ok ? 'Compose provider can reach the selected engine.' : `Compose provider or engine connection check failed (${compose.reason}).`, compose.ok ? undefined : engine === 'docker' ? 'Install the Docker Compose plugin and verify docker compose ls --format json.' : 'Set up native Compose in Podman Desktop and verify podman compose ls --format json; use --compose-provider <full executable path> to select its native Compose binary. Python is not required.');
     } else add('compose', 'skip', 'Compose discovery requires an available engine executable.');
   }
   return { format: 1, ready: checks.every(check => check.status === 'pass'), engine, checks, args: options.args };

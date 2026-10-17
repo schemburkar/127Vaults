@@ -21,8 +21,9 @@ The bundle contains `server-image.tar`, `postgres-image.tar`, `compose.test.yaml
 New bundles provide a standard launcher. After extracting, run `./install.ps1 doctor`
 then `./install.ps1 setup --endpoint 127.0.0.1` on Windows, or `bash install.sh doctor`
 then `bash install.sh setup --endpoint 127.0.0.1` on Linux. For Docker append
-`--docker`; Windows Podman discovers `podman-compose.exe` on PATH or accepts an
-explicit `--compose-provider` path. `verify` checks the bundle without engine
+`--docker`; Windows Podman uses the native Compose provider configured by Podman
+Desktop or an explicit `--compose-provider` path to its native Compose executable.
+Python is not required. Verify `podman compose version` before setup. `verify` checks the bundle without engine
 access; `bootstrap`, `status`, `start` and `stop` use the same launcher. Existing
 identities are preserved. The detailed operator commands below remain available.
 
@@ -89,9 +90,9 @@ For an issuer-directed revocation, the offline issuer signs a file bound to the 
 
 The installer checks every bundle file against `manifest.json` before `init` and `start`. The first command creates a local CA, certificate, runtime keys and `.env` without overwriting an existing installation. `start` loads the OCI images, starts a private PostgreSQL container and a non-root/read-only server, and preserves the named database volume across `stop`/`start`. `status` prints the installation ID, effective license state and expiry, clock state, active and reserved seats against the cap, owner enrollment, SMTP configuration, and the next operator step. It never prints the bootstrap code. The authenticated `/api/v1/license` response also reports seat use and available seats without revealing the installation ID. Verify the displayed CA fingerprint through the operator channel, trust its public certificate on the test browser, and open `https://127.0.0.1:12780`. The web client detects an empty installation and opens the first-owner registration form automatically. `bootstrap` prints a one-time owner setup code. The browser flow still needs a human acceptance pass on the target machine.
 
-For Podman, install `podman-compose` and pass its full executable path with `--compose-provider <path>` to `start`, `status`, `bootstrap`, and `stop`. This avoids Podman accidentally selecting a stale Docker Compose shim. For Docker, append `--docker` to each command and use Docker Compose without `--compose-provider`. TLS generation uses the selected engine. Docker is a candidate until the exact clean-host acceptance is recorded. For private LAN, pass a literal private IPv4 to `--endpoint` for `init`; `start` reads and verifies the initialized endpoint; the certificate and publication address are bound to it. Verify OS firewall rules and certificate trust on every client. Use `node server.mjs install stop` to stop without deleting data. **Never use `compose down --volumes` on a data-bearing installation.**
+For Podman, install Podman and Podman Desktop, start the intended Podman machine, and set up native Compose in Podman Desktop. Verify `podman compose version`. Python and the Python `podman-compose` package are not required. To select a specific native executable, pass `--compose-provider <full path to docker-compose.exe>` to each command that uses Compose. The launcher sets `PODMAN_COMPOSE_PROVIDER` for its Podman subprocesses; it does not invoke a Python-specific command interface. For Docker, append `--docker` to each command and use Docker Compose without `--compose-provider`. TLS generation uses the selected engine. Docker is a candidate until the exact clean-host acceptance is recorded. For private LAN, pass a literal private IPv4 to `--endpoint` for `init`; `start` reads and verifies the initialized endpoint; the certificate and publication address are bound to it. Verify OS firewall rules and certificate trust on every client. Use `node server.mjs install stop` to stop without deleting data. **Never use `compose down --volumes` on a data-bearing installation.**
 
-On Windows with Podman, the operator now refuses `start`, `status`, `identify`, `license`, `bootstrap`, `restore`, or `stop` without `--compose-provider <full path to podman-compose>`. Pass the flag to each command that needs Compose. The installed Docker Compose Windows shim can stall instead of connecting to Podman.
+This native-provider path requires the updated launcher. Previously published bundles that pass `--podman-path` directly to their provider only support the older Python-specific interface; changing documentation does not update those artifacts. Do not edit their manifest to bypass integrity verification. Until an updated bundle is released, record any direct native Compose commands as a manual operator path, not acceptance of the old launcher's native-provider support.
 
 For invited-user email verification, configure a trusted SMTP-over-TLS service on port 465. After `init`, append `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, and `VAULTS_INSTALLATION_LABEL` to `.env`. Write the SMTP password alone to `<private directory>/runtime/smtp-password` with operator-only permissions; do not put it in `.env`. On `start`, the installer adds `compose.smtp.yaml`, which gives only the server an outbound network while PostgreSQL remains on the private backend. Invalid SMTP configuration fails startup. This external SMTP path needs a live provider and egress test before invited-user real-data use; the default installation supports only the first owner.
 
@@ -107,7 +108,7 @@ $securePassword = Read-Host 'New admin operator password' -AsSecureString
 $env:VAULTS_ADMIN_SETUP_PASSWORD = [System.Net.NetworkCredential]::new('', $securePassword).Password
 try { node server.mjs admin init localowner $operatorFile }
 finally { Remove-Item Env:VAULTS_ADMIN_SETUP_PASSWORD }
-node server.mjs install start --compose-provider '<full path to podman-compose>'
+node server.mjs install start --compose-provider '<full path to docker-compose.exe>'
 ```
 
 The first operator is an owner and its file cannot be overwritten by this command.
