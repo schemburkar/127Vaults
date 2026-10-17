@@ -19,6 +19,8 @@ See the [internal release candidate evidence and remaining gates](../release/int
 | --- | --- |
 | [SRV-021](server-backlog.md#srv-021--private-tailscale-connectivity) | Support explicit private Tailscale endpoints across the published installer and clients, preserving loopback defaults and private-network security boundaries. Verify a published-package run between two computers. |
 | SITE-006 in the [public site backlog](public-site-backlog.md) | Turn the published setup guide into a step-by-step checklist wizard with Next/Back navigation. List server-host prerequisites on the public website before downloads and guide customers through checking them, installation, activation and client connection. |
+| DESK-012 in the [desktop backlog](desktop-backlog.md) | Add a supported macOS desktop app with secure native integration, published installation packages and clean-Mac acceptance. |
+| EXT-013 in the [extension backlog](extension-backlog.md) | Support the existing extension in Chrome on macOS, including web-source fill and native messaging to the Mac desktop app, with offline and lock acceptance. |
 
 These are open follow-up items; recording them does not change the published build or interrupt the current consumer acceptance run.
 

@@ -18,6 +18,14 @@ Updated 2026-10-13. Windows and Linux Tauri client; see [desktop scope](../../ap
 | DESK-010 | Partial | P1 | Desktop reads the server's redacted license status after online unlock and labels experimental enforcement. Before a supported release, add clear plan, expiry, grace and renewal guidance, refresh and offline policy, and disabled write affordances only when the server really enforces read-only/locked state. Verify no loss of local encrypted data or queued edits across renewal. |
 | DESK-011 | Shared-engine tenant pin; Cloud enrollment open | P0 for Cloud | The shared Rust session binds new offline unlock records to trusted origin and server identity and creates a durable tenant ID pin after online unlock. Add Cloud trust/enrollment after SRV-019 discovery is reviewed. Partition local credentials, replicas, pending edits and checkpoints by immutable tenant plus canonical origin; lock on source switch; require verified checkpoint continuity for moves. Test two tenants with offline state, restart, wrong origin and retained self-hosted profiles. |
 
+## DESK-012 — macOS desktop app
+
+**State:** Open. **Priority:** Do next; user-selected 2026-10-17.
+
+Extend the existing desktop client to macOS. Define the minimum supported macOS version and Apple Silicon/Intel package coverage; provide signed/notarized customer installation packages and public prerequisites/setup instructions. Implement macOS Keychain integration, secure local agent/connector transport, lifecycle and OS lock/idle handling where current native paths support only Windows/Linux. Preserve server trust, device enrollment, encrypted offline replicas, pending edits and cross-client sync semantics.
+
+**Acceptance:** On clean Macs for each advertised architecture, verify install/launch, server trust and device approval, online/offline unlock, item read/edit/save, restart/replay, conflicts, clipboard/lock behavior, update and uninstall with data preservation. Publish only after the packaged app passes; coordinate Chrome native messaging with EXT-013. This item does not add Safari or native macOS passkey-provider support.
+
 ## Internal release acceptance — 2026-10-13
 
 Windows and Linux, all client surfaces and admin writes are explicitly selected. See the [current evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). Implementation and narrower tests do not close wider acceptance rows. The candidate remains fictitious-data-only.

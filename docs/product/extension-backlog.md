@@ -20,6 +20,14 @@ Updated 2026-10-13. Chrome/Edge extension scope is an **offline-capable, read-on
 
 First extension slice: connect to an active web, desktop or CLI client; unlock a previously hydrated installed desktop/CLI replica in that client; search/select a login; fill username/password only after a user action; and lock. The extension does not own or write a separate replica. It must fill when the server and web tab are unavailable if a desktop/CLI replica is installed, and clearly show stale/offline state. Editing is excluded from the extension, not deferred to a later slice.
 
+## EXT-013 — Chrome extension on macOS
+
+**State:** Open. **Priority:** Do next; user-selected 2026-10-17.
+
+Reuse the existing Chromium Manifest V3 extension for Chrome on macOS. Browser API compatibility is a starting point, not evidence of product support. Verify the web-source path independently, then package the macOS native messaging host, Chrome manifest registration with an absolute executable path and exact allowed extension origin, and secure handoff to the DESK-012 Mac desktop agent. Document installation, repair, updates and removal. Include CLI-source integration only when a compatible Mac CLI/native agent is available; do not imply existing Windows/Linux packages work on Mac.
+
+**Acceptance:** From published packages on a clean Mac, load/install the extension, enroll/unlock the chosen source, select and fill a matching fictitious login without automatic submission, and verify origin/frame/navigation refusal. Test browser/desktop restart, source switching, OS lock/idle, disconnected server and offline fill through a hydrated desktop replica, plus native-host registration repair/update/uninstall. Preserve read-only password behavior and clear offline/stale status. Test experimental website passkeys separately before claiming Mac support for them. Safari remains outside this item.
+
 ## Internal release acceptance — 2026-10-13
 
 Windows and Linux, all client surfaces and admin writes are explicitly selected. See the [current evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). Implementation and narrower tests do not close wider acceptance rows. The candidate remains fictitious-data-only.
