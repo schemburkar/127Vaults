@@ -32,10 +32,28 @@ export async function head(client, bucket, key) {
   try { return await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })); }
   catch (error) { if (error.$metadata?.httpStatusCode === 404 || error.name === 'NotFound') return null; throw error; }
 }
-export async function remoteHash(client, bucket, key, etag) {
-  const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, IfMatch: etag }));
+export async function remoteHash(client, bucket, key, etag, size, log = () => {}) {
+  if (!Number.isSafeInteger(size) || size < 1) throw Error('Invalid remote verification size');
   const digest = createHash('sha256');
-  for await (const chunk of response.Body) digest.update(chunk);
+  // Large full-object streams can stall on the delivery path. Bounded ranges
+  // retain complete byte verification while pinning every request to one ETag.
+  const part = 16 * 1024 * 1024;
+  for (let offset = 0; offset < size; offset += part) {
+    const end = Math.min(size, offset + part) - 1, length = end - offset + 1;
+    const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, IfMatch: etag,
+      Range: `bytes=${offset}-${end}` }), { abortSignal: AbortSignal.timeout(30000) });
+    if (response.ContentRange !== `bytes ${offset}-${end}/${size}` || response.ContentLength !== length) {
+      response.Body?.destroy(); throw Error('Remote verification range mismatch');
+    }
+    let received = 0;
+    for await (const chunk of response.Body) {
+      received += chunk.length;
+      if (received > length) { response.Body.destroy(); throw Error('Remote verification range overflow'); }
+      digest.update(chunk);
+    }
+    if (received !== length) throw Error('Remote verification range truncated');
+    if ((end + 1) % (128 * 1024 * 1024) === 0 || end + 1 === size && size > part) log(`  ${end + 1}/${size} bytes verified`);
+  }
   return digest.digest('hex');
 }
 export async function uploadArtifacts({ client, bucket, releaseId, catalogue, log = console.log }) {
@@ -55,7 +73,7 @@ export async function uploadArtifacts({ client, bucket, releaseId, catalogue, lo
     }
     if (!existing || existing.ContentLength !== asset.sizeBytes || existing.Metadata?.sha256 !== asset.sha256) throw Error(`R2 object metadata mismatch: ${asset.id}; refusing overwrite`);
     log(`Verifying R2 SHA-256: ${asset.filename}`);
-    if (await remoteHash(client, bucket, key, existing.ETag) !== asset.sha256) throw Error(`R2 checksum mismatch: ${asset.id}`);
+    if (await remoteHash(client, bucket, key, existing.ETag, asset.sizeBytes, log) !== asset.sha256) throw Error(`R2 checksum mismatch: ${asset.id}`);
     artifacts.push({ ...publicArtifact(asset), objectKey: key, etag: existing.ETag.replaceAll('"', '') });
   }
   const cloudCatalogue = validateCatalogue({ ...catalogue, artifacts });
@@ -66,6 +84,6 @@ export async function uploadArtifacts({ client, bucket, releaseId, catalogue, lo
   if (!existing) await client.send(new PutObjectCommand({ Bucket: bucket, Key: catalogueKey, Body: text,
     ContentType: 'application/json', CacheControl: 'private, no-store', Metadata: { sha256 } }));
   const verified = await head(client, bucket, catalogueKey);
-  if (!verified || await remoteHash(client, bucket, catalogueKey, verified.ETag) !== sha256) throw Error('R2 catalogue verification failed');
+  if (!verified || await remoteHash(client, bucket, catalogueKey, verified.ETag, Buffer.byteLength(text)) !== sha256) throw Error('R2 catalogue verification failed');
   return { catalogue: cloudCatalogue, catalogueKey, catalogueSha256: sha256 };
 }

@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { S3Client } from '@aws-sdk/client-s3';
-import { uploadArtifacts, checkLocalCatalogue, objectKey } from './artifacts.mjs';
+import { uploadArtifacts, checkLocalCatalogue, objectKey, remoteHash } from './artifacts.mjs';
 import { catalogueIdentity } from '../../apps/public-intake/cloudflare/catalogue.mjs';
 
 // A disposable S3 HTTP endpoint exercises the real SDK's single/multipart upload,
@@ -17,7 +17,7 @@ async function s3Fixture(t) {
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://localhost'), key = decodeURIComponent(url.pathname.slice('/private/'.length));
-      operations.push({ method: request.method, key, multipart: url.searchParams.has('uploadId') || url.searchParams.has('uploads') });
+      operations.push({ method: request.method, key, range: request.headers.range, multipart: url.searchParams.has('uploadId') || url.searchParams.has('uploads') });
       const all = async () => { const chunks = []; for await (const chunk of request) chunks.push(chunk); return Buffer.concat(chunks); };
       if (request.method === 'POST' && url.searchParams.has('uploads')) {
         const id = String(++uploadCounter); uploads.set(id, { key, parts: new Map(), sha256: request.headers['x-amz-meta-sha256'] });
@@ -48,6 +48,13 @@ async function s3Fixture(t) {
       if (request.headers['if-match'] && request.headers['if-match'] !== object.etag) { response.writeHead(412).end(); return; }
       response.setHeader('Content-Length', object.bytes.length); response.setHeader('ETag', object.etag);
       response.setHeader('x-amz-meta-sha256', object.sha256); response.setHeader('Last-Modified', new Date().toUTCString());
+      if (request.method === 'GET' && request.headers.range) {
+        const [, start, end] = /^bytes=(\d+)-(\d+)$/.exec(request.headers.range);
+        const bytes = object.bytes.subarray(Number(start), Number(end) + 1);
+        response.statusCode = 206; response.setHeader('Content-Length', bytes.length);
+        response.setHeader('Content-Range', `bytes ${start}-${end}/${object.bytes.length}`);
+        response.end(bytes); return;
+      }
       response.end(request.method === 'HEAD' ? undefined : object.bytes);
     } catch { response.writeHead(500).end(); }
   });
@@ -79,6 +86,7 @@ test('real S3 multipart upload verifies bytes, produces a pinned private catalog
   assert.equal(result.catalogue.artifacts[0].path, undefined);
   assert.match(result.catalogue.artifacts[0].etag, /-3$/);
   assert.ok(f.objects.has(result.catalogueKey));
+  assert.equal(f.operations.filter(op => op.method === 'GET' && op.key.endsWith('/server.tar')).length, 3);
   const writes = f.operations.filter(op => ['PUT', 'POST'].includes(op.method)).length;
   const resumed = await uploadArtifacts(options);
   assert.equal(resumed.catalogueKey, result.catalogueKey);
@@ -98,4 +106,13 @@ test('artifact preflight refuses local tampering and traversal identifiers', asy
   await assert.rejects(checkLocalCatalogue(file), /Local checksum mismatch/);
   assert.throws(() => objectKey('../escape', { id: 'server' }), /Invalid release ID/);
   assert.ok(await readFile(file, 'utf8'));
+});
+
+test('remote verification refuses ignored ranges, short bodies and changed object identity', async () => {
+  const { Readable } = await import('node:stream');
+  const response = overrides => ({ ContentRange: 'bytes 0-2/3', ContentLength: 3, Body: Readable.from([Buffer.from('abc')]), ...overrides });
+  for (const value of [response({ ContentRange: undefined }), response({ ContentLength: 4 }), response({ Body: Readable.from([Buffer.from('a')]) })]) {
+    await assert.rejects(remoteHash({ send: async command => { assert.equal(command.input.IfMatch, 'pinned'); return value; } }, 'private', 'object', 'pinned', 3), /range/);
+  }
+  await assert.rejects(remoteHash({ send: async () => { throw Error('precondition failed'); } }, 'private', 'object', 'pinned', 3), /precondition/);
 });
