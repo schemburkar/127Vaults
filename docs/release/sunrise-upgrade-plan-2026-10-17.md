@@ -300,3 +300,11 @@ Remaining manual/external gates: fresh-browser interactive CA approval (our isol
 - Documented that existing loopback installations require a reviewed network migration; binary upgrade preserves the address. No automatic migration command claimed and Sunrise configuration unchanged.
 - Retained private-LAN alternative and Cloudflare private-routing pending status. R2 packages unchanged.
 - Source commit `081efdc`; three focused site tests and diff checks passed. Cloudflare Worker `727a0198-5c65-4e76-a875-5a8f629d0f91` deployed successfully; deployment checks passed. Direct HTTPS reads of all three live pages verified the Tailscale command and migration boundary.
+
+### Trial package table and screenshot — 2026-10-18
+
+- User requested default row/column downloads grouped by OS/app type, retaining cards as an option. Implemented Windows/Linux/cross-platform-browser sections, app/package/size/checksum/download columns, semantic table headers, native layout selector, and mobile horizontal scrolling. Supporting guides remain collapsed separately.
+- Explained accidental Windows Store Python alias invocation; text edits completed with Node instead. No Python installation required.
+- Commits `0c200af`, `e4e0e7f`; renderer bundled into existing published trial entry point to respect the deployment asset allowlist. Final Worker version `f411920f-defc-4875-b5cd-01a01dce1dde`; deployment checks passed. R2 packages unchanged.
+- Browser QA on local and FINAL LIVE assets with intercepted sample trial metadata from actual current catalogue: all 7 packages/3 OS sections, cards/table roundtrip, download ticket/action, no page errors, mobile page width contained. Synthetic fixture only; no invitation token exposed. Focused navigation/setup tests passed.
+- Preview screenshots and QA script retained outside Git in `.codex/sunrise-smoke/trial-packages-{grid,table,mobile}-preview.png` and `check-trial-layout.cjs`. Grid screenshot shown to user without requiring a real token.
