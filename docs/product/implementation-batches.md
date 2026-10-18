@@ -161,7 +161,7 @@ require human CA trust. Batch 8A is post-MVP expansion.
 ## Batch 5B — authentication protocol and implementation
 
 **Status/model:** Implementation and loopback runtime complete; final human
-browser ceremony and private-LAN matrix remain. See [5B evidence](../release/batch-5b-authentication-evidence.md).
+browser ceremony and private-LAN matrix remain. See 5B evidence (internal record retained outside Git).
 `gpt-5.6-sol` low.
 
 **Backlog IDs:** AUTH-001–AUTH-009, CRY-004–CRY-009, CRY-013–CRY-015, TEST-010.
@@ -182,7 +182,7 @@ browser ceremony and private-LAN matrix remain. See [5B evidence](../release/bat
 
 **Acceptance/exclusions:** Verify Podman startup, key-file permissions, trusted and untrusted browser flows, renewal, wrong Host/Origin/SNI, and refusal of public/custom-domain exposure. No cloud proxy or public certificate mode.
 
-**Evidence:** Static policy and server tests pass; see [private HTTPS evidence](../release/private-https-evidence.md).
+**Evidence:** Static policy and server tests pass; see private HTTPS evidence (internal record retained outside Git).
 Do not claim LAN support until its human runtime matrix passes. Immutable helper-image digest review remains a public-beta gate.
 
 ## Batch 6 — owner bootstrap and invitation redemption
@@ -195,7 +195,7 @@ Do not claim LAN support until its human runtime matrix passes. Immutable helper
 
 **Acceptance/exclusions:** Run database/HTTP/SMTP smoke with fictitious data; avoid unnecessary code/identity logs. Preserve migration safety. Defer hosted relay and role management.
 
-**Evidence:** Static checks, the 18-test server suite and owner loopback flow pass; see [onboarding evidence](../release/onboarding-evidence.md). The mounted handler is wired to Batch 5B's reviewed registration/device-proof completion adapter.
+**Evidence:** Static checks, the 18-test server suite and owner loopback flow pass; see onboarding evidence (internal record retained outside Git). The mounted handler is wired to Batch 5B's reviewed registration/device-proof completion adapter.
 
 ## Batch 7 — private vault and encrypted persistence
 

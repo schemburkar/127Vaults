@@ -11,7 +11,8 @@ export function validateReleaseCatalog(catalog) {
       || !['stable', 'beta'].includes(item.channel)
       || !/^https:\/\//.test(item.url) || !/^https:\/\//.test(item.signatureUrl) || !/^https:\/\//.test(item.licenseUrl)
       || !/^[a-f0-9]{64}$/.test(item.sha256) || !/^[A-Za-z0-9_-]{1,40}$/.test(item.signingKeyId)
-      || !/^\d{4}-\d{2}-\d{2}$/.test(item.publishedAt) || !/^\d{4}-\d{2}-\d{2}$/.test(item.changeDate)
+      || !/^\d{4}-\d{2}-\d{2}$/.test(item.publishedAt)
+      || (item.changeDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(item.changeDate))
       || !Number.isSafeInteger(item.sizeBytes) || item.sizeBytes < 1
       || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(item.minServerVersion)) throw new Error('invalid release entry');
     const id = `${item.platform}:${item.version}:${item.channel}`;

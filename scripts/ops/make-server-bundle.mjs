@@ -5,11 +5,18 @@ import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join, sep } from 'node:path';
 
+export async function archiveServerBundle(destination, run) {
+  const archive = `${destination}.tar.gz`;
+  if (existsSync(archive)) throw Error('Bundle archive already exists.');
+  await run('tar', ['-czf', archive, '-C', resolve(destination, '..'), destination.split(sep).at(-1)]);
+  return archive;
+}
+
 export async function runMakeBundle(argv, options = {}) {
 const destination = resolve(argv[0] ?? '');
 const checkout = resolve(options.checkout ?? '.');
 if (!argv[0] || destination === checkout || destination.startsWith(checkout + sep)) throw Error('Supply a new output directory outside the checkout.');
-if (existsSync(`${destination}.tar`)) throw Error('Bundle archive already exists.');
+if (existsSync(`${destination}.tar.gz`)) throw Error('Bundle archive already exists.');
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
 const issuerKeysPath = argv.find((value, index) => argv[index - 1] === '--issuer-public-keys');
 if (argv.includes('--issuer-public-keys') && !issuerKeysPath) throw Error('Supply --issuer-public-keys <trusted public-key catalogue>.');
@@ -85,6 +92,5 @@ for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar
 if (issuerKeys) files['issuer-keys.json'] = await hash(join(destination, 'issuer-keys.json'));
 await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image, ...(options.provenance ? { imageIds } : {}), files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);
-await run('tar', ['-cf', `${destination}.tar`, '-C', resolve(destination, '..'), destination.split(sep).at(-1)]);
-console.log(`Offline test archive: ${destination}.tar`);
+console.log(`Offline test archive: ${await archiveServerBundle(destination, run)}`);
 }

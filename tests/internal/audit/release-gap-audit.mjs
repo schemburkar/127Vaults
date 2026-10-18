@@ -6,14 +6,15 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createHash} from 'node:crypto';
 import {verifyRelease} from '../../../scripts/release/verify-release.mjs';
-const repo=resolve(import.meta.dirname,'../../..'),ledgerPath=join(repo,'docs/release/internal-release-remaining-gates-2026-10-15.json');
+import {localEvidence} from '../local-evidence.mjs';
+const repo=resolve(import.meta.dirname,'../../..'),ledgerPath=localEvidence(repo,'docs/release/internal-release-remaining-gates-2026-10-15.json');
 const bytes=await readFile(ledgerPath),ledger=JSON.parse(bytes),run=promisify(execFile);
 assert.equal(process.platform,'win32');assert.equal(ledger.decision,'internal release not accepted');
 assert.deepEqual(ledger.requirements.map(row=>row.id),Array.from({length:12},(_,i)=>'SYNC-'+String(i+1).padStart(2,'0')));
 for(const row of ledger.requirements){assert.equal(row.assessment,'partial');for(const key of ['name','source','covered','remaining'])assert.ok(row[key]?.trim());}
 assert.equal(new Set(ledger.additionalNamedGates.map(row=>row.id)).size,10);
-for(const file of [...ledger.requirementsSources,...ledger.evidence.notes,ledger.selectedInventory])await access(join(repo,file));
-const inventory=JSON.parse(await readFile(join(repo,ledger.selectedInventory),'utf8'));assert.equal(inventory.artifacts.length,6);
+for(const file of [...ledger.requirementsSources,...ledger.evidence.notes,ledger.selectedInventory])await access(localEvidence(repo,file));
+const inventory=JSON.parse(await readFile(localEvidence(repo,ledger.selectedInventory),'utf8'));assert.equal(inventory.artifacts.length,6);
 const selected=[];
 for(const artifact of inventory.artifacts){const release=await verifyRelease(join('C:/Projects/127Vaults-Releases',artifact.path));assert.equal(release.sourceRevision,artifact.sourceRevision);assert.deepEqual(release.files,artifact.files);selected.push({product:artifact.product,platform:artifact.platform,path:artifact.path,sourceRevision:release.sourceRevision});}
 for(const artifact of inventory.candidateArtifacts??[]){const release=await verifyRelease(join('C:/Projects/127Vaults-Releases',artifact.path));assert.equal(release.sourceRevision,artifact.sourceRevision);assert.deepEqual(release.files,artifact.files);}
@@ -22,7 +23,7 @@ const evidenceArtifact=(product,revision,platform)=>{const artifact=historical.f
 if(process.argv.includes('--basic')){
  const sanity=JSON.parse(await readFile(ledger.functionalAssessment.sanityRecord,'utf8'));assert.equal(sanity.status,'passed');assert.equal(sanity.sourceRevision,selected.find(row=>row.product==='server').sourceRevision);assert.equal(sanity.checks.length,5);
  for(const artifact of selected.filter(row=>row.product==='desktop'))assert.equal(artifact.sourceRevision,sanity.sourceRevision);
- assert.ok(ledger.functionalAssessment.source);await access(join(repo,ledger.functionalAssessment.source));
+ assert.ok(ledger.functionalAssessment.source);await access(localEvidence(repo,ledger.functionalAssessment.source));
  console.log('Historical selected package manifests and their basic runtime record verify. Current local-code acceptance: ' + ledger.functionalAssessment.status + '. See the feature evidence note; old installers do not prove item deletion.');process.exit(0);
 }
 await run(process.execPath,[join(repo,'tests/internal/audit/member-acceptance-verify.mjs'),ledger.evidence.candidateWork,'--budget'],{windowsHide:true});

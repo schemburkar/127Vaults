@@ -1,3 +1,4 @@
+import {localEvidence} from '../local-evidence.mjs';
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {join,isAbsolute} from 'node:path';
@@ -70,7 +71,7 @@ if(['--extension','--conflict','--conflict-both'].includes(mode)){
   const extension=await json('extension-web-permission-refusal.json'),archive=await json('extension-selected-package.json');
   assert.equal(extension.status,'passed');assert.equal(extension.serverId,fixture.serverId);assert.equal(extension.serverRevision,fixture.serverRevision);assert.equal(extension.checks.length,5);
   assert.equal(archive.status,'passed');assert.equal(archive.sourceRevision,'07fdca56a281f786b18c639347d86c631bc64585');assert.equal(extension.extensionSourceRevision,archive.sourceRevision);assert.equal(extension.archiveSha256,archive.archiveSha256);
-  const inventory=JSON.parse(await readFile(fileURLToPath(new URL('../../../docs/release/internal-release-artifacts-2026-10-13.json',import.meta.url)),'utf8'));
+  const inventory=JSON.parse(await readFile(localEvidence(fileURLToPath(new URL('../../../',import.meta.url)),'docs/release/internal-release-artifacts-2026-10-13.json'),'utf8'));
   assert.equal(archive.archiveSha256,inventory.artifacts.find(row=>row.product==='extension').files.find(row=>row.name.endsWith('.zip')).sha256);
   assert.deepEqual(extension.permissionsBefore,extension.permissionsAfter);assert.deepEqual(extension.permissionsAfter.origins??[],[]);
   assert.ok(!ps.stdout.includes('vaults-extension-web-refusal-20261015-a'));

@@ -8,6 +8,9 @@ test('published release entries require signed artifacts and release-specific li
     licenseUrl: 'https://downloads.example/LICENSE', sha256: 'a'.repeat(64), signingKeyId: 'release-1',
     publishedAt: '2026-10-06', changeDate: '2030-10-06', sizeBytes: 12345, minServerVersion: '1.0.0' };
   assert.equal(validateReleaseCatalog({ schemaVersion: 1, releases: [entry] }).releases.length, 1);
+  const { changeDate, ...withoutConversion } = entry;
+  assert.equal(validateReleaseCatalog({ schemaVersion: 1, releases: [withoutConversion] }).releases.length, 1);
+  assert.throws(() => validateReleaseCatalog({ schemaVersion: 1, releases: [{ ...entry, changeDate: 'pending' }] }));
   assert.throws(() => validateReleaseCatalog({ schemaVersion: 1, releases: [{ ...entry, licenseUrl: null }] }));
   assert.throws(() => validateReleaseCatalog({ schemaVersion: 1, releases: [entry, entry] }));
 });

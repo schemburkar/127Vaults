@@ -1,10 +1,10 @@
 # Backlog priority review
 
-Current scope (2026-10-16): the user selected functionality-first internal acceptance with basic sanity checks. [Local code is accepted](../release/internal-functional-readiness-2026-10-16.md), including required individual-item deletion. The exhaustive matrix and supported-release conditions below remain coverage/follow-up work rather than the current internal-release criterion. No additional confirmed applicable P1 implementation blocker remains recorded.
+Current scope (2026-10-16): the user selected functionality-first internal acceptance with basic sanity checks. Local code is accepted (internal record retained outside Git), including required individual-item deletion. The exhaustive matrix and supported-release conditions below remain coverage/follow-up work rather than the current internal-release criterion. No additional confirmed applicable P1 implementation blocker remains recorded.
 
 Updated 2026-10-13. The user selected an internal fictitious-data release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
 
-See the [internal release candidate evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). Installed extension password-fill matrices pass on Windows Edge and Linux Chrome; basic installed desktop GUI acceptance passes on both platforms. Physical OS lock/idle, clean-machine/Linux package lifecycle, wider settings/device/type cases and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).
+See the internal release candidate evidence and remaining gates (internal record retained outside Git). Installed extension password-fill matrices pass on Windows Edge and Linux Chrome; basic installed desktop GUI acceptance passes on both platforms. Physical OS lock/idle, clean-machine/Linux package lifecycle, wider settings/device/type cases and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).
 
 | Priority | Current meaning |
 | --- | --- |
@@ -22,14 +22,14 @@ See the [internal release candidate evidence and remaining gates](../release/int
 | DESK-012 in the [desktop backlog](desktop-backlog.md) | Add a supported macOS desktop app with secure native integration, published installation packages and clean-Mac acceptance. |
 | EXT-013 in the [extension backlog](extension-backlog.md) | Support the existing extension in Chrome on macOS, including web-source fill and native messaging to the Mac desktop app, with offline and lock acceptance. |
 
-The user selected these for implementation after the Sunrise basic run. Track actual release/upgrade acceptance in the [upgrade follow-up](../release/sunrise-upgrade-plan-2026-10-17.md). Mac preparation remains gated on a real Mac build, signing and acceptance; source changes alone do not close those rows.
+The user selected these for implementation after the Sunrise basic run. Track actual release/upgrade acceptance in the upgrade follow-up (internal record retained outside Git). Mac preparation remains gated on a real Mac build, signing and acceptance; source changes alone do not close those rows.
 
 ## Selected P1 closure order
 
 **Blocking gate: complete cross-client sync verification.** The user's reported
 queued-operation, comparison and source-connection failures supersede acceptance
 claims based on isolated passing scenarios. Track the expanded scope and each
-open case in the [sync release matrix](../release/internal-sync-release-plan-2026-10-13.md).
+open case in the sync release matrix (internal record retained outside Git).
 
 Windows/Linux packaged queued-conflict comparison and explicit selected-field resolution pass, with peer reads confirming the saved choice. Both platforms also pass peer-created settings review with immediate vault/collection view refresh. Wider default-view/device/interruption and clean-machine acceptance remain open.
 

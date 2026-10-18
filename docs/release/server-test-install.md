@@ -93,7 +93,7 @@ node server.mjs install identify
 node server.mjs install bootstrap
 ```
 
-For the explicitly enabled self-hosted signup simulation, the customer downloads the `.tar` archive generated alongside the bundle directory. Extract it, enter the extracted directory, then follow the commands above. After `install identify`, save `license.json` from the simulated order and run:
+For the explicitly enabled self-hosted signup simulation, the customer downloads the `.tar.gz` archive generated alongside the bundle directory. Extract it, enter the extracted directory, then follow the commands above. After `install identify`, save `license.json` from the simulated order and run:
 
 ```powershell
 node server.mjs install license --file license.json

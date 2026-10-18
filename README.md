@@ -11,7 +11,7 @@ properties are design goals, not claims about the current experimental build.
 
 The local fictitious-data internal release is accepted across server, web/PWA,
 Desktop, CLI, extension, admin console and public site under the functionality-first
-criterion. See the [current decision and checks](docs/release/internal-functional-readiness-2026-10-16.md).
+criterion. See the current decision and checks (internal record retained outside Git).
 Individual encrypted-item deletion is included in source; older server/Desktop
 installers predate it and their rebuild remains deferred.
 
@@ -30,7 +30,7 @@ Current work and release documents:
 - [Offline server test bundle and installation](docs/release/server-test-install.md)
 - [Independent local releases with release.ps1](docs/release/release-command.md)
 - [Selected real-data pilot gate](docs/release/selected-real-data-pilot.md)
-- [Cross-surface MVP and platform audit](docs/release/cross-surface-audit-2026-10-06.md)
+- Cross-surface MVP and platform audit (internal record retained outside Git)
 
 ## Repository map
 

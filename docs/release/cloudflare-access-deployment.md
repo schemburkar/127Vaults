@@ -1,6 +1,6 @@
 # Cloudflare access website and private installer delivery
 
-Before first publication, see the [publication security review](cloudflare-publication-security-review-2026-10-16.md).
+Before first publication, see the publication security review (internal record retained outside Git).
 Run `pnpm cloudflare:audit .cloudflare-deploy/config.json` to repeat the publication checks
 offline. These checks also run automatically before deployment operations.
 

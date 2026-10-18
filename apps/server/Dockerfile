@@ -10,6 +10,9 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --filter @127vaults/server --filter @127vaults/web... --frozen-lockfile
 
+FROM dependencies AS server-dependencies
+RUN pnpm --filter @127vaults/server deploy --prod --legacy /runtime
+
 FROM dependencies AS web-build
 COPY apps/web/index.html apps/web/index.html
 COPY apps/web/tsconfig.json apps/web/tsconfig.json
@@ -29,8 +32,8 @@ RUN pnpm --filter @127vaults/web build
 
 FROM ${NODE_RUNTIME_IMAGE} AS runtime
 WORKDIR /app
-COPY --from=dependencies /app/node_modules /app/node_modules
-COPY --from=dependencies /app/apps/server/node_modules /app/apps/server/node_modules
+ENV NODE_ENV=production
+COPY --from=server-dependencies /runtime/node_modules /app/node_modules
 COPY apps/server/src apps/server/src
 COPY apps/server/admin apps/server/admin
 COPY packages/sync/src packages/sync/src

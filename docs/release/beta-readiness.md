@@ -6,7 +6,7 @@ Updated 2026-10-05. The [product work index](../product/README.md) links the onl
 
 The 2026-10-12 user-selected cut requires Windows and Linux desktop/CLI,
 web/PWA, server, extension and admin writes. The
-[internal candidate evidence](internal-release-readiness-2026-10-12.md)
+internal candidate evidence (internal record retained outside Git)
 records implemented management writes, schema-7 recovery and native backend
 checks, with the installed-extension/GUI/human acceptance still open. This
 internal decision does not waive the supported-release or real-secret gates.
@@ -21,4 +21,4 @@ A release candidate needs a repeatable installation and upgrade path, tested rec
 
 Before inviting real-secret use, freeze versioned cryptographic and protocol formats with deterministic vectors and compatibility rules; obtain independent cryptographic and application review; exercise authentication, device lifecycle, authorization, sync replay/fork/rollback, backup, restore, and upgrade under adverse conditions; finish dependency, image, secret-history, signing, and legal review. Verify external SMTP if invited-user email is included. Keep the distribution explicitly experimental until these conditions are accepted.
 
-The [server installation runbook](server-test-install.md) contains current operator commands. The [S1 evidence](server-wave-s1-evidence.md) records local Podman results with fictitious data. Manual second-container, Docker, private-LAN browser, and SMTP tests are deferred at the user's request and remain open in the server backlog.
+The [server installation runbook](server-test-install.md) contains current operator commands. The S1 evidence (internal record retained outside Git) records local Podman results with fictitious data. Manual second-container, Docker, private-LAN browser, and SMTP tests are deferred at the user's request and remain open in the server backlog.

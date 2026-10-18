@@ -1,14 +1,14 @@
 # Product work index
 
-Current local internal-release decision (2026-10-16): [accepted for local code and basic functional checks](../release/internal-functional-readiness-2026-10-16.md). The wider backlog acceptance conditions below remain open for supported/public release; they do not override the current functionality-first internal cut.
+Current local internal-release decision (2026-10-16): accepted for local code and basic functional checks (internal record retained outside Git). The wider backlog acceptance conditions below remain open for supported/public release; they do not override the current functionality-first internal cut.
 
 Current internal cut (2026-10-12): Windows and Linux are required across desktop
 and CLI; server, web/PWA, extension and admin management writes are selected.
-See [candidate evidence and open acceptance](../release/internal-release-readiness-2026-10-12.md).
+See candidate evidence and open acceptance (internal record retained outside Git).
 
 Updated 2026-10-06. The six component backlogs below are the only live task lists. Each row has a stable ID, a state, a priority, and an acceptance condition. Change a row to **Done** only after its acceptance is recorded in the same backlog. A component's `in-progress.md` contains only the current wave, its owner, next action, and verification. Delete that file when the wave is complete; start a new one only when work starts. Evidence reports, ADRs, protocols, and runbooks remain reference material, not competing task lists. The [priority review](backlog-priorities.md) sets the current MVP cut and execution order.
 
-Audit verification on 2026-10-06: `pnpm check`, `pnpm test`, and `cargo test --workspace` passed on Windows. The root test command now includes the public website tests and release-catalogue validation. These are local checks; live browser, second-device, restore, deployment, and security acceptance remain open. See the [cross-surface audit](../release/cross-surface-audit-2026-10-06.md).
+Audit verification on 2026-10-06: `pnpm check`, `pnpm test`, and `cargo test --workspace` passed on Windows. The root test command now includes the public website tests and release-catalogue validation. These are local checks; live browser, second-device, restore, deployment, and security acceptance remain open. See the cross-surface audit (internal record retained outside Git).
 
 | Component | Backlog | Active wave |
 | --- | --- | --- |

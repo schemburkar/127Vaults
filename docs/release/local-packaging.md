@@ -70,7 +70,7 @@ per-user step rather than an installer binding to a fabricated store ID.
 
 ## Recipient commands
 
-Server: extract `127vaults-server-0.1.0-linux-amd64.tar`, enter its directory,
+Server: extract `127vaults-server-0.1.0-linux-amd64.tar.gz`, enter its directory,
 install Node.js 24 and a container engine with Compose, then:
 
 ```powershell

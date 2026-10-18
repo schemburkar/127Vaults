@@ -4,7 +4,7 @@ Status: implemented internal write slice, acceptance partial, 2026-10-12. The us
 writes for the internal Windows/Linux release. This contract defines the first
 write slice for SRV-016. Database, HTTP, Edge management and packaged HTTPS
 write/recovery evidence pass; human and clean-host acceptance remain open. See
-[current release evidence](../release/internal-release-readiness-2026-10-12.md).
+current release evidence (internal record retained outside Git).
 
 The console retains its separate loopback-only local operator identity. Local
 operator roles authorize console operations; vault account roles never confer

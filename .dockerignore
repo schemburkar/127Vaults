@@ -35,3 +35,5 @@ Thumbs.db
 Desktop.ini
 .idea
 .vscode
+# Machine-local identity/configuration, including compatibility junctions
+.127vaults*
