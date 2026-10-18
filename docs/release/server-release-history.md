@@ -17,7 +17,7 @@ Restricted trial baseline: encrypted vault operations, private-item deletion, sy
 - Artifact: `127vaults-server-0.0.0-linux-amd64.tar` (835,085,312 bytes).
 - SHA-256: `2a648b33b72d591dc887216095081210e50a374a1c98b2030357a1a2dcbc9e30`.
 - Original source: `69e078a77b843f0f34bb39411d68a43d15aecf29`.
-- Current-history equivalent: `941b1b050bcc1a03bb3a090df42cb0ae32934b2d`.
+- Current-history equivalent: `87d742bd606e7209294685e3e20bbfc7c2669de5`.
 - Release label: `friend-trial-20261016-a`.
 - Install/upgrade: use the package guide and guarded upgrader; preserve identity, CA, license, database and recovery material.
 - Limits: clean-host Docker, full reboot/trust/physical-lock matrix and Mac acceptance are not established by these records.
@@ -41,7 +41,7 @@ Added guarded server upgrades with encrypted database/identity backups and resto
 - Artifact: `127vaults-server-0.0.1-linux-amd64.tar` (1,227,173,888 bytes).
 - SHA-256: `a37676ed8f24d0490e0a0a1a079414e850c1474b4d4de2788603baf7f44b7a64`.
 - Original source: `2d77f17c917fd9187119670702dac6380a351ca7`.
-- Current-history equivalent: `beb0dfd9bbf3be998afea381d8fe4fb18e429a72`.
+- Current-history equivalent: `4a3c010d967c1c7f6a8ff34c09366bfe2af3a618`.
 - Release label: `sunrise-upgrade-20261017-2d77f17`.
 - Install/upgrade: use the package guide and guarded upgrader; preserve identity, CA, license, database and recovery material.
 - Limits: clean-host Docker, full reboot/trust/physical-lock matrix and Mac acceptance are not established by these records.
@@ -67,7 +67,7 @@ Wait for final PostgreSQL startup during restore rehearsal instead of mistaking 
 - Artifact: `127vaults-server-0.0.2-linux-amd64.tar` (1,227,174,400 bytes).
 - SHA-256: `4cb69de10442025e6823c43ad41c320e66e3503e93d249dadac30b640c2baa05`.
 - Original source: `28974fe98b1b24e5b6983f8762fab6214f970ee7`.
-- Current-history equivalent: `6efd3e4b27dc7e468b2ace31cf1f07809be58a50`.
+- Current-history equivalent: `ebadd101ad5033f0799cb1df521a9b3ef65617db`.
 - Release label: `sunrise-restore-20261017-28974fe`.
 - Install/upgrade: use the package guide and guarded upgrader; preserve identity, CA, license, database and recovery material.
 - Limits: clean-host Docker, full reboot/trust/physical-lock matrix and Mac acceptance are not established by these records.
@@ -84,7 +84,7 @@ Stop timed-out Compose-provider processes and wait for final database readiness 
 - Artifact: `127vaults-server-0.0.3-linux-amd64.tar` (1,227,176,960 bytes).
 - SHA-256: `c031e736601a6e3c6d464cd310d70402df1c5c8a5057634e347dee0a6f30fa23`.
 - Original source: `a64a53bc8cb09f93a2bc7303261fcf7721531884`.
-- Current-history equivalent: `88a90a919048fda5e5f33c38e6e9d177687808cb`.
+- Current-history equivalent: `4d90c3f09307cec370516d1672a8e08b7671e5e5`.
 - Release label: `private-setup-20261018-a64a53b`.
 - Install/upgrade: use the package guide and guarded upgrader; preserve identity, CA, license, database and recovery material.
 - Limits: clean-host Docker, full reboot/trust/physical-lock matrix and Mac acceptance are not established by these records.

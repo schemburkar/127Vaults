@@ -17,6 +17,17 @@ function deletionFixture({ mutateNext, stale=false, retired=false, historyError=
  return{store,proposal,calls,revision};
 }
 
+test('mutation serializes a scoped request before looking up an absent replay receipt',async()=>{
+ const f=deletionFixture();await f.store.mutate(f.proposal);
+ const lock=f.calls.findIndex(c=>c.sql.startsWith('SELECT pg_advisory_xact_lock'));
+ const receipt=f.calls.findIndex(c=>c.sql.startsWith('SELECT fingerprint,response'));
+ const write=f.calls.findIndex(c=>c.sql.startsWith('DELETE FROM'));
+ assert.ok(lock>=0&&lock<receipt&&receipt<write);
+ assert.deepEqual(f.calls[lock].params,[`127vaults:private-receipt:${f.proposal.auth.tenantId}:${f.proposal.auth.accountId}:${f.proposal.requestId}`]);
+ assert.ok(f.calls.findIndex(c=>c.sql==='BEGIN')<lock);
+ assert.ok(f.calls.findIndex(c=>c.sql==='COMMIT')>write);
+});
+
 test('item deletion commits the scoped ciphertext removal, catalogue, signed history, receipt and audit together',async()=>{
  const f=deletionFixture();const result=await f.store.mutate(f.proposal);assert.equal(result.catalogueRevision,f.revision);
  const sql=f.calls.map(c=>c.sql);assert.equal(sql.at(-1),'COMMIT');assert.equal(sql.filter(s=>s.startsWith('DELETE FROM')).length,1);
