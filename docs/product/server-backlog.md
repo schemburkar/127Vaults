@@ -99,8 +99,10 @@ Windows and Linux, all client surfaces and admin writes are explicitly selected.
 
 ## SRV-022 — Reduce server image and download size
 
-**State:** Implementation and internal acceptance in progress. **Priority:** P1 supported release; user-authorized 2026-10-18.
+**State:** Implemented and published as private server 0.0.4; fresh-install and upgrade/restore acceptance passed on the existing Podman host. **Priority:** P1 supported release; user-authorized 2026-10-18.
 
 The published server 0.0.3 archive is 1,227,176,960 bytes (about 1.23 GB). Measure the application and PostgreSQL image sizes, individual layers, bundled runtime/build dependencies and archive overhead before choosing reductions. Evaluate compressed distribution, smaller production-only images, duplicate-layer removal and excluding unnecessary build assets while retaining the offline installation option. Do not assume the whole bundle size is the application image size.
 
 Acceptance: record before/after archive, image and extracted sizes; document the chosen tradeoffs; verify hashes and archive handling in the published download/installer flow; prove fresh installation and an existing-installation upgrade with vault data, identity, CA and license preserved. Keep candidate builds internal until checks pass, then publish one combined release. The subsequent user instruction authorizes implementation and verification; keep intermediate candidates internal.
+
+See [measured package reduction and validation scope](../release/server-package-size.md).

@@ -100,3 +100,27 @@ The final selected variant is documented above; a later lock/client catalogue
 reused it rather than creating a new server version. Keep release labels, full
 source IDs and checksums when reconstructing GitHub releases. Never infer a
 separate published release solely from an internal build-index entry.
+
+## Server 0.0.4 — 2026-10-18
+
+Reduced the server runtime to production dependencies and compressed the offline
+download. PostgreSQL and the TLS helper remain bundled for offline installation.
+Fixed identical simultaneous vault saves occasionally returning a false conflict
+by serializing receipt lookup within the database transaction.
+
+- Private experimental channel; unsigned package. Live catalogue: `slim-20261018-4d6191d`.
+- Source: `4d6191dac45325ed9b05bdf0d6bd9b67e3503407` (already in sanitized history).
+- Artifact: `127vaults-server-0.0.4-linux-amd64.tar.gz` (240,072,681 bytes).
+- SHA-256: `e95a2ce19d5143d920bcf01beb395eb80bdff6f280a0d2f9a6909a037b5639f1`.
+- Verified: fresh install, simultaneous-save replay, signed commercial test license,
+  0.0.3 upgrade preserving identity/CA/license/configuration/encrypted items, and
+  encrypted backup plus restore into a new project.
+- Limits: existing Windows/Podman host with an explicit fixture-port override;
+  clean-host Docker, actual Sunrise installation, full reboot/trust/OS-lock and
+  Mac/signing acceptance are separate. Use the guarded upgrader; keep backups.
+
+
+Local annotated tags `server-v0.0.0` through `server-v0.0.4` point to the sanitized
+source equivalents above. GitHub release bodies and a draft index are retained
+locally for manual creation after repository setup; no GitHub release or push
+was performed.

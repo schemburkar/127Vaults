@@ -78,7 +78,13 @@ const {itemId: _omitItemId,...staleUpdate}=itemBody;
 await call(`/api/v1/vaults/${vaultId}/items/${itemId}`,{method:'PUT',body:{...staleUpdate,requestId:uuid(),baseCatalogueRevision:created.value.catalogueRevision,signedOperation:await signedMutation('item.update',itemId,vaultId,item.catalogue(),item.index(),item.body())},cookie:sessionCookie,expected:409});
 const next=core.upsert_private_item(vault,item.catalogue(),item.item(),new TextEncoder().encode('{"title":"Updated"}'),new TextEncoder().encode('{"password":"updated-fiction"}'));
 const update={requestId:uuid(),baseCatalogueRevision:saved.value.catalogueRevision,catalogue:b64(next.catalogue()),index:b64(next.index()),body:b64(next.body()),signedOperation:await signedMutation('item.update',itemId,vaultId,next.catalogue(),next.index(),next.body())};
-const duplicate=await Promise.all([rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,update),rawCall(`/api/v1/vaults/${vaultId}/items/${itemId}`,update)]);assert.deepEqual(duplicate.map(x=>x.status),[200,200]);assert.deepEqual(duplicate[0].value,duplicate[1].value);
+// Older upgrade baselines have a known concurrent receipt race. Seed those
+// installations with serial replay; fresh candidate acceptance stays concurrent.
+const updatePath=`/api/v1/vaults/${vaultId}/items/${itemId}`;
+const duplicate=process.env.VAULTS_BASELINE_SERIAL_REPLAY==='1'
+ ? [await rawCall(updatePath,update),await rawCall(updatePath,update)]
+ : await Promise.all([rawCall(updatePath,update),rawCall(updatePath,update)]);
+assert.deepEqual(duplicate.map(x=>x.status),[200,200]);assert.deepEqual(duplicate[0].value,duplicate[1].value);
 const after=await call(`/api/v1/vaults/${vaultId}/items`,{cookie:sessionCookie});const afterBody=await call(`/api/v1/vaults/${vaultId}/items/${itemId}?catalogueRevision=${duplicate[0].value.catalogueRevision}`,{cookie:sessionCookie});
 assert.deepEqual(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(vault,next.catalogue(),next.item(),un(after.value.indices[0].envelope),4))),{title:'Updated'});assert.deepEqual(JSON.parse(new TextDecoder().decode(core.decrypt_private_part(vault,next.catalogue(),next.item(),un(afterBody.value.envelope),3))),{password:'updated-fiction'});
 const raceA=core.upsert_private_item(vault,next.catalogue(),next.item(),new TextEncoder().encode('{"title":"Race A"}'),new TextEncoder().encode('{"password":"race-a"}')),raceB=core.upsert_private_item(vault,next.catalogue(),next.item(),new TextEncoder().encode('{"title":"Race B"}'),new TextEncoder().encode('{"password":"race-b"}'));

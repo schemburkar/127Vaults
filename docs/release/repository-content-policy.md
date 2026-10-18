@@ -13,7 +13,8 @@ dated acceptance/checkpoint evidence outside the tracked source tree.
 On this workstation, transient records are archived under
 `%USERPROFILE%\.127vaults-local\evidence`, preserving their former relative
 paths. Profiles are under the sibling `profiles` directory; ignored junctions
-preserve existing local paths. Logs are under `logs`. A local cleanup manifest
+preserve existing local paths. Deployment state and secrets are under `cloudflare`,
+also with an ignored compatibility junction. Logs are under `logs`. A local cleanup manifest
 records moved files and hashes. Existing `.env` and the active-profile pointer
 are ignored in place so local workflows keep working. Do not sync this private
 local directory or include it in repository exports.
@@ -39,3 +40,7 @@ The local preparation tool also creates an optional source-only export without
 remain clearly marked for private review and must be finalized before public
 release. Neither the tool nor pattern scanning proves the absence of every
 possible secret.
+
+Generated WASM bindings are intentionally absent from source-only exports. Install
+the locked prerequisites and run the fixture build before tests that load those
+bindings. Keep generated files out of Git.

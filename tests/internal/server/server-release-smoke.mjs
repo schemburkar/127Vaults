@@ -130,7 +130,8 @@ try {
     const bootstrap = await operator(source, ['install', 'bootstrap', ...provider]);
     const token = /127V-B1-[A-Za-z0-9_-]{43}/.exec(bootstrap)?.[0]; assert.ok(token);
     await writeFile(bootstrapPath, token, { mode: 0o600, flag: 'wx' });
-    const result = JSON.parse(await run(['scripts/live-mvp-acceptance.mjs', origin, caPath, bootstrapPath], root, trusted));
+    const result = JSON.parse(await run(['scripts/live-mvp-acceptance.mjs', origin, caPath, bootstrapPath], root,
+      { ...trusted, VAULTS_BASELINE_SERIAL_REPLAY: options['--upgrade-from'] ? '1' : '0' }));
     assert.equal(result.ok, true);
     await run(['scripts/live-transport-acceptance.mjs', origin, caPath], root, trusted);
   });
