@@ -4,6 +4,10 @@ Reviewed source revision: `6571bcb`. This is a bounded local audit, not public-r
 approval. No push, credential rotation, file removal or history rewrite was performed.
 Secret values and personal contact details are deliberately omitted.
 
+Latest status: the retained refs and local Git object database were subsequently
+scrubbed; see the final remediation section. Earlier findings below describe the
+pre-scrub state.
+
 ## Findings
 
 ### Do not publish all local refs or the complete working directory
@@ -124,3 +128,30 @@ Both versions contain populated `POSTGRES_PASSWORD`, `VAULTS_READINESS_TOKEN`,
 `VAULTS_TLS_DIR` and `VAULTS_CA_CERT_FILE`. The first two are credentials matching
 the current local environment; the latter two are configuration metadata. No
 private-key contents are embedded in these environment files.
+
+## Completed remediation: retained refs and Git object database
+
+At the owner's request, removed historical `.env`, `.127vaults-active`,
+`.127vaults-cli/` and `.127vaults-cli-2/` entries from the retained stash and
+nine affected checkpoint refs. Rewrote corresponding reflog and pseudo-ref
+references, then pruned obsolete Git objects. Other stash contents and both stash
+parent trees were compared and differed only by the targeted removals.
+
+- Preserved the single stash entry and its message. Its new commit is
+  `a76819afbd8119f191c601bd2e3579cbbe2ad54b`.
+- Existing main commits and all five release tags retained their original IDs.
+- No targeted paths remain reachable from any ref or reflog.
+- Git integrity checks passed before and after object cleanup.
+- The five old commit/blob IDs listed in the provenance section are no longer
+  present in this repository's object database.
+- Exact current database-password/readiness-token checks found no matches across
+  all 2,877 remaining blobs, including binary blobs.
+
+A private rollback copy of the original Git directory is retained outside the
+repository under the operator's local private-data directory. The historical
+backup bundle formerly inside `.git` was moved there too. These backups still
+contain the original credentials and must remain private; this is repository
+sanitization, not erasure of all backups. Working local environment/profile and
+deployment files remain untouched and ignored. No credentials were rotated and
+nothing was pushed. The earlier operational-history disclosure findings remain
+a separate publication decision.
