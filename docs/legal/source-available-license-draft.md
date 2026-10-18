@@ -13,7 +13,8 @@ components governed by their own licenses are excluded to that extent.
 Subject to these terms, Licensor permits you to read and view the Software and
 make a private source copy solely to inspect its design and security. Retain
 copyright, attribution and license notices. This permission does not authorize
-compilation or execution.
+compilation, building, installation, execution, modification or redistribution.
+This is a source-view permission, not an open-source or operational license.
 
 ## 2. Separate operational license required
 
@@ -39,6 +40,12 @@ activities it expressly covers. Payment alone grants no unspecified rights.
 Where that agreement expressly permits an activity restricted here, its granted
 permission controls for the covered use. It does not automatically grant rights
 in third-party components or project trademarks.
+
+The separate commercial agreement covers paid Personal Self-Hosted, Commercial
+Self-Hosted and Cloud plans and their respective version, fee, term and expiry
+rules. Purchasing one of those plans does not itself permit building, modifying
+or distributing source. Those activities require an express additional grant.
+Cloud access does not grant the right to operate a separate server installation.
 
 ## 4. Independent rights
 

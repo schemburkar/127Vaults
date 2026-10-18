@@ -28,6 +28,16 @@ Outside contributions require sufficient written licensing rights. Trademarks
 remain separate. License state and cryptographic key state remain separate as
 specified in ADR-0004.
 
+The public prices are the standard commercial schedule, not placeholder prices:
+Personal Self-Hosted is US$20/year for the purchased major version, initially five
+users with additional users on request at no extra license charge; Commercial
+Self-Hosted is US$200/year with a five- or ten-year commitment and access to current
+releases while active, without per-user license fees; Cloud is US$30/vault user/year
+with a two-year commitment and annual upfront payment. Separately agreed written
+orders may vary pricing or scope. See docs/legal/commercial-license-draft.md for
+the controlling draft detail, including finite expiry permissions and Cloud terms.
+Closing Cloud signups does not change an accepted customer's agreement.
+
 Current access is restricted internal testing, as confirmed by the owner. Keep
 private development history private. Before public release, review dependencies,
 ownership, source and history; adopt the reviewed license and agreements; and
