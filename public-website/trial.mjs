@@ -1,13 +1,15 @@
 const $ = id => document.getElementById(id);
 const fragment = location.hash.slice(1);
-history.replaceState(null, '', location.pathname);
+const reviewRequested = new URLSearchParams(location.search).get('review') === '1';
 // Pasting a new invitation into this tab changes only the fragment. Reload so
 // the new bearer and current page/module version replace the previous view.
 window.addEventListener('hashchange', () => {
   if (location.hash) location.reload();
 });
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(fragment);
-const base = match ? `/api/trials/${match[1]}` : '';
+const operatorReview = reviewRequested && !match;
+history.replaceState(null, '', operatorReview ? `${location.pathname}?review=1` : location.pathname);
+const base = operatorReview ? '/api/access-admin/releases' : match ? `/api/trials/${match[1]}` : '';
 const productNames = { server: 'Server', desktop: 'Desktop', cli: 'CLI', extension: 'Browser extension' };
 
 function describe(asset) {
@@ -69,9 +71,10 @@ const token = match?.[2]; // Memory only; reopen the email link after closing/re
 const status = value => { $('trial-status').textContent = value; };
 async function api(action = '', value) {
   const response = await fetch(`${base}${action}`, { method: value === undefined ? 'GET' : 'POST',
-    headers: { Authorization: `Bearer ${token}`, ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: value === undefined ? undefined : JSON.stringify(value), cache: 'no-store', credentials: 'same-origin' });
   if (!response.ok) {
+    if (operatorReview && response.status === 401) throw Error('Sign in on the request page, then review releases again.');
     const error = await response.json().catch(() => ({}));
     throw Error(error.error === 'replacement_pending' ? 'Your replacement request is pending. Contact your inviter for the new license.' : error.error === 'license_expired' ? 'Your license has expired. Replacement cannot renew it.' : error.error === 'already_bound' ? 'This trial is already bound to another installation. Contact your inviter.'
       : error.error === 'licensed_major_unavailable' ? 'Downloads for your licensed major version are temporarily unavailable. Contact your inviter.'
@@ -101,11 +104,19 @@ async function download(action, filename) {
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 async function open() {
-  if (!match) { status('Open the complete private link from your invitation email.'); return; }
+  if (!match && !operatorReview) { status('Open the complete private link from your invitation email.'); return; }
   const record = await (await api()).json();
-  $('trial-content').hidden = false; status('Your private trial is ready. No payment is required.');
+  $('trial-content').hidden = false;
+  status(operatorReview ? 'Operator session verified. Current packages are ready to review and download.' : 'Your private trial is ready. No payment is required.');
   $('trial-release').textContent = `Release source: ${record.sourceRevision}`;
-  showLicense(record);
+  if (operatorReview) {
+    document.title = 'Review releases - 127 Vaults';
+    document.querySelector('#main h1').textContent = 'Review releases';
+    document.querySelector('#main .kicker').textContent = 'OPERATOR ACCESS';
+    document.querySelector('#main > p').textContent = 'Review and download current packages using your operator session.';
+    for (const id of ['trial-prepare', 'trial-install', 'trial-upgrade', 'trial-recovery']) $(id).hidden = true;
+    const back = document.createElement('a'); back.href = '/access-admin'; back.textContent = 'Back to requests'; $('trial-status').after(back);
+  } else showLicense(record);
   const packages = [];
   const supporting = document.createElement('details');
   const supportingTitle = document.createElement('summary'); supportingTitle.textContent = 'Verification files and package guides';
@@ -120,7 +131,7 @@ async function open() {
     button.addEventListener('click', async () => {
       button.disabled = true;
       try {
-        await api('/ticket', {});
+        if (!operatorReview) await api('/ticket', {});
         // A scoped HttpOnly cookie allows a streamed browser download without a token in the URL.
         const a = document.createElement('a'); a.href = `${base}/artifacts/${asset.id}`; a.download = asset.filename; a.click();
         status('Download requested. Verify its SHA-256 before installation; check browser downloads for completion.');

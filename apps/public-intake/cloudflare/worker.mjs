@@ -157,21 +157,15 @@ async function dispatch(request, env, now, schedule) {
   }
   const admin = path.startsWith('/api/access-admin/');
   if (!admin && !path.startsWith('/api/trials/')) fail(404, 'not_found');
-  let role = null;
-  if (admin) {
-    if (await equal(bearer, env.OPERATOR_TOKEN) || await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at)) role = 'owner';
-    else if (env.REVIEWER_ACCESS_ENABLED === 'true' && /^[A-Za-z0-9_-]{43,128}$/.test(env.REVIEWER_TOKEN ?? '') && (await equal(bearer, env.REVIEWER_TOKEN)
-      || await validOperatorSession(request.headers.get('cookie'), env.REVIEWER_TOKEN, at))) role = 'reviewer';
-  }
-  const invitationText = text => role === 'reviewer' ? text.replace(/https:\/\/[^\s]+#[a-f0-9]{64}\.[A-Za-z0-9_-]{43}/g, '[Private customer download link - owner access required]') : text;
-  if (admin && !role) {
+  const operatorAuthorized = admin && (await equal(bearer, env.OPERATOR_TOKEN) || await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at));
+  if (admin && !operatorAuthorized) {
     if (!await store.allow('admin-auth', ip, 20, 3600000)) fail(429, 'rate_limited');
     fail(401, 'access_required');
   }
   if (path === '/api/access-admin/session' && request.method === 'POST') {
     empty(await body(request));
-    if (!await equal(bearer, role === 'owner' ? env.OPERATOR_TOKEN : env.REVIEWER_TOKEN)) fail(401, 'access_required');
-    return json(200, { signedIn: true, role }, { 'Set-Cookie': await createOperatorSession(role === 'owner' ? env.OPERATOR_TOKEN : env.REVIEWER_TOKEN, at) });
+    if (!await equal(bearer, env.OPERATOR_TOKEN)) fail(401, 'access_required');
+    return json(200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(env.OPERATOR_TOKEN, at) });
   }
   if (path === '/api/access-admin/logout' && request.method === 'POST') {
     empty(await body(request));
@@ -182,12 +176,11 @@ async function dispatch(request, env, now, schedule) {
   const mailer = mailerFor(env);
   if (path === '/api/access-admin/releases' && request.method === 'GET') {
     const { catalogue } = await release(env);
-    return json(200, { role, canDownload: role === 'owner', serverMajorVersion: serverMajor(catalogue),
+    return json(200, { canDownload: true, serverMajorVersion: serverMajor(catalogue),
       sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   }
   const releaseAsset = /^\/api\/access-admin\/releases\/artifacts\/([a-z0-9-]+)$/.exec(path);
   if (releaseAsset && ['GET', 'HEAD'].includes(request.method)) {
-    if (role !== 'owner') fail(403, 'owner_required');
     const { catalogue } = await release(env), asset = catalogue.artifacts.find(v => v.id === releaseAsset[1]);
     if (!asset) fail(404, 'not_found');
     return serveArtifact(env, asset, request);
@@ -211,7 +204,7 @@ async function dispatch(request, env, now, schedule) {
       }
       return { ...row.contact, id: row.id, ...summary(row.trial, mailer), updateAvailable, downloadAvailable };
     }));
-    return json(200, { role, permissions: { download: role === 'owner', manageInstallations: role === 'owner' }, requests, emailEnabled: Boolean(mailer),
+    return json(200, { permissions: { download: true, manageInstallations: true }, requests, emailEnabled: Boolean(mailer),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
   const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
@@ -220,10 +213,9 @@ async function dispatch(request, env, now, schedule) {
   const row = await store.get(id); let record = row?.trial;
   const input = request.method === 'POST' ? await body(request) : null;
   if (admin) {
-    if (role === 'reviewer' && !['approve', 'reject', 'archive', 'unarchive', 'invitation', 'send-invitation'].includes(action)) fail(403, 'owner_required');
     if (!row?.contact || at - row.receivedAt >= 90 * day) fail(404, 'not_found');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
-      return json(200, { email: row.contact.email, subject: record.invitation.subject, message: invitationText(record.invitation.text) });
+      return json(200, { email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     }
     if (action === 'revocation' && request.method === 'GET' && (record?.revocation || record?.previousRevocation)) return attachment('trial-revocation.json', record.revocation ?? record.previousRevocation);
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
@@ -252,7 +244,7 @@ async function dispatch(request, env, now, schedule) {
       if (action === 'update-release') record.invitation = { subject: 'Updated 127Vaults packages for your existing installation',
         text: `Updated packages are available:\n${link}\n\nBack up and upgrade your existing installation. Do not initialize replacement keys or a new database. Your installation binding, signed license and trial expiry are unchanged. This does not start another trial. Use fictitious data only.` };
       await store.save(row, record);
-      return json(200, { ...summary(record, mailer), ...(role === 'owner' ? { link } : {}), email: row.contact.email, subject: record.invitation.subject, message: invitationText(record.invitation.text) });
+      return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     } else if (action === 'replace-installation') {
       if (record?.state !== 'approved' || !record.license || !record.replacementRequest) fail(409, 'replacement_unavailable');
       if (Object.keys(input).sort().join(',') !== 'installationId,retired' || input.retired !== true
