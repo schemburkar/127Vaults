@@ -4,6 +4,19 @@
 .trial-main section, .trial-main form.access-card { margin-block: 28px; }
 .trial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 20px; }
 .trial-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.trial-layout { display: flex; align-items: center; gap: 12px; margin-block: 18px; }
+.trial-layout select { font: inherit; padding: 8px 12px; border: 1px solid #8886; border-radius: 8px; color: var(--text); background: var(--page); }
+.trial-table-wrap { overflow-x: auto; border: 1px solid #8886; border-radius: 12px; }
+.trial-package-table { width: 100%; min-width: 700px; border-collapse: collapse; text-align: left; font-size: .9rem; }
+.trial-package-table caption { text-align: left; padding: 16px; }
+.trial-package-table th, .trial-package-table td { padding: 14px; border-top: 1px solid #8883; vertical-align: top; }
+.trial-package-table thead, .trial-os-group { background: #8881; }
+.trial-package-table small { display: block; opacity: .7; margin-top: 6px; }
+.trial-package-table td:nth-child(2) { overflow-wrap: anywhere; }
+.trial-package-table td:nth-child(3) { white-space: nowrap; }
+.trial-package-table code { display: block; overflow-wrap: anywhere; max-width: 220px; margin-top: 8px; font-size: .75rem; }
+.trial-package-table summary { cursor: pointer; white-space: nowrap; }
+.trial-package-table .button { margin: 0; white-space: nowrap; }
 .trial-main .access-card { min-width: 0; overflow-wrap: anywhere; }
 .trial-main .button { margin: 8px 8px 4px 0; }
 .trial-main textarea { width: 100%; box-sizing: border-box; padding: 14px; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 12px; font: inherit; resize: vertical; }

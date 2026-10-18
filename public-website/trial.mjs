@@ -8,6 +8,7 @@ window.addEventListener('hashchange', () => {
 });
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(fragment);
 const base = match ? `/api/trials/${match[1]}` : '';
+import { renderPackages } from './trial-packages.mjs';
 const token = match?.[2]; // Memory only; reopen the email link after closing/reloading.
 const status = value => { $('trial-status').textContent = value; };
 async function api(action = '', value) {
@@ -43,6 +44,7 @@ async function open() {
   $('trial-content').hidden = false; status('Your private trial is ready. No payment is required.');
   $('trial-release').textContent = `Release source: ${record.sourceRevision}`;
   showLicense(record);
+  const packages = [];
   const supporting = document.createElement('details');
   const supportingTitle = document.createElement('summary'); supportingTitle.textContent = 'Verification files and package guides';
   const supportingGrid = document.createElement('div'); supportingGrid.className = 'trial-grid';
@@ -64,8 +66,12 @@ async function open() {
       finally { button.disabled = false; }
     });
     card.append(heading, detail, checksum, button);
-    (asset.supporting ? supportingGrid : $('trial-artifacts')).append(card);
+    if (asset.supporting) supportingGrid.append(card);
+    else packages.push({ asset, card, button });
   }
+  const drawPackages = () => renderPackages($('trial-artifacts'), packages, $('trial-layout').value);
+  $('trial-layout').addEventListener('change', drawPackages);
+  drawPackages();
   if (supportingGrid.childElementCount) $('trial-artifacts').after(supporting);
 }
 $('trial-activate').addEventListener('submit', async event => {
