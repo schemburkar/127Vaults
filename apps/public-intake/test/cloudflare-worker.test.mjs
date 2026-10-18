@@ -449,3 +449,83 @@ test('new major-1 approvals pin major 1 and rotation cannot upgrade entitlement'
   await swap({ ...f.catalogue, serverMajorVersion: 2 });
   assert.equal((await post(`${admin}/${id}/update-release`, {})).status, 409);
 });
+
+
+test('reviewer permissions cannot leak customer bearers or download releases; owner retains access', async t => {
+  const reviewer = randomBytes(32).toString('base64url');
+  const f = await fixture(t, { bindings: { REVIEWER_TOKEN: reviewer, REVIEWER_ACCESS_ENABLED: 'true' } }), id = await f.submit();
+  const approved = await f.post(`${admin}/${id}/approve`, { maxUsers: 2 }, reviewer);
+  assert.equal(approved.status, 200);
+  const preview = await approved.json(); assert.equal(preview.link, undefined);
+  assert.doesNotMatch(preview.message, /#[a-f0-9]{64}\.[A-Za-z0-9_-]{43}/);
+  const invitation = await (await f.get(`${admin}/${id}/invitation`, reviewer)).text();
+  assert.doesNotMatch(invitation, /#[a-f0-9]{64}\.[A-Za-z0-9_-]{43}/);
+  const inbox = await (await f.get(admin, reviewer)).json();
+  assert.equal(inbox.role, 'reviewer'); assert.equal(inbox.permissions.download, false);
+  for (const action of ['rotate','update-release','close','erase']) assert.equal((await f.post(`${admin}/${id}/${action}`, {}, reviewer)).status, 403);
+  assert.equal((await f.get(`${admin}/${id}/revocation`, reviewer)).status, 403);
+  const metadata = await (await f.get('/api/access-admin/releases', reviewer)).json();
+  assert.equal(metadata.canDownload, false); assert.equal(metadata.artifacts[0].objectKey, undefined);
+  assert.equal((await f.get('/api/access-admin/releases/artifacts/server', reviewer)).status, 403);
+  assert.equal((await f.get('/api/access-admin/releases/artifacts/server')).status, 401);
+  assert.equal(await (await f.get('/api/access-admin/releases/artifacts/server', f.operatorToken)).text(), f.archive);
+  const login = await f.post('/api/access-admin/session', {}, reviewer), cookie = login.headers.get('set-cookie').split(';')[0];
+  assert.equal((await (await f.get(admin, null, cookie)).json()).role, 'reviewer');
+  assert.equal((await f.get('/api/access-admin/releases/artifacts/server', null, cookie)).status, 403);
+  assert.equal((await f.get('/api/trials/'+id, reviewer)).status, 401);
+  const disabled = await handleRequest(new Request(origin + admin, { headers: { Authorization: `Bearer ${reviewer}` } }), { ...f.env, REVIEWER_ACCESS_ENABLED: 'false' });
+  assert.equal(disabled.status, 401);
+  assert.equal((await (await f.get(`${admin}/${id}/invitation`, f.operatorToken)).json()).message.includes('[Private customer'), false);
+});
+
+
+test('self-service replacement request revokes old license; owner issues a new binding without renewal', async t => {
+  const reviewer = randomBytes(32).toString('base64url');
+  const f = await fixture(t, { bindings: { REVIEWER_TOKEN: reviewer, REVIEWER_ACCESS_ENABLED: 'true' } }), id = await f.submit(), a = await f.approve(id);
+  const oldId = randomUUID(), newId = randomUUID();
+  const request = { installationId: newId, reason: 'Lost server identity in a test machine failure', retired: true };
+  assert.equal((await f.post(`${a.base}/replacement-request`, request, a.token)).status, 409);
+  await f.post(`${a.base}/activate`, { installationId: oldId }, a.token);
+  const original = verifyLicenseFile(await (await f.get(`${a.base}/license`, a.token)).text(), f.publicKeys, oldId);
+  assert.equal((await f.post(`${a.base}/replacement-request`, { ...request, retired: false }, a.token)).status, 400);
+  assert.equal((await f.post(`${a.base}/replacement-request`, { ...request, installationId: oldId }, a.token)).status, 409);
+  assert.equal((await f.post(`${a.base}/replacement-request`, request)).status, 401);
+  let alerts = 0;
+  f.env.REQUEST_ALERT_TO = 'operator@example.com'; f.env.REQUEST_ALERT_FROM = 'requests@trial.example.com';
+  f.env.REQUEST_ALERTS = { send: async message => { alerts++; assert.equal(message.to, 'operator@example.com');
+    assert.match(message.subject, /replacement license requested/); assert.ok(!message.text.includes(a.token)); return { messageId: 'replacement-test' }; } };
+  const requested = await handleRequest(new Request(origin + a.base + '/replacement-request', { method: 'POST',
+    headers: { Authorization: `Bearer ${a.token}`, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(request) }), f.env);
+  assert.equal(alerts, 1);
+  assert.equal(requested.status, 202);
+  assert.equal((await requested.json()).replacementRequest.installationId, newId);
+  assert.equal((await f.post(`${a.base}/replacement-request`, request, a.token)).status, 409);
+  assert.equal((await f.get(`${a.base}/license`, a.token)).status, 409);
+  assert.equal((await f.post(`${a.base}/activate`, { installationId: oldId }, a.token)).status, 409);
+  const revocation = await (await f.get(`${a.base}/replacement-revocation`, a.token)).text();
+  verifyLicenseRevocationFile(revocation, f.publicKeys, oldId, original.licenseId);
+  assert.equal((await f.post(`${admin}/${id}/replace-installation`, { installationId: newId, retired: true }, reviewer)).status, 403);
+  assert.equal((await f.post(`${admin}/${id}/replace-installation`, { installationId: randomUUID(), retired: true }, f.operatorToken)).status, 400);
+  const expiredApproval = await handleRequest(new Request(origin + admin + '/' + id + '/replace-installation', { method: 'POST',
+    headers: { Authorization: `Bearer ${f.operatorToken}`, Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ installationId: newId, retired: true }) }), f.env, { now: () => Date.parse(original.expiresAt) + 1000 });
+  assert.equal(expiredApproval.status, 409); assert.equal((await expiredApproval.json()).error, 'license_expired');
+  const issued = await f.post(`${admin}/${id}/replace-installation`, { installationId: newId, retired: true }, f.operatorToken);
+  assert.equal(issued.status, 200, await issued.clone().text());
+  const state = await issued.json(); assert.equal(state.installationId, newId); assert.equal(state.replacementCount, 1);
+  assert.equal(state.replacementRequest, null); assert.equal(state.expiresAt, original.expiresAt);
+  const next = verifyLicenseFile(await (await f.get(`${a.base}/license`, a.token)).text(), f.publicKeys, newId);
+  assert.equal(next.expiresAt, original.expiresAt); assert.equal(next.maxActiveUsers, original.maxActiveUsers);
+  assert.equal(next.plan, original.plan); assert.equal(next.majorVersion, original.majorVersion);
+  assert.equal(next.sequence, original.sequence + 1); assert.notEqual(next.licenseId, original.licenseId);
+  assert.equal((await f.post(`${a.base}/activate`, { installationId: oldId }, a.token)).status, 409);
+  assert.equal(await (await f.get(`${a.base}/replacement-revocation`, a.token)).text(), revocation);
+  assert.equal(await (await f.get(`${admin}/${id}/revocation`, f.operatorToken)).text(), revocation);
+  const invitation = await (await f.get(`${admin}/${id}/invitation`, f.operatorToken)).json();
+  assert.match(invitation.message, /replacement license/i); assert.ok(invitation.message.includes(a.token));
+  const future = Date.parse(original.expiresAt) + 1000;
+  const expiredRequest = await handleRequest(new Request(origin + a.base + '/replacement-request', { method: 'POST',
+    headers: { Authorization: `Bearer ${a.token}`, Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...request, installationId: randomUUID() }) }), f.env, { now: () => future });
+  assert.equal(expiredRequest.status, 409); assert.equal((await expiredRequest.json()).error, 'license_expired');
+});

@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let token = '';
 let emailDryRun = false;
+let ownerAccess = true;
 let activeMenu = null;
 function closeMenu(restoreFocus = false) {
   if (!activeMenu) return;
@@ -35,18 +36,20 @@ async function api(path = '', value) {
     if (response.status === 401) { $('inbox').hidden = true; $('logout').hidden = true; $('operator-login').hidden = false; clearInvitation(); $('requests').replaceChildren(); }
     if (error.error === 'email_not_configured') throw Error('Cloudflare email is not configured. Copy the invitation and send it manually.');
     if (error.error === 'email_already_attempted') throw Error('Email was already attempted. Refresh its status. If needed, replace the private link before sending another invitation.');
-    throw Error(error.error === 'access_required' ? 'Access key not accepted.' : error.error === 'state_changed'
+    throw Error(error.error === 'owner_required' ? 'This action requires owner access.' : error.error === 'access_required' ? 'Access key not accepted.' : error.error === 'state_changed'
       ? 'This request has changed. Refresh before approving it again.' : 'The action could not be completed. Refresh and try again.');
   }
   return response;
 }
 function clearInvitation() {
+  $('release-review').replaceChildren(); $('release-review').hidden = true;
   for (const id of ['invite-to', 'invite-subject', 'invite-message']) $(id).value = '';
   $('invitation').hidden = true;
 }
 async function refresh() {
   const data = await (await api()).json();
   emailDryRun = data.emailDryRun === true;
+  ownerAccess = data.role !== 'reviewer';
   $('request-alert-status').textContent = data.requestAlertsEnabled === true ? 'New-request email alerts are on.' : 'New-request email alerts are off.';
   $('operator-login').hidden = true; $('inbox').hidden = false;
   $('logout').hidden = false;
@@ -55,7 +58,7 @@ async function refresh() {
   $('requests').replaceChildren();
   const view = $('request-view').value;
   const rows = data.requests.filter(row => view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
-  status(`${rows.length} request${rows.length === 1 ? '' : 's'}`);
+  status(`${ownerAccess ? 'Owner' : 'Reviewer'} access - ${rows.length} request${rows.length === 1 ? '' : 's'}`);
   if (!rows.length) {
     const empty = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 9;
     cell.className = 'desk-empty'; cell.textContent = view === 'archived' ? 'No archived requests.' : 'No requests to show.';
@@ -76,6 +79,7 @@ async function refresh() {
     badge.textContent = row.state === 'rejected' ? 'Declined' : row.state === 'requested' ? 'Pending' : row.state.charAt(0).toUpperCase() + row.state.slice(1);
     state.append(badge);
     if (row.archivedAt) { const archived = document.createElement('small'); archived.textContent = 'Archived'; state.append(archived); }
+    if (row.replacementRequest) { const pending = document.createElement('small'); pending.textContent = `Replacement requested: ${row.replacementRequest.installationId}. ${row.replacementRequest.reason}`; state.append(pending); }
     if (row.expiresAt) { const expiry = document.createElement('small'); expiry.textContent = `Expires ${new Date(row.expiresAt).toLocaleDateString()}`; state.append(expiry); }
     const emailStates = { not_sent: 'Not sent', accepted: 'Accepted', queued: 'Queued', bounced: 'Bounced', sending: 'Sending', unknown: 'Unconfirmed' };
     cell(row.state === 'approved' ? (emailDryRun && row.emailState !== 'not_sent' ? 'Simulated' : emailStates[row.emailState] || '—') : '—');
@@ -137,7 +141,8 @@ async function refresh() {
             clearInvitation(); $('invite-to').value = data.email; $('invite-subject').value = data.subject; $('invite-message').value = data.message;
             $('invitation').hidden = false; $('invite-message').focus();
             status('Invitation ready to review.');
-          } else status(data.hasRevocation ? 'Link closed. Download the signed revocation and install it on the trial server to revoke its installed license.' : 'Request updated.');
+          } else if (action === 'replace-installation') status('Replacement license issued. The customer can use the existing private link to download it. Review and send the replacement invitation if needed.');
+          else status(data.hasRevocation ? 'Link closed. Download the signed revocation and install it on the trial server to revoke its installed license.' : 'Request updated.');
         } catch (error) { status(error.message); }
         finally { button.disabled = false; }
       });
@@ -150,13 +155,15 @@ async function refresh() {
       act('Decline', 'reject', {}, 'Decline this access request?');
     }
     if (row.state === 'approved') {
+      if (ownerAccess && row.replacementRequest) act('Issue replacement license', 'replace-installation', { installationId: row.replacementRequest.installationId, retired: true }, `Issue a replacement license for ${row.replacementRequest.installationId}? The customer confirmed the old installation is retired. Preserve the original expiry and limits. The signed old-license revocation must be applied on an old server if reachable.`);
+      if (ownerAccess && (row.replacementRequest || row.replacementCount)) act('Download old license revocation', 'revocation', undefined);
       if (row.canPreviewInvitation) act('Review invitation', 'invitation', undefined);
       if (row.canSendEmail) act(emailDryRun ? 'Send invitation (dry run)' : 'Send invitation', 'send-invitation', {}, emailDryRun ? `Simulate the invitation to ${row.email}? No real email will be sent.` : `Send the approved 10-day trial invitation to ${row.email} through Cloudflare?`);
-      act('Replace private link', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
-      if (row.updateAvailable === true) act('Offer updated packages', 'update-release', {}, `Offer the current verified packages and replace the private link? Preserve the existing installation, license, trial activation and expiry. This does not start another trial.`);
-      act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
+      if (ownerAccess) act('Replace private link', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
+      if (ownerAccess && row.updateAvailable === true) act('Offer updated packages', 'update-release', {}, `Offer the current verified packages and replace the private link? Preserve the existing installation, license, trial activation and expiry. This does not start another trial.`);
+      if (ownerAccess) act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
     }
-    if (row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);
+    if (ownerAccess && row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);
     act(row.archivedAt ? 'Restore to inbox' : 'Archive', row.archivedAt ? 'unarchive' : 'archive', {});
     $('requests').append(card);
   }
@@ -187,3 +194,18 @@ async function sessionAction(action) {
   if (!response.ok) throw Error(action === 'session' ? 'Access key not accepted.' : 'Sign out failed. Refresh and try again.');
 }
 refresh().catch(() => status('Enter your operator key. Sessions last one hour.'));
+
+$('review-releases').addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/access-admin/releases', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw Error('Release review is unavailable. Sign in again.');
+    const data = await response.json(), panel = $('release-review'); panel.replaceChildren(); panel.hidden = false;
+    const heading = document.createElement('h2'); heading.textContent = `Server major ${data.serverMajorVersion} packages`; panel.append(heading);
+    const note = document.createElement('p'); note.textContent = data.canDownload ? 'Owner access: inspect or download packages.' : 'Reviewer access: inspect packages. Downloads and private customer links require owner access.'; panel.append(note);
+    for (const asset of data.artifacts) {
+      const line = document.createElement('p'); line.textContent = `${asset.filename} - ${(asset.sizeBytes / 1048576).toFixed(1)} MB - SHA-256 ${asset.sha256} `;
+      if (data.canDownload) { const link = document.createElement('a'); link.href = `/api/access-admin/releases/artifacts/${asset.id}`; link.textContent = 'Download'; link.download = asset.filename; line.append(link); }
+      panel.append(line);
+    }
+  } catch (error) { status(error.message); }
+});

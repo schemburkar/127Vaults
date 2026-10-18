@@ -9,6 +9,7 @@ import { createOperatorSession, validOperatorSession, clearOperatorSession } fro
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
 
 const day = 86400000;
+const installationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
 const keyCache = new WeakMap(), issuerCache = new WeakMap();
 const security = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
@@ -43,10 +44,12 @@ const empty = input => { if (Object.keys(input).length) fail(400, 'invalid_reque
 function summary(record, mailer) {
   return { state: record?.state ?? 'requested', maxUsers: record?.maxUsers, archivedAt: record?.archivedAt ?? null,
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
-    emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
+    emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState && !record.replacementRequest),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
     serverMajorVersion: record?.state === 'approved' ? entitledMajor(record) : undefined,
     expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
+    replacementRequest: record?.replacementRequest ? { installationId: record.replacementRequest.installationId, requestedAt: record.replacementRequest.requestedAt, reason: record.replacementRequest.reason } : null,
+    replacementCount: record?.replacementCount ?? 0,
     requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
 async function setup(env, now) {
@@ -107,6 +110,20 @@ function close(record, at) {
   delete next.invitation;
   return next;
 }
+async function serveArtifact(env, asset, request) {
+    let range;
+    try { range = request.method === 'HEAD' ? null : byteRange(request.headers.get('range'), asset.sizeBytes); }
+    catch { return json(416, { error: 'invalid_range' }, { 'Content-Range': `bytes */${asset.sizeBytes}` }); }
+    // Conditional R2 GET pins the exact upload verified by the deployment script, without hashing an 835 MB file per request.
+    const object = request.method === 'HEAD' ? await env.ARTIFACTS.head(asset.objectKey)
+      : await env.ARTIFACTS.get(asset.objectKey, { onlyIf: { etagMatches: asset.etag }, ...(range ? { range } : {}) });
+    if (!object || (request.method !== 'HEAD' && !('body' in object)) || object.etag !== asset.etag
+      || object.size !== asset.sizeBytes || object.customMetadata?.sha256 !== asset.sha256) fail(503, 'artifact_changed');
+    return new Response(request.method === 'HEAD' ? null : object.body, { status: range ? 206 : 200, headers: { ...security,
+      'Content-Type': 'application/octet-stream', 'Accept-Ranges': 'bytes', 'ETag': `"${asset.etag}"`,
+      ...(range ? { 'Content-Range': `bytes ${range.offset}-${range.offset + range.length - 1}/${asset.sizeBytes}` } : {}),
+      'Content-Length': String(range ? range.length : asset.sizeBytes), 'Content-Disposition': `attachment; filename="${asset.filename}"` } });
+}
 async function dispatch(request, env, now, schedule) {
   const url = new URL(request.url), path = url.pathname;
   if (url.origin !== env.PUBLIC_INTAKE_ORIGIN) fail(403, 'forbidden');
@@ -114,7 +131,7 @@ async function dispatch(request, env, now, schedule) {
     if (!['GET', 'HEAD'].includes(request.method)) fail(405, 'method_not_allowed');
     return env.ASSETS.fetch(request);
   }
-  const artifactHead = request.method === 'HEAD' && /^\/api\/trials\/[a-f0-9]{64}\/artifacts\/[a-z0-9-]+$/.test(path);
+  const artifactHead = request.method === 'HEAD' && (/^\/api\/trials\/[a-f0-9]{64}\/artifacts\/[a-z0-9-]+$/.test(path) || /^\/api\/access-admin\/releases\/artifacts\/[a-z0-9-]+$/.test(path));
   if (!['GET', 'POST'].includes(request.method) && !artifactHead) fail(405, 'method_not_allowed');
   if (request.method === 'POST' && (request.headers.get('origin') !== env.PUBLIC_INTAKE_ORIGIN
     || request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json')) fail(403, 'forbidden');
@@ -140,14 +157,21 @@ async function dispatch(request, env, now, schedule) {
   }
   const admin = path.startsWith('/api/access-admin/');
   if (!admin && !path.startsWith('/api/trials/')) fail(404, 'not_found');
-  if (admin && !await equal(bearer, env.OPERATOR_TOKEN) && !await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at)) {
+  let role = null;
+  if (admin) {
+    if (await equal(bearer, env.OPERATOR_TOKEN) || await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at)) role = 'owner';
+    else if (env.REVIEWER_ACCESS_ENABLED === 'true' && /^[A-Za-z0-9_-]{43,128}$/.test(env.REVIEWER_TOKEN ?? '') && (await equal(bearer, env.REVIEWER_TOKEN)
+      || await validOperatorSession(request.headers.get('cookie'), env.REVIEWER_TOKEN, at))) role = 'reviewer';
+  }
+  const invitationText = text => role === 'reviewer' ? text.replace(/https:\/\/[^\s]+#[a-f0-9]{64}\.[A-Za-z0-9_-]{43}/g, '[Private customer download link - owner access required]') : text;
+  if (admin && !role) {
     if (!await store.allow('admin-auth', ip, 20, 3600000)) fail(429, 'rate_limited');
     fail(401, 'access_required');
   }
   if (path === '/api/access-admin/session' && request.method === 'POST') {
     empty(await body(request));
-    if (!await equal(bearer, env.OPERATOR_TOKEN)) fail(401, 'access_required');
-    return json(200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(env.OPERATOR_TOKEN, at) });
+    if (!await equal(bearer, role === 'owner' ? env.OPERATOR_TOKEN : env.REVIEWER_TOKEN)) fail(401, 'access_required');
+    return json(200, { signedIn: true, role }, { 'Set-Cookie': await createOperatorSession(role === 'owner' ? env.OPERATOR_TOKEN : env.REVIEWER_TOKEN, at) });
   }
   if (path === '/api/access-admin/logout' && request.method === 'POST') {
     empty(await body(request));
@@ -156,6 +180,18 @@ async function dispatch(request, env, now, schedule) {
   // Bound trial guessing and abusive downloads, without exposing contact identifiers in the limiter.
   if (!admin && !await store.allow('trial-ip', ip, 600, 3600000)) fail(429, 'rate_limited');
   const mailer = mailerFor(env);
+  if (path === '/api/access-admin/releases' && request.method === 'GET') {
+    const { catalogue } = await release(env);
+    return json(200, { role, canDownload: role === 'owner', serverMajorVersion: serverMajor(catalogue),
+      sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
+  }
+  const releaseAsset = /^\/api\/access-admin\/releases\/artifacts\/([a-z0-9-]+)$/.exec(path);
+  if (releaseAsset && ['GET', 'HEAD'].includes(request.method)) {
+    if (role !== 'owner') fail(403, 'owner_required');
+    const { catalogue } = await release(env), asset = catalogue.artifacts.find(v => v.id === releaseAsset[1]);
+    if (!asset) fail(404, 'not_found');
+    return serveArtifact(env, asset, request);
+  }
   if (path === '/api/access-admin/readiness' && request.method === 'GET') {
     const { catalogue } = await release(env);
     const asset = catalogue.artifacts.find(value => value.id === 'server');
@@ -175,20 +211,21 @@ async function dispatch(request, env, now, schedule) {
       }
       return { ...row.contact, id: row.id, ...summary(row.trial, mailer), updateAvailable, downloadAvailable };
     }));
-    return json(200, { requests, emailEnabled: Boolean(mailer),
+    return json(200, { role, permissions: { download: role === 'owner', manageInstallations: role === 'owner' }, requests, emailEnabled: Boolean(mailer),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
   const input = request.method === 'POST' ? await body(request) : null;
   if (admin) {
+    if (role === 'reviewer' && !['approve', 'reject', 'archive', 'unarchive', 'invitation', 'send-invitation'].includes(action)) fail(403, 'owner_required');
     if (!row?.contact || at - row.receivedAt >= 90 * day) fail(404, 'not_found');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
-      return json(200, { email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
+      return json(200, { email: row.contact.email, subject: record.invitation.subject, message: invitationText(record.invitation.text) });
     }
-    if (action === 'revocation' && request.method === 'GET' && record?.revocation) return attachment('trial-revocation.json', record.revocation);
+    if (action === 'revocation' && request.method === 'GET' && (record?.revocation || record?.previousRevocation)) return attachment('trial-revocation.json', record.revocation ?? record.previousRevocation);
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
     if (action === 'archive' || action === 'unarchive') {
       empty(input); record = { state: 'requested', ...record, archivedAt: action === 'archive' ? new Date(at).toISOString() : null };
@@ -215,12 +252,36 @@ async function dispatch(request, env, now, schedule) {
       if (action === 'update-release') record.invitation = { subject: 'Updated 127Vaults packages for your existing installation',
         text: `Updated packages are available:\n${link}\n\nBack up and upgrade your existing installation. Do not initialize replacement keys or a new database. Your installation binding, signed license and trial expiry are unchanged. This does not start another trial. Use fictitious data only.` };
       await store.save(row, record);
-      return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
+      return json(200, { ...summary(record, mailer), ...(role === 'owner' ? { link } : {}), email: row.contact.email, subject: record.invitation.subject, message: invitationText(record.invitation.text) });
+    } else if (action === 'replace-installation') {
+      if (record?.state !== 'approved' || !record.license || !record.replacementRequest) fail(409, 'replacement_unavailable');
+      if (Object.keys(input).sort().join(',') !== 'installationId,retired' || input.retired !== true
+        || input.installationId !== record.replacementRequest.installationId) fail(400, 'invalid_request');
+      if (at >= Date.parse(record.expiresAt)) fail(409, 'license_expired');
+      const { signingKey, catalogue } = await entitledRelease(env, record);
+      if (!await verifyLicenseIssuer(record.license, catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
+      const old = JSON.parse(new TextDecoder().decode(from64(JSON.parse(record.license).payload)));
+      const installedAt = new Date(at).toISOString();
+      const license = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
+        ...old, licenseId: crypto.randomUUID(), installationId: input.installationId, issuedAt: installedAt,
+        notBefore: installedAt, sequence: old.sequence + 1,
+      });
+      record = { ...record, installationId: input.installationId, license,
+        replacementCount: (record.replacementCount ?? 0) + 1, replacedAt: installedAt,
+        previousRevocation: record.revocation, replacementHistory: [...(record.replacementHistory ?? []), { installationId: old.installationId, licenseId: old.licenseId, revokedAt: record.replacementRequest.requestedAt, replacedAt: installedAt, revocation: record.revocation }], ticketHash: null, ticketUntil: 0 };
+      delete record.revocation; delete record.replacementRequest;
+      delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
+      if (record.invitation) {
+        const link = /https:\/\/[^\s]+#[a-f0-9]{64}\.[A-Za-z0-9_-]{43}/.exec(record.invitation.text)?.[0];
+        if (!link) fail(409, 'invitation_unavailable');
+        record.invitation = { subject: 'Your replacement 127Vaults license is ready',
+          text: `Your replacement license is ready. Open your private link:\n${link}\n\nDownload the replacement license and install it on the approved replacement server. Your original expiry, user limit and major-version access are unchanged. Retire the previous server. Its signed revocation is available from your private page; apply it there if reachable. This does not start another trial. Reissuing a license does not recover lost encrypted vault data.` };
+      }
     } else if (action === 'send-invitation') {
       empty(input);
       if (!mailer) fail(503, 'email_not_configured');
       await entitledRelease(env, record);
-      if (record?.state !== 'approved' || !record.invitation || at >= Date.parse(record.linkExpiresAt)) fail(409, 'invitation_unavailable');
+      if (record?.state !== 'approved' || !record.invitation || record.replacementRequest || at >= Date.parse(record.linkExpiresAt)) fail(409, 'invitation_unavailable');
       if (record.emailState) fail(409, 'email_already_attempted');
       if (!await store.allow('trial-email', id, 3, 3600000)) fail(429, 'rate_limited');
       const attempt = crypto.randomUUID();
@@ -247,7 +308,7 @@ async function dispatch(request, env, now, schedule) {
       if (action === 'reject') record.state = 'rejected';
     }
     await store.save(row, record, action === 'erase');
-    return json(200, { ...summary(record, mailer), hasRevocation: Boolean(record.revocation), installedLicenseUnaffected: Boolean(record.license) });
+    return json(200, { ...summary(record, mailer), hasRevocation: Boolean(record.revocation), installedLicenseUnaffected: action !== 'replace-installation' && Boolean(record.license) });
   }
   if (!record || record.state !== 'approved' || at >= Date.parse(record.linkExpiresAt) || !row.contact || at - row.receivedAt >= 90 * day) fail(404, 'link_unavailable');
   const { catalogue, publicKey, signingKey } = await entitledRelease(env, record);
@@ -262,6 +323,26 @@ async function dispatch(request, env, now, schedule) {
     await store.save(row, record);
     return json(200, { ready: true }, { 'Set-Cookie': `__Secure-127v-trial=${value}; Path=/api/trials/${id}/artifacts/; Max-Age=300; Secure; HttpOnly; SameSite=Strict` });
   }
+  if (action === 'replacement-revocation' && request.method === 'GET' && (record.revocation || record.previousRevocation)) {
+    return attachment('replaced-license-revocation.json', record.revocation ?? record.previousRevocation);
+  }
+  if (action === 'replacement-request' && request.method === 'POST') {
+    if (Object.keys(input).sort().join(',') !== 'installationId,reason,retired' || input.retired !== true
+      || !installationUuid.test(input.installationId ?? '') || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 500) fail(400, 'invalid_request');
+    if (!record.license || !record.installationId || input.installationId.toLowerCase() === record.installationId) fail(409, 'replacement_unavailable');
+    if (at >= Date.parse(record.expiresAt)) fail(409, 'license_expired');
+    if (record.replacementRequest) fail(409, 'replacement_pending');
+    await revoke(record, env, signingKey, at);
+    record = { ...record, replacementRequest: { installationId: input.installationId.toLowerCase(),
+      reason: input.reason.trim(), retired: true, requestedAt: new Date(at).toISOString() }, replacementAlertAttemptedAt: null, ticketHash: null, ticketUntil: 0 };
+    await store.save(row, record);
+    if (requestAlertsEnabled(env)) {
+      const alert = notifyNewAccessRequest(env, store, id, row.contact, at, { replacement: true }).catch(() => {});
+      if (schedule) schedule(alert); else await alert;
+    }
+    return json(202, summary(record, mailer));
+  }
+  if (record.replacementRequest && ['activate', 'license'].includes(action)) fail(409, 'replacement_pending');
   if (action === 'activate' && request.method === 'POST') {
     if (Object.keys(input).join(',') !== 'installationId' || typeof input.installationId !== 'string'
       || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.installationId)) fail(400, 'invalid_request');
@@ -282,18 +363,7 @@ async function dispatch(request, env, now, schedule) {
   if (action === 'public-keys' && request.method === 'GET') return attachment('trial-issuer-keys.json', JSON.stringify({ [env.TRIAL_ISSUER_KEY_ID]: publicKey }, null, 2));
   if (action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method)) {
     const asset = catalogue.artifacts.find(v => v.id === action.slice(10)); if (!asset) fail(404, 'not_found');
-    let range;
-    try { range = artifactHead ? null : byteRange(request.headers.get('range'), asset.sizeBytes); }
-    catch { return json(416, { error: 'invalid_range' }, { 'Content-Range': `bytes */${asset.sizeBytes}` }); }
-    // Conditional R2 GET pins the exact upload verified by the deployment script, without hashing an 835 MB file per request.
-    const object = artifactHead ? await env.ARTIFACTS.head(asset.objectKey)
-      : await env.ARTIFACTS.get(asset.objectKey, { onlyIf: { etagMatches: asset.etag }, ...(range ? { range } : {}) });
-    if (!object || (!artifactHead && !('body' in object)) || object.etag !== asset.etag
-      || object.size !== asset.sizeBytes || object.customMetadata?.sha256 !== asset.sha256) fail(503, 'artifact_changed');
-    return new Response(artifactHead ? null : object.body, { status: range ? 206 : 200, headers: { ...security,
-      'Content-Type': 'application/octet-stream', 'Accept-Ranges': 'bytes', 'ETag': `"${asset.etag}"`,
-      ...(range ? { 'Content-Range': `bytes ${range.offset}-${range.offset + range.length - 1}/${asset.sizeBytes}` } : {}),
-      'Content-Length': String(range ? range.length : asset.sizeBytes), 'Content-Disposition': `attachment; filename="${asset.filename}"` } });
+    return serveArtifact(env, asset, request);
   }
   fail(404, 'not_found');
 }

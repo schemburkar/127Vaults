@@ -30,8 +30,8 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom'];
-  if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'reviewerAccessEnabled'];
+  if ((value?.reviewerAccessEnabled !== undefined && typeof value.reviewerAccessEnabled !== 'boolean') || !value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
     || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(value.workerName) || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(value.databaseName)
@@ -90,6 +90,11 @@ export async function loadSecrets(config, catalogue) {
   const values = { INTAKE_KEY: await read('intake-key'), OPERATOR_TOKEN: await read('operator-token'),
     TRIAL_ISSUER_PRIVATE_KEY: await read('issuer.pem') };
   if (!/^[a-f0-9]{64}$/i.test(values.INTAKE_KEY) || !/^[A-Za-z0-9_-]{43,128}$/.test(values.OPERATOR_TOKEN)) throw Error('Invalid deployment secrets');
+  const reviewer = config.reviewerAccessEnabled ? await read('reviewer-token') : null;
+  if (reviewer !== null) {
+    if (!/^[A-Za-z0-9_-]{43,128}$/.test(reviewer) || reviewer === values.OPERATOR_TOKEN) throw Error('Invalid reviewer secret');
+    values.REVIEWER_TOKEN = reviewer;
+  }
   const publicKey = createPublicKey(values.TRIAL_ISSUER_PRIVATE_KEY).export({ type: 'spki', format: 'pem' });
   if (catalogue.issuerPublicKeys?.[config.issuerKeyId] !== publicKey) throw Error('Issuer does not match the selected server release');
   await issuer(values.TRIAL_ISSUER_PRIVATE_KEY, publicKey);
@@ -109,6 +114,7 @@ export function wranglerConfig(config, state, assetsDirectory) {
     r2_buckets: [{ binding: 'ARTIFACTS', bucket_name: config.bucketName }],
     ...(config.requestAlertTo ? { send_email: [{ name: 'REQUEST_ALERTS', destination_address: config.requestAlertTo }] } : {}),
     vars: { PUBLIC_INTAKE_ORIGIN: config.origin, TRIAL_ISSUER_KEY_ID: config.issuerKeyId,
+      REVIEWER_ACCESS_ENABLED: config.reviewerAccessEnabled ? 'true' : 'false',
       TRIAL_CATALOGUE_KEY: state.catalogueKey ?? 'not-uploaded', TRIAL_CATALOGUE_SHA256: state.catalogueSha256 ?? 'not-uploaded',
       TRIAL_SOURCE_REVISION: state.sourceRevision ?? 'not-uploaded',
       ...(config.requestAlertTo ? { REQUEST_ALERT_TO: config.requestAlertTo, REQUEST_ALERT_FROM: config.requestAlertFrom } : {}),

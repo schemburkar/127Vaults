@@ -73,19 +73,25 @@ async function api(action = '', value) {
     body: value === undefined ? undefined : JSON.stringify(value), cache: 'no-store', credentials: 'same-origin' });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw Error(error.error === 'already_bound' ? 'This trial is already bound to another installation. Contact your inviter.'
+    throw Error(error.error === 'replacement_pending' ? 'Your replacement request is pending. Contact your inviter for the new license.' : error.error === 'license_expired' ? 'Your license has expired. Replacement cannot renew it.' : error.error === 'already_bound' ? 'This trial is already bound to another installation. Contact your inviter.'
       : error.error === 'licensed_major_unavailable' ? 'Downloads for your licensed major version are temporarily unavailable. Contact your inviter.'
         : 'This action is unavailable. Reopen your invitation email or contact your inviter.');
   }
   return response;
 }
 function showLicense(record) {
-  const upgrading = Boolean(record.upgradeOfferedAt && record.installationId);
+  const upgrading = Boolean(record.upgradeOfferedAt && record.installationId && !record.replacementCount && !record.replacementRequest);
   $('trial-upgrade').hidden = !upgrading;
-  $('trial-prepare').hidden = upgrading;
+  $('trial-prepare').hidden = Boolean(record.installationId);
   $('trial-install').hidden = upgrading;
   $('trial-activate').hidden = Boolean(record.installationId);
   $('trial-license').hidden = !record.installationId;
+  $('trial-recovery').hidden = !record.installationId;
+  const expired = record.expiresAt && Date.now() >= Date.parse(record.expiresAt);
+  $('replacement-request').hidden = Boolean(record.replacementRequest) || expired;
+  $('download-license').disabled = Boolean(record.replacementRequest);
+  $('replacement-status').textContent = record.replacementRequest ? 'Replacement requested. Your inviter must issue the new license. The previous license is marked revoked; download and apply its revocation if the old server is reachable.' : expired ? 'This license has expired. Replacement does not renew it; contact your inviter.' : record.replacementCount ? 'Your replacement license is ready. Download it above and install it on the approved replacement server.' : '';
+  $('download-replacement-revocation').hidden = !record.replacementRequest && !record.replacementCount;
   $('trial-dates').textContent = record.expiresAt
     ? `Bound to ${record.installationId}. Writes expire ${new Date(record.expiresAt).toLocaleString()}.`
     : `Up to ${record.maxUsers} vault users. The 10 days start when you activate. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
@@ -140,3 +146,14 @@ $('trial-activate').addEventListener('submit', async event => {
 $('download-license').addEventListener('click', () => download('/license', 'trial-license.json').catch(error => status(error.message)));
 $('download-keys').addEventListener('click', () => download('/public-keys', 'trial-issuer-keys.json').catch(error => status(error.message)));
 open().catch(error => status(error.message));
+
+$('replacement-request').addEventListener('submit', async event => {
+  event.preventDefault(); if (!$('replacement-request').reportValidity()) return;
+  const button = $('replacement-request').querySelector('button'); button.disabled = true;
+  try {
+    const record = await (await api('/replacement-request', { installationId: $('replacement-id').value.trim(),
+      reason: $('replacement-reason').value.trim(), retired: $('replacement-retired').checked })).json();
+    showLicense(record); status('Replacement requested. Contact your inviter to issue the new license.');
+  } catch (error) { status(error.message); } finally { button.disabled = false; }
+});
+$('download-replacement-revocation').addEventListener('click', () => download('/replacement-revocation', 'replaced-license-revocation.json').catch(error => status(error.message)));
