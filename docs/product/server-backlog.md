@@ -31,11 +31,13 @@ The user's deferred manual run still covers SRV-005/009/010. The combined restor
 
 ## SRV-021 — Private Tailscale connectivity
 
-**State:** Implemented discovery/Serve transport; published two-computer acceptance pending. **Priority:** Do next; user-selected 2026-10-17.
+**State:** Two-computer native discovery/HTTPS/enrollment/sync/offline recovery passes; final public-download verification in progress. Browser CA ceremony and reboot/clean-host gates remain open. **Priority:** Do next; user-selected 2026-10-17.
 
 Support an explicitly selected Tailscale IPv4 endpoint in the shared address range (`100.64.0.0/10`), including Sunrise's `100.99.146.58`. Review installer, server and client validation together; accepting the address in only one layer is insufficient. Keep loopback as the default, bind only to the selected interface, preserve exact HTTPS certificate/installation identity and Host/Origin checks, and document tailnet access controls and host firewall requirements. This does not authorize public Internet exposure or wildcard binding.
 
 The user's subsequent direction prefers a loopback origin behind a private connector. The prepared mode discovers the endpoint through native Tailscale, retains host-loopback publication, and forwards TLS through Serve. Desktop/CLI peer discovery avoids manual tailnet IP entry. Public Funnel is refused. [Decision and Cloudflare/intranet alternatives](../architecture/private-connectivity.md). Do not mark accepted before the published two-host run.
+
+2026-10-18: the published server0.0.2 setup created a distinct controller installation, then its guarded0.0.3 update preserved identity/users/license. Sunrise CLI and desktop discovered the host by name, pinned the CA, enrolled through owner approval, read the encrypted test item and recovered queued edits after service disconnect. Wrong CA fingerprint, Host, Origin and direct LAN probes fail closed; unrelated Serve443 remains unchanged. Desktop0.0.3/CLI0.0.2 were tested internally before a single combined publication. Full final consumer-download provenance and the original Sunrise server update are being recorded in the [current checkpoint](../release/sunrise-upgrade-plan-2026-10-17.md). Browser owner tests used an isolated certificate-ignore context after Windows refused noninteractive root import; they do not close interactive CA trust. Native CLI/Node HTTPS verification used the actual pinned CA.
 
 **Acceptance:** Using published packages, host on one tailnet computer and complete server trust, account/device enrollment, approval, sync and offline-client recovery on another. Verify that unapproved hosts/origins and unintended network interfaces remain inaccessible. Document the supported private-network path and distinguish it from a single-machine loopback setup.
 
