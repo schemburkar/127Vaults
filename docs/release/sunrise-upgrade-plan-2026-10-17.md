@@ -283,3 +283,13 @@ Final browser acceptance found/fixed another real bug: fragment-only navigation 
 Other-session user commits on shared main include1c03ed8 (direct setup navigation/copyable commands) and dc1a5b9 (Podman Desktop/CLI-only Compose guidance). They landed AFTER our earlier website stage and were preserved. NOW explicitly authorized to publish these too: run guide/navigation checks, deploy current source via canonical `.cloudflare-deploy/config.json` (deploy ONLY, NOT all/upload), verify final readiness/package source remainsa64a53b. Record resulting Worker version below and commit final handoff. Hourly allowance is low; stop after this deployment/save. Do not start new engineering or consume reset credits.
 
 Remaining manual/external gates: fresh-browser interactive CA approval (our isolated fresh-owner web test ignored errors but native CLI/Node TLS pinned correctly), clean-host/reboot/Docker coverage, physical OS-lock/idle matrix, actual Mac builds/signing/Chrome and WARP connector/org acceptance. Cloudflare private-routing design is committed. Email destination reportedly added by user, but notification delivery deliberately remains OFF pending later email pass. No notification emails sent and no Email Routing/DNS changes.
+
+### Final Cloudflare deployment and stop checkpoint — 2026-10-18
+
+- User confirmed the separate setup-guide updates were their work and explicitly requested deploying all current changes.
+- Deployed current main website and Worker using canonical `.cloudflare-deploy/config.json`; Cloudflare Worker version `1e3cc0b2-6c71-4b07-9578-736ec2ec3933`. Deployment checks passed, exit 0.
+- Included setup-guide commits `1c03ed8` and `dc1a5b9`. Focused setup-guide and invitation-navigation tests passed (3/3).
+- Retained verified private R2 release `private-reconnect-20261018-3bafaee` and its 37 objects; no intermediate package upload or rebuild performed.
+- Sunrise final server 0.0.3 upgrade and original desktop/CLI/web/extension checks are complete as recorded above. Remaining manual/browser-trust, clean-host/reboot/Docker, physical-lock, Mac/signing, and WARP acceptance coverage remain open; do not claim complete coverage.
+- Email notifications remain disabled for the later email pass. No Git remote push performed. Untracked `deploy/cloudflare.json` preserved untouched.
+- Stopping work at user hourly-budget warning. Resume from this checkpoint, retaining existing installations, profiles, backups, and current release catalogue.
