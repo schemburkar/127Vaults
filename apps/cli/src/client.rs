@@ -578,6 +578,7 @@ fn http_client(config_dir: &Path) -> Result<(Client, String, String, String), St
         .add_root_certificate(cert)
         .redirect(reqwest::redirect::Policy::none())
         .pool_max_idle_per_host(0)
+        .connect_timeout(std::time::Duration::from_secs(3))
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|_| "could not initialize HTTPS client".to_owned())?;
@@ -600,6 +601,13 @@ fn server_connection_error(error: &reqwest::Error) -> String {
     } else {
         "server request failed".to_owned()
     }
+}
+
+fn transport_unavailable(error: &str) -> bool {
+    matches!(
+        error,
+        "server connection failed" | "server request timed out"
+    )
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2024,6 +2032,10 @@ impl Session {
                                     .to_owned(),
                             );
                         }
+                        if transport_unavailable(&error) {
+                            self.offline_reason = Some(error.clone());
+                            return Err(error);
+                        }
                     }
                 }
             }
@@ -2031,6 +2043,9 @@ impl Session {
         if let Err(error) = self.hydrate_replicas() {
             if error.contains("401") || error.contains("403") {
                 self.online = false;
+            }
+            if transport_unavailable(&error) {
+                self.offline_reason = Some(error.clone());
             }
             return Err(error);
         }
@@ -2047,18 +2062,27 @@ impl Session {
             .iter()
             .map(|replica| replica.pending.len())
             .sum::<usize>();
-        let settings = match self.sync_vault_settings() {
-            Ok(settings) => settings,
-            Err(error) => {
-                if !self.online {
-                    return Err(error);
-                }
-                json!({"pending":true,"error":error})
-            }
-        };
+        let settings = self.sync_settings_after_items()?;
+        self.offline_reason = None;
         Ok(
             json!({"accepted":accepted,"rebased":rebased,"pending":pending,"online":true,"conflicts":conflicts,"vaultSettings":settings}),
         )
+    }
+
+    fn sync_settings_after_items(&mut self) -> Result<Value, String> {
+        match self.sync_vault_settings() {
+            Ok(settings) => Ok(settings),
+            Err(error) => {
+                if transport_unavailable(&error) {
+                    self.offline_reason = Some(error.clone());
+                    return Err(error);
+                }
+                if !self.online {
+                    return Err(error);
+                }
+                Ok(json!({"pending":true,"error":error}))
+            }
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2790,12 +2814,12 @@ impl Session {
             "pending": replicas.iter().map(|r| r.pending.len()).sum::<usize>() + usize::from(self.settings_record.pending.is_some()),
             "conflicts": replicas.iter().map(|r| r.conflicts.len()).sum::<usize>() + usize::from(self.settings_conflict),
             "lastVerifiedSyncAt": last_verified_sync_at,
-            "online": self.online,
+            "online": self.is_online(),
             "offlineReason": self.offline_reason,
         }))
     }
     pub fn is_online(&self) -> bool {
-        self.online
+        self.online && self.offline_reason.is_none()
     }
     pub fn offline_reason(&self) -> Option<&str> {
         self.offline_reason.as_deref()
@@ -3509,6 +3533,15 @@ impl Session {
                         replica.sync_error = Some(error.clone());
                         Ok(())
                     })?;
+                }
+                // The mutation is already durably encrypted above. A lost
+                // response must not tell callers that saving failed or invite
+                // a second mutation; replay retains this operation's identity.
+                if transport_unavailable(&error) {
+                    self.offline_reason = Some(error);
+                    return Ok(
+                        json!({"queued":true,"offline":true,"itemId":new_id,"operationId":operation["opId"]}),
+                    );
                 }
                 Err(error)
             }

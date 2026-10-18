@@ -53,6 +53,18 @@ cargo run -p vaults-cli -- conflict list
 
 ## Trusted-device management
 
+`item edit` currently replaces the item's content; it does not apply a partial
+field patch. Supply the title and every standard/custom field you want to retain.
+For secrets, use `--json -` with standard input or `--json @<private-file>` rather
+than putting passwords in command arguments. A username-only input is refused
+because the replacement requires a title. Interactive editing also collects a
+replacement rather than prefilled existing values.
+
+If connectivity disappears after an edit is encrypted and queued, the client
+reports `queued: true, offline: true`; it preserves the exact signed operation
+for a later `sync`. A successful reconnect clears the offline indication.
+Certificate, authorization and conflict failures remain explicit errors.
+
 These commands use the selected CLI profile's unlocked, online agent. Log in
 first; an offline unlock cannot read server device state, approve an enrollment,
 or revoke trust. They use the same pinned HTTPS, session cookie, Origin and CSRF

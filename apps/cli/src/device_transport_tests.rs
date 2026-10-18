@@ -14,6 +14,78 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn disconnected_edit_reports_its_durable_queue_and_reconnect_reuses_the_request() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let unavailable = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+    let (mut session, vault_id, item_id) = session_with_editable_item(&unavailable);
+    let saved = session
+        .item_upsert(
+            &vault_id,
+            Some(&item_id),
+            "Offline edit",
+            "https://fixture.invalid",
+            "offline-user",
+            "fixture-password",
+            &[],
+        )
+        .unwrap();
+    assert_eq!(saved["queued"], true);
+    assert_eq!(saved["offline"], true);
+    assert!(!session.is_online());
+    assert_eq!(session.replica_status().unwrap()["online"], false);
+    let queued = session.replica_store.load(&vault_id).unwrap().unwrap();
+    assert_eq!(queued.pending.len(), 1);
+    assert_eq!(queued.pending[0].operation["opId"], saved["operationId"]);
+    assert_eq!(
+        session.item_get(&vault_id, &item_id, None).unwrap()["username"],
+        "offline-user"
+    );
+    assert!(session.sync_now().is_err());
+    assert_eq!(
+        session
+            .replica_store
+            .load(&vault_id)
+            .unwrap()
+            .unwrap()
+            .pending,
+        queued.pending
+    );
+
+    let mut responses = initial_snapshot_responses(&queued);
+    responses[2] = (
+        200,
+        json!({"cursor":1,"hasMore":false,
+        "operations":[{"cursor":1,"operation":queued.pending[0].operation}],
+        "devicePublicKeys":{session.device_id.clone():URL_SAFE_NO_PAD.encode(session.signing.verifying_key().to_bytes())}}),
+    );
+    responses.insert(0, (200, json!({"accepted":true})));
+    responses.push((200, json!({"revision":null,"envelope":null})));
+    let (origin, worker) = fixture(responses);
+    session.origin.clone_from(&origin);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    let synced = session.sync_now().unwrap();
+    assert_eq!(synced["pending"], 0);
+    assert!(session.is_online());
+    assert!(session.offline_reason().is_none());
+    let requests = worker.join().unwrap();
+    assert_eq!(requests[0].body, queued.pending[0].request);
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.line.starts_with("PUT /api/v1/vaults/"))
+            .count(),
+        1
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn failed_second_vault_reload_does_not_discard_first_vault_queue() {
     let (mut session, first_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
     let server = session.replica_store.load(&first_id).unwrap().unwrap();

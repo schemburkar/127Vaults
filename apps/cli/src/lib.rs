@@ -386,6 +386,7 @@ pub enum ItemCommand {
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
+    /// Replace an item's content. Supply every field to retain; omitted optional fields are cleared.
     Edit {
         #[arg(long)]
         vault: Option<String>,
@@ -575,7 +576,7 @@ pub fn validate_trust(args: &TrustArgs) -> Result<String, String> {
         let _ = write!(fingerprint, "{byte:02x}");
     }
     Ok(format!(
-        "trust material valid (not persisted)\nendpoint_kind={kind:?}\nca_sha256={fingerprint}\nserver_identity=[redacted]"
+        "trust material valid\nendpoint_kind={kind:?}\nca_sha256={fingerprint}\nserver_identity=[redacted]"
     ))
 }
 
@@ -650,7 +651,7 @@ pub fn establish_trust(args: &TrustArgs) -> Result<String, String> {
     write_new_or_equal(&args.config_dir.join("installation-ca.pem"), &ca)?;
     write_new_or_equal(&args.config_dir.join("trust.conf"), &profile)?;
     Ok(format!(
-        "{validation}\nprofile={}\nhttps_probe=ok",
+        "{validation}\nprofile={}\nhttps_probe=ok\ntrust_profile=persisted",
         args.config_dir.display()
     ))
 }
