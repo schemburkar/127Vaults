@@ -212,7 +212,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
               ticketHash: null, ticketUntil: 0,
               sourceRevision: action === 'update-release' ? catalogue.sourceRevision : record?.sourceRevision ?? catalogue.sourceRevision,
               releaseHash: action === 'update-release' ? releaseHash : record?.releaseHash ?? releaseHash };
-            const link = `${origin}/trial.html#${id}.${token}`;
+            const link = `${origin}/trial.html?open=1#${id}.${token}`;
             record.invitation = { subject: 'Your private 10-day 127Vaults trial',
               text: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` };
             delete record.emailState; delete record.emailAttemptedAt;

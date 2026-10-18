@@ -52,7 +52,7 @@ test('real request → operator approval → private downloads → durable 10-da
     assert.equal((await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken, 'https://other.example')).status, 403);
     const approval = await (await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken)).json();
     assert.match(approval.message, /unpaid/);
-    assert.match(approval.link, /^https:\/\/127vaults.example\/trial.html#/);
+    assert.match(approval.link, /^https:\/\/127vaults.example\/trial.html\?open=1#/);
     assert.equal((await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken)).status, 409);
     const token = approval.link.split('.').at(-1), base = `/api/trials/${id}`;
     assert.equal(sent.length, 0); // Approval alone must never email a requester.

@@ -1,6 +1,11 @@
 const $ = id => document.getElementById(id);
 const fragment = location.hash.slice(1);
 history.replaceState(null, '', location.pathname);
+// Pasting a new invitation into this tab changes only the fragment. Reload so
+// the new bearer and current page/module version replace the previous view.
+window.addEventListener('hashchange', () => {
+  if (location.hash) location.reload();
+});
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(fragment);
 const base = match ? `/api/trials/${match[1]}` : '';
 const token = match?.[2]; // Memory only; reopen the email link after closing/reloading.

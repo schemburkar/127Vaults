@@ -179,7 +179,7 @@ test('Worker email claims survive concurrent sends, ambiguous replies and closur
       sent++; announce();
       assert.equal(request.url, `https://api.cloudflare.com/client/v4/accounts/${'a'.repeat(32)}/email/sending/send`);
       const message = await request.json(); assert.equal(message.to, recipient);
-      assert.equal(message.from, 'trials@example.com'); assert.match(message.text, /trial#/);
+      assert.equal(message.from, 'trials@example.com'); assert.match(message.text, /trial\?open=1#/);
       await gate;
       return Response.json(ambiguous ? { success: false } : { success: true, result: { queued: [recipient] } });
     } });
@@ -360,7 +360,7 @@ test('fixed-recipient request alerts are durable, contain only a review summary,
   const response = await submit(f.requestInput); assert.equal(response.status, 202);
   assert.equal(sent.length, 1); assert.equal(sent[0].to, 'ops@example.com');
   assert.ok(sent[0].text.includes(f.requestInput.email)); assert.ok(sent[0].text.includes(origin + '/access-admin'));
-  assert.ok(!sent[0].text.includes(f.operatorToken)); assert.ok(!sent[0].text.includes('/trial#'));
+  assert.ok(!sent[0].text.includes(f.operatorToken)); assert.doesNotMatch(sent[0].text, /\/trial(?:\.html)?(?:\?|#)/);
   let inbox = (await (await f.get(admin, f.operatorToken)).json()).requests;
   assert.equal(inbox[0].requestAlertState, 'accepted');
   await submit({ ...f.requestInput, website: 'bot trap' }); assert.equal(sent.length, 1);

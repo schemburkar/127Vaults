@@ -183,7 +183,9 @@ async function dispatch(request, env, now, schedule) {
         approvedAt: record?.approvedAt ?? new Date(at).toISOString(), payment: 'none', trialDays: 10,
         tokenHash: await hash(value), linkExpiresAt: new Date(at + 30 * day).toISOString(),
         ticketHash: null, ticketUntil: 0, sourceRevision: catalogue.sourceRevision, releaseHash: identity };
-      const link = `${env.PUBLIC_INTAKE_ORIGIN}/trial#${id}.${value}`;
+      // A query forces document navigation even from a legacy trial page whose
+      // script predates fragment-change handling. It contains no credentials.
+      const link = `${env.PUBLIC_INTAKE_ORIGIN}/trial?open=1#${id}.${value}`;
       record.invitation = { subject: 'Your private 10-day 127Vaults trial',
         text: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` };
       delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
