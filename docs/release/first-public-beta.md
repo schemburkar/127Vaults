@@ -16,9 +16,9 @@ This is a release design checklist, not an executable script.
 1. Choose the immutable beta identifier, such as `0.1.0-beta.1`.
 2. Record its actual first-public-distribution date.
 3. Finalize whether to offer a version-specific future AGPL conversion and its
-   precise terms and dates; no conversion is implied by the current draft.
-4. Adopt reviewed original source-available terms naming the licensor and exact
-   covered release, with separate operational licenses for local and other use.
+   precise terms and dates; no conversion is promised by the adopted license.
+4. Verify the adopted source-available and commercial terms against legal review
+   and the exact covered release; record approved revisions before publication.
 5. Include commercial-license contact, copyright and third-party notices,
    trademark policy, security disclaimer, and beta/EOL status. Include AGPL text
    if an express future grant requires it.

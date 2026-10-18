@@ -4,7 +4,7 @@
 - Original date: 2026-09-06
 - Revised: 2026-10-18
 
-Prepare an original source-inspection license with separate paid operational
+Adopt an original source-inspection license with separate paid operational
 licenses. Local and non-production execution require express permission under
 a separate agreement, just like other operational use.
 
@@ -12,12 +12,13 @@ No implied personal, research, educational or testing exemption applies. Interna
 testing and trials require express written authorization. Third-party licenses,
 mandatory legal rights and applicable repository-host permissions are unaffected.
 
-The text is a review draft, not an operative license. Any future four-year
-AGPLv3 conversion must be finalized separately; no date or conversion grant is
-created here. If a version converts to AGPL, compliant use cannot require payment.
+Version 1.0 agreements were adopted on 2026-10-18; further legal review is planned.
+No future AGPLv3 conversion is promised. Any conversion requires a separate
+express grant identifying the version and effective date. If a version converts to AGPL, compliant use cannot require payment.
 A Commercial agreement remains an alternative.
 
 Retain private development history. Publish only a reviewed source export with
 the adopted license in its initial public commit. Preserve existing grants.
 
-See LICENSE-POLICY.md and docs/legal/source-available-license-draft.md.
+See [LICENSE-POLICY.md](../../LICENSE-POLICY.md), [LICENSE.md](../../LICENSE.md),
+and [COMMERCIAL-LICENSE.md](../../COMMERCIAL-LICENSE.md).

@@ -1,13 +1,15 @@
 # License adoption checks
 
-Updated 2026-10-18. The repository remains private. Neither this checklist nor
-the revised drafts adopts a license or authorizes public distribution.
+Updated 2026-10-18. Version 1.0 of the [Source-Available License](../../LICENSE.md)
+and [Commercial License Agreement](../../COMMERCIAL-LICENSE.md) is adopted for
+the repository. The owner authorized adoption during internal testing, with
+further legal review planned. This does not approve public distribution or open
+customer signups. Commercial obligations require an accepted order.
 
-The two agreement files now contain publication-form Version 1.0 text, without
-draft warnings or editorial review instructions. Their existing filenames are
-retained for repository references. Preparation of that text is not the separate
-release/adoption step. Review the complete text offline before publishing it with
-the source export or incorporating it in accepted orders.
+The former draft files have moved to the repository root as the canonical texts.
+No blank placeholders or editorial TODOs were found in either agreement.
+Customer identity, dates, addresses and service schedules are required order
+contents, not missing master-agreement text.
 
 The publication-form text includes default notice/cure, refund, confidentiality,
 assignment and liability provisions. Review those defaults as well as plan terms.
@@ -25,7 +27,7 @@ remains a required accepted order attachment, not a blank in the master agreemen
 - Cloud terms describe the service in the present tense. New signups may remain
   closed without changing obligations under an accepted order.
 
-## Resolve before adoption or accepting relevant orders
+## Remaining checks before publication or accepting relevant orders
 
 - Verify ownership and licensor identity; complete governing law, notices,
   consumer protections, refunds, cancellation and multi-year termination terms
@@ -33,7 +35,7 @@ remains a required accepted order attachment, not a blank in the master agreemen
 - Complete installation scope and record requested user allowances without
   introducing a paid self-hosted seat tier. Confirm license issuance can support
   promised additions; technical capacity is not unlimited.
-- Verify each client's read/export behavior. The draft uses the existing 30-day
+- Verify each client's read/export behavior. The agreement uses the existing 30-day
   grace interval for finite self-hosted offline retrieval permission, but current
   offline clients do not implement a complete expiry lock. Implement and test any
   promised technical cutoff separately; a legal edit does not implement one.
@@ -55,4 +57,4 @@ The FTC's [advertising guidance](https://www.ftc.gov/business-guidance/resources
 explains why material public promises and qualifications should agree for
 US-facing marketing. This reference does not select governing law or establish
 that US law is the only applicable law. Local and customer-market review remains
-part of adoption.
+required before publication and relevant customer orders.

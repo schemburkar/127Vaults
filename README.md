@@ -185,7 +185,14 @@ Do not use real credentials until the documented security and public-beta gates
 are complete. Start with the [architecture overview](docs/architecture/overview.md)
 and [threat model](docs/security/threat-model.md) when reviewing design claims.
 
-The planned release model is an original 127Vaults Source-Available License
-with separate paid operational licenses, including for local use. The license
-remains a review draft; any future AGPL conversion must be finalized separately.
-See [LICENSE-POLICY.md](LICENSE-POLICY.md).
+The repository is licensed under the [127Vaults Source-Available License](LICENSE.md).
+It permits source inspection; building, running, modifying and redistributing
+require separate written permission. This is proprietary source-available software,
+not open-source software. Paid operational terms are in the
+[Commercial License Agreement](COMMERCIAL-LICENSE.md), effective for a customer
+only through an accepted order. Internal tests and trials require scoped written
+authorization. No future AGPL conversion is promised.
+
+Both version 1.0 agreements were adopted on 2026-10-18; further legal review is
+planned. Adoption does not open customer signups or approve a public release.
+See [LICENSE-POLICY.md](LICENSE-POLICY.md) for publication and contribution policy.
