@@ -97,3 +97,30 @@ Keeping development history is also an option after reviewing/sanitizing the
 material identified above and explicitly selecting safe refs. This audit does not
 change that policy or authorize rewriting history; the owner has reopened the
 choice for discussion.
+
+## Follow-up: redundant branches removed
+
+After the audit, the owner authorized deletion of the two old branches if their
+changes were already in main. Compared all 49 commit titles on
+`codex/settings-vault-unlock` and all 48 on `codex/server-admin-preserve` against
+main: no missing titles. Stable patch comparisons also matched after excluding
+scrubbed environment/profile files, except the initial snapshot's licensing policy,
+which had been replaced during history preparation and is superseded by the
+adopted current policy. No unique product changes were identified.
+
+Both branch names were deleted locally. The stash and checkpoint refs were retained;
+branch deletion does not purge historical credentials from the object database.
+
+Traceable environment objects (values intentionally omitted):
+
+- Initial snapshot commit `024e26a16955b1f0e4f5f210138369d3c2f76b4c`, path `.env`,
+  blob `b2a41ebdee2abb28f870d8328cdda5fbbd916277`.
+- Later environment change at `6f7dcfd3db6cfa9dc8337974d13285f46046b370`, path `.env`,
+  blob `4ccab0207b0d70d72bfa872969e47da9e1259ea8`.
+- Retained stash commit `7b8b5543a8efeb19d45127fab4c8486f921d8b45` contains the latter
+  blob at `.env`; its first and second parents also contain that blob.
+
+Both versions contain populated `POSTGRES_PASSWORD`, `VAULTS_READINESS_TOKEN`,
+`VAULTS_TLS_DIR` and `VAULTS_CA_CERT_FILE`. The first two are credentials matching
+the current local environment; the latter two are configuration metadata. No
+private-key contents are embedded in these environment files.
