@@ -65,7 +65,8 @@ const made=core.create_private_vault(root,directory),vault=made.vault(),vaultId=
 const createBody={requestId:uuid(),baseDirectoryRevision:[Buffer.from(directory).subarray(36,52)].map(x=>[x.subarray(0,4),x.subarray(4,6),x.subarray(6,8),x.subarray(8,10),x.subarray(10)].map(y=>y.toString('hex')).join('-'))[0],directory:b64(made.directory()),vaultEnvelope:b64(vault.envelope()),catalogue:b64(made.catalogue())};
 const created=await call('/api/v1/vaults',{method:'POST',body:createBody,cookie:sessionCookie});
 assert.deepEqual((await call('/api/v1/vaults',{method:'POST',body:createBody,cookie:sessionCookie})).value,created.value);
-await call('/api/v1/vaults',{method:'POST',body:{...createBody,directory:createBody.directory.slice(0,-1)+'A'},cookie:sessionCookie,expected:409});
+const changedDirectory = Buffer.from(un(createBody.directory)); changedDirectory[changedDirectory.length - 1] ^= 1;
+await call('/api/v1/vaults',{method:'POST',body:{...createBody,directory:b64(changedDirectory)},cookie:sessionCookie,expected:409});
 const item=core.upsert_private_item(vault,made.catalogue(),undefined,new TextEncoder().encode('{"title":"Fictitious"}'),new TextEncoder().encode('{"password":"not-a-secret"}')),itemId=[Buffer.from(item.item())].map(x=>[x.subarray(0,4),x.subarray(4,6),x.subarray(6,8),x.subarray(8,10),x.subarray(10)].map(y=>y.toString('hex')).join('-'))[0];
 const itemBody={requestId:uuid(),baseCatalogueRevision:created.value.catalogueRevision,catalogue:b64(item.catalogue()),index:b64(item.index()),body:b64(item.body()),itemId,signedOperation:await signedMutation('item.create',itemId,vaultId,item.catalogue(),item.index(),item.body())};
 const saved=await call(`/api/v1/vaults/${vaultId}/items`,{method:'POST',body:itemBody,cookie:sessionCookie});

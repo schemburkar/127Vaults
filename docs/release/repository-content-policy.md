@@ -24,9 +24,18 @@ They are operator workflows, not required CI unit tests. Historical results are
 not a claim that the current revision passed installed acceptance.
 
 Removing a file from the current tree does not remove earlier copies from Git
-history. The private history includes earlier environment and machine data.
-Do not publish it or assume a normal push transfers only current files. Create
-a fresh source-only export and initialize a separate Git repository for sharing;
-retain the original privately. The local preparation tool creates an export
-without `.git`, local data or unreleased legal drafts, and a file inventory for
-review. It does not push or claim a complete secret audit.
+history. Before sharing this repository, sanitize `main` to remove historical
+environment files and machine-local profiles and audit reachable content. Keep
+nonsensitive evidence in history. A sanitized and audited `main` can be pushed
+to the intended private repository without starting a separate Git history.
+
+Old branches, stashes, backup bundles and application checkpoint refs may still
+contain the original data. Keep those private; push only the reviewed `main`,
+not all refs or a mirror. Preserve artifact provenance and record mappings for
+commit IDs changed by sanitization.
+
+The local preparation tool also creates an optional source-only export without
+`.git` or local machine data, with a file inventory for review. Legal drafts
+remain clearly marked for private review and must be finalized before public
+release. Neither the tool nor pattern scanning proves the absence of every
+possible secret.

@@ -7,13 +7,15 @@ import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve, join, relative, isAbsolute, sep } from 'node:path';
 import { request } from 'node:https';
 import { connect } from 'node:net';
+import { existsSync } from 'node:fs';
 import { verify } from '../../../deploy/install.mjs';
+import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
 const options = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   const name = process.argv[i], value = process.argv[i + 1];
-  if (!['--bundle', '--work', '--compose-provider', '--port'].includes(name) || !value || options[name]) throw Error('Use --bundle <server tar> --work <new external directory> --compose-provider <path> [--port <free loopback port>].');
+  if (!['--bundle', '--work', '--compose-provider', '--port', '--upgrade-from', '--issuer-private-key'].includes(name) || !value || options[name]) throw Error('Use --bundle <server archive> --work <new external directory> --compose-provider <path> [--port <free loopback port>] [--upgrade-from <old archive>] [--issuer-private-key <protected fixture issuer>].');
   options[name] = value;
 }
 if (!options['--bundle'] || !options['--work'] || !options['--compose-provider']) throw Error('Bundle, workspace and Compose provider are required.');
@@ -77,10 +79,17 @@ async function fixturePort(directory) {
   const path = join(directory, 'compose.test.yaml');
   const original = await readFile(path, 'utf8');
   assert.ok(original.includes(':12780') && original.includes("      VAULTS_EXPERIMENTAL: '1'"));
-  const content = original.replaceAll(':12780', `:${port}`).replace("      VAULTS_EXPERIMENTAL: '1'", `      PORT: '${port}'\n      VAULTS_EXPERIMENTAL: '1'`);
+  // The shipped relay fixes both listen and target port at 12780. For this
+  // isolated fixture only, invoke its same exported forwarding functions on
+  // the selected free port; preserve all installed listeners and product code.
+  const relay = `import{relayConfig,createPrivateRelay}from'./apps/server/src/private-relay.mjs';const c={...relayConfig(process.env),port:${port},targetPort:${port}};for(const bind of[c.bind,c.backendBind])await createPrivateRelay({...c,bind}).start();`;
+  const content = original.replaceAll(':12780', `:${port}`)
+    .replace("      VAULTS_EXPERIMENTAL: '1'", `      PORT: '${port}'\n      VAULTS_EXPERIMENTAL: '1'`)
+    .replace('    command: [node, apps/server/src/entry.mjs, relay]', '    command: '+JSON.stringify(['node','--input-type=module','-e',relay]))
+    .replace('      VAULTS_RELAY_TARGET:', `      PORT: '${port}'\n      VAULTS_RELAY_TARGET:`);
   await writeFile(path, content);
   const envPath = join(directory, '.env');
-  await writeFile(envPath, (await readFile(envPath, 'utf8')) + `VAULTS_PUBLISH_PORT=${port}\n`);
+  if (existsSync(envPath)) await writeFile(envPath, (await readFile(envPath, 'utf8')) + `VAULTS_PUBLISH_PORT=${port}\n`);
   const manifestPath = join(directory, 'manifest.json'), manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   manifest.files['compose.test.yaml'] = createHash('sha256').update(content).digest('hex');
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
@@ -97,8 +106,15 @@ try {
   await run(['-xf', archive, '-C', extracted], root, environment, 'tar');
   const names = await readdir(extracted);
   assert.equal(names.length, 1); assert.match(names[0], /^127vaults-server-[A-Za-z0-9.-]+$/);
-  const source = join(extracted, names[0]); await verify(source);
-  const pristine = join(work, 'restore-bundle'); await cp(source, pristine, { recursive: true });
+  const candidate = join(extracted, names[0]); await verify(candidate);
+  const pristine = join(work, 'restore-bundle'); await cp(candidate, pristine, { recursive: true });
+  let source = candidate;
+  if (options['--upgrade-from']) {
+    const baseline = join(work, 'baseline'); await mkdir(baseline);
+    await run(['-xf', resolve(options['--upgrade-from']), '-C', baseline], root, environment, 'tar');
+    const entries = await readdir(baseline); assert.equal(entries.length, 1);
+    source = join(baseline, entries[0]); await verify(source);
+  }
   const identity = join(work, 'identity');
   await check('fresh identity and packaged admin setup', async () => {
     await operator(source, ['install', 'init', '--endpoint', '127.0.0.1', '--private-dir', identity]);
@@ -147,9 +163,39 @@ try {
   const databaseKey = join(work, 'database.key'), identityKey = join(work, 'identity.key');
   await writeFile(databaseKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
   await writeFile(identityKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
+  if (options['--issuer-private-key']) {
+    await check('signed commercial fixture license before upgrade', async () => {
+      const signed = issueSelfHostedLicense({ privateKeyPem: await readFile(resolve(options['--issuer-private-key']), 'utf8'),
+        keyId: 'trial', installationId: id, plan: 'commercial', majorVersion: null,
+        maxActiveUsers: 5, sequence: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() });
+      const file = join(work, 'fixture-license.json'); await writeFile(file, signed.license, { mode: 0o600, flag: 'wx' });
+      await operator(source, ['install', 'license', '--file', file, ...provider, '--private-dir', identity]);
+      await operator(source, ['install', 'stop', ...provider]);
+      await operator(source, ['install', 'start', ...provider]); await ready();
+    });
+  }
+  if (options['--upgrade-from']) {
+    await check('existing encrypted vault and signed license survive guarded compressed-bundle upgrade', async () => {
+      const before = await readFile(join(source, '.env'));
+      const licenseBefore = options['--issuer-private-key'] ? await readFile(join(identity, 'runtime/licenses/1.json')) : null;
+      await fixturePort(candidate);
+      await run(['install.mjs', 'upgrade', '--from', source, '--backup-dir', join(work, 'upgrade-backups'),
+        '--backup-key-file', identityKey, ...provider], candidate);
+      projects.push(candidate); source = candidate; await ready();
+      assert.deepEqual(await readFile(join(source, '.env')), before);
+      assert.deepEqual(await readFile(join(identity, 'ca/ca.crt')), ca);
+      if (licenseBefore) assert.deepEqual(await readFile(join(identity, 'runtime/licenses/1.json')), licenseBefore);
+      assert.ok(existsSync(join(work, 'upgrade-backups/upgrade-receipt.json')));
+      const result = JSON.parse(await run(['scripts/ops/restored-owner-smoke.mjs', origin], root, trusted));
+      assert.equal(result.ok, true); assert.equal(result.installation, id); assert.ok(result.itemCount > 0);
+    });
+  }
   const databaseBackup = join(work, 'database.127vbak'), identityBackup = join(work, 'identity.127vbak');
   await check('current-schema encrypted database and identity backup', async () => {
-    await operator(source, ['database', 'backup', '--container', `${project}_database_1`, '--output', databaseBackup, '--key-file', databaseKey]);
+    const database = (await run(['ps', '--filter', `label=com.docker.compose.project=${project}`,
+      '--filter', 'label=com.docker.compose.service=database', '--format', '{{.ID}}'], root, environment, 'podman')).split(/\s+/).filter(Boolean);
+    assert.equal(database.length, 1);
+    await operator(source, ['database', 'backup', '--container', database[0], '--output', databaseBackup, '--key-file', databaseKey]);
     await operator(source, ['identity', 'backup', '--private-dir', identity, '--output', identityBackup, '--key-file', identityKey, '--server-id', id]);
     await operator(source, ['database', 'rehearse', '--input', databaseBackup, '--key-file', databaseKey]);
   });
@@ -173,7 +219,7 @@ try {
     installation: id, sourceProject: project,
     restoreProject: /^VAULTS_PROJECT=(.+)$/m.exec(await readFile(join(pristine, '.env'), 'utf8'))?.[1],
     archiveSha256: createHash('sha256').update(await readFile(archive)).digest('hex'),
-    fixturePort: port, fixtureOverride: 'PORT and loopback Compose mapping; original listeners preserved', limitations: ['Existing host only; not Docker or unrelated-host acceptance.', 'Broader admin permission and ownership acceptance use the separate PostgreSQL and browser fixtures.'] }, null, 2) + '\n');
+    fixturePort: port, fixtureOverride: 'PORT, relay function invocation ports and loopback Compose mapping; original listeners preserved', limitations: ['Existing host only; not Docker or unrelated-host acceptance.', 'Broader admin permission and ownership acceptance use the separate PostgreSQL and browser fixtures.'] }, null, 2) + '\n');
   console.log('Internal server backup/restore and packaged admin acceptance passed. Evidence and stopped fixture volumes retained.');
 } finally {
   for (const directory of projects.reverse()) await operator(directory, ['install', 'stop', ...provider]).catch(() => {});
