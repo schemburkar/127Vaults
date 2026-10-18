@@ -1,12 +1,15 @@
-# 127Vaults Source-Available License — review draft
+# 127Vaults Source-Available License
 
-**DRAFT ONLY. Not adopted; not a present grant of permission.**
+Version 1.0
 
-Proposed licensor: Shubhan Chemburkar (Licensor).
+Licensor: Shubhan Chemburkar (Licensor).
 Covered work: original 127Vaults source and accompanying project materials
-expressly identified in the adopted release license (Software). Release
-identifiers and copyright years must be finalized before adoption. Third-party
+distributed by Licensor with this license (Software). The covered version is the
+release or source revision accompanying this license. Third-party
 components governed by their own licenses are excluded to that extent.
+
+Exercising permission granted by this license constitutes acceptance of its
+terms. Independently available rights do not depend on accepting this license.
 
 ## 1. Source inspection
 
@@ -79,14 +82,16 @@ may provide different warranties and remedies for their covered use.
 
 ## 8. Future licensing
 
-This draft grants no automatic future open-source license. Any future AGPLv3
+This license grants no automatic future open-source license. Any future AGPLv3
 grant must expressly identify the version and effective date. Such an AGPL grant
 would apply under its own terms and cannot be conditioned here on buying a
 commercial license.
 
----
+## 9. General provisions
 
-Drafting note, remove before adoption: obtain legal review of jurisdiction,
-assent, enforceability, statutory software exceptions, security-research
-handling, dependency compatibility and any four-year AGPL conversion commitment.
-This draft assumes no jurisdiction, price, subscription term or conversion date.
+Changes apply to copies distributed under the changed license and do not
+retroactively withdraw rights in copies previously received. A waiver must be
+express and in writing. If a provision is unenforceable, the remaining provisions
+continue to apply to the extent permitted by law. Governing law and jurisdiction
+are determined under applicable law. This license does not require arbitration
+or waive mandatory consumer rights or access to a legally competent court.

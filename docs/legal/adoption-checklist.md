@@ -3,6 +3,18 @@
 Updated 2026-10-18. The repository remains private. Neither this checklist nor
 the revised drafts adopts a license or authorizes public distribution.
 
+The two agreement files now contain publication-form Version 1.0 text, without
+draft warnings or editorial review instructions. Their existing filenames are
+retained for repository references. Preparation of that text is not the separate
+release/adoption step. Review the complete text offline before publishing it with
+the source export or incorporating it in accepted orders.
+
+The publication-form text includes default notice/cure, refund, confidentiality,
+assignment and liability provisions. Review those defaults as well as plan terms.
+Governing law falls to applicable legal rules unless expressly agreed in the order;
+no specific country or court has been selected. Cloud's finite retention schedule
+remains a required accepted order attachment, not a blank in the master agreement.
+
 ## Confirmed commercial decisions
 
 - Preserve authentic public prices and commitments in the commercial schedule.
