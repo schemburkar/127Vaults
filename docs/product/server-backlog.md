@@ -96,3 +96,11 @@ and security acceptance before remote browser access is enabled.
 ## Internal release acceptance — 2026-10-13
 
 Windows and Linux, all client surfaces and admin writes are explicitly selected. See the [current evidence and remaining gates](../release/internal-release-readiness-2026-10-13.md). Implementation and narrower tests do not close wider acceptance rows. The candidate remains fictitious-data-only.
+
+## SRV-022 — Reduce server image and download size
+
+**State:** Open. **Priority:** P1 supported release; user-requested 2026-10-18.
+
+The published server 0.0.3 archive is 1,227,176,960 bytes (about 1.23 GB). Measure the application and PostgreSQL image sizes, individual layers, bundled runtime/build dependencies and archive overhead before choosing reductions. Evaluate compressed distribution, smaller production-only images, duplicate-layer removal and excluding unnecessary build assets while retaining the offline installation option. Do not assume the whole bundle size is the application image size.
+
+Acceptance: record before/after archive, image and extracted sizes; document the chosen tradeoffs; verify hashes and archive handling in the published download/installer flow; prove fresh installation and an existing-installation upgrade with vault data, identity, CA and license preserved. Keep candidate builds internal until checks pass, then publish one combined release. No implementation or republishing is authorized by this backlog-only request.
