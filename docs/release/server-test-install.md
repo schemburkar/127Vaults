@@ -27,6 +27,23 @@ Python is not required. Verify `podman compose version` before setup. `verify` c
 access; `bootstrap`, `status`, `start` and `stop` use the same launcher. Existing
 identities are preserved. The detailed operator commands below remain available.
 
+On Windows, if `podman info` succeeds but `podman compose ls --format json` hangs,
+inspect `podman machine inspect` and its `ConnectionInfo.PodmanPipe.Path`. Native
+Compose can need that machine's Windows API pipe rather than its SSH connection.
+For example, **only when the inspected intended machine reports that exact pipe**:
+
+```powershell
+$env:DOCKER_HOST = 'npipe:////./pipe/podman-machine-default'
+podman compose ls --format json
+./install.ps1 doctor
+```
+
+Keep this setting in the current operator shell for subsequent installation,
+license and bootstrap commands. Do not set it globally, guess another machine's
+pipe, or replace a working Docker configuration. Explicit `--compose-provider`
+selects an executable; it does not repair its engine connection. See Podman's
+[Windows Docker compatibility instructions](https://github.com/containers/podman/blob/main/docs/tutorials/podman-for-windows.md).
+
 `doctor` reports bundle integrity, Node version, existing installation identity,
 engine availability, engine connectivity, and Compose separately. It reports all
 independent failures with next steps and exits nonzero when prerequisites are not

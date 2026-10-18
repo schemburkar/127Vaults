@@ -94,20 +94,35 @@ export function probe(program, args, { timeoutMs = 15000, cwd, env } = {}) {
     let output = '';
     let settled = false;
     let timer;
+    let timedOut = false;
     const finish = result => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       done({ ...result, output: output.trim() });
     };
-    const child = spawn(program, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(program, args, { cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', bytes => { output = (output + bytes.toString()).slice(-65536); });
     child.stderr.resume();
     child.on('error', error => finish({ ok: false, reason: error.code === 'ENOENT' ? 'missing' : 'launch' }));
-    child.on('close', code => finish({ ok: code === 0, reason: code === 0 ? undefined : 'exit' }));
-    timer = setTimeout(() => {
-      child.kill('SIGKILL');
+    child.on('close', code => { if (!timedOut) finish({ ok: code === 0, reason: code === 0 ? undefined : 'exit' }); });
+    timer = setTimeout(async () => {
+      timedOut = true;
+      // Compose wrappers start a provider process. Killing only the wrapper
+      // leaves the provider (and its socket connection) running after doctor.
+      if (process.platform === 'win32' && child.pid) {
+        await new Promise(resolveStop => {
+          const killer = spawn(resolve(process.env.SystemRoot ?? 'C:\\Windows', 'System32/taskkill.exe'),
+            ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+          const deadline = setTimeout(() => { killer.kill(); child.kill('SIGKILL'); resolveStop(); }, 1500);
+          const stopped = () => { clearTimeout(deadline); resolveStop(); };
+          killer.on('error', () => { child.kill('SIGKILL'); stopped(); });
+          killer.on('close', stopped);
+        });
+      } else {
+        try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+      }
       child.stdout.destroy();
       child.stderr.destroy();
       child.unref();
@@ -145,7 +160,7 @@ export async function diagnose(args, { directory = import.meta.dirname, platform
         const help = await runProbe(engine, ['compose', 'up', '--help'], { cwd: directory, env });
         compose = help.ok && help.output?.includes('--no-build') ? help : { ok: false, reason: 'unsupported Compose up command' };
       }
-      add('compose', compose.ok ? 'pass' : 'fail', compose.ok ? 'Compose provider can reach the selected engine.' : `Compose provider or engine connection check failed (${compose.reason}).`, compose.ok ? undefined : engine === 'docker' ? 'Install the Docker Compose plugin and verify docker compose ls --format json.' : 'Set up native Compose in Podman Desktop and verify podman compose ls --format json; use --compose-provider <full executable path> to select its native Compose binary. Python is not required.');
+      add('compose', compose.ok ? 'pass' : 'fail', compose.ok ? 'Compose provider can reach the selected engine.' : `Compose provider or engine connection check failed (${compose.reason}).`, compose.ok ? undefined : engine === 'docker' ? 'Install the Docker Compose plugin and verify docker compose ls --format json.' : 'Set up native Compose in Podman Desktop and verify podman compose ls --format json; use --compose-provider <full executable path> to select its native Compose binary. Python is not required.' + (platform === 'win32' ? ' If podman info works but Compose hangs, inspect podman machine inspect and select that machine\'s PodmanPipe with a session-local DOCKER_HOST; do not select an unrelated Docker or Podman machine.' : ''));
     } else add('compose', 'skip', 'Compose discovery requires an available engine executable.');
   }
   return { format: 1, ready: checks.every(check => check.status === 'pass'), engine, checks, args: options.args };
@@ -173,7 +188,7 @@ export async function main(args, dependencies = {}) {
   const log = dependencies.log ?? console.log;
   const [action = 'help', ...options] = args;
   if (action === 'help' || action === '--help') {
-    log('127Vaults private test server\nUse: install.ps1 / bash install.sh <command> [options]\nCommands: verify, doctor, setup, start, status, bootstrap, stop\nOptions: --docker, --compose-provider <path>, --endpoint <private IPv4>, --private-dir <path>\ndoctor --json emits a redacted prerequisite report. Each external probe has a 15-second deadline.\nsetup creates a fresh identity, loads images and starts the server. Existing .env is preserved.');
+    log('127Vaults private test server\nUse: install.ps1 / bash install.sh <command> [options]\nCommands: verify, doctor, setup, start, status, bootstrap, stop, upgrade\nOptions: --docker, --compose-provider <path>, --endpoint <private IPv4>, --private-dir <path>, --tailscale\nupgrade requires --from <old bundle>, --backup-dir <new backup directory>, --backup-key-file <key path>.\ndoctor --json emits a redacted prerequisite report. Each external probe has a 15-second deadline.\nsetup creates a fresh identity, loads images and starts the server. Existing .env is preserved.');
     return 0;
   }
   if (action === 'upgrade') {

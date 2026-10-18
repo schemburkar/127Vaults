@@ -247,6 +247,20 @@ test('real probes distinguish missing executables, nonzero exit and bounded hang
   assert.ok(Date.now() - before < 5000);
 });
 
+test('timed-out provider probes stop their descendants as well as the wrapper', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'vaults-probe-tree-'));
+  const heartbeat = join(directory, 'heartbeat');
+  try {
+    const provider = `const fs=require('node:fs');setInterval(()=>fs.writeFileSync(${JSON.stringify(heartbeat)},String(Date.now())),25)`;
+    const wrapper = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(provider)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
+    const result = await probe(process.execPath, ['-e', wrapper], { timeoutMs: 900 });
+    assert.equal(result.reason, 'timeout');
+    const last = await readFile(heartbeat, 'utf8');
+    await new Promise(done => setTimeout(done, 200));
+    assert.equal(await readFile(heartbeat, 'utf8'), last, 'provider must stop writing after the probe times out');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('standalone extracted installer emits valid JSON and a failure exit code without a bundle', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'vaults-standalone-doctor-'));
   try {
