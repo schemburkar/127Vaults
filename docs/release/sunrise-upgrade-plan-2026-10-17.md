@@ -293,3 +293,10 @@ Remaining manual/external gates: fresh-browser interactive CA approval (our isol
 - Sunrise final server 0.0.3 upgrade and original desktop/CLI/web/extension checks are complete as recorded above. Remaining manual/browser-trust, clean-host/reboot/Docker, physical-lock, Mac/signing, and WARP acceptance coverage remain open; do not claim complete coverage.
 - Email notifications remain disabled for the later email pass. No Git remote push performed. Untracked `deploy/cloudflare.json` preserved untouched.
 - Stopping work at user hourly-budget warning. Resume from this checkpoint, retaining existing installations, profiles, backups, and current release catalogue.
+
+### Public Tailscale documentation correction — 2026-10-18
+
+- Updated setup guide, deployment page and trial instructions to describe new-install `setup --tailscale`, automatic native IP discovery, Serve TCP forwarding to loopback, HTTPS CA trust, native name discovery and separate device approval.
+- Documented that existing loopback installations require a reviewed network migration; binary upgrade preserves the address. No automatic migration command claimed and Sunrise configuration unchanged.
+- Retained private-LAN alternative and Cloudflare private-routing pending status. R2 packages unchanged.
+- Source commit `081efdc`; three focused site tests and diff checks passed. Cloudflare Worker `727a0198-5c65-4e76-a875-5a8f629d0f91` deployed successfully; deployment checks passed. Direct HTTPS reads of all three live pages verified the Tailscale command and migration boundary.
