@@ -3,7 +3,7 @@ import { validIntakeOrigin } from '../src/intake-origin.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
 import { encryptionKey, limiterKey, equal, hash, issuer, signEnvelope, token, from64, verifyLicenseIssuer } from './crypto.mjs';
 import { TrialStore, Conflict } from './store.mjs';
-import { validateCatalogue, catalogueIdentity, publicArtifact } from './catalogue.mjs';
+import { validateCatalogue, catalogueIdentity, publicArtifact, serverMajor } from './catalogue.mjs';
 import { byteRange } from './download.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
@@ -45,6 +45,7 @@ function summary(record, mailer) {
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
     emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
+    serverMajorVersion: record?.state === 'approved' ? entitledMajor(record) : undefined,
     expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
     requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
@@ -71,6 +72,20 @@ async function release(env) {
   }
   const signingKey = await cached.promise;
   return { catalogue, publicKey, signingKey, identity: await catalogueIdentity(catalogue) };
+}
+// All pre-entitlement trial records were issued for experimental server major 0.
+const entitledMajor = record => record?.serverMajorVersion ?? 0;
+async function entitledRelease(env, record) {
+  const current = await release(env), major = entitledMajor(record);
+  let selected = current;
+  if (serverMajor(current.catalogue) !== major) {
+    const channel = current.catalogue.previousMajors?.find(v => v.majorVersion === major);
+    if (!channel) fail(409, 'licensed_major_unavailable');
+    selected = await release({ ...env, TRIAL_CATALOGUE_KEY: channel.objectKey, TRIAL_CATALOGUE_SHA256: channel.sha256 });
+    if (serverMajor(selected.catalogue) !== major) fail(503, 'catalogue_major_mismatch');
+  }
+  if (record?.license && !await verifyLicenseIssuer(record.license, selected.catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
+  return selected;
 }
 function mailerFor(env) {
   // Wrangler retains omitted secrets on updates. Removing the sender disables email even if the old token remains.
@@ -149,10 +164,18 @@ async function dispatch(request, env, now, schedule) {
     return json(200, { ready: true, sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.length });
   }
   if (path === '/api/access-admin/requests' && request.method === 'GET') {
-    const { catalogue, identity } = await release(env);
-    return json(200, { requests: (await store.list()).filter(row => at - row.receivedAt < 90 * day)
-      .map(row => ({ ...row.contact, id: row.id, ...summary(row.trial, mailer),
-        updateAvailable: row.trial?.state === 'approved' && row.trial.releaseHash !== identity })), emailEnabled: Boolean(mailer),
+    const { catalogue } = await release(env);
+    const requests = await Promise.all((await store.list()).filter(row => at - row.receivedAt < 90 * day).map(async row => {
+      let updateAvailable = false, downloadAvailable = false;
+      if (row.trial?.state === 'approved') {
+        try {
+          const selected = await entitledRelease(env, row.trial);
+          downloadAvailable = true; updateAvailable = row.trial.releaseHash !== selected.identity;
+        } catch (error) { if (!(error instanceof HttpError)) throw error; }
+      }
+      return { ...row.contact, id: row.id, ...summary(row.trial, mailer), updateAvailable, downloadAvailable };
+    }));
+    return json(200, { requests, emailEnabled: Boolean(mailer),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
   const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
@@ -175,12 +198,11 @@ async function dispatch(request, env, now, schedule) {
         if (!['personal', 'commercial'].includes(row.contact.plan)) fail(409, 'plan_unavailable');
         if (Object.keys(input).join(',') !== 'maxUsers' || !Number.isSafeInteger(input.maxUsers) || input.maxUsers < 1 || input.maxUsers > 100) fail(400, 'invalid_request');
       } else empty(input);
-      const { catalogue, identity } = await release(env);
-      if (record?.releaseHash && record.releaseHash !== identity && action !== 'update-release') fail(409, 'release_changed_contact_operator');
+      const { catalogue, identity } = action === 'approve' ? await release(env) : await entitledRelease(env, record);
       if (action === 'update-release' && record.license && !await verifyLicenseIssuer(record.license, catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
       const value = token();
       record = { ...record, state: 'approved', maxUsers: record?.maxUsers ?? input.maxUsers,
-        approvedAt: record?.approvedAt ?? new Date(at).toISOString(), payment: 'none', trialDays: 10,
+        approvedAt: record?.approvedAt ?? new Date(at).toISOString(), payment: 'none', trialDays: 10, serverMajorVersion: record?.serverMajorVersion ?? (action === 'approve' ? serverMajor(catalogue) : entitledMajor(record)),
         tokenHash: await hash(value), linkExpiresAt: new Date(at + 30 * day).toISOString(),
         ticketHash: null, ticketUntil: 0, sourceRevision: catalogue.sourceRevision, releaseHash: identity };
       // A query forces document navigation even from a legacy trial page whose
@@ -197,8 +219,8 @@ async function dispatch(request, env, now, schedule) {
     } else if (action === 'send-invitation') {
       empty(input);
       if (!mailer) fail(503, 'email_not_configured');
-      const { identity } = await release(env);
-      if (record?.state !== 'approved' || !record.invitation || at >= Date.parse(record.linkExpiresAt) || record.releaseHash !== identity) fail(409, 'invitation_unavailable');
+      await entitledRelease(env, record);
+      if (record?.state !== 'approved' || !record.invitation || at >= Date.parse(record.linkExpiresAt)) fail(409, 'invitation_unavailable');
       if (record.emailState) fail(409, 'email_already_attempted');
       if (!await store.allow('trial-email', id, 3, 3600000)) fail(429, 'rate_limited');
       const attempt = crypto.randomUUID();
@@ -228,8 +250,7 @@ async function dispatch(request, env, now, schedule) {
     return json(200, { ...summary(record, mailer), hasRevocation: Boolean(record.revocation), installedLicenseUnaffected: Boolean(record.license) });
   }
   if (!record || record.state !== 'approved' || at >= Date.parse(record.linkExpiresAt) || !row.contact || at - row.receivedAt >= 90 * day) fail(404, 'link_unavailable');
-  const { catalogue, identity, publicKey, signingKey } = await release(env);
-  if (record.releaseHash !== identity) fail(409, 'release_changed_contact_operator');
+  const { catalogue, publicKey, signingKey } = await entitledRelease(env, record);
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith('__Secure-127v-trial='))?.slice('__Secure-127v-trial='.length);
   const ticketValid = action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method) && record.ticketHash
     && at < record.ticketUntil && await equal(await hash(cookie ?? ''), record.ticketHash);

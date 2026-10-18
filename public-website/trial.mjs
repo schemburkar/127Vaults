@@ -74,7 +74,7 @@ async function api(action = '', value) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw Error(error.error === 'already_bound' ? 'This trial is already bound to another installation. Contact your inviter.'
-      : error.error === 'release_changed_contact_operator' ? 'The selected release has changed. Contact your inviter for an updated invitation.'
+      : error.error === 'licensed_major_unavailable' ? 'Downloads for your licensed major version are temporarily unavailable. Contact your inviter.'
         : 'This action is unavailable. Reopen your invitation email or contact your inviter.');
   }
   return response;

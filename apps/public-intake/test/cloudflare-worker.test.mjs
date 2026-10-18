@@ -217,8 +217,8 @@ test('Worker validation refuses oversized and malformed input, honeypots, wrong 
   const id = await f.submit(), a = await f.approve(id);
   const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'));
   const row = await store.get(id); await store.save(row, { ...row.trial, releaseHash: 'b'.repeat(64) });
-  assert.equal((await f.get(a.base, a.token)).status, 409);
-  assert.equal((await f.post(`${admin}/${id}/rotate`, {}, f.operatorToken)).status, 409);
+  assert.equal((await f.get(a.base, a.token)).status, 200);
+  assert.equal((await f.post(`${admin}/${id}/rotate`, {}, f.operatorToken)).status, 200);
   await f.bucket.put(f.bindings.TRIAL_CATALOGUE_KEY, JSON.stringify({ ...f.catalogue, sourceRevision: 'b'.repeat(40) }));
   assert.equal((await f.get(a.base, a.token)).status, 503);
   assert.equal((await f.get('/api/access-admin/readiness', f.operatorToken)).status, 503);
@@ -385,4 +385,67 @@ test('a request alert cannot overwrite a concurrent approval or resend an ambigu
   const {notifyNewAccessRequest}=await import('../src/request-alerts.mjs');
   await notifyNewAccessRequest(env,store,row.id,f.requestInput,Date.now());
   assert.equal(sends,1);
+});
+
+
+test('existing links follow latest entitled major, retain license, and never cross majors', async t => {
+  const f = await fixture(t), id = await f.submit(), a = await f.approve(id), installationId = randomUUID();
+  await f.post(`${a.base}/activate`, { installationId }, a.token);
+  const license = await (await f.get(`${a.base}/license`, a.token)).text();
+  const swap = async catalogue => {
+    const source = JSON.stringify(catalogue);
+    await f.bucket.put(f.bindings.TRIAL_CATALOGUE_KEY, source);
+    f.env.TRIAL_CATALOGUE_SHA256 = createHash('sha256').update(source).digest('hex');
+  };
+  const get = path => handleRequest(new Request(origin + path, { headers: { Authorization: `Bearer ${a.token}` } }), f.env);
+  const patch = { ...f.catalogue, sourceRevision: 'c'.repeat(40), serverMajorVersion: 0 };
+  await swap(patch);
+  assert.equal((await (await get(a.base)).json()).sourceRevision, patch.sourceRevision);
+  assert.equal(await (await get(`${a.base}/license`)).text(), license);
+  assert.equal(await (await get(`${a.base}/artifacts/server`)).text(), f.archive);
+  assert.equal((await get(a.base.replace(id, 'f'.repeat(64)))).status, 404);
+  const oldSource = JSON.stringify(patch), oldKey = 'releases/major-0/catalogue.json';
+  await f.bucket.put(oldKey, oldSource);
+  await swap({ ...f.catalogue, serverMajorVersion: 1, sourceRevision: 'd'.repeat(40), previousMajors: [
+    { majorVersion: 0, objectKey: oldKey, sha256: createHash('sha256').update(oldSource).digest('hex') }
+  ] });
+  assert.equal((await (await get(a.base)).json()).sourceRevision, patch.sourceRevision);
+  assert.equal(await (await get(`${a.base}/license`)).text(), license);
+  await swap({ ...f.catalogue, serverMajorVersion: 2 });
+  const blocked = await get(a.base);
+  assert.equal(blocked.status, 409); assert.equal((await blocked.json()).error, 'licensed_major_unavailable');
+  // A major-1 entitlement follows major-1 while major-2 is the default catalogue.
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'));
+  const row = await store.get(id); await store.save(row, { ...row.trial, serverMajorVersion: 1 });
+  const v1 = { ...f.catalogue, serverMajorVersion: 1, sourceRevision: 'e'.repeat(40) }, source = JSON.stringify(v1);
+  await f.bucket.put('releases/major-1/catalogue.json', source);
+  await swap({ ...f.catalogue, serverMajorVersion: 2, previousMajors: [{ majorVersion: 1,
+    objectKey: 'releases/major-1/catalogue.json', sha256: createHash('sha256').update(source).digest('hex') }] });
+  assert.equal((await (await get(a.base)).json()).sourceRevision, v1.sourceRevision);
+  await f.bucket.put('releases/major-1/catalogue.json', JSON.stringify({ ...v1, serverMajorVersion: 2 }));
+  assert.equal((await get(a.base)).status, 503);
+});
+
+
+test('new major-1 approvals pin major 1 and rotation cannot upgrade entitlement', async t => {
+  const f = await fixture(t), id = await f.submit();
+  const swap = async catalogue => {
+    const source = JSON.stringify(catalogue); await f.bucket.put(f.bindings.TRIAL_CATALOGUE_KEY, source);
+    f.env.TRIAL_CATALOGUE_SHA256 = createHash('sha256').update(source).digest('hex');
+  };
+  const post = (path, input) => handleRequest(new Request(origin + path, { method: 'POST', headers: {
+    Authorization: `Bearer ${f.operatorToken}`, Origin: origin, 'Content-Type': 'application/json'
+  }, body: JSON.stringify(input) }), f.env);
+  const v1 = { ...f.catalogue, serverMajorVersion: 1 };
+  await swap(v1);
+  const approval = await post(`${admin}/${id}/approve`, { maxUsers: 2 });
+  assert.equal(approval.status, 200);
+  const a = await approval.json(); assert.equal(a.serverMajorVersion, 1);
+  const source = JSON.stringify(v1), objectKey = 'releases/v1/catalogue.json'; await f.bucket.put(objectKey, source);
+  await swap({ ...f.catalogue, serverMajorVersion: 2, previousMajors: [{ majorVersion: 1, objectKey,
+    sha256: createHash('sha256').update(source).digest('hex') }] });
+  const rotated = await post(`${admin}/${id}/rotate`, {});
+  assert.equal(rotated.status, 200); assert.equal((await rotated.json()).serverMajorVersion, 1);
+  await swap({ ...f.catalogue, serverMajorVersion: 2 });
+  assert.equal((await post(`${admin}/${id}/update-release`, {})).status, 409);
 });
