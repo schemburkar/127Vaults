@@ -117,10 +117,10 @@ async function open() {
     for (const id of ['trial-prepare', 'trial-install', 'trial-upgrade', 'trial-recovery']) $(id).hidden = true;
     const back = document.createElement('a'); back.href = '/access-admin'; back.textContent = 'Back to requests'; $('trial-status').after(back);
   } else showLicense(record);
-  const packages = [];
+  const packages = [], supportingPackages = [];
   const supporting = document.createElement('details');
   const supportingTitle = document.createElement('summary'); supportingTitle.textContent = 'Verification files and package guides';
-  const supportingGrid = document.createElement('div'); supportingGrid.className = 'trial-grid';
+  const supportingGrid = document.createElement('div'); supportingGrid.id = 'trial-supporting-artifacts';
   supporting.append(supportingTitle, supportingGrid);
   for (const asset of record.artifacts) {
     const card = document.createElement('article'); card.className = 'trial-artifact';
@@ -139,13 +139,18 @@ async function open() {
       finally { button.disabled = false; }
     });
     card.append(heading, detail, checksum, button);
-    if (asset.supporting) supportingGrid.append(card);
+    if (asset.supporting) supportingPackages.push({ asset, card, button });
     else packages.push({ asset, card, button });
   }
-  const drawPackages = () => renderPackages($('trial-artifacts'), packages, $('trial-layout').value);
-  $('trial-layout').addEventListener('change', drawPackages);
+  let layout = 'table';
+  const drawPackages = () => {
+    renderPackages($('trial-artifacts'), packages, layout);
+    if (supportingPackages.length) renderPackages(supportingGrid, supportingPackages, layout);
+    for (const view of ['table', 'cards']) $(`trial-layout-${view}`).setAttribute('aria-pressed', String(layout === view));
+  };
+  for (const view of ['table', 'cards']) $(`trial-layout-${view}`).addEventListener('click', () => { layout = view; drawPackages(); });
   drawPackages();
-  if (supportingGrid.childElementCount) $('trial-artifacts').after(supporting);
+  if (supportingPackages.length) $('trial-artifacts').after(supporting);
 }
 $('trial-activate').addEventListener('submit', async event => {
   event.preventDefault(); if (!$('trial-activate').reportValidity()) return;

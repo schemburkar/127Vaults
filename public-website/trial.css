@@ -4,8 +4,14 @@
 .trial-main section, .trial-main form.access-card { margin-block: 28px; }
 .trial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 20px; }
 .trial-actions { display: flex; flex-wrap: wrap; gap: 12px; }
-.trial-layout { display: flex; align-items: center; gap: 12px; margin-block: 18px; }
-.trial-layout select { font: inherit; padding: 8px 12px; border: 1px solid #8886; border-radius: 8px; color: var(--text); background: var(--page); }
+.trial-package-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.trial-package-heading h2 { margin: 0; }
+.trial-layout { display: flex; gap: 4px; flex-shrink: 0; }
+.trial-layout-icon { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; border: 1px solid #8886; border-radius: 8px; color: inherit; background: transparent; cursor: pointer; }
+.trial-layout-icon:hover { background: #8882; }
+.trial-layout-icon[aria-pressed="true"] { background: #8883; border-color: currentColor; }
+.trial-layout-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+#trial-supporting-artifacts { margin-top: 16px; }
 .trial-table-wrap { overflow-x: auto; border: 1px solid #8886; border-radius: 12px; }
 .trial-package-table { width: 100%; min-width: 700px; border-collapse: collapse; text-align: left; font-size: .9rem; }
 .trial-package-table caption { text-align: left; padding: 16px; }
