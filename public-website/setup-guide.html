@@ -15,64 +15,43 @@
   <main id="main">
     <section class="page-hero"><div class="container"><span class="kicker">SELF-HOSTED SETUP</span><h1>Connect each trusted device.</h1><p>Your public order access code is only for the order page. Vault accounts and devices are created on your private server.</p></div></section>
     <section class="page-section"><div class="container setup-wizard" id="setup-checklist">
-      <p id="setup-progress" role="status" aria-live="polite">Setup checklist</p>
-      <p class="setup-resume">Only checklist progress is saved in this browser. No addresses, passwords, account secrets, license files or access links are collected here.</p>
-      <section data-setup-step="prerequisites" id="prerequisites">
-        <h2 tabindex="-1">1. Check your server computer</h2>
-        <p>Check these before requesting or downloading the trial. The current packages use a Linux amd64 container engine, Windows/Linux x64 clients, and <strong>Node.js 24</strong>. macOS packages are not available yet. Windows 10 is currently a supervised test environment.</p>
-        <ul><li>Install <a href="https://nodejs.org/en/download">Node.js 24</a>; <code>node --version</code> must show v24.</li>
-        <li>Install a current <a href="https://docs.docker.com/desktop/">Docker Desktop</a> with Docker Compose, or <a href="https://podman-desktop.io/docs/installation">Podman Desktop</a> with native Compose. Python Compose is not required. Start the engine and check <code>docker info</code> / <code>docker compose ls</code> or <code>podman info</code> / <code>podman compose ls</code>.</li>
-        <li>On Windows, enable hardware virtualization and install/update <a href="https://learn.microsoft.com/windows/wsl/install">WSL 2</a>. Check <code>wsl --version</code>; complete any requested restart before continuing. Installation may require Windows administrator approval; ordinary client use should run as your signed-in user.</li>
-        <li>Plan at least 2 GiB for the container VM and several GB of free disk for images, your database and backups. Sunrise's basic trial used an 8 GiB host; these are test budgets, not a capacity guarantee.</li>
-        <li>Use a private network and a verified HTTPS certificate. Keep your installation identity and backup keys outside the extracted package.</li></ul>
-        <p>If a prerequisite fails, stop here, finish its installer/restart, then rerun the check. A version command alone does not prove the engine is running.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> I checked the runtime, running engine, Compose, virtualization, permissions and space.</label>
-      </section>
-      <section data-setup-step="packages">
-        <h2 tabindex="-1">2. Verify your packages</h2>
-        <p><a href="get-started.html">Request access</a>, then use your approved private invitation to download the server and clients. Compare every file's SHA-256 with the value on that invitation before extracting or running it.</p>
-        <p>Windows: <code>Get-FileHash FILE -Algorithm SHA256</code>. Linux: <code>sha256sum FILE</code>. From the extracted server directory, run <code>node install.mjs verify</code>, then <code>node install.mjs doctor</code> (add <code>--docker</code> for Docker).</p>
-        <p>If verification fails, download that package again. Do not edit its manifest or disable checks. Preserve an existing installation; do not initialize a replacement database or keys to resolve an update error.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> Package checksums match and doctor reports all prerequisites ready.</label>
-      </section>
-      <section data-setup-step="server">
-        <h2 tabindex="-1">3. Start your private server</h2>
-        <p>For a new single-computer installation, run <code>node install.mjs setup --endpoint 127.0.0.1</code>; add <code>--docker</code> for Docker. Then run <code>node server.mjs install status</code> and <code>node server.mjs install identify</code>.</p>
-        <p>For an existing installation, keep its original private identity, project, database volume and license. Back up before upgrading. Do not run initialization or overwrite the old installation configuration.</p>
-        <p><strong>Network choice:</strong> loopback is the default and works on this computer only. An intranet endpoint needs an explicitly selected private interface, HTTPS trust and firewall policy. Tailscale integration and Cloudflare private routing are being reviewed; a public Cloudflare hostname or Tailscale Funnel is not the private-network setup. Do not use wildcard listeners or public port forwarding.</p>
-        <p>If startup fails, rerun doctor and inspect local engine/container logs. Keep the database volume and private identity intact. After restarting Windows or the engine, resume at this stage and check status again.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> The server is healthy and I recorded its exact HTTPS address and installation ID privately.</label>
-      </section>
-      <section data-setup-step="license">
-        <h2 tabindex="-1">4. Activate the trial</h2>
-        <p>Return to your private invitation, enter the installation ID and confirm the binding. Activation starts the ten-day trial. Download the signed license and install it locally with <code>node server.mjs install license --file license.json</code>, then <code>node install.mjs start</code> and check status (use <code>--docker</code> consistently when applicable).</p>
-        <p>Keep this license and the existing installation when upgrading. Do not activate another installation to repair a failed restart. A signature, installation-binding or sequence error needs the matching license; never bypass verification.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> Status shows an active license and the expected user limit.</label>
-      </section>
-      <section data-setup-step="owner">
-        <h2 tabindex="-1">5. Trust HTTPS and create the owner</h2>
-        <p>Confirm the operator's public CA certificate fingerprint independently before installing trust in the browser or operating system. The public certificate is normally <code>~/.127vaults-test/ca/ca.crt</code>. Never copy <code>ca.key</code>. Desktop/CLI use the SHA-256 of the CA file bytes; certificate tools may separately display the certificate DER fingerprint.</p>
-        <p>Open the exact private HTTPS address. Certificate warnings are a stop condition. For the first owner only, run <code>node server.mjs install bootstrap</code> locally and enter the one-time code in the server-hosted screen. Save your generated account secret and master password privately. Your public contact email does not create a vault account.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> HTTPS is trusted, the owner can unlock, and recovery material is saved privately.</label>
-      </section>
-      <section data-setup-step="clients">
-        <h2 tabindex="-1">6. Enroll your clients</h2>
-        <p>Desktop: choose “Register or create an account,” verify the server address, installation ID, public CA path and CA file SHA-256, then register this desktop. In the unlocked web app, open Settings → Devices → Register a device and approve its one-time code. Complete one online unlock to hydrate the encrypted offline copy.</p>
-        <p>CLI: run <code>127vaults server trust --url https://PRIVATE-IP:12780 --ca ca.crt --server-id INSTALLATION-ID</code>, then <code>127vaults login USERNAME --enroll</code>. Approve its code from an existing trusted client. On Windows, use your signed-in session so Windows credential storage is available.</p>
-        <p>Extension: load the approved Chromium package and register its packaged native connector, then unlock desktop or CLI. For a web-tab source, use the same browser profile as the unlocked vault tab. Open a matching sign-in page and click the extension in the toolbar; choose the source and login. It fills after your action and does not submit the form.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> Each selected client is enrolled, unlocked and reads the same test item.</label>
-      </section>
-      <section data-setup-step="verify">
-        <h2 tabindex="-1">7. Verify sync and keep a backup</h2>
-        <p>Create a fictitious vault and login. Edit it on one client, sync, and check another. Test an installed client's offline unlock and queued edit, then reconnect and confirm no pending changes remain. Ordinary browser tabs need the server online.</p>
-        <p>Back up the database together with its matching installation identity and preserve the encryption/restore key separately. Test restore before depending on the installation. Keep encrypted pending edits during renewal or repair.</p>
-        <p><strong>License state:</strong> active allows licensed writes; expiry enters a 30-day read-only period; locked/revoked or detected clock rollback blocks licensed writes. Sign-in, reads and recovery remain available; encrypted data is retained. Check <code>node server.mjs install status</code> for the authoritative state. Configure and verify SMTP and available seats before inviting another vault user.</p>
-        <label class="setup-check"><input type="checkbox" data-complete> Basic sync, offline recovery and backup checks are complete.</label>
-      </section>
-      <nav class="setup-navigation" aria-label="Setup stages" hidden><button class="button" type="button" id="setup-back">Back</button><button class="button primary" type="button" id="setup-next">Next</button><button class="button" type="button" id="setup-reset">Reset checklist</button></nav>
-      <p id="setup-finished" role="status" hidden>Your checklist is complete. Keep your private backup and recovery material safe.</p>
+<nav class="setup-sidebar" aria-label="Setup steps"><ol><li><a href="#prerequisites" data-step-link="prerequisites"><span>1</span>Check your computer</a></li><li><a href="#packages" data-step-link="packages"><span>2</span>Download and verify</a></li><li><a href="#server" data-step-link="server"><span>3</span>Start your server</a></li><li><a href="#license" data-step-link="license"><span>4</span>Activate your trial</a></li><li><a href="#owner" data-step-link="owner"><span>5</span>Create your owner account</a></li><li><a href="#clients" data-step-link="clients"><span>6</span>Connect your clients</a></li><li><a href="#verify" data-step-link="verify"><span>7</span>Try it and back up</a></li></ol></nav><div class="setup-content"><p id="setup-progress" role="status" aria-live="polite">Setup guide</p><p class="setup-resume">Your place is saved in this browser. No passwords or server details are saved.</p><section data-setup-step="prerequisites" id="prerequisites"><h2 tabindex="-1">1. Check your computer</h2>
+<p>Use a Windows or Linux x64 computer with several GB of free disk. Allow at least 2 GiB for the container VM. macOS packages are not available yet; Windows 10 remains a supervised trial.</p>
+<h3>Install Node.js 24</h3><p><a href="https://nodejs.org/en/download">Download Node.js 24</a>, then check the version. It should start with v24.</p><pre><code>node --version</code></pre>
+<h3>Install and start a container engine</h3><p>Choose <a href="https://podman-desktop.io/docs/installation">Podman Desktop</a> with native Compose.</p><pre><code>podman info
+podman compose ls</code></pre>
+<details><summary>Using Docker Desktop instead?</summary><p>Install <a href="https://docs.docker.com/desktop/">Docker Desktop</a>, start it, and check:</p><pre><code>docker info
+docker compose ls</code></pre><p>Add <code>--docker</code> to the installer commands in the following steps.</p></details>
+<details><summary>Windows: check WSL 2 and virtualization</summary><p>Enable hardware virtualization and <a href="https://learn.microsoft.com/windows/wsl/install">install or update WSL 2</a>. Approve elevation and complete any requested restart.</p><pre><code>wsl --version</code></pre></details>
+<p>If a check fails, finish installation or restart before continuing.</p></section>
+<section data-setup-step="packages" id="packages"><h2 tabindex="-1">2. Download and verify</h2>
+<p><a href="get-started.html">Request access</a> and download the server and clients from your approved private invitation.</p><h3>Check the downloaded file</h3><p>Replace FILE with its path. Compare the SHA-256 with your invitation.</p><p>Windows PowerShell:</p><pre><code>Get-FileHash FILE -Algorithm SHA256</code></pre><details><summary>Linux</summary><pre><code>sha256sum FILE</code></pre></details>
+<h3>Extract the server package</h3><p>Open a terminal in the extracted folder, then run:</p><pre><code>node install.mjs verify
+node install.mjs doctor</code></pre><p>Doctor should report ready. If verification fails, download again; never edit the manifest to bypass it.</p></section>
+<section data-setup-step="server" id="server"><h2 tabindex="-1">3. Start your server</h2>
+<h3>Set up on this computer</h3><p>For a new installation, run from the extracted server folder:</p><pre><code>node install.mjs setup --endpoint 127.0.0.1</code></pre><h3>Check the server and get its ID</h3><pre><code>node server.mjs install status
+node server.mjs install identify</code></pre><p>Keep the installation ID and exact HTTPS address for the next steps.</p>
+<details><summary>Connecting other computers</summary><p>Loopback works on this computer only. Choose a supported private LAN or Tailscale configuration for other devices, with HTTPS trust and appropriate network access rules. Do not use public port forwarding, wildcard listeners or Tailscale Funnel. Cloudflare private routing remains under review.</p></details>
+<details><summary>Upgrading or fixing startup</summary><p>Back up first. Keep the original installation identity, project, database volume and license. Do not initialize a replacement or overwrite configuration. Run doctor and inspect local container logs if startup fails. After a restart, check status again.</p></details></section>
+<section data-setup-step="license" id="license"><h2 tabindex="-1">4. Activate your trial</h2>
+<p>Open your private invitation, enter the installation ID and confirm activation. This starts the ten-day trial.</p><h3>Download your license</h3><p>Save it as <code>license.json</code> in the server folder, then run:</p><pre><code>node server.mjs install license --file license.json
+node install.mjs start
+node server.mjs install status</code></pre><p>Status should show an active license and the expected user limit.</p><details><summary>Already activated?</summary><p>Keep the existing license when upgrading. Do not activate another installation to fix a restart. Binding or signature errors require the matching license.</p></details></section>
+<section data-setup-step="owner" id="owner"><h2 tabindex="-1">5. Create your owner account</h2>
+<h3>Trust the private HTTPS certificate</h3><p>Confirm the server operator’s public CA fingerprint independently before installing browser or OS trust. Open the exact private HTTPS address; resolve certificate warnings before continuing.</p><details><summary>Where is the certificate?</summary><p>The public certificate is normally <code>~/.127vaults-test/ca/ca.crt</code>. Never share <code>ca.key</code>. Desktop and CLI use the SHA-256 of the CA file bytes, which differs from a certificate DER fingerprint.</p></details>
+<h3>Create the first owner</h3><p>Run locally on the server:</p><pre><code>node server.mjs install bootstrap</code></pre><p>Enter the one-time code in the server’s web screen. Save your account secret and master password privately. Your public contact email does not create a vault account.</p></section>
+<section data-setup-step="clients" id="clients"><h2 tabindex="-1">6. Connect your clients</h2>
+<h3>Desktop</h3><p>Choose <strong>Register or create an account</strong>. Verify the server address, installation ID, CA file and its SHA-256. Register the desktop.</p><p>In the unlocked web app, open <strong>Settings → Devices → Register a device</strong> and approve its code. Unlock the desktop online once to prepare its offline copy.</p>
+<details><summary>Connect the CLI</summary><p>Replace the placeholders with your server details:</p><pre><code>127vaults server trust --url https://PRIVATE-IP:12780 --ca ca.crt --server-id INSTALLATION-ID
+127vaults login USERNAME --enroll</code></pre><p>Approve its code from a trusted client. On Windows, use your signed-in session for credential storage.</p></details>
+<details><summary>Connect the browser extension</summary><p>Load the approved extension package and register its packaged native connector. Unlock desktop or CLI. For a web-tab source, use the same browser profile as the unlocked vault tab.</p><p>Open a matching sign-in page, click the extension and choose the source and login. Filling requires your action and never submits the form.</p></details></section>
+<section data-setup-step="verify" id="verify"><h2 tabindex="-1">7. Try it and back up</h2>
+<h3>Try a test login</h3><ol><li>Create a vault and a fictitious login.</li><li>Edit it on one client, sync, and check another.</li><li>Unlock an installed client offline and edit the test login.</li><li>Reconnect and confirm there are no pending changes.</li></ol><p>Ordinary browser tabs need the server online.</p>
+<h3>Keep a recoverable backup</h3><p>Back up the database with its matching installation identity. Keep the encryption/restore key separately and test a restore before relying on the installation.</p>
+<details><summary>License and invitations</summary><p>Expiry starts a 30-day read-only period. Locked/revoked licenses or detected clock rollback block licensed writes; reads, sign-in and recovery remain available. Encrypted data is retained. Preserve pending edits during repair.</p><pre><code>node server.mjs install status</code></pre><p>Check SMTP and available seats before inviting another user.</p></details></section>      <nav class="setup-navigation" aria-label="Setup stages" hidden><button class="button" type="button" id="setup-back">Back</button><button class="button primary" type="button" id="setup-next">Next</button><button class="button" type="button" id="setup-reset">Start over</button></nav>
+      <p id="setup-finished" role="status" hidden>You reached the end of setup. Keep your private backup and recovery material safe.</p>
       <noscript><p>JavaScript is off. All checklist stages are shown above; browser resume is unavailable.</p></noscript>
-    </div></section>
+    </div></div></section>
   </main>
 </body>
 </html>

@@ -16,34 +16,52 @@ export function mountChecklist(document, storage) {
   let progress = readProgress(saved);
   const panels = [...root.querySelectorAll('[data-setup-step]')];
   const back = root.querySelector('#setup-back'), next = root.querySelector('#setup-next');
+  const links = [...root.querySelectorAll('[data-step-link]')];
   root.querySelector('.setup-navigation').hidden = false;
   const save = () => { try { storage?.setItem(storageKey, JSON.stringify(progress)); } catch { /* Continue without storage. */ } };
   const render = (focus = false) => {
     panels.forEach((panel, index) => {
       panel.hidden = index !== progress.step;
-      panel.querySelector('[data-complete]').checked = progress.completed.includes(stages[index]);
     });
     root.querySelector('#setup-progress').textContent = `Step ${progress.step + 1} of ${stages.length}`;
     back.disabled = progress.step === 0;
-    next.disabled = !progress.completed.includes(stages[progress.step]);
+    next.disabled = false;
+    links.forEach(link => {
+      if (link.dataset.stepLink === stages[progress.step]) link.setAttribute('aria-current', 'step');
+      else link.removeAttribute('aria-current');
+    });
     next.textContent = progress.step === stages.length - 1 ? 'Finish' : 'Next';
     if (focus) panels[progress.step].querySelector('h2').focus();
   };
-  panels.forEach((panel, index) => panel.querySelector('[data-complete]').addEventListener('change', event => {
-    progress.completed = progress.completed.filter(id => id !== stages[index]);
-    if (event.target.checked) progress.completed.push(stages[index]);
+  links.forEach(link => link.addEventListener('click', event => {
+    event.preventDefault();
+    progress.step = stages.indexOf(link.dataset.stepLink);
     root.querySelector('#setup-finished').hidden = true;
-    save(); render();
+    save(); render(true);
   }));
+  root.querySelectorAll('pre').forEach(block => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'setup-copy'; button.textContent = 'Copy';
+    button.setAttribute('aria-label', 'Copy command');
+    button.addEventListener('click', async () => {
+      try {
+        await document.defaultView.navigator.clipboard.writeText(block.querySelector('code').textContent);
+        button.textContent = 'Copied';
+      } catch { button.textContent = 'Select and copy'; }
+    });
+    block.append(button);
+  });
   back.addEventListener('click', () => { if (progress.step > 0) { progress.step--; save(); render(true); } });
   next.addEventListener('click', () => {
-    if (!progress.completed.includes(stages[progress.step])) return;
+    root.querySelector('#setup-finished').hidden = true;
     if (progress.step < stages.length - 1) { progress.step++; save(); render(true); }
     else root.querySelector('#setup-finished').hidden = false;
   });
   root.querySelector('#setup-reset').addEventListener('click', () => {
     progress = readProgress(null); root.querySelector('#setup-finished').hidden = true; save(); render(true);
   });
+  const initial = stages.indexOf(document.defaultView?.location.hash.slice(1));
+  if (initial >= 0) progress.step = initial;
   render();
 }
 
