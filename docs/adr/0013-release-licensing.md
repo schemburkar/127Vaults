@@ -1,12 +1,12 @@
 # ADR-0013: Source-available and commercial licensing
 
-- Status: Revised; replaces BSL decision
+- Status: Revised
 - Original date: 2026-09-06
 - Revised: 2026-10-18
 
 Prepare an original source-inspection license with separate paid operational
-licenses. BSL 1.1 is unsuitable because it automatically permits non-production
-execution, including local use the owner intends to license separately.
+licenses. Local and non-production execution require express permission under
+a separate agreement, just like other operational use.
 
 No implied personal, research, educational or testing exemption applies. Internal
 testing and trials require express written authorization. Third-party licenses,

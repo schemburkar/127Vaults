@@ -268,8 +268,8 @@ Verification evidence and run instructions: [experimental development](../releas
 ## Licensing and commercial behavior
 
 - [ ] LIC-001 — Keep private local work unlicensed until publication.
-- [ ] LIC-002 — At public beta apply BSL 1.1 with Shubhan Chemburkar as licensor.
-- [ ] LIC-003 — Give each release a fixed AGPL-3.0-only change date exactly four years later.
+- [ ] LIC-002 — At public beta adopt reviewed source-available terms with Shubhan Chemburkar as licensor.
+- [ ] LIC-003 — Finalize any version-specific AGPL-3.0-only conversion commitment before publication.
 - [ ] LIC-004 — Offer alternate paid Personal and Commercial terms from public beta.
 - [ ] LIC-005 — Obtain legal review before publication.
 - [ ] LIC-006 — Publish a fresh one-commit licensed tip while retaining private history locally.

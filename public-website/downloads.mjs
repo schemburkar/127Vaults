@@ -33,7 +33,7 @@ try {
     license.href = release.licenseUrl;
     license.textContent = 'Read release license';
     const compatibility = document.createElement('small');
-    compatibility.textContent = `Minimum server ${release.minServerVersion} · BSL change date ${release.changeDate}`;
+    compatibility.textContent = `Minimum server ${release.minServerVersion}`;
     card.append(title, version, file, signature, license, compatibility, digest);
     cards.push(card);
   }

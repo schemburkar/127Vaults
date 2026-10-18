@@ -17,7 +17,7 @@ means implementation must not depend on the choice being final.
 | [0010](0010-shared-vault-roles-and-membership-epochs.md) | Shared-vault roles and membership epochs | Proposed |
 | [0011](0011-deletion-and-history-retention.md) | Deletion and history retention | Proposed |
 | [0012](0012-private-network-exposure.md) | Private network exposure | Proposed |
-| [0013](0013-release-licensing.md) | BSL-to-AGPL release licensing | Accepted |
+| [0013](0013-release-licensing.md) | Source-available and commercial licensing | Accepted |
 | [0014](0014-user-credentials-and-root-key-wrapping.md) | Per-user credentials and root-key wrapping | Proposed |
 | [0015](0015-account-onboarding-and-sessions.md) | Account onboarding and sessions | Proposed |
 | [0016](0016-outbound-security-notifications.md) | Outbound security notifications | Proposed |

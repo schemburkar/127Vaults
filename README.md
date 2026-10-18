@@ -185,7 +185,7 @@ Do not use real credentials until the documented security and public-beta gates
 are complete. Start with the [architecture overview](docs/architecture/overview.md)
 and [threat model](docs/security/threat-model.md) when reviewing design claims.
 
-The planned release model is Business Source License 1.1 changing to
-AGPL-3.0-only four years after each release-specific Change Date, with alternate
-commercial terms from day one. Source is not licensed for release until exact
-BSL parameters are present in `LICENSE`. See [LICENSE-POLICY.md](LICENSE-POLICY.md).
+The planned release model is an original 127Vaults Source-Available License
+with separate paid operational licenses, including for local use. The license
+remains a review draft; any future AGPL conversion must be finalized separately.
+See [LICENSE-POLICY.md](LICENSE-POLICY.md).

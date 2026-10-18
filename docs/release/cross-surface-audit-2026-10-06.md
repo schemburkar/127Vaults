@@ -39,11 +39,12 @@ The Tauri config has `bundle.active: false`, and desktop packaging is open in DE
 
 ## License decision checkpoint
 
-`LICENSE-POLICY.md` and ADR-0013 set BSL 1.1 with `AGPL-3.0-only` after a fixed date for each immutable release. There is still **no root `LICENSE` grant**. The Rust workspace declares `BUSL-1.1`, but that metadata does not supply the release-specific BSL text or permission to distribute. Keep source and artifacts private until the first public snapshot includes complete terms.
-
-A single root BSL license can cover the owned monorepo code if its Licensed Work definition expressly covers the whole identified snapshot, including server, web, desktop, CLI, extension, packages, and site where intended. Keep third-party notices and dependency terms separately. Add directory licenses only for intentionally different grants, such as Apache-licensed interoperability material. Every public source archive and distributed binary needs its applicable notices and release-specific terms; the public release catalogue already expects a license URL per artifact.
-
-The four-year AGPL transition is a workable delayed-open-source design, but it is a real and irreversible grant for each old version. A later version cannot postpone an earlier version's transition. After the date, compliant users can use that old version commercially without a paid production license; AGPL obligations, including network-source duties for modified server versions, apply. The project must own or have sufficient rights in all contributions to offer BSL, AGPL and commercial alternatives. Check dependency compatibility for both phases, the exact Change License choice and license text with counsel, and keep trademark, support and security-update promises separate from copyright permission. The release gate in `LICENSE-POLICY.md` remains appropriate before any public beta or public repository snapshot.
+Licensing section updated 2026-10-18: LICENSE-POLICY.md and ADR-0013 now specify
+a custom source-available review draft with separate operational licenses. No
+root LICENSE grant is adopted. Before publication, review ownership, third-party
+terms, source and binary notices, commercial agreements and any version-specific
+AGPL conversion commitment. An eventual AGPL grant cannot require payment for
+compliant use. Historical audit conclusions do not constitute license grants.
 
 ## Next acceptance order
 
