@@ -2,9 +2,9 @@
 
 Current scope (2026-10-16): the user selected functionality-first internal acceptance with basic sanity checks. Local code is accepted (internal record retained outside Git), including required individual-item deletion. The exhaustive matrix and supported-release conditions below remain coverage/follow-up work rather than the current internal-release criterion. No additional confirmed applicable P1 implementation blocker remains recorded.
 
-Updated 2026-10-13. The user selected an internal fictitious-data release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
+Updated 2026-10-13. The user selected an internal release across server, web/PWA, extension, admin, desktop and CLI. **Windows and Linux are required; admin management writes are required.** This replaces the older conditional client scope and read-only-admin priority. The component [backlogs](README.md) retain their wider acceptance conditions.
 
-See the internal release candidate evidence and remaining gates (internal record retained outside Git). Installed extension password-fill matrices pass on Windows Edge and Linux Chrome; basic installed desktop GUI acceptance passes on both platforms. Physical OS lock/idle, clean-machine/Linux package lifecycle, wider settings/device/type cases and human CA/browser acceptance remain open. Public beta and real-secret use have separate [release gates](../release/beta-readiness.md).
+See the internal release candidate evidence and remaining gates (internal record retained outside Git). Installed extension password-fill matrices pass on Windows Edge and Linux Chrome; basic installed desktop GUI acceptance passes on both platforms. Physical OS lock/idle, clean-machine/Linux package lifecycle, wider settings/device/type cases and human CA/browser acceptance remain open. Public beta and public release have separate [release gates](../release/beta-readiness.md).
 
 | Priority | Current meaning |
 | --- | --- |
@@ -54,6 +54,6 @@ Admin management writes have been implemented during this window. The contract i
 - Cloud rows remain P0 **for Cloud**, but Cloud startup remains closed and is outside this self-hosted candidate.
 - Public site commercialization, optional table output, drag-to-fill and wider import/export do not block this internal cut.
 - Enabled license behavior must preserve reads and encrypted pending work. Production entitlement/clock/restore policy remains in SRV-017/018 and the supported-release gate.
-- Independent cryptographic/application review, real-secret approval, public signing/distribution and legal review cannot be replaced by local tests.
+- Independent cryptographic/application review, release security approval, public signing/distribution and legal review cannot be replaced by local tests.
 
 The archived 2026-09-08 MVP plan and older batch plans are historical. Their online-only web and read-only-admin cut does not describe current installed-PWA and admin-write implementation. No broad backlog row is closed from a narrow acceptance pass.

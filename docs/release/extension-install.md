@@ -11,7 +11,7 @@ client package and register its bundled `127vaults-extension-host` executable
 using the client package's script and the extension ID shown by your browser.
 Use the Windows PowerShell script or Linux shell script in that client package.
 
-Test with a fictitious login on an HTTPS site you control. Unlock the source,
+Test with a sample login on an HTTPS site you control. Unlock the source,
 open the popup, choose the matching login and request fill. The form is not
 submitted automatically. The passkey provider is opt-in and experimental.
 There is no store signature or automatic update; compare package checksums with

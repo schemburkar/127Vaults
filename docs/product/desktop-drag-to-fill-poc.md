@@ -48,7 +48,7 @@ Win32 application accept username and password text; Escape and rejected targets
 produce no fill; no clipboard format is created; and an unelevated source cannot
 fill an elevated target. Record exact OS and WebView2 versions.
 
-Real credentials remain a no-go until Stage B proves lock-during-drag revocation,
+Stage B must prove lock-during-drag revocation,
 best-effort wiping of every application-owned native buffer, crash/close cleanup,
 and absence of secret logging. Target applications can always retain accepted
 plaintext; the UI must state that trust boundary.

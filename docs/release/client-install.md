@@ -1,7 +1,7 @@
 # Install the private 127Vaults clients
 
 This package contains the desktop app, CLI and browser native host for its named
-OS/architecture. Use fictitious data for supervised testing. Binaries are unsigned;
+OS/architecture. Binaries are unsigned;
 check the sender's SHA256SUMS. LICENSE.md and COMMERCIAL-LICENSE.md contain the
 adopted terms; testing requires applicable written authorization. No automatic
 updater is enabled.

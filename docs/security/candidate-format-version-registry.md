@@ -1,10 +1,10 @@
 # Candidate format and version registry
 
-Status: **candidate interoperability evidence only; prohibited for real secrets**.
+Status: **candidate interoperability evidence only**.
 
 This registry freezes names and byte meanings for repeatable native/browser tests. It does not
 approve a production cryptographic format. `SUPPORTED_CRYPTO_FORMATS` remains empty, so every
-format fails the real-secret admission check.
+format fails the stable-format admission check.
 
 | Registry | Identifier | Status | Meaning |
 | --- | ---: | --- | --- |
@@ -20,7 +20,7 @@ change to `SUPPORTED_CRYPTO_FORMATS`.
 ## Frozen ECF1 interoperability vector
 
 Both native Rust and the WASM bridge call the same deterministic vector function. Inputs are
-fictitious constants: purpose 3, UUID fixtures 1/3/4/5, epoch 1, schema 1, 32 bytes of `07` as
+deterministic test constants: purpose 3, UUID fixtures 1/3/4/5, epoch 1, schema 1, 32 bytes of `07` as
 IKM, 24 bytes of `06` as nonce, and ASCII plaintext `vector`. The expected envelope is:
 
 ```text

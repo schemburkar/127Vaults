@@ -162,3 +162,6 @@ Desktop.ini
 /docs/product/cli-in-progress.md
 /docs/product/extension-in-progress.md
 /docs/product/server-in-progress.md
+
+# Internal test-data policy archived outside the repository
+/docs/release/selected-real-data-pilot.md

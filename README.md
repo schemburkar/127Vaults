@@ -1,6 +1,6 @@
 # 127Vaults
 
-> Experimental, pre-release software. Do not store real credentials.
+> Experimental, pre-release software.
 
 127Vaults is a secure-by-default password manager for private networks. Clients
 are intended to encrypt vault data before synchronization; the server stores
@@ -9,17 +9,16 @@ properties are design goals, not claims about the current experimental build.
 
 ## Current status
 
-The local fictitious-data internal release is accepted across server, web/PWA,
+The local internal release is accepted across server, web/PWA,
 Desktop, CLI, extension, admin console and public site under the functionality-first
 criterion. See the current decision and checks (internal record retained outside Git).
 Current source includes encrypted-item deletion and guarded server upgrades.
 Verify the selected package manifest and release checks before making claims about
 a particular installed version.
 
-The fictitious-data internal MVP now has private HTTPS, OPAQUE authentication,
+The internal MVP now has private HTTPS, OPAQUE authentication,
 owner/invited-user onboarding, and encrypted PostgreSQL vault create/list/read/
-update paths. It remains experimental: do not use real credentials, and do not
-treat it as public-beta or stable-format approval.
+update paths. It remains experimental, with public-beta and stable-format review still outstanding.
 
 Current work and release documents:
 
@@ -30,7 +29,6 @@ Current work and release documents:
 - [Experimental development runbook](docs/release/experimental-development.md)
 - [Offline server test bundle and installation](docs/release/server-test-install.md)
 - [Independent local releases with release.ps1](docs/release/release-command.md)
-- [Selected real-data pilot gate](docs/release/selected-real-data-pilot.md)
 - Cross-surface MVP and platform audit (internal record retained outside Git)
 
 ## Repository map
@@ -160,7 +158,7 @@ Stopping retains its PostgreSQL volume.
 
 ### See the browser MVP
 
-Use fictitious data only. For a fresh interactive run:
+For a fresh interactive run:
 
 ```sh
 pnpm mvp:stop
@@ -172,7 +170,7 @@ pnpm mvp:browser
 `mvp:reset` permanently deletes only the disposable acceptance database. Trust
 the local CA path printed by `mvp:browser` in Windows/browser certificate
 settings, then open `https://127.0.0.1:12780` and enter its printed one-time
-bootstrap code. Use a fictitious 64-hex-character account secret and 20+
+bootstrap code. Use a sample 64-hex-character account secret and 20+
 character master password. Create the owner, unlock, create a vault and item,
 lock, reload, then unlock again. Remove the local CA trust entry after testing
 if it is no longer needed.
@@ -182,8 +180,7 @@ expected screens, safe troubleshooting, limitations, and a feedback checklist.
 
 ## Security and licensing
 
-Do not use real credentials until the documented security and public-beta gates
-are complete. Start with the [architecture overview](docs/architecture/overview.md)
+Start with the [architecture overview](docs/architecture/overview.md)
 and [threat model](docs/security/threat-model.md) when reviewing design claims.
 
 The repository is licensed under the [127Vaults Source-Available License](LICENSE.md).

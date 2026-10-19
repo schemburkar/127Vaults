@@ -244,8 +244,7 @@ Official references to check at deployment time:
 
 Before inviting real testers, complete one explicit HTTPS request, operator
 approval, invitation delivery, large artifact download/checksum, recipient-host
-installation, activation, rotation and closure rehearsal. Use synthetic vault
-data. Verify operator failure responses, private bucket access and scheduled task
+installation, activation, rotation and closure rehearsal. Verify operator failure responses, private bucket access and scheduled task
 health. Observability is disabled by default to avoid collecting invitation paths
 and authorization material; add intentional redacted operational monitoring.
 

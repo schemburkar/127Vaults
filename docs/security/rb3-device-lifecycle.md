@@ -1,6 +1,6 @@
 # RB3 device-lifecycle candidate
 
-Status: implementation candidate; **not approved for real secrets**.
+Status: implementation candidate.
 
 The isolated `@127vaults/device-lifecycle` package implements the authorization
 state machine required by ADR-0003, ADR-0009, ADR-0014, and ADR-0015. The state machine is also integrated with the server's PostgreSQL

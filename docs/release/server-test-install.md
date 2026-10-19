@@ -1,6 +1,6 @@
 # Install the private server test bundle
 
-Status: experimental test distribution, 2026-10-02. This is the chosen shipping form for the server: OCI image archives (127Vaults, PostgreSQL and the isolated OpenSSL certificate helper), a base Compose file with an optional SMTP overlay, and one operator command with internal helpers. An MSI or standalone binary would add a second database/service/update path without improving this private server deployment. Do not publish the bundle or use it as a supported real-credential release yet.
+Status: experimental test distribution, 2026-10-02. This is the chosen shipping form for the server: OCI image archives (127Vaults, PostgreSQL and the isolated OpenSSL certificate helper), a base Compose file with an optional SMTP overlay, and one operator command with internal helpers. An MSI or standalone binary would add a second database/service/update path without improving this private server deployment.
 
 The server image runs `apps/server/src/entry.mjs serve`; that entry dispatches provisioning, schema migration, and liveness checks to modules in `apps/server/src`. In the source checkout and extracted bundle, `node server.mjs` is the operator entry and imports its helper modules. Bundle helpers live under `lib/` and are included in the hash manifest. Development acceptance scripts under `scripts/` are test harnesses, not separate installation methods.
 
@@ -81,7 +81,7 @@ prerequisite evidence, not HTTPS, backup, clean-host or release acceptance.
 - Windows 11 with Podman machine and a Compose provider, or Linux with Podman plus a Compose provider. Docker Engine with Docker Compose is an alternate **unverified** path until the Docker matrix is run.
 - Node.js 24 for the operator scripts. The client machine does not need Rust, wasm-bindgen, pnpm or source files.
 - A private IPv4 or loopback endpoint, adequate disk for both image archives and a persistent PostgreSQL volume, and a separate location for backup keys and encrypted backups.
-- No public port forwarding, public DNS, shared host, or real credentials until the release gates are accepted.
+- No public port forwarding, public DNS or shared host until the release gates are accepted.
 
 In an extracted bundle directory, first compare each file to `manifest.json`. On Windows, run PowerShell as the intended operator; on Linux, use a private directory owned by that operator. The default private identity directory is `~/.127vaults-test`, outside the bundle.
 
@@ -111,7 +111,7 @@ For Podman, install Podman and Podman Desktop, start the intended Podman machine
 
 This native-provider path requires the updated launcher. Previously published bundles that pass `--podman-path` directly to their provider only support the older Python-specific interface; changing documentation does not update those artifacts. Do not edit their manifest to bypass integrity verification. Until an updated bundle is released, record any direct native Compose commands as a manual operator path, not acceptance of the old launcher's native-provider support.
 
-For invited-user email verification, configure a trusted SMTP-over-TLS service on port 465. After `init`, append `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, and `VAULTS_INSTALLATION_LABEL` to `.env`. Write the SMTP password alone to `<private directory>/runtime/smtp-password` with operator-only permissions; do not put it in `.env`. On `start`, the installer adds `compose.smtp.yaml`, which gives only the server an outbound network while PostgreSQL remains on the private backend. Invalid SMTP configuration fails startup. This external SMTP path needs a live provider and egress test before invited-user real-data use; the default installation supports only the first owner.
+For invited-user email verification, configure a trusted SMTP-over-TLS service on port 465. After `init`, append `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, and `VAULTS_INSTALLATION_LABEL` to `.env`. Write the SMTP password alone to `<private directory>/runtime/smtp-password` with operator-only permissions; do not put it in `.env`. On `start`, the installer adds `compose.smtp.yaml`, which gives only the server an outbound network while PostgreSQL remains on the private backend. Invalid SMTP configuration fails startup. This external SMTP path needs a live provider and egress test before invited-user onboarding; the default installation supports only the first owner.
 
 ## Enable the internal admin console
 
@@ -145,7 +145,7 @@ node server.mjs database backup --engine podman --container <project>_database_1
 node server.mjs database rehearse --engine podman --input D:\backups\vaults-20261002.127vbak --key-file D:\keys\vaults-backup.key
 ```
 
-The first command takes a transactionally consistent PostgreSQL custom dump of a known schema 1 through 8 installation, encrypts it in the authenticated `127VBAK1` envelope, verifies that envelope, and removes its plaintext temporary file. The second decrypts into a private temporary directory, starts a new unpublished `--network none` PostgreSQL container, proves its database is empty, restores in one transaction, checks installation/schema/account/item invariants, then removes that disposable container and temporary file. The source database and its volume are never modified. Temporary files are deleted, but ordinary filesystem deletion is not a secure erase guarantee; use an encrypted host filesystem for real data. Keep the backup key separate from the encrypted backup.
+The first command takes a transactionally consistent PostgreSQL custom dump of a known schema 1 through 8 installation, encrypts it in the authenticated `127VBAK1` envelope, verifies that envelope, and removes its plaintext temporary file. The second decrypts into a private temporary directory, starts a new unpublished `--network none` PostgreSQL container, proves its database is empty, restores in one transaction, checks installation/schema/account/item invariants, then removes that disposable container and temporary file. The source database and its volume are never modified. Temporary files are deleted, but ordinary filesystem deletion is not a secure erase guarantee; use an encrypted host filesystem for sensitive files. Keep the backup key separate from the encrypted backup.
 
 The database backup is **not enough** to recover the installation. Back up its CA and runtime keys separately, with a second protected key and a separate storage location:
 

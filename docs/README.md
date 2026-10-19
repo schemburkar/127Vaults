@@ -1,7 +1,6 @@
 # Documentation
 
-127Vaults is in internal testing with fictitious data. Source publication does not
-make it a supported release or approve real-credential use. The adopted terms are
+The repository license terms are
 [LICENSE.md](../LICENSE.md) and [COMMERCIAL-LICENSE.md](../COMMERCIAL-LICENSE.md).
 
 - [Architecture overview](architecture/overview.md), [API v1 contract](architecture/api-v1-contract.md), and [implementation map](architecture/implementation-interfaces.md).
@@ -13,6 +12,4 @@ make it a supported release or approve real-credential use. The adopted terms ar
 
 Dated research and narrow protocol specifications describe their stated scope;
 check current source, tests and component backlogs before treating them as current
-feature inventories. Older task prompts, design mockups, workstation audits and
-deployment receipts are archived privately. Their removal from the tip does not
-remove historical copies from Git.
+feature inventories.

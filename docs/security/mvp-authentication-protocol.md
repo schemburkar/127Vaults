@@ -1,7 +1,7 @@
 # Internal-MVP authentication contract
 
 2026-09-09. Session and failure-state rules are accepted planning defaults. The
-OPAQUE profile below is accepted for the fictitious-data internal MVP by
+OPAQUE profile below is accepted for the internal MVP by
 [Batch 5A evidence](opaque-feasibility-evidence.md). It is not public-beta or
 production cryptographic approval.
 

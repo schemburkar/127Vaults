@@ -31,7 +31,7 @@ The file format allows multiple operators with `owner` or `admin` roles. Additio
 - **Audit:** Latest 100 accepted and denied management actions, including actor, target ID and time.
 - **Settings:** Secret and deployment settings remain in operator runbooks.
 
-Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. Management actions require an exact Origin, the operator session CSRF token and fresh password confirmation. Accepted and denied authenticated actions are audited without credentials or vault data. Authentication attempts have a short local rate limit. This remains experimental software for fictitious data only.
+Operator sessions are memory-only and expire after 30 minutes or on server restart. The cookie is Secure, HttpOnly and SameSite=Strict. Sign-out requires a matching Origin and CSRF token. Management actions require an exact Origin, the operator session CSRF token and fresh password confirmation. Accepted and denied authenticated actions are audited without credentials or vault data. Authentication attempts have a short local rate limit.
 
 Sign-in preserves the operator name after a failed attempt and clears the password. The password visibility button and Caps Lock hint help correct entry mistakes. When the server supplies a retry delay, the sign-in button shows a countdown and becomes available when that delay ends. A request is bounded to 15 seconds; unreachable servers and incompatible responses receive clear recovery guidance.
 

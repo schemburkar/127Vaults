@@ -1,6 +1,6 @@
 # Experimental development runbook
 
-Use disposable data only. The current experimental stack provides private HTTPS,
+The current experimental stack provides private HTTPS,
 account authentication, and encrypted vault APIs. It is not a supported release
 or a stable storage-format commitment.
 
@@ -113,7 +113,7 @@ startup checks and relevant server tests when changing this workflow.
 ## Disposable encrypted item fixture
 
 Run `pnpm fixture:build`, then `pnpm fixture:serve`, and open
-`http://localhost:12781/login-item`. Use only the prefilled fictitious values.
+`http://localhost:12781/login-item`. Use only the prefilled sample values.
 The page stores one disposable ECF1 hierarchy and item envelope in browser storage;
 it has no account, server persistence, recovery, sharing, or stable format.
 Reproduction evidence is in [current documentation](../security/experimental-client-state.md).

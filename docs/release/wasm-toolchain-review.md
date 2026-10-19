@@ -131,7 +131,7 @@ broadly updating the workspace.
 Upgrading across many patch releases can alter generated ABI/schema details,
 browser glue, TypeScript output, memory handling, and transitive dependencies.
 The current fixture proves only disposable fixed-byte behavior. It does not
-approve processing real secrets, cryptographic formats, browser isolation,
+approve cryptographic formats, browser isolation,
 constant-time behavior under a JIT, entropy wiring, or production browser support.
 
 Do not add `wasm-pack` merely to perform this upgrade. The direct Cargo plus
@@ -141,7 +141,7 @@ current requirement. Re-evaluate only if testing or npm packaging later provides
 a concrete need.
 
 Final recommendation: schedule a bounded `0.2.126` upgrade and validation task
-before real-secret browser work. Approval requires clean captured evidence from
+before production browser deployment. Approval requires clean captured evidence from
 the exact resolved graphs and smoke matrix, not merely a successful compilation.
 
 ## Execution result — 2026-09-09

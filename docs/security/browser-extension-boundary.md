@@ -12,7 +12,7 @@ The extension's popup is short lived and its background worker retains a native 
 
 ## Known limits and review points
 
-- A malicious or compromised vault web page can call the page-global bridge and access the unlocked session. This is part of the existing server-delivered web-client trust boundary; the extension adds another bridge and needs independent review before real-secret use.
+- A malicious or compromised vault web page can call the page-global bridge and access the unlocked session. This is part of the existing server-delivered web-client trust boundary; the extension adds another bridge and needs independent review before public release.
 - Once a password is placed in a page input, scripts on that destination page can read it. The destination page can also alter inputs between probe and fill. The fill checks origin again immediately before setting values, but cannot make a malicious same-origin page safe.
 - Chromium host permissions cover the vault hostname across ports. The extension selects a tab only at the configured exact origin. Review the runtime permission prompt and tab selection in both browsers.
 - Native messaging grants the registered extension ID a local host connection. Review installation, host binary provenance, OS credential access, unlocked-agent ownership and error redaction. Unlock happens in the selected client; the extension does not send account secrets or master passwords to the host.
@@ -22,7 +22,7 @@ The extension's popup is short lived and its background worker retains a native 
 
 ## Browser acceptance matrix
 
-Run in Chrome and Edge with fictitious credentials and an unpacked build before closing EXT-003/005:
+Run in Chrome and Edge with sample credentials and an unpacked build before closing EXT-003/005:
 
 | Case | Expected result |
 | --- | --- |

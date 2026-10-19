@@ -3,7 +3,7 @@
 The request-to-trial workflow supports both the Node service and Cloudflare Worker.
 Deployment, approved package selection and email delivery remain operator steps.
 Nothing in this workflow collects payment, creates a subscription, or creates a
-vault account. Keep this first cut private and use fictitious vault data.
+vault account.
 
 ## What happens to a request
 

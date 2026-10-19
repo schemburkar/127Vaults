@@ -1,8 +1,7 @@
 # Public source and beta publication
 
 Publishing source and approving a supported product release are separate decisions.
-The project remains in internal testing; use fictitious data until the
-[release gates](beta-readiness.md) are accepted.
+Product release criteria are tracked in the [release gates](beta-readiness.md).
 
 ## Review the selected revision
 

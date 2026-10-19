@@ -1,8 +1,8 @@
 # Browser MVP walkthrough
 
-Use only fictitious data. This walkthrough exercises basic browser onboarding
+This walkthrough exercises basic browser onboarding
 and encrypted login-item persistence; it is not a complete feature inventory or
-real-secret approval. See [PWA behavior](../product/pwa.md) for installed offline use.
+release security approval. See [PWA behavior](../product/pwa.md) for installed offline use.
 
 ## Start fresh
 
@@ -24,13 +24,13 @@ local CA, open `https://127.0.0.1:12780`, and keep the bootstrap code.
 ## Expected flow
 
 1. **Create owner:** open *First owner setup*. Enter the code, an ASCII username
-   of at least five characters, display name, valid fictitious email, a 64-hex
+   of at least five characters, display name, valid sample email, a 64-hex
    account secret, and a 20+ character master password. Success says **First
    owner created**.
 2. **Unlock:** use the same account secret and master password. Success changes
    the badge to **Unlocked** and displays the vault. Another browser profile
    cannot unlock because it lacks this profile's enrolled device identity.
-3. **Use the vault:** create a vault, add a fictitious login item, open and edit
+3. **Use the vault:** create a vault, add a sample login item, open and edit
    it, then reload encrypted data. Each action reports a result.
 4. **Verify persistence:** lock, reload, unlock again, and confirm the item.
 

@@ -21,4 +21,4 @@ OS-level outbound secret dragging is a desktop capability, not a browser parity 
 
 ## Internal release acceptance — 2026-10-13
 
-Windows and Linux, all client surfaces and admin writes are explicitly selected. See the current evidence and remaining gates (internal record retained outside Git). Implementation and narrower tests do not close wider acceptance rows. The candidate remains fictitious-data-only.
+Windows and Linux, all client surfaces and admin writes are explicitly selected. See the current evidence and remaining gates (internal record retained outside Git). Implementation and narrower tests do not close wider acceptance rows.

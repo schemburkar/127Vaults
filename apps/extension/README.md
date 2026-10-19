@@ -86,7 +86,7 @@ Each fillable login in a related detail appears as its own choice when its HTTPS
 
 1. From the repository root, build the host with `cargo build -p vaults-cli --bin 127vaults --bin 127vaults-extension-host`, then run `node apps/extension/scripts/native-host-smoke.mjs`. The script checks native messaging framing and source discovery; zero sources is valid before a vault is unlocked.
 2. Load this folder unpacked in Chrome or Edge's extension page, record its extension ID, and run the Windows registration command above using that ID. Reload the extension after registration.
-3. Unlock a test vault in desktop or CLI, or unlock the web client in a tab. Save a **fictitious** login whose website origin matches an HTTPS test login page you control exactly, including the port when present.
+3. Unlock a test vault in desktop or CLI, or unlock the web client in a tab. Save a **sample** login whose website origin matches an HTTPS test login page you control exactly, including the port when present.
 4. Open that HTTPS page, click the extension toolbar button, choose the unlocked source and test login, and request fill. Check that the username and password appear only after the click and that the form is **not** submitted automatically. Submit manually if this is a disposable test account.
 5. Try an HTTP page and a different HTTPS origin: neither should receive the saved login. Lock the selected source and confirm that fill requires unlocking again. For the offline path, first hydrate a desktop/CLI replica, stop the server, then unlock that local source and repeat the fill on the already loaded HTTPS page.
 

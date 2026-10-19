@@ -10,7 +10,7 @@ the wasm toolchain review. Workspace code, manifests and locks were not changed.
 
 GO for the dependency selection for disposable Batch 3C, subject to coordinating
 acceptance and completion of the separately required matched wasm-bindgen upgrade.
-NO-GO for real credentials or stable formats. This report proves graph resolution
+Not a stable-format approval. This report proves graph resolution
 and compilation, not encryption correctness or actual browser entropy execution.
 
 Two consequential findings change the obvious feature selection:

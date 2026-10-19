@@ -5,8 +5,7 @@ browser native host and the registration script for your platform. It does not
 contain the desktop app. Run `127vaults.exe --help` on Windows, or
 `./127vaults --help` on Linux. No Node, pnpm or Rust compiler is needed to run it.
 
-Enrol against the server's HTTPS address after verifying the server CA. Use
-fictitious credentials for these experimental builds. An enrolled and synced
+Enrol against the server's HTTPS address after verifying the server CA. An enrolled and synced
 profile keeps an encrypted local replica for offline access.
 
 After online login, `127vaults device list` lists this account's trusted devices.

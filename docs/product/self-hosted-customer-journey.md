@@ -18,7 +18,7 @@ The fresh-host operator and owner rehearsal is recorded in self-hosted signup sm
 
 ## Available supervised test sequence
 
-Use fictitious data and an unpublished bundle. Build and transfer the bundle as described in [server test installation](../release/server-test-install.md). In the extracted bundle:
+Build and transfer the bundle as described in [server test installation](../release/server-test-install.md). In the extracted bundle:
 
 ```text
 node server.mjs install init --endpoint 127.0.0.1

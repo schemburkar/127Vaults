@@ -3,7 +3,7 @@
 > Historical P3 slice specification. Its one-profile/no-sync scope and numerical limits describe that initial slice, not the current feature set. Current routes are in [API v1](api-v1-contract.md); current client behavior is in the [product index](../product/README.md).
 
 Experimental internal MVP: one online browser profile and one private vault per
-account; fictitious login create/list/read/update. No delete, history, sharing,
+account; sample login create/list/read/update. No delete, history, sharing,
 offline queue or signed multi-device operations. This is a specification, not
 evidence of implementation or stable-format approval.
 

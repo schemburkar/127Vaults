@@ -2,7 +2,7 @@
 
 Date: 2026-09-07. Batch 3B specification, subject to coordinating review.
 This is an experimental fixture format, not an approved account protocol or a
-stable storage format. Only fictitious, disposable data is permitted. The stable
+stable storage format. The stable
 `SUPPORTED_CRYPTO_FORMATS` list remains empty. An explicit experimental capability
 may advertise ECF1 separately; existing placeholder bytes are never ECF1.
 
@@ -307,7 +307,7 @@ data, silently reset on authentication failure, or upload plaintext to migrate.
 Gate: GO for Batch 3C's disposable implementation after coordinating review of
 this specification and exact dependency/version/feature selection from 3A. Keep
 only Argon2id/AEAD/HKDF/hash/randomness dependencies needed by this slice; no
-signing/agreement or OPAQUE implementation is implied. NO-GO for real credentials,
+signing/agreement or OPAQUE implementation is implied. No approval for
 stable formats, authentication, persistent product storage or production-security
 claims. Outstanding risks are composition review, current dependency audit gaps,
 actual KDF performance/cancellation/workspace clearing, binding memory copies,

@@ -1,6 +1,6 @@
 # Product work index
 
-The project is in internal testing with fictitious data. Windows/Linux server,
+Windows/Linux server,
 web/PWA, desktop, CLI, extension and admin-management paths are implemented to
 varying degrees; wider platform and security acceptance remains open. Source or
 license publication is not a supported-release decision.

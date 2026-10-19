@@ -1,6 +1,6 @@
 # Internal-MVP onboarding and HTTPS
 
-P2 design, 2026-09-09. Disposable accounts only. This specifies implementation
+P2 design, 2026-09-09. This specifies implementation
 contracts; it does not certify an implemented or audited protocol. Authentication
 and sessions follow P1; private-vault envelopes follow P3.
 
@@ -187,5 +187,4 @@ Check text/QR round-trip and checksum/canonicality rejection; failed storage and
 onboarding retry; wrong identity/context/tag; lock invalidation; concurrent
 bootstrap/redemption; expired/replaced/exhausted proofs; real SMTP delivery and
 invalid TLS; wrong Host/Origin/SNI; private host publication; untrusted/expired
-certificates; renewal failure preserving the old pair. Use fictitious data and
-record deferred automated coverage. These are implementation acceptance cases.
+certificates; renewal failure preserving the old pair. Record deferred automated coverage. These are implementation acceptance cases.

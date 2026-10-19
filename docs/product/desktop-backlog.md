@@ -30,7 +30,7 @@ Extend the existing desktop client to macOS. Define the minimum supported macOS 
 
 ## Internal release acceptance — 2026-10-13
 
-Windows and Linux, all client surfaces and admin writes are explicitly selected. See the current evidence and remaining gates (internal record retained outside Git). Implementation and narrower tests do not close wider acceptance rows. The candidate remains fictitious-data-only.
+Windows and Linux, all client surfaces and admin writes are explicitly selected. See the current evidence and remaining gates (internal record retained outside Git). Implementation and narrower tests do not close wider acceptance rows.
 
 Actual packaged Windows/Linux GUI unlock/read/reveal/hide/edit/save/lock passes; Linux offline GUI changes survive same-profile process restart and replay online with zero pending operations. Windows same-path update/reconnect and owned/foreign-registration uninstall passes. Clean-machine/Linux lifecycle and wider settings/device/disclosure acceptance remain open.
 

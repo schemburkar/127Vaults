@@ -60,7 +60,7 @@ pnpm --filter @127vaults/desktop dev
 
 Select an item, then drag either field's handle onto a browser `<input>`, Notepad,
 or another editable text control. Press Escape to exercise cancellation.
-Use DevTools only with fictitious data: the HTML drag payload necessarily enters
+The HTML drag payload necessarily enters
 the WebView2/Windows drag subsystem while a drag is active.
 
 ## Run on Linux (development)
@@ -95,7 +95,7 @@ pnpm --filter @127vaults/desktop dev
 
 A running, unlocked Secret Service on the user's D-Bus session is required for
 credential storage. Installing development headers does not establish a usable
-keyring. Use fictitious credentials for testing.
+keyring. Use sample credentials for testing.
 
 ## Shared Windows/Linux development gate
 
@@ -109,7 +109,7 @@ installer or update artifact is produced.
 Build success is only the first Linux milestone. Record the distro, desktop,
 WebKitGTK version, display protocol, and keyring provider for GUI acceptance:
 
-- Launch, enroll with a fictitious account, online unlock, lock, and restart.
+- Launch, enroll with a sample account, online unlock, lock, and restart.
 - Hydrate a replica, stop the server, then offline unlock and queue an edit;
   restart, reconnect, and sync without losing the edit.
 - Exercise a missing/locked keyring and verify useful errors without plaintext

@@ -20,6 +20,6 @@ Updated 2026-10-13. The [CLI MVP guide](cli-mvp.md) remains usage documentation;
 
 ## Internal release acceptance — 2026-10-13
 
-Windows and Linux, all client surfaces and admin writes are explicitly selected. See the current evidence and remaining gates (internal record retained outside Git). Implementation and narrower tests do not close wider acceptance rows. The candidate remains fictitious-data-only.
+Windows and Linux, all client surfaces and admin writes are explicitly selected. See the current evidence and remaining gates (internal record retained outside Git). Implementation and narrower tests do not close wider acceptance rows.
 
 Latest Windows/Linux packaged pipe output redacts default list/get and emits only the explicitly requested password field. Concurrent adopted desktop/CLI profiles retain independent unlock-agent capabilities. Physical terminal, clean-machine and wider settings/device acceptance remain open.

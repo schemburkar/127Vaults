@@ -1,7 +1,7 @@
 # OPAQUE feasibility evidence (Batch 5A)
 
-Reviewed 2026-09-09. **Decision:** suitable for the fictitious-data internal MVP;
-not approved for public-beta or real-secret claims. Batch 5B may implement this
+Reviewed 2026-09-09. **Decision:** suitable for the internal MVP;
+not approved for public-beta or security claims. Batch 5B may implement this
 profile without a password-over-TLS fallback.
 
 ## Frozen dependency profile
