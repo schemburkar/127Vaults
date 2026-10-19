@@ -27,7 +27,7 @@ export async function prepareTrialCatalogue(config) {
       name, sizeBytes: Buffer.byteLength(await readFile(join(directory, name))), sha256: await fileHash(join(directory, name)),
     })))];
     for (const [index, file] of files.entries()) {
-      const isServer = manifest.product === 'server' && file.name.endsWith('.tar');
+      const isServer = manifest.product === 'server' && /\.tar(?:\.gz)?$/.test(file.name);
       if (isServer && artifacts.some(row => row.id === 'server')) throw Error('Ambiguous server archive.');
       artifacts.push({ id: isServer ? 'server' : `${manifest.product}-${manifest.platform}-${index}`,
         filename: file.name, path: resolve(directory, file.name), sha256: file.sha256, sizeBytes: file.sizeBytes,
