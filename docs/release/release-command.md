@@ -75,7 +75,7 @@ distribution archive; the current server API exposes no release-version endpoint
 
 Desktop normally has no extra portable desktop ZIP; use the independent CLI
 archive if that is what the recipient needs. Each output includes a product
-README, current license-policy document, `SHA256SUMS`, `release.json`, and a
+README, adopted source and commercial license agreements, `SHA256SUMS`, `release.json`, and a
 standalone `verify-release.mjs`. Build config, test sources, source archives,
 dependency folders and compiler output directories stay in the cache.
 
@@ -106,7 +106,7 @@ and build commits without pretending to be one matching repository-wide release.
 ## Reuse and caches
 
 The tool fingerprints the selected product's committed files, shared dependencies,
-checks, install instructions and license policy. The packaging engine, numeric
+checks, install instructions and license agreements. The packaging engine, numeric
 package version, Node runtime and target platform also enter the cache key. A
 new commit touching another product can reuse a previously verified artifact.
 Labels do not enter that key, so a second handoff can reuse exactly the same bytes.

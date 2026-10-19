@@ -176,7 +176,7 @@ async function build(plan, platform, attempt) {
     sourceRevision: plan.revision, sourceDirty: false, inputFingerprint: plan.inputFingerprint, builderFingerprint: plan.builderFingerprint,
     builtAt: new Date().toISOString(), toolchain, checks, compatibility: plan.compatibility,
     ...(plan.issuerPublicKeys ? { issuerPublicKeys: plan.issuerPublicKeys } : {}),
-    limitations: ['Unsigned private-test artifacts; public licensing/signing remain pending.', ...(plan.product === 'server' ? ['Native Linux server and Docker clean-host installation are not yet accepted. Web assets ship in this server image.'] : [])] });
+    limitations: ['Unsigned private-test artifacts; publisher signing remains pending.', ...(plan.product === 'server' ? ['Native Linux server and Docker clean-host installation are not yet accepted. Web assets ship in this server image.'] : [])] });
   return payload;
 }
 async function deliver(plan, platform, payload, reused) {
