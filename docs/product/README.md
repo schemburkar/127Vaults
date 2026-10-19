@@ -12,6 +12,9 @@ than maintained as competing queues. The [priority review](backlog-priorities.md
 records the intended cut; [release readiness](../release/beta-readiness.md) defines
 whether the product may ship.
 
+The [MVP session checklist](../release/mvp-session-checklist.md) groups those
+existing rows into actionable sessions with dependencies and completion checks.
+
 | Component | Backlog |
 | --- | --- |
 | Public site | [Public site](public-site-backlog.md) |
