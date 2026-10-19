@@ -1,5 +1,74 @@
 # Local independent releases
 
+## Complete installer set and Cloudflare publication
+
+From the Windows build host, use these two commands:
+
+```powershell
+.\release-set.ps1 build
+.\release-set.ps1 publish
+```
+
+`build` pins committed HEAD, increments each component's patch version from the
+active private catalogue, and prepares server/web/admin, Windows/Linux desktop,
+Windows/Linux CLI and the Chromium extension. It runs the existing product gates,
+website/Cloudflare tests, checks the adopted agreements inside every package, and
+rehearses an isolated server upgrade from the active package plus backup/restore
+and signed-license preservation. Existing installations are left running. A set
+becomes publishable only after all required checks pass.
+
+`publish` selects the last successfully tested set, rechecks its hashes and
+acceptance evidence, backs up D1, compiles a Cloudflare dry-run, checks the existing
+resources and bucket privacy, applies pending D1 migrations, uploads every
+artifact to private R2 and verifies the remote SHA-256 values. It activates one
+complete catalogue, verifies protected download access and hashes the full server
+download through the live website. Only then does it update the local default
+deployment configuration. Existing releases and rollback inputs are preserved.
+This also publishes the committed public website and Worker; changing those
+sources after the build requires building a new tested set.
+
+Both commands support `-Plan` for a preview without builds or remote changes.
+Use `-Label lowercase-name` on `build` to choose a stable name; retry the same
+label and `-Ref` after a failure to reuse completed, verified outputs. A changed
+revision, version or baseline requires a new label. `publish -Label name` selects
+a specific tested set. Use `-Help` for the short command reference.
+
+Defaults reuse `.cloudflare-deploy/config.json`, the existing issuer and R2
+credentials, `C:\Projects\127Vaults-Releases` (relative to this repository's
+parent), the user's release cache, Ubuntu-24.04 WSL, native Docker Compose
+connected to the selected Podman machine, and 7-Zip. Windows/Linux build tools,
+Node 24, the pinned pnpm/Rust/WASM tools, WSL Python/dpkg-deb and an authenticated
+Cloudflare CLI must already be installed. Native Compose must support
+`compose ls --format json`; the legacy Python provider is insufficient.
+
+Optional overrides live in the ignored `.cloudflare-deploy/release-set.json`:
+
+```json
+{
+  "deploymentConfig": "config.json",
+  "wslDistro": "Ubuntu-24.04",
+  "port": 12935,
+  "versions": { "server": "0.0.6", "desktop": "0.0.5", "cli": "0.0.4", "extension": "0.1.3" }
+}
+```
+
+Omit `versions` for automatic patch increments. Other optional fields are
+`outputRoot`, `cacheRoot`, `wslUser`, `linuxCacheRoot`, `composeProvider`,
+`sevenZip` and `r2CredentialsFile`; Windows paths in JSON need escaped backslashes
+or forward slashes. Relative paths resolve against that private settings file.
+Upload credentials default to `secrets/r2-upload.json` under the active deployment
+secret directory, or `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` in the environment.
+Keys are preserved and never included in packages. The workflow targets the
+existing Cloudflare deployment; first-time provisioning remains a separate step.
+
+Older-major catalogue routes are preserved for existing approved downloads.
+Build requests, catalogue, test evidence, delivery verification and rollback
+configuration live in `<cacheRoot>/sets/<label>`, with a private pointer beside
+the settings file. No per-release Markdown receipt is added to the repository.
+These commands do not push Git refs.
+
+## Individual products
+
 `release.ps1` prepares one product at a time. It does not publish, push, create
 GitHub releases or install a runner. The Node engine underneath it can be called
 by future CI without duplicating the build logic. Web assets continue to ship
