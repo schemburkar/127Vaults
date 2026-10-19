@@ -4,12 +4,13 @@ import { homedir } from 'node:os';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { execute } from './process.mjs';
 
-export const products = ['desktop', 'cli', 'extension', 'server'];
+export const products = ['desktop', 'cli', 'extension', 'server', 'installer'];
 const rust = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'crates/crypto', 'crates/protocol',
   'crates/browser-fixture/Cargo.toml', 'apps/desktop/src-tauri/Cargo.toml', 'apps/cli'];
 const node = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
 const policy = ['LICENSE.md', 'COMMERCIAL-LICENSE.md'];
 export const productInputs = {
+  installer: ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'apps/installer', ...policy, 'docs/release/installer.md'],
   desktop: [...rust, ...node, ...policy, 'apps/desktop', 'packages/ui', 'apps/extension/src/passkeys.mjs',
     'apps/extension/src/passkeys.d.mts', 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/client-install.md'],
   cli: [...rust, ...policy, 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/cli-install.md'],
@@ -41,7 +42,7 @@ export function numericVersion(value, product) {
   return value;
 }
 export function targets(product, requested = 'native', host = process.platform, arch = process.arch) {
-  if (!products.includes(product)) throw Error(product === 'web' ? 'Web assets currently ship in the server image. Choose server; independent web deployment is deferred.' : 'Choose desktop, cli, extension or server.');
+  if (!products.includes(product)) throw Error(product === 'web' ? 'Web assets currently ship in the server image. Choose server; independent web deployment is deferred.' : 'Choose desktop, cli, extension, server or installer.');
   if (!['native', 'windows', 'linux', 'both'].includes(requested)) throw Error('Platform must be native, windows, linux or both.');
   if (product === 'extension' || product === 'server') {
     if (requested !== 'native') throw Error(`${product} is one portable package. Omit -Platform.`);
@@ -64,6 +65,10 @@ export async function inputFingerprint(repository, revision, product) {
   return { fingerprint: hash(tree), entries: tree.split('\0').filter(Boolean).length };
 }
 async function configuredVersion(repository, revision, product) {
+  if (product === 'installer') {
+    const cargo = await git(repository, ['show', `${revision}:apps/installer/Cargo.toml`]);
+    return /^version\s*=\s*"([^"]+)"/m.exec(cargo)?.[1] ?? '0.1.0';
+  }
   if (product === 'cli') {
     const cargo = await git(repository, ['show', `${revision}:Cargo.toml`]);
     const section = cargo.split('[workspace.package]')[1]?.split('\n[')[0];
@@ -102,6 +107,7 @@ export async function createPlan(request) {
     source.fingerprint = hash(source.fingerprint + '\0' + JSON.stringify(issuerPublicKeys));
   }
   const version = numericVersion(request.version || await configuredVersion(repository, revision, product), product);
+  if (product === 'installer' && version !== await configuredVersion(repository, revision, product)) throw Error('Installer metadata must match apps/installer/Cargo.toml. Bump the independent installer version in source first.');
   const label = labelValue(request.label || `${revision.slice(0, 12)}-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
   const outputRoot = outside(repository, request.outputRoot || resolve(repository, '../127Vaults-Releases'), 'OutputRoot');
   const cacheRoot = outside(repository, request.cacheRoot || resolve(homedir(), '.127vaults-release-cache'), 'CacheRoot');

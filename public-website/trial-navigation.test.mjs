@@ -6,6 +6,24 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('./trial.mjs', import.meta.url), 'utf8');
 const startup = source.slice(0, source.indexOf('const base ='));
 
+test('installer commands use only the authenticated invitation and remain hidden without an installer', () => {
+  const renderer = source.slice(source.indexOf('function showInstaller'), source.indexOf('function showLicense'));
+  for (const [review, artifacts, visible] of [[false, [{ product: 'installer', supporting: false }], true],
+    [true, [{ product: 'installer', supporting: false }], false], [false, [{ product: 'server' }], false],
+    [false, [{ product: 'installer', supporting: true }], false]]) {
+    const nodes = { 'trial-installer': { hidden: true }, 'trial-installer-command': { textContent: '' } };
+    const context = vm.createContext({ operatorReview: review, token: 'A'.repeat(43), match: [null, 'a'.repeat(64)],
+      location: { origin: 'https://vaults.example' }, $: id => nodes[id], record: { artifacts } });
+    vm.runInContext(`${renderer}\nshowInstaller(record);`, context);
+    assert.equal(nodes['trial-installer'].hidden, !visible);
+    if (visible) {
+      assert.ok(nodes['trial-installer-command'].textContent.includes(`https://vaults.example/trial.html#${'a'.repeat(64)}.${'A'.repeat(43)}`));
+      assert.ok(nodes['trial-installer-command'].textContent.includes('.\\127vaults-install.exe'));
+      assert.ok(nodes['trial-installer-command'].textContent.includes('./127vaults-install'));
+    } else assert.equal(nodes['trial-installer-command'].textContent, '');
+  }
+});
+
 test('opening another invitation in the same tab reloads its document rather than retaining old packages', () => {
   const browser = new EventTarget(), paths = [];
   let reloads = 0;

@@ -17,8 +17,8 @@ import { verifyEmbeddedAgreements, verifyLiveDelivery } from './verify-set.mjs';
 
 const exists = async path => access(path).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
-const components = [['extension', 'chromium'], ['desktop', 'windows'], ['desktop', 'linux'], ['cli', 'windows'], ['cli', 'linux'], ['server', 'linux-amd64']];
-const products = ['extension', 'desktop', 'cli', 'server'];
+const components = [['extension', 'chromium'], ['desktop', 'windows'], ['desktop', 'linux'], ['cli', 'windows'], ['cli', 'linux'], ['server', 'linux-amd64'], ['installer', 'windows'], ['installer', 'linux']];
+const products = ['extension', 'desktop', 'cli', 'server', 'installer'];
 function setLabel(value) {
   labelValue(value);
   if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(value)) throw Error('Release-set labels must use lowercase letters, numbers and hyphens for Cloudflare.');
@@ -81,6 +81,14 @@ export async function planSet(request, settings, active, deps = defaults) {
   const baseline = await deps.checkLocalCatalogue(active.catalogueFile);
   const versions = {};
   for (const product of products) {
+    if (product === 'installer') {
+      // Bootstrap catalogues may predate this app. Its independent protocol
+      // version comes from source, rather than incrementing with each server set.
+      const installer = await deps.createPlan({ repository, product, platform: 'both',
+        version: settings.versions[product], ref: revision, label, outputRoot: settings.outputRoot, cacheRoot: settings.cacheRoot });
+      versions[product] = installer.packageVersion;
+      continue;
+    }
     const artifact = baseline.artifacts.find(a => a.product === product && !a.supporting);
     if (!artifact) throw Error(`Active catalogue has no ${product} package.`);
     const manifest = await deps.verifyRelease(dirname(artifact.path));

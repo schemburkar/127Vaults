@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validIntakeOrigin } from '../../apps/public-intake/src/intake-origin.mjs';
 import { issuer } from '../../apps/public-intake/cloudflare/crypto.mjs';
+import { versionParts } from '../../apps/public-intake/cloudflare/installer.mjs';
 const run = promisify(execFile);
 export const repository = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 export const localDeploymentDirectory = join(repository, '.cloudflare-deploy');
@@ -30,7 +31,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -43,6 +44,7 @@ export function validateConfig(value, file) {
     || (value.requestAlertTo && (!/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertTo)
       || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertFrom)
       || value.requestAlertFrom.split('@')[1].toLowerCase() !== new URL(value.origin).hostname))) throw Error('Invalid Cloudflare deployment configuration');
+  if (value.minimumInstallerVersion !== undefined && !versionParts(value.minimumInstallerVersion)) throw Error('Invalid minimum installer version');
   const base = dirname(resolve(file));
   for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) {
     if (typeof value[name] !== 'string' || !value[name]) throw Error(`Missing ${name}`);
@@ -109,6 +111,7 @@ export function wranglerConfig(config, state, assetsDirectory) {
     r2_buckets: [{ binding: 'ARTIFACTS', bucket_name: config.bucketName }],
     ...(config.requestAlertTo ? { send_email: [{ name: 'REQUEST_ALERTS', destination_address: config.requestAlertTo }] } : {}),
     vars: { PUBLIC_INTAKE_ORIGIN: config.origin, TRIAL_ISSUER_KEY_ID: config.issuerKeyId,
+      INSTALLER_MIN_VERSION: config.minimumInstallerVersion ?? '0.1.0',
       TRIAL_CATALOGUE_KEY: state.catalogueKey ?? 'not-uploaded', TRIAL_CATALOGUE_SHA256: state.catalogueSha256 ?? 'not-uploaded',
       TRIAL_SOURCE_REVISION: state.sourceRevision ?? 'not-uploaded',
       ...(config.requestAlertTo ? { REQUEST_ALERT_TO: config.requestAlertTo, REQUEST_ALERT_FROM: config.requestAlertFrom } : {}),

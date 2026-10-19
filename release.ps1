@@ -1,7 +1,7 @@
 # Local release entry point; the same Node engine can be called by future CI.
 [CmdletBinding()]
 param(
-    [Parameter(Position=0)][ValidateSet('desktop','cli','extension','server','web')][string]$Product,
+    [Parameter(Position=0)][ValidateSet('desktop','cli','extension','server','installer','web')][string]$Product,
     [ValidateSet('native','windows','linux','both')][string]$Platform = 'native',
     [Alias('BuildLabel')][string]$Label,
     [string]$Version,

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createPlan, git, hash } from './plan.mjs';
 import { execute, pnpm } from './process.mjs';
-import { copyLicenses, packageCli, packageDesktop, packageExtension } from './package.mjs';
+import { copyLicenses, packageCli, packageDesktop, packageExtension, packageInstaller } from './package.mjs';
 import { runMakeBundle } from '../ops/make-server-bundle.mjs';
 import { fileHash, verifyRelease } from './verify-release.mjs';
 
@@ -95,6 +95,10 @@ export async function gates(plan, source) {
     await action();
     checks.push({ name, status: 'passed' });
   };
+  if (plan.product === 'installer') {
+    await record('Rust installer tests', () => execute('cargo', ['test', '--locked', '-p', 'vaults-installer'], { cwd: source }));
+    await record('Rust installer lint', () => execute('cargo', ['clippy', '--locked', '-p', 'vaults-installer', '--all-targets', '--', '-D', 'warnings'], { cwd: source }));
+  }
   if (['desktop', 'server'].includes(plan.product)) {
     await record('locked workspace dependencies', () => pnpm(['install', '--frozen-lockfile', '--store-dir', join(plan.cacheRoot, 'pnpm-store')], { cwd: source }));
   }
@@ -146,6 +150,13 @@ async function build(plan, platform, attempt) {
   if (plan.product === 'extension') await packageExtension(stage, options);
   if (plan.product === 'desktop') await packageDesktop(stage, options);
   if (plan.product === 'cli') await packageCli(stage, options);
+  if (plan.product === 'installer') await packageInstaller(stage, options);
+  if (plan.product === 'installer') {
+    const binary = join(source, 'target/release', process.platform === 'win32' ? '127vaults-install.exe' : '127vaults-install');
+    await execute(binary, ['--help'], { capture: true, quiet: true });
+    if (await execute(binary, ['--version'], { capture: true, quiet: true }) !== `127vaults-install ${plan.packageVersion}`) throw Error('Installer executable version differs from release metadata.');
+    checks.push({ name: 'installer startup and independent version', status: 'passed' });
+  }
   if (plan.product === 'server') {
     const issuerFile = join(attempt, 'issuer-keys.json');
     if (plan.issuerPublicKeys) await writeFile(issuerFile, JSON.stringify(plan.issuerPublicKeys, null, 2) + '\n', { flag: 'wx' });
@@ -158,7 +169,7 @@ async function build(plan, platform, attempt) {
     const info = await lstat(join(stage, name));
     if (info.isFile()) await copyFile(join(stage, name), join(payload, name));
   }
-  const documentation = { desktop: 'client-install', cli: 'cli-install', extension: 'extension-install', server: 'server-test-install' }[plan.product];
+  const documentation = { desktop: 'client-install', cli: 'cli-install', extension: 'extension-install', server: 'server-test-install', installer: 'installer' }[plan.product];
   await copyFile(join(source, `docs/release/${documentation}.md`), join(payload, 'README.md'));
   await copyLicenses(source, payload);
   await copyFile(join(import.meta.dirname, 'verify-release.mjs'), join(payload, 'verify-release.mjs'));
@@ -250,7 +261,7 @@ async function linuxWorker(request, plan) {
 }
 export async function runRelease(request) {
   if (request.help || (!request.product && !request.verify)) {
-    console.log('release.ps1 desktop|cli|extension|server [-Platform native|windows|linux|both] [-Label name] [-Version numeric] [-Ref commit]\n  -Plan: show inputs/output without building; -Doctor: check prerequisites\n  -Force: rebuild even if verified cache exists; -RefreshBaseImages: force server rebuild with fresh bases\n  -Verify <directory>: verify a prepared release\n  -OutputRoot / -CacheRoot: separate external directories\n  -WslDistro / -WslUser / -LinuxCacheRoot: Linux worker selection\nOnly local private-test preparation. No publishing, pushing or fixed release version convention.');
+    console.log('release.ps1 desktop|cli|extension|server|installer [-Platform native|windows|linux|both] [-Label name] [-Version numeric] [-Ref commit]\n  -Plan: show inputs/output without building; -Doctor: check prerequisites\n  -Force: rebuild even if verified cache exists; -RefreshBaseImages: force server rebuild with fresh bases\n  -Verify <directory>: verify a prepared release\n  -OutputRoot / -CacheRoot: separate external directories\n  -WslDistro / -WslUser / -LinuxCacheRoot: Linux worker selection\nOnly local private-test preparation. No publishing, pushing or fixed release version convention.');
     return;
   }
   if (request.verify) { const result = await verifyRelease(resolve(request.verify)); console.log(`Verified ${result.product}/${result.platform}.`); return; }

@@ -5,6 +5,7 @@ import { encryptionKey, limiterKey, equal, hash, issuer, signEnvelope, token, fr
 import { TrialStore, Conflict } from './store.mjs';
 import { validateCatalogue, catalogueIdentity, publicArtifact, serverMajor } from './catalogue.mjs';
 import { byteRange } from './download.mjs';
+import { installerPolicy, installerProtocol } from './installer.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
 
@@ -207,7 +208,7 @@ async function dispatch(request, env, now, schedule) {
     return json(200, { permissions: { download: true, manageInstallations: true }, requests, emailEnabled: Boolean(mailer),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
@@ -308,6 +309,14 @@ async function dispatch(request, env, now, schedule) {
   const ticketValid = action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method) && record.ticketHash
     && at < record.ticketUntil && await equal(await hash(cookie ?? ''), record.ticketHash);
   if (!ticketValid && (!bearer || !await equal(await hash(bearer), record.tokenHash))) fail(401, 'access_required');
+  const installerVersion = request.headers.get('X-127Vaults-Installer-Version');
+  if ((action === 'installer' || installerVersion !== null)
+    && !installerPolicy(installerVersion, env.INSTALLER_MIN_VERSION ?? '0.1.0')) fail(426, 'installer_update_required');
+  if (action === 'installer' && request.method === 'GET') return json(200, {
+    protocolVersion: installerProtocol, minimumInstallerVersion: env.INSTALLER_MIN_VERSION ?? '0.1.0',
+    installationId: record.installationId ?? null, sourceRevision: catalogue.sourceRevision,
+    artifacts: catalogue.artifacts.map(publicArtifact),
+  });
   if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), trialDays: 10, payment: 'none',
     sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   if (action === 'ticket' && request.method === 'POST') {

@@ -10,6 +10,7 @@ import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-l
 import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revocation.mjs';
 import { validIntakeOrigin } from './intake-origin.mjs';
 import { verifyLicenseFile } from '../../server/src/license-status.mjs';
+import { installerPolicy, installerProtocol } from '../cloudflare/installer.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from './operator-session.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -98,7 +99,7 @@ export async function loadTrialArtifacts(catalogueFile) {
 }
 
 export function createTrialHandler({ origin, key, dataFile, dataDir, operatorToken,
-  issuerPrivateKey, issuerKeyId, catalogue, mailer = null, now = () => new Date(), allowLoopbackHttp = false }) {
+  issuerPrivateKey, issuerKeyId, catalogue, mailer = null, now = () => new Date(), allowLoopbackHttp = false, minimumInstallerVersion = '0.1.0' }) {
   if (!validIntakeOrigin(origin, allowLoopbackHttp) || key?.length !== 32
     || !dataFile || !dataDir || !/^[A-Za-z0-9_-]{43,128}$/.test(operatorToken ?? '')
     || !/^[A-Za-z0-9_-]{1,40}$/.test(issuerKeyId ?? '')) throw Error('Invalid trial configuration.');
@@ -158,7 +159,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
           return { ...request, ...summary(record), updateAvailable: record?.state === 'approved' && record.releaseHash !== releaseHash };
         })), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
       }
-      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|artifacts\/[a-z0-9-]+))?$/.exec(path);
+      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
       const [, , id, action] = route;
       const result = await withFileLock(join(dataDir, `${id}.lock`), async () => {
@@ -253,6 +254,13 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
         const ticketValid = action?.startsWith('artifacts/') && req.method === 'GET'
           && record.ticketHash && equal(hash(ticket ?? ''), record.ticketHash) && now().getTime() < record.ticketUntil;
         if (!ticketValid && (!bearer || !equal(hash(bearer), record.tokenHash))) return json(res, 401, { error: 'access_required' });
+        const installerVersion = req.headers['x-127vaults-installer-version'];
+        if ((action === 'installer' || installerVersion !== undefined) && !installerPolicy(installerVersion, minimumInstallerVersion)) return json(res, 426, { error: 'installer_update_required' });
+        if (action === 'installer' && req.method === 'GET') return json(res, 200, {
+          protocolVersion: installerProtocol, minimumInstallerVersion,
+          installationId: record.installationId ?? null, sourceRevision: catalogue.sourceRevision,
+          artifacts: catalogue.artifacts.map(({ path: _, ...asset }) => asset),
+        });
         if (!action && req.method === 'GET') return json(res, 200, { ...summary(record), trialDays: 10, payment: 'none',
           sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(({ path: _, ...asset }) => asset) });
         if (action === 'ticket' && req.method === 'POST') {

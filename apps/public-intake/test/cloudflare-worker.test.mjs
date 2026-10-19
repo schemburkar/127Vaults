@@ -79,6 +79,36 @@ async function fixture(t, options = {}) {
     get, post, submit, approve, requestInput, env: { ...bindings, DB: db, ARTIFACTS: bucket } };
 }
 
+test('installer authenticates entitled releases and enforces a server-controlled version floor', async t => {
+  const f = await fixture(t, { bindings: { INSTALLER_MIN_VERSION: '0.2.0' } });
+  const a = await f.approve(await f.submit());
+  const request = (action, version, token = a.token) => f.mf.dispatchFetch(`${origin}${a.base}/${action}`, {
+    headers: { Authorization: `Bearer ${token}`, ...(version ? { 'X-127Vaults-Installer-Version': version } : {}) },
+  });
+  assert.equal((await request('installer', '0.2.0', 'x'.repeat(43))).status, 401);
+  assert.equal((await request('installer')).status, 426);
+  assert.equal((await request('installer', '0.1.0')).status, 426);
+  assert.equal((await request('artifacts/server', '0.1.0')).status, 426);
+  const response = await request('installer', '0.2.0');
+  assert.equal(response.status, 200);
+  const plan = await response.json();
+  assert.equal(plan.protocolVersion, 1);
+  assert.equal(plan.minimumInstallerVersion, '0.2.0');
+  assert.equal(plan.installationId, null);
+  assert.equal(plan.artifacts[0].sha256, f.sha256);
+  assert.equal(plan.artifacts[0].objectKey, undefined);
+  const id = randomUUID();
+  const blockedActivation = await f.mf.dispatchFetch(`${origin}${a.base}/activate`, { method: 'POST', headers: {
+    Origin: origin, 'Content-Type': 'application/json', Authorization: `Bearer ${a.token}`, 'X-127Vaults-Installer-Version': '0.1.0',
+  }, body: JSON.stringify({ installationId: id }) });
+  assert.equal(blockedActivation.status, 426);
+  assert.equal((await (await request('installer', '0.2.0')).json()).installationId, null);
+  assert.equal((await f.post(`${a.base}/activate`, { installationId: id }, a.token)).status, 200);
+  assert.equal((await (await request('installer', '0.2.0')).json()).installationId, id);
+  // Legacy browser downloads retain their normal authenticated flow.
+  assert.equal((await f.get(`${a.base}/artifacts/server`, a.token)).status, 200);
+});
+
 test('Cloudflare runtime: request, approval, R2 cookie download, compatible license, rotation and closure', async t => {
   const f = await fixture(t);
   assert.equal(await (await f.get('/')).text(), 'static website');

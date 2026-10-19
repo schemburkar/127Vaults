@@ -8,6 +8,16 @@ import { tmpdir } from 'node:os';
 import { validateConfig, loadConfig, loadSecrets, stageAssets, assetFiles, wranglerConfig, repository, localDeploymentDirectory } from './config.mjs';
 import { assertPrivateBucket, execute, parseBucketNames, provision, runWrangler } from './deploy.mjs';
 
+test('deployment preserves the installer compatibility floor and rejects invalid policy', async t => {
+  const f = await fixture(t);
+  const path = join(f.directory, 'config.json');
+  const state = { databaseId: '12345678-1234-1234-1234-123456789abc' };
+  assert.equal(wranglerConfig(f.config, state, f.directory).vars.INSTALLER_MIN_VERSION, '0.1.0');
+  const config = validateConfig({ ...f.config, minimumInstallerVersion: '0.10.0' }, path);
+  assert.equal(wranglerConfig(config, state, f.directory).vars.INSTALLER_MIN_VERSION, '0.10.0');
+  assert.throws(() => validateConfig({ ...f.config, minimumInstallerVersion: '0.01.0' }, path), /installer version/);
+});
+
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), '127v-cloudflare-deploy-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

@@ -120,6 +120,24 @@ export async function packageDesktop(output, options = {}) {
     await copyFile(join(directory, candidates[0]), join(output, `127vaults-desktop-${packageVersion}-${platform}${extension}`));
   }
 }
+export async function packageInstaller(output, options = {}) {
+  const sourceRoot = options.root ?? root;
+  const configured = /^version\s*=\s*"([^"]+)"/m.exec(await readFile(join(sourceRoot, 'apps/installer/Cargo.toml'), 'utf8'))?.[1];
+  const packageVersion = options.version ?? configured;
+  if (!configured || packageVersion !== configured) throw Error('Installer package version must match its Cargo version.');
+  if (!['win32', 'linux'].includes(process.platform) || process.arch !== 'x64') throw Error('Installer packages require Windows/Linux x64.');
+  await run('cargo', ['build', '--release', '--locked', '-p', 'vaults-installer'], { cwd: sourceRoot });
+  const filename = `127vaults-install${process.platform === 'win32' ? '.exe' : ''}`;
+  // Linux has no filename suffix; wrap both platforms uniformly for catalogue delivery.
+  const directory = join(output, `127vaults-installer-${packageVersion}-${process.platform === 'win32' ? 'windows' : 'linux'}-x64`);
+  await mkdir(directory);
+  await copyFile(join(sourceRoot, 'target/release', filename), join(directory, filename));
+  if (process.platform !== 'win32') await chmod(join(directory, filename), 0o755);
+  await copyFile(join(sourceRoot, 'docs/release/installer.md'), join(directory, 'README.md'));
+  await copyLicenses(sourceRoot, directory);
+  await archive(directory, `${directory}.${process.platform === 'win32' ? 'zip' : 'tar.gz'}`, process.platform === 'win32');
+}
+
 export async function packageCli(output, options = {}) {
   const sourceRoot = options.root ?? root;
   const packageVersion = options.version ?? version;

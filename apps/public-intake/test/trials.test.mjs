@@ -55,6 +55,13 @@ test('real request → operator approval → private downloads → durable 10-da
     assert.match(approval.link, /^https:\/\/127vaults.example\/trial.html\?open=1#/);
     assert.equal((await post(`${admin}/${id}/approve`, { maxUsers: 5 }, operatorToken)).status, 409);
     const token = approval.link.split('.').at(-1), base = `/api/trials/${id}`;
+    assert.equal((await get(`${base}/installer`, token)).status, 426);
+    const installer = version => fetch(`${root}${base}/installer`, { headers: { Authorization: `Bearer ${token}`, 'X-127Vaults-Installer-Version': version } });
+    assert.equal((await installer('0.0.9')).status, 426);
+    const installerResponse = await installer('0.1.0'); assert.equal(installerResponse.status, 200);
+    const installerPlan = await installerResponse.json();
+    assert.equal(installerPlan.protocolVersion, 1); assert.equal(installerPlan.installationId, null);
+    assert.equal(installerPlan.artifacts[0].path, undefined);
     assert.equal(sent.length, 0); // Approval alone must never email a requester.
     assert.equal((await get(`${admin}/${id}/invitation`)).status, 401);
     assert.equal((await (await get(`${admin}/${id}/invitation`, operatorToken)).json()).message, approval.message);

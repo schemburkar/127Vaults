@@ -24,7 +24,7 @@ async function fixture(t) {
   const issuer = { trial: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }) };
   async function release(directory, product, platform, version) {
     await mkdir(directory, { recursive: true });
-    const extension = { server: 'tar.gz', extension: 'zip', cli: 'zip', desktop: 'exe' }[product];
+    const extension = { server: 'tar.gz', extension: 'zip', cli: 'zip', desktop: 'exe', installer: 'zip' }[product];
     const name = `127vaults-${product}-${version}-${platform}.${extension}`;
     const files = [];
     for (const [file, bytes] of [[name, Buffer.from(name)], ['LICENSE.md', Buffer.from('Source terms\n')], ['COMMERCIAL-LICENSE.md', Buffer.from('Commercial terms\n')]]) {
@@ -59,12 +59,12 @@ async function fixture(t) {
     deploymentConfig: join(root, 'config.json'), pointer: join(root, 'latest.json') };
   await writeFile(settings.composeProvider, ''); await writeFile(settings.sevenZip, ''); await save(settings.deploymentConfig, active);
   const deps = { hostPlatform: 'win32', git: async (_repo, args) => args[0] === 'rev-parse' ? revision : '',
-    createPlan: async () => ({}), checkLocalCatalogue, verifyRelease, catalogueIdentity,
+    createPlan: async () => ({ packageVersion: '0.1.0' }), checkLocalCatalogue, verifyRelease, catalogueIdentity,
     protectedDirectory: directory => mkdir(directory, { recursive: true }),
     loadSecrets: async () => ({ OPERATOR_TOKEN: 'private-token' }), auditPublication: async () => calls.push('audit'),
     prepareTrialCatalogue: catalogue,
     runRelease: async r => { calls.push(`build:${r.product}/${r.platform}`); await release(join(r.outputRoot, r.product, r.label, r.product === 'server' ? 'linux-amd64' : r.product === 'extension' ? 'chromium' : r.platform), r.product, r.product === 'server' ? 'linux-amd64' : r.product === 'extension' ? 'chromium' : r.platform, r.version); },
-    verifyEmbeddedAgreements: async dirs => { assert.equal(dirs.length, 6); calls.push('embedded'); },
+    verifyEmbeddedAgreements: async dirs => { assert.equal(dirs.length, 8); calls.push('embedded'); },
     execute: async (command, args) => {
       if (command === 'podman' && args[0] === 'machine') return JSON.stringify([{ ConnectionInfo: { PodmanPipe: { Path: '\\\\.\\pipe\\fixture' } } }]);
       if (args[0]?.endsWith('server-release-smoke.mjs')) {
@@ -84,7 +84,8 @@ async function fixture(t) {
 test('set preview increments independent versions without creating outputs or publishing', async t => {
   const f = await fixture(t); const p = await buildSet({ ...f.request, plan: true }, f.settings, f.active, f.deps);
   assert.equal(p.versions.server, '0.0.6'); assert.equal(p.versions.extension, '0.1.3');
-  assert.equal(p.releaseDirectories.length, 6); assert.equal(await present(p.directory), false); assert.deepEqual(f.calls, []);
+  assert.equal(p.versions.installer, '0.1.0');
+  assert.equal(p.releaseDirectories.length, 8); assert.equal(await present(p.directory), false); assert.deepEqual(f.calls, []);
   assert.throws(() => nextPatch('0.1.2.3'), /explicit/);
 });
 
@@ -95,7 +96,7 @@ test('failed build leaves no ready pointer and resume preserves completed packag
   assert.equal(await present(f.settings.pointer), false); const before = f.calls.filter(x => x.startsWith('build:')).length;
   f.deps.runRelease = build;
   const record = await buildSet(f.request, f.settings, f.active, f.deps);
-  assert.equal(record.status, 'tested'); assert.equal(f.calls.filter(x => x.startsWith('build:')).length - before, 3);
+  assert.equal(record.status, 'tested'); assert.equal(f.calls.filter(x => x.startsWith('build:')).length - before, 5);
   assert.equal(f.calls.includes('upload'), false); assert.ok(f.calls.indexOf('embedded') < f.calls.indexOf('acceptance'));
 });
 

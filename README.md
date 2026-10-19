@@ -28,13 +28,14 @@ Current work and release documents:
 - [Beta-readiness gates](docs/release/beta-readiness.md)
 - [Experimental development runbook](docs/release/experimental-development.md)
 - [Offline server test bundle and installation](docs/release/server-test-install.md)
+- [Rust setup installer, licensed downloads and upgrades](docs/release/installer.md)
 - [Independent local releases with release.ps1](docs/release/release-command.md)
 - Cross-surface MVP and platform audit (internal record retained outside Git)
 
 ## Repository map
 
 ```text
-apps/       server, web, extension, desktop, and CLI surfaces
+apps/       server, web, extension, desktop, CLI, and setup installer
 crates/     Rust cryptographic and protocol foundations
 packages/   shared TypeScript API, domain, and sync packages
 docs/       architecture, security, product, sync, and release decisions

@@ -10,7 +10,7 @@ const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(fragment);
 const operatorReview = reviewRequested && !match;
 history.replaceState(null, '', operatorReview ? `${location.pathname}?review=1` : location.pathname);
 const base = operatorReview ? '/api/access-admin/releases' : match ? `/api/trials/${match[1]}` : '';
-const productNames = { server: 'Server', desktop: 'Desktop', cli: 'CLI', extension: 'Browser extension' };
+const productNames = { server: 'Server', desktop: 'Desktop', cli: 'CLI', extension: 'Browser extension', installer: 'Installer' };
 
 function describe(asset) {
   const parts = (asset.label || '').split(' / ');
@@ -82,7 +82,15 @@ async function api(action = '', value) {
   }
   return response;
 }
+function showInstaller(record) {
+  if (!operatorReview && token && record.artifacts?.some(asset => asset.product === 'installer' && !asset.supporting)) {
+    const invitation = `${location.origin}/trial.html#${match[1]}.${token}`;
+    $('trial-installer').hidden = false;
+    $('trial-installer-command').textContent = `# Windows (PowerShell)\n.\\127vaults-install.exe --invitation '${invitation}'\n\n# Linux\n./127vaults-install --invitation '${invitation}'`;
+  }
+}
 function showLicense(record) {
+  showInstaller(record);
   const upgrading = Boolean(record.upgradeOfferedAt && record.installationId && !record.replacementCount && !record.replacementRequest);
   $('trial-upgrade').hidden = !upgrading;
   $('trial-prepare').hidden = Boolean(record.installationId);

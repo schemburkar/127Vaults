@@ -87,6 +87,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     const trialMailer = emailConfigured ? createCloudflareTrialMailer({ accountId: env.PUBLIC_TRIAL_CF_ACCOUNT_ID,
       apiToken: (await readFile(env.PUBLIC_TRIAL_CF_API_TOKEN_FILE, 'utf8')).trim(), from: env.PUBLIC_TRIAL_EMAIL_FROM }) : null;
     trials = createTrialHandler({ origin: env.PUBLIC_INTAKE_ORIGIN, key,
+      minimumInstallerVersion: env.INSTALLER_MIN_VERSION ?? '0.1.0',
       mailer: trialMailer,
       dataFile: env.PUBLIC_INTAKE_DATA_FILE, dataDir: env.PUBLIC_TRIAL_DATA_DIR,
       operatorToken: (await readFile(env.PUBLIC_TRIAL_OPERATOR_TOKEN_FILE, 'utf8')).trim(),

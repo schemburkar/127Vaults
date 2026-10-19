@@ -11,7 +11,7 @@ export async function fileHash(path) {
 }
 export async function verifyRelease(directory) {
   const manifest = JSON.parse(await readFile(resolve(directory, 'release.json'), 'utf8'));
-  if (manifest.schemaVersion !== 1 || manifest.status !== 'complete' || !['desktop', 'cli', 'extension', 'server'].includes(manifest.product)
+  if (manifest.schemaVersion !== 1 || manifest.status !== 'complete' || !['desktop', 'cli', 'extension', 'server', 'installer'].includes(manifest.product)
     || manifest.channel !== 'private-test' || manifest.signed !== false || !/^[a-f0-9]{40,64}$/.test(manifest.sourceRevision)
     || !/^[a-f0-9]{64}$/.test(manifest.inputFingerprint) || !Array.isArray(manifest.files) || !manifest.files.length) throw Error('Invalid release manifest.');
   const names = new Set();
