@@ -17,8 +17,8 @@ No future AGPLv3 conversion is promised. Any conversion requires a separate
 express grant identifying the version and effective date. If a version converts to AGPL, compliant use cannot require payment.
 A Commercial agreement remains an alternative.
 
-Retain private development history. Publish only a reviewed source export with
-the adopted license in its initial public commit. Preserve existing grants.
+Publish only reviewed source and history. The existing main history may be
+retained; a fresh source-only history is optional. Preserve existing grants.
 
-See [LICENSE-POLICY.md](../../LICENSE-POLICY.md), [LICENSE.md](../../LICENSE.md),
+See [LICENSE.md](../../LICENSE.md)
 and [COMMERCIAL-LICENSE.md](../../COMMERCIAL-LICENSE.md).

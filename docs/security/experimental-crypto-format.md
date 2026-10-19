@@ -264,7 +264,7 @@ public parse errors or zeroization after an allocator abort.
 ## Deferred deterministic vectors and acceptance evidence
 
 Do not create a self-generated round trip and call it independent cryptographic
-validation. Automated vectors remain deferred by current project instruction;
+validation. This historical specification does not establish current automated vector coverage;
 before stable/beta use add frozen native/WASM expected-hex vectors with reviewed
 primitive reference outputs. Each vector records P bytes, A/S/R/V/N, every C/H
 byte, D and intermediate PR/PV/PC/K, AAD, ciphertext/tag and expected error.

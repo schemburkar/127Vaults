@@ -1,5 +1,7 @@
 # CLI offline replica decision
 
+> The incremental plan below records implementation sequencing. Encrypted offline replicas and signed synchronization now exist; see the [CLI guide](../product/cli-mvp.md) for current commands and limitations.
+
 Status: **accepted for incremental implementation**
 
 This decision specializes accepted ADR-0018 for the CLI. It is deliberately

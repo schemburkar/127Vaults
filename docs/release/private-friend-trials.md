@@ -1,7 +1,7 @@
 # Private unpaid friend trials
 
-The request-to-trial workflow is implemented locally. Hosting, the real domain,
-approved package selection and delivery of an actual email are operator steps.
+The request-to-trial workflow supports both the Node service and Cloudflare Worker.
+Deployment, approved package selection and email delivery remain operator steps.
 Nothing in this workflow collects payment, creates a subscription, or creates a
 vault account. Keep this first cut private and use fictitious vault data.
 
@@ -141,7 +141,7 @@ Create an external catalogue input JSON, selecting complete release directories:
 ```json
 {
   "issuerKeyId": "trial",
-  "requiredFeatureRevision": "8d95a85229c65991f3e45b4c53a22f58f0120375",
+  "requiredFeatureRevision": "REPLACE_WITH_REVIEWED_COMMIT_SHA",
   "releaseDirectories": [
     "C:/Projects/127Vaults-Releases/server/friend-trial-1/linux-amd64",
     "C:/Projects/127Vaults-Releases/desktop/friend-trial-1/windows",
@@ -163,9 +163,10 @@ For a Linux hosting machine, copy the approved immutable release directories
 there, update catalogue paths to their absolute host paths, and leave all
 other metadata/hashes unchanged. The API rechecks hashes at startup and download.
 The catalogue is operator-controlled configuration, not uploaded by a requester.
-Do not replace bytes in place. Existing invitations pin their catalogue identity
-and refuse a changed release. Preserve that release/service during its trial
-window; a rolling catalogue migration is not implemented by link rotation.
+Do not replace immutable package bytes in place. The Node/filesystem backend
+pins invitations to a catalogue identity. The Cloudflare Worker selects compatible
+catalogues by server major; see [version-scoped downloads](version-scoped-downloads.md).
+Preserve each backend's entitlement, issuer and expiry checks when updating releases.
 
 ## Host the site and API
 

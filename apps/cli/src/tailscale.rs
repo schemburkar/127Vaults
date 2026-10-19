@@ -112,10 +112,10 @@ pub fn discover() -> Result<Vec<Peer>, String> {
 mod tests {
     #[test]
     fn filters_public_and_offline_nodes_and_keeps_exact_peer_addresses() {
-        let peers=super::peers_from_status(br#"{"BackendState":"Running","Self":{"Online":true,"HostName":"local","TailscaleIPs":["100.65.72.10"]},"Peer":{"a":{"Online":true,"DNSName":"sunrise.example.ts.net.","TailscaleIPs":["100.99.146.58"]},"b":{"Online":true,"HostName":"public","TailscaleIPs":["8.8.8.8"]},"c":{"Online":false,"HostName":"offline","TailscaleIPs":["100.64.0.2"]}}}"#).unwrap();
+        let peers=super::peers_from_status(br#"{"BackendState":"Running","Self":{"Online":true,"HostName":"local","TailscaleIPs":["100.65.72.10"]},"Peer":{"a":{"Online":true,"DNSName":"peer.example.ts.net.","TailscaleIPs":["100.64.0.10"]},"b":{"Online":true,"HostName":"public","TailscaleIPs":["8.8.8.8"]},"c":{"Online":false,"HostName":"offline","TailscaleIPs":["100.64.0.2"]}}}"#).unwrap();
         assert_eq!(peers.len(), 2);
-        assert_eq!(peers[1].name, "sunrise.example.ts.net");
-        assert_eq!(peers[1].address, "100.99.146.58");
+        assert_eq!(peers[1].name, "peer.example.ts.net");
+        assert_eq!(peers[1].address, "100.64.0.10");
         assert!(super::peers_from_status(br#"{"BackendState":"Stopped"}"#).is_err());
     }
 }

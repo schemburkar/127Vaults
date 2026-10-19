@@ -1,5 +1,7 @@
 # Experimental login item and session components
 
+> This page describes the isolated model/session primitives, not the full current client. The integrated clients now encrypt, persist and synchronize data; see [implementation map](../architecture/implementation-interfaces.md) and [PWA behavior](../product/pwa.md).
+
 `packages/domain/src/login-item.mjs` contains a client-only plaintext model for
 title, username, password, URLs, and custom fields. Do not send this object to the
 server. It has no wire-format or cryptographic-format status, persistence, or
@@ -16,13 +18,13 @@ Concealed fields are a display hint, not separate protection.
 
 `createLoginIndex` returns only title and deduplicated URL hostnames. This is
 client display metadata, not public server data or an autofill matching policy.
-It currently starts from plaintext; the future crypto layer must encrypt the
-index independently so listing items does not decrypt their bodies.
+The helper starts from plaintext; integrated clients encrypt the index
+independently so listing items does not require decrypting their bodies.
 
 `apps/web/src/login-session.mjs` stores at most one current plaintext item. It
 starts locked. The integration must finish reviewed key unlock/authentication
 before calling `beginAfterUnlock`; that method is deliberately not a password
-check. There is no usable authentication flow yet.
+check. Authentication is supplied by the integrated client, not this helper.
 
 The session locks after 30 minutes without explicit user activity, at timer
 execution or the next read/status/activity check. Delayed browser timers cannot
@@ -36,9 +38,9 @@ caller retain a reference. Client integration must clear rendered UI, closures,
 clipboard handlers, and Rust key handles on lock. This component presently holds
 no vault keys. Batch 2 wires its synchronous `onLock` callback to a disposable
 Rust fixture store and clears the demo on page exit; see the browser runbook.
-Real key destruction, installed-client OS-lock signals and vault UI integration
-remain pending. A web page
-cannot promise reliable OS-lock detection. No decrypted local storage is added.
+The integrated clients must clear keys and rendered vault data on lock; this
+helper alone does not establish that wider guarantee. A web page cannot promise
+reliable OS-lock detection. No decrypted local storage is added by this helper.
 
 ## Verification — 2026-09-06
 

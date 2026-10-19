@@ -1,5 +1,7 @@
 # wasm-bindgen toolchain upgrade review
 
+> Historical upgrade review. Use the exact versions in the current manifests, lockfile and build helper; do not treat the dated upstream release observations below as current recommendations.
+
 Reviewed 2026-09-07. This is a documentation-only recommendation. No package,
 CLI, lockfile, generated binding, or implementation change was made.
 

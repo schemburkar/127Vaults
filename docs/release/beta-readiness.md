@@ -1,6 +1,6 @@
 # Release readiness
 
-Updated 2026-10-05. The [product work index](../product/README.md) links the only live backlogs and active waves for web, browser extension, CLI, desktop, and server. This page defines the release decision; it is not another task list.
+Reviewed 2026-10-18. The [product work index](../product/README.md) links the only live component backlogs for web, browser extension, CLI, desktop, and server. This page defines the release decision; it is not another task list.
 
 ## Current decision
 
@@ -11,7 +11,7 @@ records implemented management writes, schema-7 recovery and native backend
 checks, with the installed-extension/GUI/human acceptance still open. This
 internal decision does not waive the supported-release or real-secret gates.
 
-The narrow fictitious-data server and browser flow are an **internal experimental MVP**. The offline server bundle is an operator-led test distribution. There is no supported first release or public beta for real credentials yet. The [server backlog](../product/server-backlog.md) records each remaining server acceptance condition, and the [selected real-data pilot gate](selected-real-data-pilot.md) governs any user-selected live credential.
+The fictitious-data server, browser/PWA and installed-client flows remain an **internal experimental release**. The offline server bundle is an operator-led test distribution. There is no supported first release or public beta for real credentials yet. The [server backlog](../product/server-backlog.md) records each remaining server acceptance condition, and the [selected real-data pilot gate](selected-real-data-pilot.md) governs any user-selected live credential.
 
 ## First supported release gate
 

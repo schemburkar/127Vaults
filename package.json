@@ -26,7 +26,6 @@
     "mvp:reset": "node scripts/mvp-acceptance.mjs reset",
     "mvp:assets": "node scripts/browser-assets-smoke.mjs",
     "mvp:stop": "node scripts/mvp-acceptance.mjs stop",
-    "ux:prototype": "node apps/ux-prototype/server.mjs",
     "tls:init": "node server.mjs tls init",
     "tls:renew": "node server.mjs tls renew",
     "check:contracts": "tsc -p tsconfig.contracts.json",

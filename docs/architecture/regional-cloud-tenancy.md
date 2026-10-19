@@ -1,6 +1,6 @@
 # Regional shared Cloud tenancy
 
-Status: architecture decision and implementation contract; Cloud is not implemented or approved for launch.
+Status: architecture decision and implementation contract; an isolated internal Cloud scaffold exists, but the customer service is not complete or approved for launch.
 
 First deployment decision (2026-10-06): use one shared Cloud deployment. The internal database location key is `global`; users do not choose a region, and no Asia/Europe infrastructure or region discovery is required for this cut. The key remains internal so a future move to multiple locations can be a reviewed migration. `global` makes no data-residency claim. Each Cloud tenant may contain multiple accounts. Account IDs, usernames, and email uniqueness are tenant-scoped, so one email may be enrolled independently in two tenants; a global person identity is deferred.
 

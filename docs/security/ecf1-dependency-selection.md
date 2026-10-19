@@ -1,5 +1,7 @@
 # ECF1 exact dependency selection (Batch 3C0)
 
+> Dated selection rationale. The reviewed composition remains subject to the stated limitations; current manifests and lockfiles determine the installed versions. This is not a current dependency/advisory scan.
+
 Reviewed 2026-09-07 against the actual downloaded registry sources. Documentation
 only. Read Batch 3A, ECF1, key hierarchy, manifests/lock, backlog, working tree and
 the wasm toolchain review. Workspace code, manifests and locks were not changed.

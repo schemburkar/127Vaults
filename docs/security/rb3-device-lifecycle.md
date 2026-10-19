@@ -3,9 +3,9 @@
 Status: implementation candidate; **not approved for real secrets**.
 
 The isolated `@127vaults/device-lifecycle` package implements the authorization
-state machine required by ADR-0003, ADR-0009, ADR-0014, and ADR-0015. It does not
-change the live schema, volume, HTTP API, web client, sync implementation, or
-cryptographic format registry.
+state machine required by ADR-0003, ADR-0009, ADR-0014, and ADR-0015. The state machine is also integrated with the server's PostgreSQL
+lifecycle adapter and authenticated routes. It does not establish completion of
+the separate lost-last-device recovery ceremony or platform attestation.
 
 ## Implemented boundary
 
@@ -37,10 +37,11 @@ transactional storage. They are not caller-controlled booleans in a transport AP
 Likewise, `protection.class`/`verified` records an upstream platform-attestation
 result only. This package neither performs attestation nor claims hardware backing.
 
-Before integration, add the reviewed RB2/RB3 migration, PostgreSQL transactions
-and uniqueness constraints, authorization handlers, security notifications and
-audit records, recovery-policy/envelope rotation, server-clock rollback defenses,
-and crash/interruption tests. The live database is intentionally unchanged.
+PostgreSQL lifecycle transactions and authenticated enrollment/revocation/rotation
+routes are implemented. Recovery begin/cancel/complete is not mounted: it requires
+a reviewed purpose-bound recovery principal, transactional consumption, policy and
+envelope rotation, notifications and interruption acceptance. Do not expose the
+state-machine proof flags as caller-controlled HTTP input.
 
 ## Evidence
 

@@ -2,8 +2,9 @@
 
 Build native packages locally without GitHub or a registry. Version 0.1.0 is a
 private test build, unsigned, for supervised tests with fictitious data. The
-public release catalogue stays empty until signed releases and release license
-terms are ready. LICENSE-POLICY.md records the policy, not a release license.
+public release catalogue stays empty until public-release gates are complete.
+LICENSE.md and COMMERCIAL-LICENSE.md are the adopted terms and accompany new
+packages. Testing still requires applicable written authorization.
 
 ## Build
 

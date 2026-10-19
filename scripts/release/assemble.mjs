@@ -2,7 +2,7 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { archive, outputDirectory, sha256, writeManifest } from './package.mjs';
+import { archive, licenseFiles, outputDirectory, sha256, writeManifest } from './package.mjs';
 import { verifyPackages } from './verify.mjs';
 
 export async function assemble(output, inputs, zip = false) {
@@ -12,8 +12,11 @@ export async function assemble(output, inputs, zip = false) {
   if (revisions.size !== 1) throw Error('All packages must come from the same source revision.');
   const seen = new Map();
   for (const { directory, manifest } of sources) {
+    for (const license of licenseFiles) {
+      if (!manifest.files.some(file => file.name === license)) throw Error(`Package is missing adopted agreement: ${license}`);
+    }
     for (const file of manifest.files) {
-      if (['README.md', 'LICENSE-POLICY.md', 'verify.mjs'].includes(file.name)) continue;
+      if (['README.md', 'verify.mjs'].includes(file.name)) continue;
       if (seen.has(file.name) && seen.get(file.name).file.sha256 !== file.sha256) throw Error(`Conflicting artifact: ${file.name}`);
       seen.set(file.name, { directory, file });
     }
@@ -23,7 +26,7 @@ export async function assemble(output, inputs, zip = false) {
   for (const { directory, file } of seen.values()) await copyFile(join(directory, file.name), join(output, file.name));
   const root = resolve(import.meta.dirname, '../..');
   for (const [source, target] of [['docs/release/local-packaging.md', 'README.md'], ['docs/release/client-install.md', 'CLIENT-INSTALL.md'],
-    ['docs/release/extension-install.md', 'EXTENSION-INSTALL.md'], ['LICENSE-POLICY.md', 'LICENSE-POLICY.md'],
+    ['docs/release/extension-install.md', 'EXTENSION-INSTALL.md'],
     ['scripts/release/verify.mjs', 'verify.mjs']]) await copyFile(join(root, source), join(output, target));
   await writeFile(join(output, 'builds.json'), JSON.stringify(sources.map(({ manifest }) => manifest), null, 2) + '\n');
   const components = [...new Set(sources.flatMap(source => source.manifest.components.map(component =>

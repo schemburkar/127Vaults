@@ -21,7 +21,8 @@ async function fixture() {
     'apps/extension/src/types.d.mts': 'export const snapshotValue: string;\n',
     'apps/extension/test/snapshot.test.mjs': 'import test from "node:test"; import assert from "node:assert/strict"; import {snapshotValue} from "../src/background.mjs"; test("snapshot", () => assert.equal(snapshotValue,"committed"));\n',
     'docs/release/extension-install.md': 'Install the test extension.\n',
-    'LICENSE-POLICY.md': 'Fixture policy, not a license grant.\n',
+    'LICENSE.md': 'Fixture source terms.\n',
+    'COMMERCIAL-LICENSE.md': 'Fixture commercial terms.\n',
     'unrelated.txt': 'one\n',
   };
   for (const [name, contents] of Object.entries(files)) {
@@ -103,7 +104,8 @@ test('shared dependency changes invalidate the products that consume them', asyn
       ['apps/extension/src/passkeys.mjs', ['desktop', 'extension', 'server']],
       ['apps/extension/popup.html', ['extension']],
       ['apps/web/src/app.tsx', ['server']],
-      ['LICENSE-POLICY.md', products],
+      ['LICENSE.md', products],
+      ['COMMERCIAL-LICENSE.md', products],
     ]) {
       const before = await fingerprints();
       await mkdir(join(item.repository, path, '..'), { recursive: true });
@@ -126,11 +128,15 @@ test('real extension release freezes committed source, reuses unchanged inputs a
     const first = await verifyRelease(firstPath);
     assert.equal(first.sourceDirty, false);
     assert.equal(first.reused, false);
+    assert.equal((await readFile(join(firstPath, 'LICENSE.md'), 'utf8')).replace(/\r\n/g, '\n'), 'Fixture source terms.\n');
+    assert.equal((await readFile(join(firstPath, 'COMMERCIAL-LICENSE.md'), 'utf8')).replace(/\r\n/g, '\n'), 'Fixture commercial terms.\n');
     assert.equal(first.packageVersion, '0.2.0');
     const archive = first.files.find(file => file.name.endsWith('.zip'));
     const names = await execute('tar', ['-tf', join(firstPath, archive.name)], { capture: true, quiet: true });
     assert.equal(names.includes('types.d.mts'), false);
     assert.equal(names.includes('/test/'), false);
+    assert.ok(names.includes('/LICENSE.md'));
+    assert.ok(names.includes('/COMMERCIAL-LICENSE.md'));
     const extract = join(item.directory, 'extract'); await mkdir(extract);
     await execute('tar', ['-xf', join(firstPath, archive.name), '-C', extract], { quiet: true });
     assert.match(await readFile(join(extract, '127vaults-extension/src/background.mjs'), 'utf8'), /committed/);

@@ -1,7 +1,7 @@
 # Web design system
 
 The web MVP uses React, TypeScript, Vite, Tailwind CSS, Radix primitives, and
-shadcn-style components owned in `apps/web/src/components/ui`. It is a static SPA
+shared UI primitives in `packages/ui` and web-specific components in `apps/web/src`. It is a static SPA
 served from the same HTTPS origin as the API. Server rendering is intentionally
 excluded because decrypted vault state exists only in the browser.
 
@@ -21,8 +21,8 @@ excluded because decrypted vault state exists only in the browser.
 ## Migration boundary
 
 During parity migration, React owns and renders the production component tree,
-then starts the reviewed imperative behavior adapter. The original HTML is
-available only at `/legacy` for regression comparison. This preserves authentication,
+then starts the reviewed imperative behavior adapter. Historical fixture HTML is not the current product entry point. This preserves authentication,
 Rust/WASM cryptography, vault CRUD, custom fields, device enrollment, and lock
 behavior while screens are moved incrementally into React hooks and components.
-The behavior adapter is temporary and must not receive new features.
+The behavior adapter remains part of the current implementation; preserve its
+authentication, encrypted-state and lock boundaries when changing it.

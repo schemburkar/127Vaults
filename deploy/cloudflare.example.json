@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "accountId": "REPLACE_WITH_32_CHARACTER_ACCOUNT_ID",
-  "origin": "https://127vaults.com",
+  "origin": "https://vaults.example.com",
   "workerName": "127vaults-access",
   "databaseName": "127vaults-access",
   "bucketName": "127vaults-private-trials",
-  "releaseId": "friend-trial-20261016-a",
+  "releaseId": "internal-release-1",
   "catalogueFile": "./catalogue.json",
   "secretsDirectory": "./secrets",
   "stateDirectory": "./state",

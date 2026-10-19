@@ -8,7 +8,7 @@ export const products = ['desktop', 'cli', 'extension', 'server'];
 const rust = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'crates/crypto', 'crates/protocol',
   'crates/browser-fixture/Cargo.toml', 'apps/desktop/src-tauri/Cargo.toml', 'apps/cli'];
 const node = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
-const policy = ['LICENSE-POLICY.md'];
+const policy = ['LICENSE.md', 'COMMERCIAL-LICENSE.md'];
 export const productInputs = {
   desktop: [...rust, ...node, ...policy, 'apps/desktop', 'packages/ui', 'apps/extension/src/passkeys.mjs',
     'apps/extension/src/passkeys.d.mts', 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/client-install.md'],

@@ -1,6 +1,6 @@
 # Browser extension backlog
 
-Updated 2026-10-13. Chrome/Edge extension scope is an **offline-capable, read-only password autofill connector** with an opt-in experimental website passkey provider. It can use web, desktop or CLI; offline fill requires a hydrated installed desktop/CLI replica. It is experimental and not a supported release. See [Batch 13](implementation-batches.md#batch-13--browser-extension), the [offline-client decision](../adr/0018-offline-replicas-causal-sync-and-server-topology.md), the [locking decision](../adr/0019-client-locking-and-secret-exposure.md), the [connector run guide](../../apps/extension/README.md), and the [public extension walkthrough](../../public-website/index.html#extension).
+Updated 2026-10-13. Chrome/Edge extension scope is an **offline-capable, read-only password autofill connector** with an opt-in experimental website passkey provider. It can use web, desktop or CLI; offline fill requires a hydrated installed desktop/CLI replica. It is experimental and not a supported release. See the [offline-client decision](../adr/0018-offline-replicas-causal-sync-and-server-topology.md), the [locking decision](../adr/0019-client-locking-and-secret-exposure.md), the [connector run guide](../../apps/extension/README.md), and the [public extension walkthrough](../../public-website/index.html#extension).
 
 | ID | State | Priority | Outcome and acceptance |
 | --- | --- | --- | --- |

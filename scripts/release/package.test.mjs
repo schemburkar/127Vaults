@@ -24,7 +24,7 @@ test('extension handoff excludes tests and developer installers; manifest detect
   const directory = await mkdtemp(join(tmpdir(), '127vaults-package-'));
   try {
     await packageExtension(directory);
-    assert.deepEqual((await readdir(join(directory, '127vaults-extension'))).sort(), ['README.md', 'manifest.json', 'popup.html', 'src']);
+    assert.deepEqual((await readdir(join(directory, '127vaults-extension'))).sort(), ['COMMERCIAL-LICENSE.md', 'LICENSE.md', 'README.md', 'manifest.json', 'popup.html', 'src']);
     const extension = JSON.parse(await readFile(join(directory, '127vaults-extension/manifest.json'), 'utf8'));
     assert.equal(extension.manifest_version, 3);
     await writeManifest(directory, ['extension']);
@@ -51,10 +51,16 @@ test('assembler collects verified artifacts in a ZIP and refuses mixed revisions
     await mkdir(first); await mkdir(second);
     await writeFile(join(first, 'client.zip'), 'client');
     await writeFile(join(second, 'server.tar'), 'server');
+    for (const dir of [first, second]) {
+      await writeFile(join(dir, 'LICENSE.md'), 'source terms from build');
+      await writeFile(join(dir, 'COMMERCIAL-LICENSE.md'), 'commercial terms from build');
+    }
     await writeManifest(first, ['desktop']); await writeManifest(second, ['server']);
     const output = join(directory, 'combined');
     await assemble(output, [first, second], true);
     assert.equal((await verifyPackages(output)).files.some(file => file.name === 'client.zip'), true);
+    assert.equal(await readFile(join(output, 'LICENSE.md'), 'utf8'), 'source terms from build');
+    assert.equal(await readFile(join(output, 'COMMERCIAL-LICENSE.md'), 'utf8'), 'commercial terms from build');
     assert.match(await readFile(`${output}.zip.sha256`, 'utf8'), /^[a-f0-9]{64}  combined.zip\n$/);
     const path = join(second, 'manifest.json');
     const manifest = JSON.parse(await readFile(path, 'utf8'));

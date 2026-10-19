@@ -12,8 +12,9 @@ properties are design goals, not claims about the current experimental build.
 The local fictitious-data internal release is accepted across server, web/PWA,
 Desktop, CLI, extension, admin console and public site under the functionality-first
 criterion. See the current decision and checks (internal record retained outside Git).
-Individual encrypted-item deletion is included in source; older server/Desktop
-installers predate it and their rebuild remains deferred.
+Current source includes encrypted-item deletion and guarded server upgrades.
+Verify the selected package manifest and release checks before making claims about
+a particular installed version.
 
 The fictitious-data internal MVP now has private HTTPS, OPAQUE authentication,
 owner/invited-user onboarding, and encrypted PostgreSQL vault create/list/read/
@@ -22,7 +23,7 @@ treat it as public-beta or stable-format approval.
 
 Current work and release documents:
 
-- [Four component backlogs and active waves](docs/product/README.md)
+- [Component backlogs](docs/product/README.md)
 - [Installed PWA, offline use, and mobile validation](docs/product/pwa.md)
 - [API v1 protocol and CLI naming](docs/architecture/api-v1-contract.md)
 - [Beta-readiness gates](docs/release/beta-readiness.md)
@@ -195,4 +196,6 @@ authorization. No future AGPL conversion is promised.
 
 Both version 1.0 agreements were adopted on 2026-10-18; further legal review is
 planned. Adoption does not open customer signups or approve a public release.
-See [LICENSE-POLICY.md](LICENSE-POLICY.md) for publication and contribution policy.
+Outside contributions require separately agreed written licensing rights; the
+commercial agreement is not a contributor license agreement. See the
+[repository content policy](docs/release/repository-content-policy.md).

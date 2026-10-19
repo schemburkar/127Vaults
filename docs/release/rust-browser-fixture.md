@@ -27,7 +27,7 @@ change `.env`, or interact with the development helper being hardened separately
 Stop the preview with Ctrl+C. Rebuild with `pnpm fixture:build`; use
 `pnpm fixture:serve` when the generated assets already exist.
 
-On this Windows host, Rust executables are under `C:\Users\shubh\.cargo\bin`.
+On Windows, Rust executables are normally under `%USERPROFILE%\.cargo\bin`.
 The build helper discovers that directory and the workspace-local binding tool.
 The package and CLI versions must match; the helper rejects a different CLI.
 Generated files in `apps/web/wasm` are ignored and must be regenerated after Rust

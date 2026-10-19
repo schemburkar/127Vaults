@@ -1,24 +1,27 @@
 # Product work index
 
-Current local internal-release decision (2026-10-16): accepted for local code and basic functional checks (internal record retained outside Git). The wider backlog acceptance conditions below remain open for supported/public release; they do not override the current functionality-first internal cut.
+The project is in internal testing with fictitious data. Windows/Linux server,
+web/PWA, desktop, CLI, extension and admin-management paths are implemented to
+varying degrees; wider platform and security acceptance remains open. Source or
+license publication is not a supported-release decision.
 
-Current internal cut (2026-10-12): Windows and Linux are required across desktop
-and CLI; server, web/PWA, extension and admin management writes are selected.
-See candidate evidence and open acceptance (internal record retained outside Git).
+These six component backlogs track current work. Each row has an ID, state,
+priority and acceptance condition; record evidence before marking a row Done.
+Older task prompts and dated in-progress summaries are archived privately rather
+than maintained as competing queues. The [priority review](backlog-priorities.md)
+records the intended cut; [release readiness](../release/beta-readiness.md) defines
+whether the product may ship.
 
-Updated 2026-10-06. The six component backlogs below are the only live task lists. Each row has a stable ID, a state, a priority, and an acceptance condition. Change a row to **Done** only after its acceptance is recorded in the same backlog. A component's `in-progress.md` contains only the current wave, its owner, next action, and verification. Delete that file when the wave is complete; start a new one only when work starts. Evidence reports, ADRs, protocols, and runbooks remain reference material, not competing task lists. The [priority review](backlog-priorities.md) sets the current MVP cut and execution order.
+| Component | Backlog |
+| --- | --- |
+| Public site | [Public site](public-site-backlog.md) |
+| Web | [Web](web-backlog.md) |
+| Browser extension | [Extension](extension-backlog.md) |
+| CLI | [CLI](cli-backlog.md) |
+| Desktop | [Desktop](desktop-backlog.md) |
+| Server | [Server](server-backlog.md) |
 
-Audit verification on 2026-10-06: `pnpm check`, `pnpm test`, and `cargo test --workspace` passed on Windows. The root test command now includes the public website tests and release-catalogue validation. These are local checks; live browser, second-device, restore, deployment, and security acceptance remain open. See the cross-surface audit (internal record retained outside Git).
-
-| Component | Backlog | Active wave |
-| --- | --- | --- |
-| Public site | [public site backlog](public-site-backlog.md) | Waitlist and release-catalogue foundation |
-| Web | [web backlog](web-backlog.md) | [web in progress](web-in-progress.md) |
-| Browser extension | [extension backlog](extension-backlog.md) | [extension in progress](extension-in-progress.md) |
-| CLI | [CLI backlog](cli-backlog.md) | [CLI in progress](cli-in-progress.md) |
-| Desktop | [desktop backlog](desktop-backlog.md) | [desktop in progress](desktop-in-progress.md) |
-| Server | [server backlog](server-backlog.md) | [server in progress](server-in-progress.md) |
-
-The [release gate](../release/beta-readiness.md) defines whether the whole product may ship. The [API contract](../architecture/api-v1-contract.md) and [ADRs](../adr/README.md) define behavior. Older batch plans and work logs are historical context; do not update their checkboxes.
-
-The public website walkthroughs map to DESK-008, EXT-003/009, and CLI-011. The CLI walkthrough reflects today's JSON output; the optional table view is a backlog item, not a shipped feature.
+Behavior references include the [API contract](../architecture/api-v1-contract.md),
+[ADRs](../adr/README.md), [PWA behavior](pwa.md), and [CLI guide](cli-mvp.md).
+Narrow fixture or installed-client checks do not close wider acceptance gates.
+The CLI walkthrough uses JSON output; the optional table view remains backlog work.

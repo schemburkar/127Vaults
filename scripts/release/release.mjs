@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createPlan, git, hash } from './plan.mjs';
 import { execute, pnpm } from './process.mjs';
-import { packageCli, packageDesktop, packageExtension } from './package.mjs';
+import { copyLicenses, packageCli, packageDesktop, packageExtension } from './package.mjs';
 import { runMakeBundle } from '../ops/make-server-bundle.mjs';
 import { fileHash, verifyRelease } from './verify-release.mjs';
 
@@ -160,7 +160,7 @@ async function build(plan, platform, attempt) {
   }
   const documentation = { desktop: 'client-install', cli: 'cli-install', extension: 'extension-install', server: 'server-test-install' }[plan.product];
   await copyFile(join(source, `docs/release/${documentation}.md`), join(payload, 'README.md'));
-  await copyFile(join(source, 'LICENSE-POLICY.md'), join(payload, 'LICENSE-POLICY.md'));
+  await copyLicenses(source, payload);
   await copyFile(join(import.meta.dirname, 'verify-release.mjs'), join(payload, 'verify-release.mjs'));
   if (['desktop', 'cli'].includes(plan.product)) {
     const host = join(source, 'target/release', process.platform === 'win32' ? '127vaults-extension-host.exe' : '127vaults-extension-host');

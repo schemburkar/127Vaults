@@ -44,8 +44,9 @@ the database volume, credentials, and Podman VM. Failures are nonzero.
 
 When pnpm is unavailable, `node scripts/dev.mjs up|status|down` provides the
 same helper. On Windows, Podman is also discovered in its standard installation
-directory. A workspace-local `podman-compose` provider is preferred, followed
-by `podman compose`.
+directory. The development helper can use a workspace-local `podman-compose` provider.
+Packaged Windows installation prefers native Compose and does not require Python;
+see the server installation guide for its separate provider discovery.
 
 To install the currently tested workspace-local provider when Python is
 available:
@@ -71,9 +72,9 @@ configured private directory to the operator account.
 
 - `https://127.0.0.1:12780/health/live` is detail-free liveness.
 - `/health/ready` requires `Authorization: Bearer <VAULTS_READINESS_TOKEN>` and
-  verifies schema version 1 and its SQL checksum.
-- Empty-database initialization and provisional accounts are described in
-  [experimental account provisioning](experimental-accounts.md).
+  verifies the current schema version (8) and its SQL checksum.
+- Initialization, owner bootstrap, invitation activation and guarded migrations
+  are described in the [server runbook](server-test-install.md).
 
 The published server port is IPv4 loopback-only. PostgreSQL has no host port.
 The server runs as user `node` with a read-only root filesystem and limited
@@ -82,24 +83,20 @@ wildcard binds, public IPv4, arbitrary DNS names, and forwarded headers. Private
 LAN mode requires one identical literal RFC1918 endpoint/publication address and
 a certificate provisioned for it. Run `pnpm tls:renew -- <endpoint> <tls-dir>`
 before expiry; failure preserves the prior pair. Public certificates, custom
-domains, proxies, Tailscale, and Cloudflare are excluded.
+domains and arbitrary proxies are excluded. Packaged setup also supports verified
+Tailscale endpoints; see [private connectivity](../architecture/private-connectivity.md).
+Do not treat the development helper as proof of every packaged network mode.
 
 Do not use `down --volumes` during normal development. An incompatible database
 must be investigated; never delete it as an upgrade workaround.
 
 ## Unsupported diagnostic path
 
-Native execution is for bounded debugging only; it is not the supported v1
-deployment. Set `VAULTS_EXPERIMENTAL=1`, `DATABASE_URL`, and
-`VAULTS_READINESS_TOKEN`, then run:
-
-```sh
-pnpm --filter @127vaults/server start
-```
-
-It defaults to `127.0.0.1:12780`. Private IPv4 additionally requires
-`VAULTS_ACCESS_MODE=private-lan` and an explicit `VAULTS_BIND`. Do not present
-this path as a production installation option.
+Native server execution is for bounded debugging only. Runtime configuration
+requires secret files (including VAULTS_DATABASE_PASSWORD_FILE and
+VAULTS_READINESS_TOKEN_FILE), database host/user/name, TLS identity and the explicit
+experimental guard. A DATABASE_URL alone is not the current runtime contract.
+Use the container runbook; do not present a partial native command as an installer.
 
 ## Current limits
 
@@ -110,8 +107,8 @@ this path as a production installation option.
 - Readiness proves infrastructure and schema health, not account or vault safety.
 - Container tags are development inputs, not immutable release pins.
 
-The dated checks, exact outcomes, and remaining evidence gaps are maintained in
-the [development-helper verification matrix](dev-helper-verification.md).
+Dated development-helper evidence is retained privately. Re-run the current
+startup checks and relevant server tests when changing this workflow.
 
 ## Disposable encrypted item fixture
 
@@ -119,4 +116,4 @@ Run `pnpm fixture:build`, then `pnpm fixture:serve`, and open
 `http://localhost:12781/login-item`. Use only the prefilled fictitious values.
 The page stores one disposable ECF1 hierarchy and item envelope in browser storage;
 it has no account, server persistence, recovery, sharing, or stable format.
-Reproduction evidence is in [the Batch 4 record](disposable-login-item.md).
+Reproduction evidence is in [current documentation](../security/experimental-client-state.md).

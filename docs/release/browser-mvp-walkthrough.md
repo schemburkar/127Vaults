@@ -1,11 +1,14 @@
 # Browser MVP walkthrough
 
-Use only fictitious data. This build proves one online browser, one private
-vault, and encrypted login-item persistence. It is not ready for real secrets.
+Use only fictitious data. This walkthrough exercises basic browser onboarding
+and encrypted login-item persistence; it is not a complete feature inventory or
+real-secret approval. See [PWA behavior](../product/pwa.md) for installed offline use.
 
 ## Start fresh
 
-Run from a normal PowerShell window as your Windows user:
+For a disposable acceptance stack only, run from a normal PowerShell window.
+The reset command deletes its acceptance database; omit it when preserving an
+existing installation. Never use this walkthrough to reset customer data:
 
 ```powershell
 cd C:\Projects\127Vaults
@@ -36,7 +39,8 @@ local CA, open `https://127.0.0.1:12780`, and keep the bootstrap code.
 - A bootstrap code is single-use and expires. Run `pnpm mvp:browser` to inspect
   current state. Reset only when you intentionally want a new disposable owner.
 - **No enrolled device identity** means IndexedDB was cleared or another browser
-  profile/private window is in use. Recovery is outside this MVP.
+  profile/private window is in use. Enroll that new client and approve it from an
+  existing trusted device. Lost-last-device recovery is a separate open gate.
 - Do not bypass a certificate warning; trust the generated `127Vaults-local-CA`.
 - After source changes, run `pnpm mvp:start` and hard-refresh the page.
 - For a repeated failure, record the displayed stage, browser console error, and
@@ -53,5 +57,7 @@ local CA, open `https://127.0.0.1:12780`, and keep the bootstrap code.
 - Sanitized console/server error
 - Confusing wording, missing guidance, keyboard/focus, or accessibility issue
 
-Known exclusions: deletion, sharing, attachments, recovery, offline operation,
-multi-device sync, revocation, import, and production hardening.
+This walkthrough does not validate sharing, attachments, lost-last-device
+recovery, import or production hardening. Item deletion, multi-device sync and
+revocation have separate implemented paths; installed-PWA offline behavior needs
+its own acceptance checks.

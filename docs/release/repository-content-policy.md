@@ -1,46 +1,34 @@
 # Repository content policy
 
-Keep product source, build definitions, schemas, synthetic automated tests,
-reproducible acceptance harnesses, maintained guides, architectural decisions
-and licensing review documents in Git. Tests and build scripts are necessary
-to reproduce and review the product; their being internal does not make them
-machine data.
+Track product source, build definitions, dependency locks, schemas, shared
+packages, synthetic tests, maintained guides, architecture decisions and adopted
+license texts. The packages directory is application source, not downloaded
+packages; removing it breaks the workspace. Deployment example files contain
+placeholders and are safe configuration templates, not live credentials.
 
-Keep environment files, device profiles, certificates, logs, operator credentials,
-private invitations, downloaded binaries, build caches, deployment state and
-dated acceptance/checkpoint evidence outside the tracked source tree.
+Keep populated environment files, device profiles, certificates/private keys,
+operator credentials, invitations, logs, deployment state, downloaded binaries,
+build caches and dated operator evidence outside the tracked tree. Keep obsolete
+prototypes, agent task prompts and internal legal-review notes in a private archive.
+Never upload a whole working-directory ZIP as a source release.
 
-On this workstation, transient records are archived under
-`%USERPROFILE%\.127vaults-local\evidence`, preserving their former relative
-paths. Profiles are under the sibling `profiles` directory; ignored junctions
-preserve existing local paths. Deployment state and secrets are under `cloudflare`,
-also with an ignored compatibility junction. Logs are under `logs`. A local cleanup manifest
-records moved files and hashes. Existing `.env` and the active-profile pointer
-are ignored in place so local workflows keep working. Do not sync this private
-local directory or include it in repository exports.
+Historical acceptance harnesses may load archived records through
+VAULTS_LOCAL_EVIDENCE_ROOT (default: the operator's private local evidence folder).
+These optional workflows are separate from CI unit tests. Historical outcomes do
+not establish that the current revision passed installed acceptance.
 
-Historical acceptance harnesses resolve archived records using
-`VAULTS_LOCAL_EVIDENCE_ROOT`, defaulting to that local evidence directory.
-They are operator workflows, not required CI unit tests. Historical results are
-not a claim that the current revision passed installed acceptance.
+Deleting files at the tip leaves previous copies in Git history. Before public
+publication, review the selected branch's history and commit metadata as well as
+its current files. Push only reviewed refs; do not mirror local application
+checkpoints, stashes or private backup bundles. A reviewed existing main history
+can be retained; a new source-only history is optional, not a license requirement.
+Any history rewrite is a separate explicit operation.
 
-Removing a file from the current tree does not remove earlier copies from Git
-history. Before sharing this repository, sanitize `main` to remove historical
-environment files and machine-local profiles and audit reachable content. Keep
-nonsensitive evidence in history. A sanitized and audited `main` can be pushed
-to the intended private repository without starting a separate Git history.
+The canonical legal texts are [LICENSE.md](../../LICENSE.md) and
+[COMMERCIAL-LICENSE.md](../../COMMERCIAL-LICENSE.md). Further legal review and
+release acceptance remain separate gates. Outside contributions require sufficient
+written licensing rights; the commercial agreement is not a contributor agreement.
 
-Old branches, stashes, backup bundles and application checkpoint refs may still
-contain the original data. Keep those private; push only the reviewed `main`,
-not all refs or a mirror. Preserve artifact provenance and record mappings for
-commit IDs changed by sanitization.
-
-The local preparation tool also creates an optional source-only export without
-`.git` or local machine data, with a file inventory for review. Legal drafts
-remain clearly marked for private review and must be finalized before public
-release. Neither the tool nor pattern scanning proves the absence of every
-possible secret.
-
-Generated WASM bindings are intentionally absent from source-only exports. Install
-the locked prerequisites and run the fixture build before tests that load those
-bindings. Keep generated files out of Git.
+Generated WASM bindings are ignored. Install locked prerequisites and run the
+fixture build before tests requiring those bindings. Do not commit generated
+bindings, local secrets or build output to make a source checkout work.

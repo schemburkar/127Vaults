@@ -9,9 +9,11 @@ session; retain neither the account secret nor usable identity keys across locks
 or sessions. Make no hardware-protection claim. Batches 5B/8A/9 specify wrapping,
 session binding, approval and storage lifecycle before their respective use.
 
-Cleared storage requires the future enrollment/recovery path. Until delivered,
-explicitly reset the disposable fixture rather than bypassing device approval.
-Native software-backed key persistence remains deferred.
+Cleared browser storage requires new-device enrollment approved by an existing
+trusted device. Do not bypass approval or reset a populated server to enroll a
+client. Lost-last-device recovery remains a separate incomplete ceremony. Native
+clients use their platform credential protection; that does not make browser
+storage hardware-backed.
 
 ## Item decryption
 

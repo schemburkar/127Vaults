@@ -18,8 +18,9 @@ and vault admin remain on each tester's own host. No hosted vault offering is de
   deployment-pinned catalogues. No public custom domain or r2.dev access.
 - Worker secrets: contact/trial encryption master key, operator key and Ed25519
   trial issuer private key. Optional Cloudflare email API token.
-- Operator sign-in uses the existing strong bearer key held only in browser
-  memory. Every operator API route checks it. Cloudflare Access, Tunnel, VPS,
+- Operator sign-in exchanges the existing strong key for a one-hour HttpOnly,
+  Secure, SameSite=Strict session scoped to the operator API. Authenticated
+  release review reuses that session. Cloudflare Access, Tunnel, VPS,
   KV, Durable Objects and an additional CDN service are not required.
 
 The Node/filesystem service remains supported. The Worker is a separate target;
@@ -203,11 +204,11 @@ overwriting each other. A racing operation may return `state_changed` (409);
 refresh/retry explicitly. Repeating activation after success returns the existing
 license and expiry rather than renewing it.
 
-The operator bearer is never embedded in static assets, persisted by the browser
-or put in a URL. Sign-out clears it from page memory. For this first internal
-deployment there is one operator identity; per-person accounts, MFA and session
-cookies are not implemented. Cloudflare Access can be added later without changing
-the approval flow.
+The operator key is never embedded in static assets or URLs. Browser sign-in
+uses a one-hour HttpOnly, Secure, SameSite=Strict session cookie; sign-out clears
+the session. There is one operator identity; per-person accounts and MFA remain
+unimplemented. Operator release review uses the same session, not a separate
+reviewer key.
 
 ## Email and retention
 
@@ -226,15 +227,14 @@ records before cleanup runs. Scale this bounded cleanup before general launch.
 
 ## Costs and operational checks
 
-Target Workers Free plus D1 Free and R2 Standard free allowances. The selected
-installer set is about 0.95 GB. Free Workers have a 10 ms CPU limit per invocation:
-local functional tests and bundling do not prove deployed CPU headroom for crypto
-and signing. Inspect real invocation metrics during the first rehearsal. Free
-request/database quotas can refuse work when exhausted. No script automatically
-upgrades billing or promises a hard account-wide spending cap. R2 usage beyond its
-free allowances is metered; retain only the release history still needed.
+Review the current Workers, D1 and R2 quotas and pricing for the selected account
+before deployment. Measure the package set from its manifests. Local tests and
+bundling do not establish deployed CPU or storage headroom; inspect invocation
+metrics and usage during the rehearsal. Quota exhaustion can interrupt service.
+No script automatically upgrades billing or promises an account-wide spending
+cap. Retain supported releases according to the agreed retention policy.
 
-Current official references:
+Official references to check at deployment time:
 
 - [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
 - [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)

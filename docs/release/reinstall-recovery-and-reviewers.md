@@ -27,10 +27,8 @@ The existing operator key is the only request-desk credential. It authorizes req
 
 Retaining older major catalogues is not an operational requirement during internal major-0 trial testing. The current major-0 package set replaces previous experimental packages. Before public v1, establish supported-major catalogue retention and publication checks as described in `version-scoped-downloads.md`.
 
-## Initial deployment verification (superseded access model)
+## Verification
 
-Deployed on 2026-10-18 as Worker `be858786-3234-4ab2-8dfa-1957e96bbe5e` without changing the package catalogue. All 56 intake, Worker, website and publication tests passed. A live synthetic flow verified reviewer link redaction and download denial, owner package access, customer replacement request, cryptographically valid old-license revocation, owner-only issuance, and a valid replacement license preserving expiry and user limits. The synthetic contact was erased afterward; neither existing trial binding changed and no customer invitation was sent. The encrypted database was backed up before deployment. Reviewer credentials, backup and test receipts remain in protected local storage outside Git.
-
-## Operator-only correction
-
-On 2026-10-18, the separate reviewer role/key and inline release panel were removed at the user's request. Worker code deployment `e2f6a6d8-b7a0-407d-bd84-13c47eebc887` now uses only the existing operator key/session. **Review releases** opens the trial package page in authenticated operator-review mode. The retired reviewer secret was deleted from Cloudflare and local storage afterward. All 57 tests passed, and live checks confirmed session-based release metadata/download access, rejection of anonymous and retired-key access, navigation instead of inline content, and unchanged customer request records. Customer recovery/replacement behavior is unchanged.
+Run the relevant intake, Worker, website and publication tests before release.
+Deployment identifiers, contact records, backup locations and live acceptance
+receipts belong in private operator records, not this behavior guide.

@@ -2,8 +2,9 @@
 
 This package contains the desktop app, CLI and browser native host for its named
 OS/architecture. Use fictitious data for supervised testing. Binaries are unsigned;
-check the sender's SHA256SUMS. LICENSE-POLICY.md is the intended licensing policy,
-not a public release license. No automatic updater is enabled.
+check the sender's SHA256SUMS. LICENSE.md and COMMERCIAL-LICENSE.md contain the
+adopted terms; testing requires applicable written authorization. No automatic
+updater is enabled.
 
 Windows: install the accompanying setup EXE. If your handoff also includes a
 legacy portable client ZIP, extract it to a stable, user-owned directory and run `vaults-desktop-poc.exe`.

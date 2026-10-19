@@ -21,7 +21,8 @@ The design must specify:
 
 Every authorized offline-capable installed client keeps a complete encrypted
 replica of each vault it may access, together with its cursor and pending local
-operations. The online-only web client is not promised durable offline storage.
+operations. An ordinary browser tab remains online-only; an installed PWA can persist an
+encrypted replica and pending queue as described in [PWA behavior](../product/pwa.md).
 The server stores the encrypted repository, orders accepted operations, enforces
 authorization and key epochs, and distributes changes. It is authoritative for
 coordination, but never for plaintext.

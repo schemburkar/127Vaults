@@ -8,10 +8,10 @@ test('accepts exact loopback and private-LAN configurations', () => {
 });
 
 test('tailnet endpoint retains loopback publication and exact Host/Origin checks', () => {
-  const env = {VAULTS_ACCESS_MODE:'tailscale',VAULTS_BIND:'172.28.102.2',VAULTS_ENDPOINT_HOST:'100.99.146.58',VAULTS_PUBLISH_ADDRESS:'127.0.0.1'};
+  const env = {VAULTS_ACCESS_MODE:'tailscale',VAULTS_BIND:'172.28.102.2',VAULTS_ENDPOINT_HOST:'100.64.0.10',VAULTS_PUBLISH_ADDRESS:'127.0.0.1'};
   const config=transportConfig(env);
-  assert.equal(config.origin,'https://100.99.146.58:12780');
-  for (const changes of [{VAULTS_PUBLISH_ADDRESS:'100.99.146.58'},{VAULTS_ENDPOINT_HOST:'8.8.8.8'},
+  assert.equal(config.origin,'https://100.64.0.10:12780');
+  for (const changes of [{VAULTS_PUBLISH_ADDRESS:'100.64.0.10'},{VAULTS_ENDPOINT_HOST:'8.8.8.8'},
     {VAULTS_ENDPOINT_HOST:'100.128.0.1'},{VAULTS_ENDPOINT_HOST:'vault.example.com'}]) assert.throws(()=>transportConfig({...env,...changes}));
 });
 

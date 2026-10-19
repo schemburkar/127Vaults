@@ -12,6 +12,6 @@ Reinstallation and installation transfer policy are unchanged by this change. Ex
 
 ## Verification
 
-Deployed on 2026-10-18 as Worker version `9641b3f6-9371-4c78-8559-7d8b093bd283`, retaining the existing verified 0.0.4 package catalogue. Both existing approved invitations returned HTTP 200 and current-major metadata without rotation, with the original user limits and trial expiry dates. The intake/site/publication suite passed 53 tests; the final Worker boundary suite passed 18 tests, including the additional major-1 approval/rotation case.
-
-Fixed-recipient new-request alerts are enabled through the local deployment configuration. A synthetic request produced an `accepted` Cloudflare delivery state and its contact was erased afterward. This confirms provider acceptance, not inbox receipt. No customer invitation was sent. Recipient configuration and verification receipts remain outside Git.
+Run the relevant intake, Worker, website and publication tests before release.
+Deployment identifiers, contact records, backup locations and live acceptance
+receipts belong in private operator records, not this behavior guide.

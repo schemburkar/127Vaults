@@ -1,6 +1,8 @@
 # macOS preparation — release gated
 
-The user authorized all feasible local preparation on 2026-10-17. There is no accessible Mac, Apple Developer account or GitHub repository yet. Nothing here is evidence of a successful Mac build or consumer installation.
+macOS packaging and Keychain preparation exist, but Mac build, signing, notarization
+and consumer installation acceptance remain unverified. Configure an appropriate
+Mac runner and signing account before attempting a supported release.
 
 Prepared: Apple-native Keychain feature paths for device identities, agent capabilities and remembered account secrets; shared loopback connector protocol; Chrome/Chromium/Edge registration under `~/Library/Application Support`; native desktop DMG packaging with Intel/Apple Silicon artifact names and a planned macOS 13 minimum. Distribution fails closed without a Developer ID identity and notarization credentials. These changes do not add Safari or native macOS passkey-provider support.
 

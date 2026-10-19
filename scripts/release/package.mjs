@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(import.meta.dirname, '../..');
 export const version = '0.1.0';
+export const licenseFiles = ['LICENSE.md', 'COMMERCIAL-LICENSE.md'];
+export async function copyLicenses(source, destination) {
+  for (const name of licenseFiles) await copyFile(join(source, name), join(destination, name));
+}
 export function macSigningReady(env = process.env) {
   return Boolean(env.APPLE_SIGNING_IDENTITY && env.APPLE_SIGNING_IDENTITY !== '-' &&
     ((env.APPLE_ID && env.APPLE_PASSWORD && env.APPLE_TEAM_ID) || (env.APPLE_API_ISSUER && env.APPLE_API_KEY && env.APPLE_API_KEY_PATH)));
@@ -62,6 +66,7 @@ export async function packageExtension(output, options = {}) {
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   }
   await copyFile(join(sourceRoot, 'docs/release/extension-install.md'), join(directory, 'README.md'));
+  await copyLicenses(sourceRoot, directory);
   await archive(directory, join(output, `127vaults-extension-${packageVersion}.zip`), true);
 }
 export async function packageDesktop(output, options = {}) {
@@ -87,8 +92,8 @@ export async function packageDesktop(output, options = {}) {
     targets: windows ? ['nsis'] : mac ? ['dmg'] : ['deb', 'appimage'],
     ...(mac ? { macOS: { minimumSystemVersion: '13.0', hardenedRuntime: true } } : {}),
     externalBin: ['binaries/127vaults', 'binaries/127vaults-extension-host'],
-    resources: options.minimal ? { [`../../../apps/extension/install-native-host.${windows ? 'ps1' : 'sh'}`]: `install-native-host.${windows ? 'ps1' : 'sh'}` }
-      : { '../../../apps/extension/install-native-host.ps1': 'install-native-host.ps1', '../../../apps/extension/install-native-host.sh': 'install-native-host.sh' },
+    resources: { ...Object.fromEntries(licenseFiles.map(name => [`../../../${name}`, name])), ...(options.minimal ? { [`../../../apps/extension/install-native-host.${windows ? 'ps1' : 'sh'}`]: `install-native-host.${windows ? 'ps1' : 'sh'}` }
+      : { '../../../apps/extension/install-native-host.ps1': 'install-native-host.ps1', '../../../apps/extension/install-native-host.sh': 'install-native-host.sh' }) },
     ...(windows ? { windows: { nsis: { installMode: 'currentUser', installerHooks: join(sourceRoot, 'apps/desktop/src-tauri/installer-hooks.nsh') }, webviewInstallMode: { type: 'downloadBootstrapper', silent: true } } } : {})
   } }, null, 2));
   // Invoke the actual JS CLI, avoiding Windows .cmd shell interpolation of user paths.
@@ -104,7 +109,7 @@ export async function packageDesktop(output, options = {}) {
   }
   for (const name of ['install-native-host.ps1', 'install-native-host.sh']) await copyFile(join(sourceRoot, 'apps/extension', name), join(portable, name));
   await copyFile(join(sourceRoot, 'docs/release/client-install.md'), join(portable, 'README.md'));
-  await copyFile(join(sourceRoot, 'LICENSE-POLICY.md'), join(portable, 'LICENSE-POLICY.md'));
+  await copyLicenses(sourceRoot, portable);
   await archive(portable, `${portable}.${windows ? 'zip' : 'tar.gz'}`, windows);
   }
   for (const target of windows ? ['nsis'] : mac ? ['dmg'] : ['deb', 'appimage']) {
@@ -132,6 +137,7 @@ export async function packageCli(output, options = {}) {
   const registration = `install-native-host.${windows ? 'ps1' : 'sh'}`;
   await copyFile(join(sourceRoot, 'apps/extension', registration), join(directory, registration));
   await copyFile(join(sourceRoot, 'docs/release/cli-install.md'), join(directory, 'README.md'));
+  await copyLicenses(sourceRoot, directory);
   await archive(directory, `${directory}.${windows ? 'zip' : 'tar.gz'}`, windows);
 }
 export async function writeManifest(output, components) {
@@ -165,7 +171,7 @@ export async function main(args) {
     await run(process.execPath, ['server.mjs', 'bundle', join(output, `127vaults-server-${version}-linux-amd64`), ...(args.includes('--docker') ? ['--docker'] : [])]);
   }
   await copyFile(join(root, 'docs/release/local-packaging.md'), join(output, 'README.md'));
-  await copyFile(join(root, 'LICENSE-POLICY.md'), join(output, 'LICENSE-POLICY.md'));
+  await copyLicenses(root, output);
   await copyFile(join(root, 'scripts/release/verify.mjs'), join(output, 'verify.mjs'));
   await writeManifest(output, components);
   console.log(`Private test packages and SHA256SUMS: ${output}`);

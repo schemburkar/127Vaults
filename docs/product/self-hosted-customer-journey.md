@@ -34,4 +34,4 @@ Verify the local CA fingerprint and trust its certificate before opening the HTT
 
 ## Launch gate
 
-The waitlist is the only public entry point currently designed. No customer can complete the paid self-hosted pipeline today. Do not activate checkout, publish a download, or claim that a waitlist receipt creates an account until the matching release and entitlement lifecycle has passed the gates above. Keep experimental status distinct from production license enforcement.
+The public entry point collects access requests; approved internal trials have a separate private invitation and package-delivery flow. No customer can complete the paid self-hosted pipeline today. Do not activate checkout, publish a download, or claim that a waitlist receipt creates an account until the matching release and entitlement lifecycle has passed the gates above. Keep experimental status distinct from production license enforcement.

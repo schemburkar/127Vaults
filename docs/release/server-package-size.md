@@ -27,7 +27,7 @@ listeners. Raw results and build-only candidates remain outside Git.
 The server/web/installer release gates passed; six server tests requiring
 separately configured services were skipped and are not claimed as passed.
 Existing-host Podman testing does not establish clean-host Docker, physical
-Sunrise, complete OS-lock/trust/reboot or Mac acceptance.
+second-host, complete OS-lock/trust/reboot or Mac acceptance.
 
 The combined private website catalogue is live. All 37 R2 objects were verified
 against their SHA-256 values, endpoint checks passed, unauthenticated artifact

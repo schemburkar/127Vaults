@@ -1,5 +1,7 @@
 # Batch 3A: crypto dependency evidence
 
+> Dated dependency research retained for rationale and audit limitations. Versions and implementation statements below describe the review date; current manifests and lockfiles determine builds.
+
 Reviewed 2026-09-07. Documentation-only feasibility assessment; no dependency,
 algorithm parameter, format, or production approval is made here.
 

@@ -1,12 +1,13 @@
-# Pricing model (planning draft)
+# Pricing and plan summary
 
-Prices and entitlements in this document are product decisions, not an offer,
-quote, or contract until checkout and legal terms are approved. Taxes, currency
-localization, support terms, and the meaning of a service pause remain to be defined.
+Core prices are in US dollars and summarize the adopted
+[Commercial License Agreement](../../COMMERCIAL-LICENSE.md). The agreement and
+accepted order control; this summary does not create an order or open checkout.
+Taxes, support and any service-pause terms must be specified in the order.
 
 ## Core products
 
-| Product | Planned price | Billing/commitment | Hosting |
+| Product | Standard price | Billing/commitment | Hosting |
 |---|---:|---|---|
 | Personal self-hosted | $20/year | Annual production license | Customer |
 | Commercial self-hosted | $200/year | Annual billing; 5- or 10-year commitment | Customer |
@@ -22,12 +23,16 @@ The two-year commitment remains; a service pause is not early contract
 cancellation. Its billing and access effects need explicit contract terms.
 
 Commercial self-hosted customers receive software updates and major-version
-upgrades released during the active contract period. Final Personal major-version
-upgrade terms remain a product/legal decision.
+upgrades released during the active contract period. Personal covers the purchased
+major version; renewal does not require a major-version upgrade. Moving to another
+major version is optional and requires a separate license. Self-hosted plans allow
+additional users on request without a per-user license charge.
 
-An expired self-hosted license provides 30 days of read-only access, then locks
-vault access until a valid license is installed. Expiry never deletes encrypted
-data or key material. See ADR-0004.
+After self-hosted expiry, the agreement permits 30 calendar days of read/export
+solely for retrieval or renewal; operation afterward requires renewed permission.
+This is not a claim that every offline client technically locks. Expiry does not
+delete encrypted data or keys, and renewal cannot guarantee restoration or
+decryption. See [ADR-0004](../adr/0004-license-state-is-not-key-destruction.md).
 
 ## Hosted security-email relay
 
@@ -43,7 +48,7 @@ email content.
 | 127Vaults Cloud | Included | Subject to service anti-abuse limits |
 
 Relay pricing is provisional until delivery, bounce, support, fraud, and abuse
-costs are measured. Each tier has conservative code- and service-enforced limits;
+costs are measured. Any launched relay tier must have conservative code- and service-enforced limits;
 there is no bulk-email overage product. Exceeding a limit pauses relay delivery and
 alerts the operator rather than generating surprise usage charges.
 

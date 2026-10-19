@@ -56,4 +56,4 @@ Admin management writes have been implemented during this window. The contract i
 - Enabled license behavior must preserve reads and encrypted pending work. Production entitlement/clock/restore policy remains in SRV-017/018 and the supported-release gate.
 - Independent cryptographic/application review, real-secret approval, public signing/distribution and legal review cannot be replaced by local tests.
 
-The [2026-09-08 MVP plan](mvp-plan.md) and older batch plans are historical. Their online-only web and read-only-admin cut does not describe current installed-PWA and admin-write implementation. No broad backlog row is closed from a narrow acceptance pass.
+The archived 2026-09-08 MVP plan and older batch plans are historical. Their online-only web and read-only-admin cut does not describe current installed-PWA and admin-write implementation. No broad backlog row is closed from a narrow acceptance pass.
