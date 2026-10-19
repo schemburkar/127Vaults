@@ -6,18 +6,21 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('./trial.mjs', import.meta.url), 'utf8');
 const startup = source.slice(0, source.indexOf('const base ='));
 
-test('installer commands use only the authenticated invitation and remain hidden without an installer', () => {
+test('recommended installer commands keep invitation credentials out of operator review', () => {
   const renderer = source.slice(source.indexOf('function showInstaller'), source.indexOf('function showLicense'));
   for (const [review, artifacts, visible] of [[false, [{ product: 'installer', supporting: false }], true],
-    [true, [{ product: 'installer', supporting: false }], false], [false, [{ product: 'server' }], false],
+    [true, [{ product: 'installer', supporting: false }], true], [false, [{ product: 'server' }], false],
     [false, [{ product: 'installer', supporting: true }], false]]) {
-    const nodes = { 'trial-installer': { hidden: true }, 'trial-installer-command': { textContent: '' } };
+    const nodes = { 'trial-installer': { hidden: true }, 'trial-installer-command': { textContent: '' }, 'trial-installer-command-help': { textContent: '' } };
     const context = vm.createContext({ operatorReview: review, token: 'A'.repeat(43), match: [null, 'a'.repeat(64)],
       location: { origin: 'https://vaults.example' }, $: id => nodes[id], record: { artifacts } });
     vm.runInContext(`${renderer}\nshowInstaller(record);`, context);
     assert.equal(nodes['trial-installer'].hidden, !visible);
     if (visible) {
-      assert.ok(nodes['trial-installer-command'].textContent.includes(`https://vaults.example/trial.html#${'a'.repeat(64)}.${'A'.repeat(43)}`));
+      if (review) {
+        assert.ok(!nodes['trial-installer-command'].textContent.includes('A'.repeat(43)));
+        assert.ok(!nodes['trial-installer-command'].textContent.includes('--invitation'));
+      } else assert.ok(nodes['trial-installer-command'].textContent.includes(`https://vaults.example/trial.html#${'a'.repeat(64)}.${'A'.repeat(43)}`));
       assert.ok(nodes['trial-installer-command'].textContent.includes('.\\127vaults-install.exe'));
       assert.ok(nodes['trial-installer-command'].textContent.includes('./127vaults-install'));
     } else assert.equal(nodes['trial-installer-command'].textContent, '');

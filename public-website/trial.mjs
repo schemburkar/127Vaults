@@ -83,11 +83,17 @@ async function api(action = '', value) {
   return response;
 }
 function showInstaller(record) {
-  if (!operatorReview && token && record.artifacts?.some(asset => asset.product === 'installer' && !asset.supporting)) {
-    const invitation = `${location.origin}/trial.html#${match[1]}.${token}`;
-    $('trial-installer').hidden = false;
-    $('trial-installer-command').textContent = `# Windows (PowerShell)\n.\\127vaults-install.exe --invitation '${invitation}'\n\n# Linux\n./127vaults-install --invitation '${invitation}'`;
-  }
+  // Activation/replacement responses contain license state, without a catalogue.
+  if (!Array.isArray(record.artifacts)) return;
+  const available = record.artifacts?.some(asset => asset.product === 'installer' && !asset.supporting);
+  $('trial-installer').hidden = !available;
+  if (!available) return;
+  const invited = !operatorReview && token;
+  const argument = invited ? ` --invitation '${location.origin}/trial.html#${match[1]}.${token}'` : '';
+  $('trial-installer-command').textContent = `# Windows (PowerShell)\n.\\127vaults-install.exe${argument}\n\n# Linux\n./127vaults-install${argument}`;
+  $('trial-installer-command-help').textContent = invited
+    ? 'Extract your download and run the command for your operating system from its folder. Keep your invitation command private.'
+    : 'Extract your download and run the command for your operating system from its folder. The installer will ask for your private invitation URL.';
 }
 function showLicense(record) {
   showInstaller(record);
@@ -117,6 +123,7 @@ async function open() {
   $('trial-content').hidden = false;
   status(operatorReview ? 'Operator session verified. Current packages are ready to review and download.' : 'Your private trial is ready. No payment is required.');
   $('trial-release').textContent = `Release source: ${record.sourceRevision}`;
+  showInstaller(record);
   if (operatorReview) {
     document.title = 'Review releases - 127 Vaults';
     document.querySelector('#main h1').textContent = 'Review releases';
@@ -125,11 +132,16 @@ async function open() {
     for (const id of ['trial-prepare', 'trial-install', 'trial-upgrade', 'trial-recovery']) $(id).hidden = true;
     const back = document.createElement('a'); back.href = '/access-admin'; back.textContent = 'Back to requests'; $('trial-status').after(back);
   } else showLicense(record);
-  const packages = [], supportingPackages = [];
-  const supporting = document.createElement('details');
-  const supportingTitle = document.createElement('summary'); supportingTitle.textContent = 'Verification files and package guides';
+  const packages = [], supportingPackages = [], installerPackages = [];
+  const supporting = document.createElement('details'); supporting.className = 'trial-disclosure trial-supporting';
+  const supportingTitle = document.createElement('summary');
+  const supportingCopy = document.createElement('span'); supportingCopy.className = 'trial-disclosure-copy';
+  const supportingName = document.createElement('span'); supportingName.className = 'trial-disclosure-title'; supportingName.textContent = 'Verification files and package guides';
+  const supportingDescription = document.createElement('span'); supportingDescription.className = 'trial-disclosure-description';
+  supportingCopy.append(supportingName, supportingDescription); supportingTitle.append(supportingCopy);
+  const supportingBody = document.createElement('div'); supportingBody.className = 'trial-disclosure-body';
   const supportingGrid = document.createElement('div'); supportingGrid.id = 'trial-supporting-artifacts';
-  supporting.append(supportingTitle, supportingGrid);
+  supportingBody.append(supportingGrid); supporting.append(supportingTitle, supportingBody);
   for (const asset of record.artifacts) {
     const card = document.createElement('article'); card.className = 'trial-artifact';
     const heading = document.createElement('h3'); heading.textContent = asset.label;
@@ -146,10 +158,27 @@ async function open() {
       } catch (error) { status(error.message); }
       finally { button.disabled = false; }
     });
-    card.append(heading, detail, checksum, button);
-    if (asset.supporting) supportingPackages.push({ asset, card, button });
-    else packages.push({ asset, card, button });
+    if (asset.product === 'installer' && !asset.supporting) {
+      const { os } = describe(asset);
+      card.classList.add('trial-installer-card');
+      const badge = document.createElement('span'); badge.className = 'trial-installer-platform'; badge.textContent = 'SETUP INSTALLER';
+      heading.textContent = os;
+      detail.textContent = `x64 · ${(asset.sizeBytes / 1048576).toFixed(1)} MB · ${asset.filename.endsWith('.zip') ? 'ZIP archive' : 'tar.gz archive'}`;
+      const verification = document.createElement('details'); verification.className = 'trial-installer-verification';
+      const summary = document.createElement('summary'); summary.textContent = 'Verify download';
+      const filename = document.createElement('small'); filename.textContent = asset.filename;
+      verification.append(summary, filename, checksum);
+      button.textContent = `Download for ${os}`; button.setAttribute('aria-label', `Download ${os} setup installer`);
+      card.append(badge, heading, detail, button, verification);
+      installerPackages.push(card);
+    } else {
+      card.append(heading, detail, checksum, button);
+      if (asset.supporting) supportingPackages.push({ asset, card, button });
+      else packages.push({ asset, card, button });
+    }
   }
+  $('trial-installer-artifacts').replaceChildren(...installerPackages);
+  supportingDescription.textContent = `${supportingPackages.length} files · Checksums, release manifests, and setup guides`;
   let layout = 'table';
   const drawPackages = () => {
     renderPackages($('trial-artifacts'), packages, layout);
