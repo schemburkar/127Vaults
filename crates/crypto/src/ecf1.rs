@@ -276,7 +276,7 @@ impl Core {
         let account = r.account;
         let old = Directory::decode(current_directory, &r.bytes, tenant, account)
             .map_err(record_error)?;
-        if old.entries.len() >= 5 {
+        if old.entries.len() >= crate::private_vault::MAX_PRIVATE_VAULTS {
             return Err(Error::LimitExceeded);
         }
         let vault_id = random_revision().map_err(record_error)?;
@@ -347,7 +347,7 @@ impl Core {
             .try_into()
             .map_err(|_| Error::InvalidInput)?;
         let vault_id = id(&context, 33);
-        if old.entries.len() >= 5
+        if old.entries.len() >= crate::private_vault::MAX_PRIVATE_VAULTS
             || old.entries.iter().any(|entry| entry.vault == vault_id)
             || id(&context, 49) != vault_id
             || epoch(&context) != 1
@@ -1308,7 +1308,7 @@ mod tests {
         let handle = root.handle.unwrap();
         let mut directory = core.create_empty_directory(handle).unwrap();
         let mut vaults = Vec::new();
-        for _ in 0..5 {
+        for _ in 0..crate::private_vault::MAX_PRIVATE_VAULTS {
             let made = core.create_private_vault(handle, &directory).unwrap();
             directory = made.directory;
             vaults.push(made.vault);

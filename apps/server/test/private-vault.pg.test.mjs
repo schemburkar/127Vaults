@@ -5,8 +5,8 @@ import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import pg from 'pg';
-import { schemaSql, schemaV8MigrationSql, schemaV7Checksum, requireSchema } from '../src/schema.mjs';
-import { migrateSchema7To8 } from '../src/schema-migration.mjs';
+import { schemaSql, schemaV8MigrationSql, schemaV9MigrationSql, schemaV7Checksum, requireSchema } from '../src/schema.mjs';
+import { migrateSchema7To8, migrateSchema8To9 } from '../src/schema-migration.mjs';
 import { PgPrivateVaultStore } from '../src/private-vault-pg.mjs';
 import { PgSignedSyncStore } from '../src/sync-pg.mjs';
 import { createPrivateVaultHandler } from '../src/private-vault-handler.mjs';
@@ -37,7 +37,7 @@ test('real Core/HTTP/PostgreSQL deletion migrates safely, is atomic, replays rec
  const listPath=`/api/v1/vaults/${vaultId}/items`;
  try {
   assert.equal((await pool.query("SELECT to_regclass('vaults.schema_version') relation")).rows[0].relation,null,'use an empty disposable database');
-  await pool.query(schemaSql.slice(0,-schemaV8MigrationSql.length-1));
+  await pool.query(schemaSql.slice(0,-schemaV8MigrationSql.length-schemaV9MigrationSql.length-2));
   await pool.query('INSERT INTO vaults.schema_version(version,checksum) VALUES(7,$1)',[schemaV7Checksum]);
   await pool.query('INSERT INTO vaults.installation(id) VALUES($1)',[tenant]);
   await pool.query("INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state) VALUES($1,$2,'DeleteFixture','Delete Fixture','delete@example.invalid','owner','active')",[tenant,account]);
@@ -45,7 +45,7 @@ test('real Core/HTTP/PostgreSQL deletion migrates safely, is atomic, replays rec
   await pool.query('INSERT INTO vaults.private_directories(tenant_id,account_id,revision,directory) VALUES($1,$2,$3,$4)',[tenant,account,uuid(empty.slice(36,52)),Buffer.from(empty)]);
   await store.mutate({auth,method:'POST',path:'/api/v1/vaults',raw:Buffer.from('synthetic-vault-create'),requestId:randomUUID(),baseDirectoryRevision:uuid(empty.slice(36,52)),directoryBytes:Buffer.from(made.directory()),vaultEnvelope:Buffer.from(vault.envelope()),catalogueBytes:Buffer.from(made.catalogue()),action:'vault.create'});
   const before=(await pool.query('SELECT catalogue,vault_envelope FROM vaults.private_vaults')).rows;
-  const connection=await pool.connect();try{await migrateSchema7To8(connection,{dryRun:true});await migrateSchema7To8(connection);await requireSchema(connection)}finally{connection.release()}
+  const connection=await pool.connect();try{await migrateSchema7To8(connection,{dryRun:true});await migrateSchema7To8(connection);await migrateSchema8To9(connection,{dryRun:true});await migrateSchema8To9(connection);await requireSchema(connection)}finally{connection.release()}
   assert.deepEqual((await pool.query('SELECT catalogue,vault_envelope FROM vaults.private_vaults')).rows,before);
   server.listen(0,'127.0.0.1');await once(server,'listening');port=server.address().port;
   let catalogue=made.catalogue();const items=[];

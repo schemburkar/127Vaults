@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createCipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
-import { schemaSql, schemaV6Checksum, schemaV7Checksum, schemaV8MigrationSql } from '../src/schema.mjs';
+import { schemaSql, schemaV6Checksum, schemaV7Checksum, schemaV8MigrationSql, schemaV9MigrationSql } from '../src/schema.mjs';
 import { migrateSchema6To7 } from '../src/schema-migration.mjs';
 import { readSeatUsage } from '../src/license-seats.mjs';
 import { createServer } from 'node:http';
@@ -35,8 +35,8 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
   const account = async id => (await pool.query('SELECT server_role,suspended_at FROM vaults.accounts WHERE tenant_id=$1 AND id=$2', [tenant, id])).rows[0];
   try {
     const migration = await readFile(new URL('../src/schema-v7-migration.sql', import.meta.url), 'utf8');
-    assert.ok(schemaSql.endsWith(`\n${migration}\n${schemaV8MigrationSql}`));
-    await pool.query(schemaSql.slice(0, -migration.length - schemaV8MigrationSql.length - 2));
+    assert.ok(schemaSql.endsWith(`\n${migration}\n${schemaV8MigrationSql}\n${schemaV9MigrationSql}`));
+    await pool.query(schemaSql.slice(0, -migration.length - schemaV8MigrationSql.length - schemaV9MigrationSql.length - 3));
     await pool.query('INSERT INTO vaults.installation(id) VALUES($1)', [tenant]);
     for (const [id, username, role] of [[owner, 'OriginalOwner', 'owner'], [alice, 'AliceUser', 'user'], [bob, 'BobUser', 'user']]) {
       await pool.query("INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state) VALUES($1,$2,$3,$3,$4,$5,'active')", [tenant, id, username, `${username}@example.invalid`, role]);

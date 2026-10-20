@@ -33,15 +33,15 @@ creation. Revisions identify bytes, not time. Unknown magic fails closed.
 `D` = ASCII `PVD1` || tenant(16) || account(16) || revision(16) || base(16) ||
 count(u16) || entries || tag(32).
 Entry(72) = vault(16) || epoch(u64) || vaultEnvelopeRevision(16) ||
-SHA256(complete ECF1 vault envelope)(32). Count 0..5; max 462 bytes.
+SHA256(complete ECF1 vault envelope)(32). Count 0..10; max 822 bytes.
 MVP authorization permits one vault/account; five is the parser ceiling.
 
 `M` = ASCII `PVM1` || tenant(16) || vault(16) || epoch(u64) || revision(16) ||
 base(16) || count(u16) || entries || tag(32).
 Entry(136) = item(16) || logicalRevision(16) || indexRevision(16) ||
 bodyRevision(16) || indexLength(u32) || bodyLength(u32) || indexSHA256(32) ||
-bodySHA256(32). Lengths/hashes cover complete ECF1 envelopes. Count 0..50;
-max 6,910 bytes. Logical/index/body revisions are distinct. Each edit replaces
+bodySHA256(32). Lengths/hashes cover complete ECF1 envelopes. Count 0..100;
+max 13,710 bytes. Logical/index/body revisions are distinct. Each edit replaces
 both envelopes with fresh revisions; unchanged entries remain byte-identical.
 
 ```text
@@ -132,8 +132,8 @@ current state before any new edit.
 
 ECF1 envelope maxima: root/vault 205 bytes, index 65,709, body 1,048,749.
 JSON body max 2 MiB before parsing; decoded bytes max 1,125,000. List response
-max 5 MiB. No compressed/chunked item codec. Engineering limits: 50 items/server,
-5 vaults/server, 10 accounts, 2 devices/account. One write/vault, max 10 writes
+max 5 MiB. No compressed/chunked item codec. Engineering limits: 100 items/vault,
+10 vaults/account, 10 accounts, 2 devices/account. One write/vault, max 10 writes
 and 20 reads concurrently/server; overflow 429 + Retry-After, no unbounded queue.
 HTTP deadline 30 seconds; DB lock/statement deadlines 5 seconds; failures roll
 back. Cap receipts at 10,000 successful mutations/installation, then refuse
@@ -162,3 +162,9 @@ requests; transaction failure; forged MAC; missing/substituted/truncated pair;
 wrong context; limits; lock during request; database plaintext absence; audit/log
 redaction. Independent vectors/adversarial automation remain deferred until run.
 Q-006 is specified; implementation evidence remains outstanding.
+
+Schema 9 expands the directory limit to 822 bytes and catalogue limit to 13,710
+bytes. Existing PVD1/PVM1 records and ciphertext remain unchanged. Upgrade the
+server and all clients together before exceeding the previous 5-vault/50-item
+bounds: older clients reject larger records. Back up and rehearse restoration
+before applying the transactional schema 8-to-9 migration.

@@ -17,8 +17,8 @@ or Unfiled vault. Only groups containing imported items are created. Existing
 vaults are not reused or overwritten: a conflicting name receives an imported
 suffix. Preview lists the planned names and counts without creating anything.
 Changing the destination invalidates the previous preview. Source mode requires
-an online session and available slots within the existing five-vault limit;
-each source group must fit the 50-item limit. All limits are checked before
+an online session and available slots within the existing ten-vault limit;
+each source group must fit the 100-item limit. All limits are checked before
 creating vaults. Network or lock failures can still interrupt a confirmed import;
 retain completed vaults/items and inspect them before retrying.
 
@@ -47,7 +47,7 @@ the original-record field; attachments are not part of its CSV export.
 
 Files are read locally; only newly encrypted vault records are synced. Files are
 limited to 32 MiB, including expanded 1PUX data, and individual normalized records
-to 48,000 bytes. Existing catalogue limits allow 50 items per vault, so split a
+to 48,000 bytes. Existing catalogue limits allow 100 items per vault, so split a
 larger import among vaults. Capacity and record validation happen before writes.
 Imports create new items: repeating a confirmed import creates duplicates.
 Network, license or lock failures can interrupt a batch after some items have

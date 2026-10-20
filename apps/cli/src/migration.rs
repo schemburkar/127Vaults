@@ -68,12 +68,15 @@ pub fn source_plan(
         };
         plans[position].item_indices.push(index);
     }
-    if existing_count + plans.len() > 5 {
-        return Err("Source vaults exceed the five-vault limit. Choose one existing destination instead; no vaults or items were imported.".into());
+    if existing_count + plans.len() > vaults_crypto::private_vault::MAX_PRIVATE_VAULTS {
+        return Err("Source vaults exceed the ten-vault limit. Choose one existing destination instead; no vaults or items were imported.".into());
     }
-    if plans.iter().any(|plan| plan.item_indices.len() > 50) {
+    if plans
+        .iter()
+        .any(|plan| plan.item_indices.len() > vaults_crypto::private_vault::MAX_VAULT_ITEMS)
+    {
         return Err(
-            "A source vault contains more than 50 items. No vaults or items were imported.".into(),
+            "A source vault contains more than 100 items. No vaults or items were imported.".into(),
         );
     }
     Ok(plans)
@@ -377,8 +380,8 @@ mod tests {
         assert_eq!(plans[1].name, "Personal (imported 3)");
         assert_eq!(plans[0].item_indices, vec![0, 2]);
         assert_eq!(plans[1].item_indices, vec![1]);
-        assert!(source_plan(&rows, &[], 4).is_err());
-        let oversized = vec![rows[0].clone(); 51];
+        assert!(source_plan(&rows, &[], 9).is_err());
+        let oversized = vec![rows[0].clone(); 101];
         assert!(source_plan(&oversized, &[], 0).is_err());
     }
 

@@ -4,6 +4,9 @@ use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 
+pub const MAX_PRIVATE_VAULTS: usize = 10;
+pub const MAX_VAULT_ITEMS: usize = 100;
+
 const DIRECTORY_MAGIC: &[u8; 4] = b"PVD1";
 const CATALOGUE_MAGIC: &[u8; 4] = b"PVM1";
 const DIRECTORY_FIXED: usize = 102;
@@ -139,7 +142,7 @@ impl Directory {
             || !uuid(&self.account, false)
             || !revision(&self.revision, false)
             || !revision(&self.base, true)
-            || self.entries.len() > 5
+            || self.entries.len() > MAX_PRIVATE_VAULTS
             || !sorted_unique(&self.entries, |e| &e.vault)
         {
             return Err(RecordError::InvalidInput);
@@ -190,7 +193,7 @@ impl Directory {
                 .try_into()
                 .map_err(|_| RecordError::InvalidInput)?,
         ) as usize;
-        if count > 5 || input.len() != DIRECTORY_FIXED + count * DIRECTORY_ENTRY {
+        if count > MAX_PRIVATE_VAULTS || input.len() != DIRECTORY_FIXED + count * DIRECTORY_ENTRY {
             return Err(RecordError::InvalidInput);
         }
         let mut scope = Vec::with_capacity(32);
@@ -249,7 +252,7 @@ impl Catalogue {
             || self.epoch == 0
             || !revision(&self.revision, false)
             || !revision(&self.base, true)
-            || self.entries.len() > 50
+            || self.entries.len() > MAX_VAULT_ITEMS
             || !sorted_unique(&self.entries, |e| &e.item)
         {
             return Err(RecordError::InvalidInput);
@@ -313,7 +316,7 @@ impl Catalogue {
                 .try_into()
                 .map_err(|_| RecordError::InvalidInput)?,
         ) as usize;
-        if count > 50 || input.len() != CATALOGUE_FIXED + count * CATALOGUE_ENTRY {
+        if count > MAX_VAULT_ITEMS || input.len() != CATALOGUE_FIXED + count * CATALOGUE_ENTRY {
             return Err(RecordError::InvalidInput);
         }
         let mut scope = Vec::with_capacity(40);
@@ -404,6 +407,66 @@ mod tests {
         x[6] = 0x40;
         x[8] = 0x80;
         x
+    }
+    #[test]
+    fn capacity_boundaries_accept_ten_vaults_and_one_hundred_items() {
+        let key = [7; 32];
+        let mut directory = Directory {
+            tenant: id(1),
+            account: id(2),
+            revision: id(3),
+            base: [0; 16],
+            entries: (1..=10)
+                .map(|n| DirectoryEntry {
+                    vault: id(n),
+                    epoch: 1,
+                    envelope_revision: id(20),
+                    envelope_sha256: [1; 32],
+                })
+                .collect(),
+        };
+        let encoded = directory.encode(&key).unwrap();
+        assert_eq!(encoded.len(), 822);
+        assert_eq!(
+            Directory::decode(&encoded, &key, id(1), id(2)).unwrap(),
+            directory
+        );
+        directory.entries.push(DirectoryEntry {
+            vault: id(11),
+            epoch: 1,
+            envelope_revision: id(20),
+            envelope_sha256: [1; 32],
+        });
+        assert!(directory.encode(&key).is_err());
+        let mut catalogue = Catalogue {
+            tenant: id(1),
+            vault: id(2),
+            epoch: 1,
+            revision: id(3),
+            base: [0; 16],
+            entries: (1..=100)
+                .map(|n| CatalogueEntry {
+                    item: id(n),
+                    logical_revision: id(120),
+                    index_revision: id(121),
+                    body_revision: id(122),
+                    index_length: 174,
+                    body_length: 200,
+                    index_sha256: [1; 32],
+                    body_sha256: [2; 32],
+                })
+                .collect(),
+        };
+        let encoded = catalogue.encode(&key).unwrap();
+        assert_eq!(encoded.len(), 13710);
+        assert_eq!(
+            Catalogue::decode(&encoded, &key, id(1), id(2), 1).unwrap(),
+            catalogue
+        );
+        let mut extra = catalogue.entries[0].clone();
+        extra.item = id(101);
+        catalogue.entries.push(extra);
+        assert!(catalogue.encode(&key).is_err());
     }
     #[test]
     fn exact_records_and_tamper() {

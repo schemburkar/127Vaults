@@ -24,9 +24,12 @@ export const schemaV7MigrationSql = await readFile(new URL('./schema-v7-migratio
 const schemaV7Recipe = `${schemaV6Recipe}\n-- schema-7-boundary\n${normalize(schemaV7MigrationSql)}`;
 export const schemaV7Checksum = sha256(schemaV7Recipe);
 export const schemaV8MigrationSql = await readFile(new URL('./schema-v8-migration.sql', import.meta.url), 'utf8');
-export const schemaChecksum = sha256(`${schemaV7Recipe}\n-- schema-8-boundary\n${normalize(schemaV8MigrationSql)}`);
-export const schemaVersion = 8;
-export const schemaSql = `${schemaV1Sql}\n${schemaV2MigrationSql}\n${schemaV3MigrationSql}\n${schemaV4MigrationSql}\n${schemaV5MigrationSql}\n${schemaV6MigrationSql}\n${schemaV7MigrationSql}\n${schemaV8MigrationSql}`;
+const schemaV8Recipe = `${schemaV7Recipe}\n-- schema-8-boundary\n${normalize(schemaV8MigrationSql)}`;
+export const schemaV8Checksum = sha256(schemaV8Recipe);
+export const schemaV9MigrationSql = await readFile(new URL('./schema-v9-migration.sql', import.meta.url), 'utf8');
+export const schemaChecksum = sha256(`${schemaV8Recipe}\n-- schema-9-boundary\n${normalize(schemaV9MigrationSql)}`);
+export const schemaVersion = 9;
+export const schemaSql = `${schemaV1Sql}\n${schemaV2MigrationSql}\n${schemaV3MigrationSql}\n${schemaV4MigrationSql}\n${schemaV5MigrationSql}\n${schemaV6MigrationSql}\n${schemaV7MigrationSql}\n${schemaV8MigrationSql}\n${schemaV9MigrationSql}`;
 
 export async function requireSchema(client) {
   const result = await client.query('SELECT version, checksum FROM vaults.schema_version');

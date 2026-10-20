@@ -86,14 +86,14 @@ if(action==='dev' && await portOpen(12780) && await portOpen(12781)){
  // can claim that address while PostgreSQL and its evidence volume stay up.
  composeRun(['stop','server','smtp-capture']);
  run(podman,['rm','-f','--ignore',serverContainer,`${project}_smtp-capture_1`]);
- for(let step=0;step<5;step++){
+ for(let step=0;step<8;step++){
   const output=composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs','schema','status'],{capture:true});
   const state=JSON.parse(output.split('\n').at(-1));
   if(state.state==='current')break;
   if(state.state!=='migration-required')throw Error('Unknown schema state; no migration was applied.');
   composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs','schema','dry-run']);
   composeRun(['run','--rm','--no-deps','server','node','apps/server/src/entry.mjs','schema','apply']);
-  if(step===4)throw Error('Schema remains behind after five migration steps.');
+  if(step===7)throw Error('Schema remains behind after eight migration steps.');
  }
  composeRun(['up','-d','--no-build','--force-recreate','server']);
  await waitForServerReady();

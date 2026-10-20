@@ -25,7 +25,7 @@ export function parseRemoval(value) {
   const settings = { baseRevision: value.settings.baseRevision === null ? null : uuid(value.settings.baseRevision),
     revision: uuid(value.settings.revision), envelope: bytes(value.settings.envelope, 16557) };
   if (settings.revision === settings.baseRevision) throw new VaultError();
-  if (!Array.isArray(value.itemMappings) || value.itemMappings.length > 50) throw new VaultError();
+  if (!Array.isArray(value.itemMappings) || value.itemMappings.length > 100) throw new VaultError();
   if (value.choice === 'archive') {
     if (value.destinationVaultId !== null || value.destinationCatalogueRevision !== null || value.itemMappings.length) throw new VaultError();
     return { requestId, choice: 'archive', destinationVaultId: null, sourceCatalogueRevision, destinationCatalogueRevision: null, itemMappings: [], settings };

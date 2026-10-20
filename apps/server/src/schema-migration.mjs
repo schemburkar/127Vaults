@@ -1,4 +1,4 @@
-import { schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV6Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, schemaV7MigrationSql, schemaV7Checksum, schemaV8MigrationSql } from './schema.mjs';
+import { schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV6Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, schemaV7MigrationSql, schemaV7Checksum, schemaV8MigrationSql, schemaV8Checksum, schemaV9MigrationSql } from './schema.mjs';
 
 const MANIFEST_ERROR = 'Unknown or changed schema; migration refused.';
 const countsSql = `SELECT
@@ -21,7 +21,8 @@ export async function schemaStatus(client) {
   if (Number(version) === 5 && checksum === schemaV5Checksum) return { state: 'migration-required', version: 5 };
   if (Number(version) === 6 && checksum === schemaV6Checksum) return { state: 'migration-required', version: 6 };
   if (Number(version) === 7 && checksum === schemaV7Checksum) return { state: 'migration-required', version: 7 };
-  if (Number(version) === 8 && checksum === schemaChecksum) return { state: 'current', version: 8 };
+  if (Number(version) === 8 && checksum === schemaV8Checksum) return { state: 'migration-required', version: 8 };
+  if (Number(version) === 9 && checksum === schemaChecksum) return { state: 'current', version: 9 };
   return { state: 'unknown', version: Number(version) };
 }
 
@@ -160,10 +161,27 @@ export async function migrateSchema7To8(client, { dryRun = false } = {}) {
     await client.query(schemaV8MigrationSql);
     const after = (await client.query(countsSql)).rows[0];
     for (const name of ['accounts','devices','sessions','vaults','items']) if (String(after[name]) !== String(before[name])) throw new Error('Schema migration row-count validation failed.');
-    await client.query('UPDATE vaults.schema_version SET version=8, checksum=$1 WHERE singleton=true', [schemaChecksum]);
+    await client.query('UPDATE vaults.schema_version SET version=8, checksum=$1 WHERE singleton=true', [schemaV8Checksum]);
     if (dryRun) await client.query('ROLLBACK'); else await client.query('COMMIT');
     return { from: 7, to: 8, dryRun };
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
 }
+export async function migrateSchema8To9(client, { dryRun = false } = {}) {
+  await client.query('BEGIN');
+  try {
+    await client.query("SET LOCAL lock_timeout = '5s'");
+    await client.query('SELECT pg_advisory_xact_lock(127, 1)');
+    const manifest = await client.query('SELECT version, checksum FROM vaults.schema_version FOR UPDATE');
+    if (manifest.rowCount !== 1 || Number(manifest.rows[0].version) !== 8 || manifest.rows[0].checksum !== schemaV8Checksum) throw new Error(MANIFEST_ERROR);
+    const before = (await client.query(countsSql)).rows[0];
+    await client.query(schemaV9MigrationSql);
+    const after = (await client.query(countsSql)).rows[0];
+    for (const name of ['accounts','devices','sessions','vaults','items']) if (String(after[name]) !== String(before[name])) throw new Error('Schema migration row-count validation failed.');
+    await client.query('UPDATE vaults.schema_version SET version=9, checksum=$1 WHERE singleton=true', [schemaChecksum]);
+    if (dryRun) await client.query('ROLLBACK'); else await client.query('COMMIT');
+    return { from: 8, to: 9, dryRun };
+  } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+}
+
 
 export { MANIFEST_ERROR };

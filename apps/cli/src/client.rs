@@ -233,7 +233,7 @@ impl VaultRemovalJournal {
                         .source_catalogue_revision
                         .as_deref()
                         .is_none_or(|revision| uuid::Uuid::parse_str(revision).is_err())
-                    || self.item_mappings.len() > 50
+                    || self.item_mappings.len() > 100
                     || !(self.request.is_null() || self.request.is_object())
                 {
                     return Err(invalid());
@@ -1298,8 +1298,8 @@ impl Session {
             self.checkpoint_now(&destination)?;
             let source_replica = self.ensure_vault_settled(&source)?;
             self.ensure_vault_settled(&destination)?;
-            if source_replica.items.len() > 50 {
-                return Err("move exceeds the 50-item server limit".to_owned());
+            if source_replica.items.len() > 100 {
+                return Err("move exceeds the 100-item server limit".to_owned());
             }
             let journal = VaultRemovalJournal {
                 source_vault_id: source,
@@ -3033,7 +3033,7 @@ impl Session {
             .create_private_vault(self.root, &directory)
             .map_err(|error| match error {
                 vaults_crypto::ecf1::Error::LimitExceeded =>
-                    "private vault limit reached (maximum 5); existing vaults and items are unchanged".to_owned(),
+                    "private vault limit reached (maximum 10); existing vaults and items are unchanged".to_owned(),
                 _ => "vault encryption failed".to_owned(),
             })?;
         let vault_id = uuid::Uuid::from_bytes(
@@ -3126,10 +3126,10 @@ impl Session {
             .as_array()
             .ok_or("Invalid item list")?
             .len();
-        if existing + rows.len() > 50 {
+        if existing + rows.len() > 100 {
             return Err(format!(
                 "This vault has room for {} more items. Split the import across vaults; no records were imported.",
-                50usize.saturating_sub(existing)
+                100usize.saturating_sub(existing)
             ));
         }
         if rows.len() * 2 + 4 > usize::from(self.core.remaining_creation_budget()) {

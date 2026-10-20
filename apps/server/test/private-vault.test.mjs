@@ -50,3 +50,13 @@ test('exact deletion replay returns its receipt without deleting again, while ch
  replay.proposal.raw=Buffer.from('changed');await assert.rejects(replay.store.mutate(replay.proposal),{code:'REQUEST_ID_REUSED'});
 });
 test('strict base64url and record bounds',()=>{assert.deepEqual(bytes(Buffer.from('x').toString('base64url'),2),Buffer.from('x'));assert.throws(()=>bytes('eA==',2),VaultError);let d=Buffer.alloc(102);d.write('PVD1');d[10]=0x40;d[12]=0x80;d[26]=0x40;d[28]=0x80;d[42]=0x40;d[44]=0x80;assert.equal(directory(d).entries.length,0);let m=Buffer.alloc(110);m.write('PVM1');m[10]=0x40;m[12]=0x80;m[26]=0x40;m[28]=0x80;m.writeBigUInt64BE(1n,36);m[50]=0x40;m[52]=0x80;assert.equal(catalogue(m).entries.length,0)});
+
+test('record boundaries accept ten vaults and one hundred items and refuse the next entry',()=>{
+ const id=n=>{const value=Buffer.alloc(16);value.writeUInt32BE(n);value[6]=0x40;value[8]=0x80;return value};
+ const makeDirectory=n=>{const value=Buffer.alloc(102+n*72);value.write('PVD1');id(1).copy(value,4);id(2).copy(value,20);id(3).copy(value,36);value.writeUInt16BE(n,68);for(let i=0;i<n;i++){const p=70+i*72;id(i+10).copy(value,p);value.writeBigUInt64BE(1n,p+16);id(4).copy(value,p+24)}return value};
+ const makeCatalogue=n=>{const value=Buffer.alloc(110+n*136);value.write('PVM1');id(1).copy(value,4);id(2).copy(value,20);value.writeBigUInt64BE(1n,36);id(3).copy(value,44);value.writeUInt16BE(n,76);for(let i=0;i<n;i++)id(i+10).copy(value,78+i*136);return value};
+ assert.equal(directory(makeDirectory(10)).entries.length,10);
+ assert.throws(()=>directory(makeDirectory(11)),VaultError);
+ assert.equal(catalogue(makeCatalogue(100)).entries.length,100);
+ assert.throws(()=>catalogue(makeCatalogue(101)),VaultError);
+});

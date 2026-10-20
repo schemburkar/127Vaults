@@ -123,9 +123,9 @@ try{
   evidence.guiConsecutivePeerOS=process.platform;
  }else if(phase==='capacity-check'){
   await command(['device','list']);
-  const before=JSON.parse(await command(['vault','list']));assert.equal(before.length,5,'Only the retained full fixture directory is accepted');
+  const before=JSON.parse(await command(['vault','list']));assert.equal(before.length,10,'Only the retained full fixture directory is accepted');
   const queued=JSON.parse(await command(['sync-review']));
-  await assert.rejects(command(['vault','create','Capacity refusal fixture']),/private vault limit reached \(maximum 5\)/);
+  await assert.rejects(command(['vault','create','Capacity refusal fixture']),/private vault limit reached \(maximum 10\)/);
   assert.deepEqual(JSON.parse(await command(['vault','list'])),before);
   assert.deepEqual(JSON.parse(await command(['sync-review'])),queued);
   evidence.capacityRefusalPreservedDirectoryAndQueues=true;
