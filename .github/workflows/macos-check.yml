@@ -20,7 +20,7 @@ jobs:
           node-version: '24'
       - name: Install pinned dependencies
         run: |
-          npm install --global pnpm@11.19.0
+          npm install --global pnpm@11.25.0
           pnpm install --frozen-lockfile
           rustup show
       - name: Check native Keychain and shared client code

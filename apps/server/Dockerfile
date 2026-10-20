@@ -3,7 +3,7 @@ ARG NODE_BUILD_IMAGE=node:24-bookworm-slim
 ARG NODE_RUNTIME_IMAGE=node:24-bookworm-slim
 FROM ${NODE_BUILD_IMAGE} AS dependencies
 WORKDIR /app
-RUN npm install --global pnpm@11.19.0
+RUN npm install --global pnpm@11.25.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json

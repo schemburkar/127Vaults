@@ -7,7 +7,7 @@ through its adapter, implement encryption, or enable any crypto format.
 
 ## Run
 
-Prerequisites: Rust 1.98.1 and Node 24 (pnpm 11.19.0 for aliases).
+Prerequisites: Rust 1.98.1 and Node 24 (pnpm 11.25.0 for aliases).
 Run these from the repository root once:
 
 ```sh

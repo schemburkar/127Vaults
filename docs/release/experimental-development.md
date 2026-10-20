@@ -11,7 +11,7 @@ run as separate containers, and PostgreSQL uses an unexposed persistent volume.
 Podman with a Compose provider is the primary tested workflow; Docker Compose is
 intended to remain compatible but is not yet verified.
 
-Prerequisites: Node 24, pnpm 11.19.0, Podman, and a Compose provider. Copy
+Prerequisites: Node 24, pnpm 11.25.0, Podman, and a Compose provider. Copy
 `.env.example` to `.env`, fill its credentials and absolute TLS directory, then
 provision the exact endpoint before startup:
 
