@@ -1,11 +1,12 @@
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 test('shared read-only details render grouped credentials, related fields and distinct window actions', async () => {
-  const server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true }, appType: 'custom' });
   try {
     const { ReadonlyItem } = await server.ssrLoadModule('/src/readonly-item.tsx');
     const html = renderToStaticMarkup(createElement(ReadonlyItem, {
