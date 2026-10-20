@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { isIP } from 'node:net';
 import { request } from 'node:https';
 import { resolve, join } from 'node:path';
-import { installLicenseFiles, installRevocationFile } from './license-files.mjs';
+import { installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
 import { discoverTailscale, enableTailnetForward, tailscaleIPv4 } from './private-network.mjs';
 
 function readinessProbe({ origin, ca, token }) {
@@ -151,7 +151,7 @@ async function initialize() {
   if (restoredId && !/^[0-9a-f-]{36}$/.test(restoredId)) throw Error('Restored installation ID is invalid.');
   const env = [
     `VAULTS_PROJECT=vaults-test-${randomBytes(6).toString('hex')}`,
-    ...(restoredId ? [`VAULTS_RESTORE_ID=${restoredId}`] : []),
+    ...(restoredId ? [`VAULTS_RESTORE_ID=${restoredId}`, ...await restoredLicenseEnvironment({ runtimeDir: join(privateDir,'runtime'), installationId: restoredId })] : []),
     `VAULTS_BACKEND_SUBNET=172.28.${chosenOctet}.0/24`,
     `VAULTS_SERVER_IP=172.28.${chosenOctet}.2`,
     `VAULTS_DATABASE_IP=172.28.${chosenOctet}.3`,

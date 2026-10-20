@@ -76,3 +76,30 @@ export async function installRevocationFile({ runtimeDir, envPath, installationI
     return revocation;
   } finally { await rm(lock, { force: true }); }
 }
+
+
+// Reconnect already backed-up signed records without reinstalling or incrementing them.
+export async function restoredLicenseEnvironment({ runtimeDir, installationId }) {
+  const directory = join(runtimeDir,'licenses');
+  if (!existsSync(directory)) return [];
+  const names = await readdir(directory);
+  const sequences = names.filter(name => /^[1-9]\d*\.json$/.test(name)).map(name => Number(name.slice(0,-5)));
+  const recorded = Number((await readFile(join(directory,'highest-sequence'),'utf8').catch(error => {
+    if(error.code === 'ENOENT') return '0'; throw error;
+  })).trim());
+  const highest = Math.max(recorded,0,...sequences);
+  if (!Number.isSafeInteger(highest) || highest < 0 || (highest > 0 && !sequences.includes(highest))) throw Error('Restored highest license sequence is incomplete.');
+  if (!highest) return [];
+  const keys = JSON.parse(await readFile(join(directory,`${highest}.keys.json`),'utf8'));
+  const { verifyLicenseFile, verifyLicenseRevocationFile } = await import(verifier);
+  const license = verifyLicenseFile(await readFile(join(directory,`${highest}.json`),'utf8'),keys,installationId);
+  if (license.sequence !== highest) throw Error('Restored license sequence does not match its recorded sequence.');
+  const result = [`VAULTS_LICENSE_FILE=/run/secrets/runtime/licenses/${highest}.json`,
+    `VAULTS_LICENSE_PUBLIC_KEYS_FILE=/run/secrets/runtime/licenses/${highest}.keys.json`];
+  const revocationName = `${license.licenseId}.revocation.json`;
+  if (existsSync(join(directory,revocationName))) {
+    verifyLicenseRevocationFile(await readFile(join(directory,revocationName),'utf8'),keys,installationId,license.licenseId);
+    result.push(`VAULTS_LICENSE_REVOCATION_FILE=/run/secrets/runtime/licenses/${revocationName}`);
+  }
+  return result;
+}

@@ -4,7 +4,7 @@ import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installLicenseFiles, installRevocationFile } from './license-files.mjs';
+import { installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
 import { issueSelfHostedLicense } from '../scripts/ops/issue-self-hosted-license.mjs';
 import { issueLicenseRevocation } from '../scripts/ops/issue-license-revocation.mjs';
 
@@ -30,6 +30,11 @@ test('local license installation verifies binding and refuses replay or lower se
     const current = await readFile(envPath, 'utf8');
     assert.equal((current.match(/^VAULTS_LICENSE_FILE=/gm) ?? []).length, 1);
     assert.match(current, /licenses\/2.json/);
+    assert.deepEqual(await restoredLicenseEnvironment({runtimeDir:dir,installationId}),[
+      'VAULTS_LICENSE_FILE=/run/secrets/runtime/licenses/2.json','VAULTS_LICENSE_PUBLIC_KEYS_FILE=/run/secrets/runtime/licenses/2.keys.json']);
+    await assert.rejects(restoredLicenseEnvironment({runtimeDir:dir,installationId:randomUUID()}),/invalid_license/);
+    await writeFile(join(dir,'licenses/highest-sequence'),'3');
+    await assert.rejects(restoredLicenseEnvironment({runtimeDir:dir,installationId}),/incomplete/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -54,6 +59,7 @@ test('revocation installation binds to the current signed license and renewal cl
         licenseId: randomUUID(), revokedAt: now.toISOString(), now }) }), /invalid_license/);
     await installRevocationFile({ runtimeDir: dir, envPath, installationId, revocationSource });
     assert.match(await readFile(envPath, 'utf8'), /VAULTS_LICENSE_REVOCATION_FILE=/);
+    assert.match((await restoredLicenseEnvironment({runtimeDir:dir,installationId})).join('\n'),/VAULTS_LICENSE_REVOCATION_FILE=/);
     const second = issue(2);
     await installLicenseFiles({ runtimeDir: dir, envPath, installationId,
       licenseSource: second.license, keySource: second.publicKeys, now });
