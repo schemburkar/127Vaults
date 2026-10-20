@@ -12,7 +12,7 @@ test('import preview uses the chosen destination rather than the currently displ
   const code = source.slice(source.indexOf('  const runImport ='), source.indexOf('  const lock ='));
   const context = vm.createContext({ importFile: { size: 3, arrayBuffer: async () => new Uint8Array([1,2,3]).buffer },
     vaultId: 'current-vault', importVaultId: 'chosen-vault', importBusy: false, importFormat: 'bitwarden', importGeneration: { current: 0 },
-    invoke: async (command, args) => { calls.push({ command, args }); return { records: 2 }; },
+    invoke: async (command, args) => { calls.push({ command, args }); return { records: 2, sourceVaults: [{ name: 'Personal', records: 2 }] }; },
   });
   for (const setter of new Set(code.match(/set[A-Z]\w+/g))) context[setter] = value => { values[setter] = value; };
   vm.runInContext(compile(code + '\nglobalThis.run=runImport;'), context);
@@ -21,9 +21,13 @@ test('import preview uses the chosen destination rather than the currently displ
   assert.equal(calls[0].args.vaultId, 'chosen-vault');
   assert.equal(calls[0].args.confirm, false);
   assert.equal(values.setImportCount, 2);
+  context.importVaultId = '__source_vaults__';
+  await context.run(false);
+  assert.equal(calls[1].args.vaultId, '__source_vaults__');
+  assert.equal(values.setImportSourceVaults[0].name, 'Personal');
   context.importVaultId = '';
   await context.run(false);
-  assert.equal(calls.length, 1, 'no destination must prevent import');
+  assert.equal(calls.length, 2, 'no destination must prevent import');
 });
 
 function licenseHarness(cacheError = false) {

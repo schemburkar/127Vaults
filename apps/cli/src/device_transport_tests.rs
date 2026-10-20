@@ -14,6 +14,37 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn source_vault_preview_plans_separate_destinations_without_creating_anything() {
+    let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
+    let replica = session.replica_store.load(&vault).unwrap().unwrap();
+    let (origin, worker) = fixture(initial_snapshot_responses(&replica));
+    session.origin.clone_from(&origin);
+    seed_entitlement(&session);
+    session.sync_transport = Some(HttpSyncTransport::new(
+        session.client.clone(),
+        origin,
+        session.cookie.clone(),
+        session.csrf.clone(),
+    ));
+    let source = br#"{"encrypted":false,"folders":[{"id":"one","name":"Work"},{"id":"two","name":"Home"}],"items":[{"type":1,"name":"A","folderId":"one","login":{}},{"type":1,"name":"B","folderId":"two","login":{}}]}"#;
+    let preview = session
+        .import_passwords(crate::migration::SOURCE_VAULTS, source, "bitwarden", false)
+        .unwrap();
+    assert_eq!(preview["records"], 2);
+    assert_eq!(preview["sourceVaults"][0]["name"], "Work");
+    assert_eq!(preview["sourceVaults"][1]["name"], "Home");
+    assert_eq!(session.vault_list().unwrap().as_array().unwrap().len(), 1);
+    assert!(
+        worker
+            .join()
+            .unwrap()
+            .iter()
+            .all(|request| request.line.starts_with("GET "))
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn desktop_license_checks_use_protected_cache_without_foreground_network_io() {
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     listener.set_nonblocking(true).unwrap();

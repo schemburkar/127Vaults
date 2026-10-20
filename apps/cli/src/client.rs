@@ -3116,8 +3116,11 @@ impl Session {
         mut active: impl FnMut() -> bool,
     ) -> Result<Value, String> {
         self.require_license(true)?;
-        self.open_vault(vault)?;
         let rows = crate::migration::parse(bytes, format)?;
+        if vault == crate::migration::SOURCE_VAULTS {
+            return self.import_source_vaults(&rows, confirm, &mut active);
+        }
+        self.open_vault(vault)?;
         let existing = self
             .item_list(vault)?
             .as_array()
@@ -3169,6 +3172,76 @@ impl Session {
             imported += 1;
         }
         Ok(json!({"imported":imported}))
+    }
+
+    fn import_source_vaults(
+        &mut self,
+        rows: &[Value],
+        confirm: bool,
+        active: &mut dyn FnMut() -> bool,
+    ) -> Result<Value, String> {
+        if !self.online {
+            return Err("Source vaults mode requires an online session to create vaults".into());
+        }
+        if self.settings_conflict {
+            return Err("Resolve vault settings conflicts before creating source vaults".into());
+        }
+        self.hydrate_replicas()?;
+        let existing = self.vault_list()?;
+        let existing = existing.as_array().ok_or("Invalid vault list")?;
+        let names: Vec<String> = existing
+            .iter()
+            .filter_map(|row| row["name"].as_str().map(str::to_owned))
+            .collect();
+        let plans = crate::migration::source_plan(rows, &names, existing.len())?;
+        if rows.len() * 2 + plans.len() * 8 + 8 > usize::from(self.core.remaining_creation_budget())
+        {
+            return Err("Lock and unlock before importing; the current encryption session is near its limit".into());
+        }
+        let summary: Vec<Value> = plans
+            .iter()
+            .map(|plan| json!({"name":plan.name,"records":plan.item_indices.len()}))
+            .collect();
+        if !confirm {
+            return Ok(
+                json!({"preview":true,"records":rows.len(),"sourceVaults":summary,"note":"New vaults will be created. Repeating an import creates additional copies."}),
+            );
+        }
+        let mut imported = 0;
+        let mut created = 0;
+        let result = (|| -> Result<(), String> {
+            for plan in &plans {
+                if !active() {
+                    return Err("Vault was locked".into());
+                }
+                let made = self.vault_create(&plan.name)?;
+                created += 1;
+                let destination = made["vaultId"].as_str().ok_or("Created vault ID missing")?;
+                for index in &plan.item_indices {
+                    if !active() {
+                        return Err("Vault was locked".into());
+                    }
+                    let row = &rows[*index];
+                    self.item_upsert(
+                        destination,
+                        None,
+                        row["title"].as_str().ok_or("Invalid title")?,
+                        row["website"].as_str().ok_or("Invalid website")?,
+                        row["username"].as_str().ok_or("Invalid username")?,
+                        row["password"].as_str().ok_or("Invalid password")?,
+                        row["customFields"].as_array().ok_or("Invalid fields")?,
+                    )?;
+                    imported += 1;
+                }
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            return Err(format!(
+                "Source-vault import stopped after {imported} items and {created} vaults. Saved data is retained. Reconnect and inspect existing vaults before retrying; do not repeat the full import."
+            ));
+        }
+        Ok(json!({"imported":imported,"createdVaults":created,"sourceVaults":summary}))
     }
 
     #[allow(clippy::too_many_lines)]

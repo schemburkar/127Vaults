@@ -9,9 +9,20 @@ Encrypted vault data is preserved when access is blocked.
 ## Import
 
 In desktop, open **All items → ⋯ → Import passwords**, choose the destination
-vault, select a source and file, preview the count, then choose **Import items**.
-Import adds items to that existing vault; source vaults/folders are not created
-automatically. Changing the destination invalidates the previous preview. The same parser
+vault or **Source vaults**, select a source and file, preview the count, then choose
+**Import items**. A named destination combines all imported items into that vault.
+**Source vaults** creates separate vaults using 1Password vaults, Bitwarden folders,
+LastPass grouping, or native 127Vaults vaults. Ungrouped items go into an Imported
+or Unfiled vault. Only groups containing imported items are created. Existing
+vaults are not reused or overwritten: a conflicting name receives an imported
+suffix. Preview lists the planned names and counts without creating anything.
+Changing the destination invalidates the previous preview. Source mode requires
+an online session and available slots within the existing five-vault limit;
+each source group must fit the 50-item limit. All limits are checked before
+creating vaults. Network or lock failures can still interrupt a confirmed import;
+retain completed vaults/items and inspect them before retrying.
+
+The same parser
 is available through an unlocked CLI agent:
 
 ```powershell
@@ -60,8 +71,8 @@ object containing `settings` and `vaults`. Each vault contains its display
 metadata, current `items` with their complete decrypted `index` and `body`,
 separate `pendingDrafts`, and conflict identifiers. All locally available vaults,
 including archived vaults, are included. Pending drafts that differ from current
-items are recovered as separate items by native import. Native import combines
-the selected file's items into the chosen destination vault; it does not restore
+items are recovered as separate items by native import. Native import can combine
+the selected file's items into one destination or recreate source groupings; it does not restore
 vault IDs, original timestamps, collection layout, sync history or server
 identity. Keep encrypted server/identity backups for full installation recovery.
 

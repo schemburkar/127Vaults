@@ -13,6 +13,72 @@ fn record(title: &str, website: &str, username: &str, password: &str, source: &V
         "customFields":[{"id":"migration-source","label":"Original imported record (JSON)","type":"password","value":source.to_string()}]})
 }
 
+pub const SOURCE_VAULTS: &str = "__source_vaults__";
+
+fn set_source(row: &mut Value, id: &str, name: &str) {
+    row["sourceVault"] =
+        json!({"id":id,"name":if name.trim().is_empty(){"Imported"}else{name.trim()}});
+}
+
+pub struct SourceVaultPlan {
+    pub name: String,
+    pub item_indices: Vec<usize>,
+}
+
+/// Plans separate destination vaults without mutating an installation.
+pub fn source_plan(
+    rows: &[Value],
+    existing_names: &[String],
+    existing_count: usize,
+) -> Result<Vec<SourceVaultPlan>, String> {
+    let mut plans: Vec<SourceVaultPlan> = Vec::new();
+    let mut positions = std::collections::HashMap::new();
+    let mut names: std::collections::HashSet<String> = existing_names
+        .iter()
+        .map(|name| name.to_lowercase())
+        .collect();
+    for (index, row) in rows.iter().enumerate() {
+        let id = text(&row["sourceVault"], "id");
+        let position = if let Some(position) = positions.get(id) {
+            *position
+        } else {
+            let base = text(&row["sourceVault"], "name");
+            let base = if base.trim().is_empty() {
+                "Imported"
+            } else {
+                base
+            };
+            let mut name: String = base.chars().take(80).collect();
+            let mut suffix = 2;
+            while names.contains(&name.to_lowercase()) {
+                name = format!(
+                    "{} (imported {suffix})",
+                    base.chars().take(60).collect::<String>()
+                );
+                suffix += 1;
+            }
+            names.insert(name.to_lowercase());
+            let position = plans.len();
+            positions.insert(id, position);
+            plans.push(SourceVaultPlan {
+                name,
+                item_indices: Vec::new(),
+            });
+            position
+        };
+        plans[position].item_indices.push(index);
+    }
+    if existing_count + plans.len() > 5 {
+        return Err("Source vaults exceed the five-vault limit. Choose one existing destination instead; no vaults or items were imported.".into());
+    }
+    if plans.iter().any(|plan| plan.item_indices.len() > 50) {
+        return Err(
+            "A source vault contains more than 50 items. No vaults or items were imported.".into(),
+        );
+    }
+    Ok(plans)
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
     if bytes.len() > MAX_BYTES {
@@ -58,6 +124,12 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
                     text(&source, "password"),
                     &source,
                 ));
+                let group = text(&source, "grouping");
+                set_source(
+                    out.last_mut().ok_or("Missing imported record")?,
+                    group,
+                    group,
+                );
             }
         }
         "bitwarden" => {
@@ -84,6 +156,16 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
                     text(&item["login"], "password"),
                     item,
                 ));
+                let folder_id = text(item, "folderId");
+                let folder_name = data["folders"]
+                    .as_array()
+                    .and_then(|folders| folders.iter().find(|folder| folder["id"] == folder_id))
+                    .map_or("Unfiled", |folder| text(folder, "name"));
+                set_source(
+                    out.last_mut().ok_or("Missing imported record")?,
+                    folder_id,
+                    folder_name,
+                );
             }
         }
         "1password" => {
@@ -107,13 +189,17 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
             }
             let data: Value =
                 serde_json::from_slice(&plain).map_err(|_| "Invalid 1Password export")?;
-            for account in data["accounts"]
+            for (account_index, account) in data["accounts"]
                 .as_array()
                 .ok_or("Missing 1Password accounts")?
+                .iter()
+                .enumerate()
             {
-                for vault in account["vaults"]
+                for (vault_index, vault) in account["vaults"]
                     .as_array()
                     .ok_or("Missing 1Password vaults")?
+                    .iter()
+                    .enumerate()
                 {
                     for item in vault["items"].as_array().ok_or("Missing 1Password items")? {
                         if item["categoryUuid"] != "001" {
@@ -135,6 +221,16 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
                             field("password"),
                             item,
                         ));
+                        let source_id = format!(
+                            "{}:{account_index}/{}:{vault_index}",
+                            text(&account["attrs"], "uuid"),
+                            text(&vault["attrs"], "uuid")
+                        );
+                        set_source(
+                            out.last_mut().ok_or("Missing imported record")?,
+                            &source_id,
+                            text(&vault["attrs"], "name"),
+                        );
                     }
                 }
             }
@@ -145,7 +241,12 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
             if data["format"] != "127vaults-plaintext-v1" {
                 return Err("Unsupported export version".into());
             }
-            for vault in data["vaults"].as_array().ok_or("Missing vaults")? {
+            for (vault_index, vault) in data["vaults"]
+                .as_array()
+                .ok_or("Missing vaults")?
+                .iter()
+                .enumerate()
+            {
                 let items = vault["items"].as_array().ok_or("Missing items")?;
                 let mut seen = std::collections::HashSet::new();
                 for item in items
@@ -169,6 +270,8 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
                     }) {
                         row["title"] = json!(format!("{} (recovered draft)", text(&row, "title")));
                     }
+                    let source_id = format!("{}:{vault_index}", text(&vault["vault"], "vaultId"));
+                    set_source(&mut row, &source_id, text(&vault["vault"], "name"));
                     out.push(row);
                 }
             }
@@ -265,6 +368,32 @@ fn csv(input: &str) -> Result<Vec<Vec<String>>, String> {
 mod tests {
     use super::*;
     #[test]
+    fn source_vaults_preserve_grouping_and_do_not_merge_existing_names() {
+        let data = br#"{"encrypted":false,"folders":[{"id":"a","name":"Personal"},{"id":"b","name":"Personal"}],"items":[{"type":1,"name":"One","folderId":"a","login":{}},{"type":1,"name":"Two","folderId":"b","login":{}},{"type":1,"name":"Three","folderId":"a","login":{}}]}"#;
+        let rows = parse(data, "bitwarden").unwrap();
+        let plans = source_plan(&rows, &["Personal".into()], 1).unwrap();
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].name, "Personal (imported 2)");
+        assert_eq!(plans[1].name, "Personal (imported 3)");
+        assert_eq!(plans[0].item_indices, vec![0, 2]);
+        assert_eq!(plans[1].item_indices, vec![1]);
+        assert!(source_plan(&rows, &[], 4).is_err());
+        let oversized = vec![rows[0].clone(); 51];
+        assert!(source_plan(&oversized, &[], 0).is_err());
+    }
+
+    #[test]
+    fn lastpass_folders_become_source_groups_including_unfiled_items() {
+        let rows = parse(
+            b"url,username,password,extra,name,grouping,fav\na,u,p,,A,Work,0\nb,u,p,,B,,0\n",
+            "lastpass",
+        )
+        .unwrap();
+        let plans = source_plan(&rows, &[], 0).unwrap();
+        assert_eq!(plans[0].name, "Work");
+        assert_eq!(plans[1].name, "Imported");
+    }
+    #[test]
     fn csv_preserves_secrets_and_multiline_notes() {
         let rows = parse(b"url,username,password,extra,name,grouping,fav\r\nhttps://a,u,\"p,\"\"q\",\"line1\nline2\",A,g,0\r\n", "lastpass").unwrap();
         assert_eq!(rows[0]["password"], "p,\"q");
@@ -292,7 +421,7 @@ mod tests {
             writer
                 .start_file("export.data", zip::write::SimpleFileOptions::default())
                 .unwrap();
-            writer.write_all(br#"{"accounts":[{"vaults":[{"items":[{"categoryUuid":"001","overview":{"title":"Example","url":"https://example.invalid"},"details":{"notesPlain":"preserve notes","loginFields":[{"designation":"username","value":"user"},{"designation":"password","value":"secret"}]}}]}]}]}"#).unwrap();
+            writer.write_all(br#"{"accounts":[{"attrs":{"uuid":"account"},"vaults":[{"attrs":{"uuid":"vault-one","name":"Test Vault"},"items":[{"categoryUuid":"001","overview":{"title":"Example","url":"https://example.invalid"},"details":{"notesPlain":"preserve notes","loginFields":[{"designation":"username","value":"user"},{"designation":"password","value":"secret"}]}}]}]}]}"#).unwrap();
             if attachment {
                 writer
                     .start_file(
@@ -306,6 +435,9 @@ mod tests {
         };
         let rows = parse(&make(false), "1password").unwrap();
         assert_eq!(rows[0]["password"], "secret");
+        let plans = source_plan(&rows, &[], 0).unwrap();
+        assert_eq!(plans[0].name, "Test Vault");
+        assert_eq!(plans[0].item_indices, vec![0]);
         assert!(
             rows[0]["customFields"][0]["value"]
                 .as_str()
