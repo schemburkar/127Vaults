@@ -63,7 +63,7 @@ async function fixture(t) {
     protectedDirectory: directory => mkdir(directory, { recursive: true }),
     loadSecrets: async () => ({ OPERATOR_TOKEN: 'private-token' }), auditPublication: async () => calls.push('audit'),
     prepareTrialCatalogue: catalogue,
-    runRelease: async r => { calls.push(`build:${r.product}/${r.platform}`); await release(join(r.outputRoot, r.product, r.label, r.product === 'server' ? 'linux-amd64' : r.product === 'extension' ? 'chromium' : r.platform), r.product, r.product === 'server' ? 'linux-amd64' : r.product === 'extension' ? 'chromium' : r.platform, r.version); },
+    runRelease: async r => { calls.push(`build:${r.product}/${r.platform}`); await release(join(r.outputRoot, r.product, r.version, r.product === 'server' ? 'linux-amd64' : r.product === 'extension' ? 'chromium' : r.platform), r.product, r.product === 'server' ? 'linux-amd64' : r.product === 'extension' ? 'chromium' : r.platform, r.version); },
     verifyEmbeddedAgreements: async dirs => { assert.equal(dirs.length, 8); calls.push('embedded'); },
     execute: async (command, args) => {
       if (command === 'podman' && args[0] === 'machine') return JSON.stringify([{ ConnectionInfo: { PodmanPipe: { Path: '\\\\.\\pipe\\fixture' } } }]);
@@ -84,7 +84,7 @@ async function fixture(t) {
 test('set preview coordinates versions without creating outputs or publishing', async t => {
   const f = await fixture(t); const p = await buildSet({ ...f.request, plan: true }, f.settings, f.active, f.deps);
   assert.deepEqual(new Set(Object.values(p.versions)), new Set(['0.1.3']));
-  assert.equal(p.releaseDirectories.length, 8); assert.equal(await present(p.directory), false); assert.deepEqual(f.calls, []);
+  assert.equal(p.releaseDirectories.length, 8); assert.ok(p.releaseDirectories.every(dir => dir.includes(join('0.1.3', '')))); assert.equal(await present(p.directory), false); assert.deepEqual(f.calls, []);
   assert.throws(() => nextPatch('0.1.2.3'), /explicit/);
 });
 

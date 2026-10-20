@@ -192,7 +192,7 @@ async function build(plan, platform, attempt) {
 }
 async function deliver(plan, platform, payload, reused) {
   const cached = await verifyRelease(payload);
-  const output = join(plan.outputRoot, plan.product, plan.label, platform);
+  const output = join(plan.outputRoot, plan.product, plan.packageVersion, platform);
   await mkdir(dirname(output), { recursive: true });
   await mkdir(output); // Immutable: never merge into or overwrite an earlier release.
   for (const file of cached.files) await copyFile(join(payload, file.name), join(output, file.name));
@@ -268,7 +268,7 @@ export async function runRelease(request) {
   const plan = await createPlan(request);
   if (request.plan) { console.log(JSON.stringify(plan, null, 2)); return; }
   for (const platform of plan.platforms) {
-    if (await exists(join(plan.outputRoot, plan.product, plan.label, platform)) && !request.doctor) throw Error('That release output already exists. Choose a new -Label; completed releases are immutable.');
+    if (await exists(join(plan.outputRoot, plan.product, plan.packageVersion, platform)) && !request.doctor) throw Error('That release output already exists. Choose a new -Version; completed versions are immutable.');
   }
   console.log(`Preparing ${plan.product} from committed ${plan.revision}. Uncommitted checkout changes are excluded.`);
   for (const platform of plan.platforms) {

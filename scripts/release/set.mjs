@@ -117,7 +117,7 @@ export async function planSet(request, settings, active, deps = defaults) {
   }
   return { schemaVersion: 1, revision, label, versions, baselineIdentity: await deps.catalogueIdentity(baseline),
     baseline, directory: join(settings.cacheRoot, 'sets', label),
-    releaseDirectories: components.map(([p, platform]) => join(settings.outputRoot, p, label, platform)) };
+    releaseDirectories: components.map(([p, platform]) => join(settings.outputRoot, p, versions[p], platform)) };
 }
 
 async function fixtureEnvironment(settings, deps) {
@@ -156,7 +156,7 @@ export async function buildSet(request, settings, active, deps = defaults) {
     for (const product of products) {
       const selected = components.filter(([p]) => p === product);
       const complete = await Promise.all(selected.map(async ([p, platform]) => {
-        const directory = join(settings.outputRoot, p, plan.label, platform);
+        const directory = join(settings.outputRoot, p, plan.versions[p], platform);
         if (!await exists(directory)) return false;
         const manifest = await deps.verifyRelease(directory);
         if (manifest.product !== p || manifest.platform !== platform || manifest.packageVersion !== plan.versions[p]

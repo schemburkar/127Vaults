@@ -65,6 +65,7 @@ test('installer accepts coordinated package metadata and its source participates
     const request = { ...item, product: 'installer', platform: 'both', label: 'installer-test' };
     const plan = await createPlan(request);
     assert.deepEqual(plan.platforms, ['windows', 'linux']); assert.equal(plan.packageVersion, '0.1.0');
+    assert.deepEqual(plan.outputs, ['windows', 'linux'].map(platform => join(item.outputRoot, 'installer/0.1.0', platform)));
     assert.equal((await createPlan({ ...request, version: '0.1.4' })).packageVersion, '0.1.4');
     await writeFile(join(item.repository, 'apps/installer/src/main.rs'), 'fn main() { println!("updated"); }\n');
     await git(item.repository, ['add', '.']); await git(item.repository, ['commit', '-qm', 'installer fix']);
@@ -102,6 +103,7 @@ test('source fingerprints follow product inputs and plans do not create output',
     assert.equal(initial.fingerprint, next.fingerprint);
     const plan = await createPlan({ ...item, product: 'extension', label: 'plan-test' });
     assert.equal(plan.packageVersion, '0.1.0');
+    assert.deepEqual(plan.outputs, [join(item.outputRoot, 'extension/0.1.0/chromium')]);
     assert.equal((await readdir(item.directory)).includes('output'), false);
     await assert.rejects(createPlan({ ...item, product: 'extension', outputRoot: join(item.repository, 'dist') }), /outside/);
     await assert.rejects(createPlan({ ...item, product: 'extension', cacheRoot: item.outputRoot }), /separate/);
@@ -141,7 +143,7 @@ test('real extension release freezes committed source, reuses unchanged inputs a
     const request = { ...item, product: 'extension', label: 'first', version: '0.2.0' };
     await writeFile(join(item.repository, 'apps/extension/src/background.mjs'), 'throw Error("uncommitted code must not be built");\n');
     await runRelease(request);
-    const firstPath = join(item.outputRoot, 'extension/first/chromium');
+    const firstPath = join(item.outputRoot, 'extension/0.2.0/chromium');
     const first = await verifyRelease(firstPath);
     assert.equal(first.sourceDirty, false);
     assert.equal(first.reused, false);
@@ -160,21 +162,24 @@ test('real extension release freezes committed source, reuses unchanged inputs a
     assert.equal(JSON.parse(await readFile(join(extract, '127vaults-extension/manifest.json'), 'utf8')).version, '0.2.0');
     await writeFile(join(item.repository, 'unrelated.txt'), 'new unrelated code\n');
     await git(item.repository, ['add', 'unrelated.txt']); await git(item.repository, ['commit', '-qm', 'different product']);
-    await runRelease({ ...request, label: 'second' });
-    const second = await verifyRelease(join(item.outputRoot, 'extension/second/chromium'));
+    const secondRoot = join(item.directory, 'second-output');
+    await runRelease({ ...request, outputRoot: secondRoot, label: 'second' });
+    const second = await verifyRelease(join(secondRoot, 'extension/0.2.0/chromium'));
     assert.equal(second.reused, true);
     assert.equal(second.sourceRevision, first.sourceRevision);
     assert.notEqual(second.requestedSourceRevision, first.sourceRevision);
     assert.equal(second.files.find(file => file.name === archive.name).sha256, archive.sha256);
-    await assert.rejects(runRelease({ ...request, label: 'second' }), /already exists/);
+    await assert.rejects(runRelease({ ...request, label: 'different-label' }), /already exists/);
     const entry = JSON.parse(await readFile(join(item.cacheRoot, 'entries', (await readdir(join(item.cacheRoot, 'entries')))[0]), 'utf8'));
     await writeFile(join(entry.directory, archive.name), 'corrupted');
-    await assert.rejects(runRelease({ ...request, label: 'corrupt' }), /checksum mismatch/);
+    await assert.rejects(runRelease({ ...request, outputRoot: join(item.directory, 'corrupt-output'), label: 'corrupt' }), /checksum mismatch/);
     assert.equal((await readdir(join(item.outputRoot, 'extension'))).includes('corrupt'), false);
-    await runRelease({ ...request, label: 'forced', force: true });
-    assert.equal((await verifyRelease(join(item.outputRoot, 'extension/forced/chromium'))).reused, false);
+    const forcedRoot = join(item.directory, 'forced-output');
+    await runRelease({ ...request, outputRoot: forcedRoot, label: 'forced', force: true });
+    assert.equal((await verifyRelease(join(forcedRoot, 'extension/0.2.0/chromium'))).reused, false);
     const index = JSON.parse(await readFile(join(item.outputRoot, 'release-index.json'), 'utf8'));
-    assert.equal(index.releases.length, 3);
+    assert.equal(index.releases.length, 1);
+    assert.equal(index.releases[0].directory, "extension/0.2.0/chromium");
     await writeFile(join(firstPath, 'unexpected.key'), 'must reject extras');
     await assert.rejects(verifyRelease(firstPath), /Unexpected release content/);
   } finally { await cleanup(item.directory); }

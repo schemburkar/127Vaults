@@ -119,6 +119,6 @@ export async function createPlan(request) {
     engine: request.engine || 'podman', force: Boolean(request.force || request.refreshImages), refreshImages: Boolean(request.refreshImages),
     compatibility: { api: 'v1', nativeMessaging: ['desktop', 'cli', 'extension'].includes(product) ? 1 : null,
       minimumServerVersion: null, status: 'informational; version compatibility policy is not yet defined' },
-    outputs: platforms.map(platform => resolve(outputRoot, product, label, platform)),
+    outputs: platforms.map(platform => resolve(outputRoot, product, version, platform)),
     sourceMode: 'committed snapshot; current uncommitted changes are excluded', publish: false };
 }

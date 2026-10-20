@@ -112,7 +112,7 @@ skip-checks option in this first pass.
 
 ## Labels and versions
 
-The project's eventual numbering and naming convention remains undecided.
+Finished artifacts are grouped by the numeric version embedded in each package.
 `-Label` is a safe, opaque build name such as `friends-a`. If omitted, the tool
 generates a unique commit/timestamp label. Labels are not interpreted as semantic
 versions, tags or compatibility claims.
@@ -120,9 +120,9 @@ versions, tags or compatibility claims.
 `-Version` is optional **numeric package metadata** required by Windows/Tauri and
 browser formats. Without it, the selected snapshot's existing component version
 is used: desktop Tauri config, CLI Cargo workspace, extension browser manifest,
-or server package.json. This includes current development placeholders. A label
-is sufficient for a normal private test; it does not require choosing a new
-version convention. Explicit overrides use `X.Y.Z`; the extension additionally
+or server package.json. An existing product/version/platform directory is never overwritten. For another
+build in the same output root, advance the package version; a new label alone
+does not create another copy. Explicit overrides use `X.Y.Z`; the extension additionally
 accepts `X.Y.Z.W`. Browser versions cannot be all zero. A future public numbering
 scheme can be implemented without changing the meaning of the opaque label.
 
@@ -163,15 +163,17 @@ Example default output layout:
 ```text
 C:\Projects\127Vaults-Releases\
   release-index.json
-  desktop\friends-a\windows\...
-  desktop\friends-a\linux\...
-  cli\friends-a\windows\...
-  extension\friends-a\chromium\...
-  server\friends-a\linux-amd64\...
+  cache\...  (private build and deployment state)
+  desktop\0.2.0\windows\...
+  desktop\0.2.0\linux\...
+  cli\0.2.0\windows\...
+  extension\0.2.0\chromium\...
+  server\0.2.0\linux-amd64\...
 ```
 
-Every completed directory is immutable: rerunning the same product/label/platform
-fails instead of overwriting it. Choose a new label. The independent release index
+Finished artifacts use `<product>/<packageVersion>/<platform>`. Every completed
+directory is immutable: rerunning the same product/version/platform fails instead
+of overwriting it, even with a different label. Choose a new numeric version. The independent release index
 records each product's actual build commit, requested commit, package version,
 input fingerprint and reuse state. Products can have different labels, versions
 and build commits without pretending to be one matching repository-wide release.
@@ -182,7 +184,8 @@ The tool fingerprints the selected product's committed files, shared dependencie
 checks, install instructions and license agreements. The packaging engine, numeric
 package version, Node runtime and target platform also enter the cache key. A
 new commit touching another product can reuse a previously verified artifact.
-Labels do not enter that key, so a second handoff can reuse exactly the same bytes.
+Labels remain build metadata and do not enter that key. A separate output root
+can reuse exactly the same bytes for another handoff of an existing version.
 
 ```powershell
 .\release.ps1 extension -Label handoff-one
@@ -254,7 +257,7 @@ checks. Capture terminal logs with PowerShell `Tee-Object` if you need a transcr
 ## Verify and future CI
 
 ```powershell
-.\release.ps1 -Verify C:\Projects\127Vaults-Releases\extension\friends-a\chromium
+.\release.ps1 -Verify C:\Projects\127Vaults-Releases\extension\0.2.0\chromium
 ```
 
 Recipients without the repo can run `node verify-release.mjs .` inside a supplied
@@ -289,3 +292,16 @@ acceptance, signing and compatibility version ranges remain separate work. API v
 and native messaging v1 metadata are informational; no unchosen minimum-server
 version is fabricated. Existing legacy `package:local` and `package:assemble`
 commands remain available for the earlier test handoff format.
+
+Local retention: keep the currently published artifacts in the release tree. Move
+superseded candidates and older versions into a private holding archive with a
+move inventory; retain their original manifests and checksums. Update local
+catalogue paths and the release index when relocating finished artifacts. Version
+0.x does not remove the need to preserve recovery evidence. Never publish a
+relocation of local paths as a new release. The `cache/` directory is private build
+and deployment state, not a finished artifact directory.
+
+On this Windows workstation, the default home cache path is a compatibility
+junction to `C:\Projects\127Vaults-Releases\cache`. Keep using the default
+logical cache path so existing saved records remain valid. Do not publish or
+share the entire release root: only select finished product/version directories.
