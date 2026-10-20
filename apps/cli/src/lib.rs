@@ -46,6 +46,45 @@ pub fn connector_agent_active(config_dir: &std::path::Path) -> bool {
     agent::call(config_dir, "status", serde_json::json!({})).is_ok()
 }
 
+/// Reports a definite connector lock; a busy local agent is not a lock signal.
+#[must_use]
+pub fn connector_agent_locked(config_dir: &std::path::Path) -> bool {
+    connector_probe_locked(agent::call(config_dir, "status", serde_json::json!({})))
+}
+
+fn connector_probe_locked(result: Result<serde_json::Value, String>) -> bool {
+    match result {
+        Ok(status) => status["unlocked"] != true,
+        Err(error) => error != "local agent unavailable",
+    }
+}
+
+#[cfg(test)]
+mod connector_probe_tests {
+    #[test]
+    fn busy_connector_is_not_a_lock_but_expired_or_denied_sessions_are() {
+        use super::connector_probe_locked;
+        assert!(!connector_probe_locked(Ok(
+            serde_json::json!({"unlocked":true})
+        )));
+        assert!(!connector_probe_locked(Err(
+            "local agent unavailable".into()
+        )));
+        assert!(connector_probe_locked(Err(
+            "unlock session expired; run login again".into()
+        )));
+        assert!(connector_probe_locked(Err(
+            "local agent authorization failed".into()
+        )));
+        assert!(connector_probe_locked(Err(
+            "A valid signed license is required".into()
+        )));
+        assert!(connector_probe_locked(Ok(
+            serde_json::json!({"unlocked":false})
+        )));
+    }
+}
+
 /// Keep an owned connector available during actual desktop interaction.
 pub fn touch_connector_agent(config_dir: &std::path::Path) {
     let _ = agent::call(config_dir, "replica.status", serde_json::json!({}));

@@ -8,8 +8,10 @@ Encrypted vault data is preserved when access is blocked.
 
 ## Import
 
-In desktop, select the destination vault, choose **Import passwords**, select a
-source and file, preview the count, then choose **Import items**. The same parser
+In desktop, open **All items → ⋯ → Import passwords**, choose the destination
+vault, select a source and file, preview the count, then choose **Import items**.
+Import adds items to that existing vault; source vaults/folders are not created
+automatically. Changing the destination invalidates the previous preview. The same parser
 is available through an unlocked CLI agent:
 
 ```powershell

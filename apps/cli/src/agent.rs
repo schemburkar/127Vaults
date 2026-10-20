@@ -242,7 +242,9 @@ fn dispatch(
         }
         return Err("read-only agent command denied".to_owned());
     }
-    if !matches!(request.action.as_str(), "license.status" | "logout") {
+    if matches!(request.action.as_str(), "status" | "replica.status") {
+        session.require_cached_license(false)?;
+    } else if !matches!(request.action.as_str(), "license.status" | "logout") {
         session.require_license(false)?;
     }
     let result = match request.action.as_str() {

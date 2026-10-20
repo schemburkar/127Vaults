@@ -2733,6 +2733,23 @@ impl Session {
         crate::entitlement::authorize(&status, observed, now, write)
     }
 
+    pub fn require_cached_license(&self, write: bool) -> Result<(), String> {
+        let cached = self.cached_entitlement()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "System clock is invalid")?
+            .as_secs()
+            .cast_signed();
+        crate::entitlement::authorize(
+            &cached["status"],
+            cached["observedAt"]
+                .as_i64()
+                .ok_or("Invalid cached license observation")?,
+            now,
+            write,
+        )
+    }
+
     /// Desktop refreshes authenticated license state in a background worker.
     pub fn use_background_license_refresh(&mut self) {
         self.background_license_refresh = true;

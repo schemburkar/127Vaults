@@ -525,6 +525,11 @@ fn device_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+fn license_access_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    with_session(&state, |session| session.entitlement_status())
+}
+
+#[tauri::command]
 async fn license_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
     let epoch = state.epoch.current();
     let request = with_session(&state, |session| {
@@ -1045,7 +1050,7 @@ fn main() {
                         continue;
                     };
                     if state.epoch.current() != epoch
-                        || connector_agent_active(&path)
+                        || !vaults_cli::connector_agent_locked(&path)
                         || !state.epoch.revoke(epoch)
                     {
                         continue;
@@ -1083,6 +1088,7 @@ fn main() {
             vault_create,
             device_list,
             license_status,
+            license_access_status,
             device_revoke,
             vault_rename,
             vault_settings,
