@@ -32,7 +32,10 @@ impl Api {
         let response = request
             .bearer_auth(&self.invitation.token)
             .header("Origin", &self.invitation.origin)
-            .header("X-127Vaults-Installer-Version", env!("CARGO_PKG_VERSION"))
+            .header(
+                "X-127Vaults-Installer-Version",
+                env!("VAULTS_INSTALLER_VERSION"),
+            )
             .send()
             .map_err(|_| "Unable to reach the private download service")?;
         if !response.status().is_success() {
@@ -63,7 +66,10 @@ pub fn client() -> Result<Client> {
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(3600))
-        .user_agent(concat!("127vaults-install/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!(
+            "127vaults-install/",
+            env!("VAULTS_INSTALLER_VERSION")
+        ))
         .build()?)
 }
 

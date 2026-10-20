@@ -55,7 +55,7 @@ test('target and metadata validation keep label policy separate from native vers
   assert.throws(() => numericVersion('0.0.0', 'extension'));
 });
 
-test('installer is independently versioned and its source participates in release fingerprints', async () => {
+test('installer accepts coordinated package metadata and its source participates in release fingerprints', async () => {
   const item = await fixture();
   try {
     await mkdir(join(item.repository, 'apps/installer/src'), { recursive: true });
@@ -65,7 +65,7 @@ test('installer is independently versioned and its source participates in releas
     const request = { ...item, product: 'installer', platform: 'both', label: 'installer-test' };
     const plan = await createPlan(request);
     assert.deepEqual(plan.platforms, ['windows', 'linux']); assert.equal(plan.packageVersion, '0.1.0');
-    await assert.rejects(createPlan({ ...request, version: '0.1.1' }), /metadata must match/);
+    assert.equal((await createPlan({ ...request, version: '0.1.4' })).packageVersion, '0.1.4');
     await writeFile(join(item.repository, 'apps/installer/src/main.rs'), 'fn main() { println!("updated"); }\n');
     await git(item.repository, ['add', '.']); await git(item.repository, ['commit', '-qm', 'installer fix']);
     assert.notEqual((await createPlan(request)).inputFingerprint, plan.inputFingerprint);

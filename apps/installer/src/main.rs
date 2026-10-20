@@ -18,7 +18,7 @@ use vaults_installer::{Artifact, Invitation, Product, Result, select_artifact};
 #[allow(clippy::struct_excessive_bools)] // Independent command-line switches.
 #[command(
     name = "127vaults-install",
-    version,
+    version = vaults_installer::PACKAGE_VERSION,
     about = "Install and upgrade your licensed 127Vaults apps"
 )]
 struct Args {

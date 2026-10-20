@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Component, Path};
 use url::Url;
 
+pub const PACKAGE_VERSION: &str = env!("VAULTS_INSTALLER_VERSION");
+
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Invitation credentials stay in memory and never enter URLs sent over HTTP.

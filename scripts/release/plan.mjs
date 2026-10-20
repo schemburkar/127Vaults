@@ -107,7 +107,6 @@ export async function createPlan(request) {
     source.fingerprint = hash(source.fingerprint + '\0' + JSON.stringify(issuerPublicKeys));
   }
   const version = numericVersion(request.version || await configuredVersion(repository, revision, product), product);
-  if (product === 'installer' && version !== await configuredVersion(repository, revision, product)) throw Error('Installer metadata must match apps/installer/Cargo.toml. Bump the independent installer version in source first.');
   const label = labelValue(request.label || `${revision.slice(0, 12)}-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
   const outputRoot = outside(repository, request.outputRoot || resolve(repository, '../127Vaults-Releases'), 'OutputRoot');
   const cacheRoot = outside(repository, request.cacheRoot || resolve(homedir(), '.127vaults-release-cache'), 'CacheRoot');

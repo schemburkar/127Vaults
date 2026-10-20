@@ -124,9 +124,10 @@ export async function packageInstaller(output, options = {}) {
   const sourceRoot = options.root ?? root;
   const configured = /^version\s*=\s*"([^"]+)"/m.exec(await readFile(join(sourceRoot, 'apps/installer/Cargo.toml'), 'utf8'))?.[1];
   const packageVersion = options.version ?? configured;
-  if (!configured || packageVersion !== configured) throw Error('Installer package version must match its Cargo version.');
+  if (!configured || !/^\d+\.\d+\.\d+$/.test(packageVersion)) throw Error('Installer package version must be numeric X.Y.Z.');
   if (!['win32', 'linux'].includes(process.platform) || process.arch !== 'x64') throw Error('Installer packages require Windows/Linux x64.');
-  await run('cargo', ['build', '--release', '--locked', '-p', 'vaults-installer'], { cwd: sourceRoot });
+  await run('cargo', ['build', '--release', '--locked', '-p', 'vaults-installer'],
+    { cwd: sourceRoot, env: { ...process.env, VAULTS_PACKAGE_VERSION: packageVersion } });
   const filename = `127vaults-install${process.platform === 'win32' ? '.exe' : ''}`;
   // Linux has no filename suffix; wrap both platforms uniformly for catalogue delivery.
   const directory = join(output, `127vaults-installer-${packageVersion}-${process.platform === 'win32' ? 'windows' : 'linux'}-x64`);
