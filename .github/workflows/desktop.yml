@@ -1,9 +1,7 @@
 name: Windows and Linux desktop
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # Automatic runs paused during internal development; revisit before public release.
   workflow_dispatch:
 
 permissions:

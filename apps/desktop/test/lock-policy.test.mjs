@@ -32,8 +32,8 @@ test("desktop item details include custom fields and field actions", async () =>
   ]);
   assert.match(app, /customFields: CustomField\[\]/);
   assert.match(app, /"Hide"\s*:\s*"Reveal"/);
-  assert.match(app, /label=\{`Copy \$\{field.label\}`\}/);
-  assert.match(app, /label=\{`Drag \$\{field.label\}`\}/);
+  assert.match(await readFile(new URL("../src/readonly-item.tsx", import.meta.url), "utf8"), /label=\{`Copy \$\{field.label\}`\}/);
+  assert.match(await readFile(new URL("../src/readonly-item.tsx", import.meta.url), "utf8"), /label=\{`Drag \$\{field.label\}`\}/);
   assert.match(iconButton, /aria-label=\{label\}/);
   assert.match(iconButton, /title=\{label\}/);
   assert.match(app, /Add field/);

@@ -1,3 +1,4 @@
+import { ReadonlyItem } from "./readonly-item";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -238,7 +239,7 @@ export function App() {
     try {
       const existing = await WebviewWindow.getByLabel(label);
       if (existing) { await existing.setFocus(); return; }
-      const child = new WebviewWindow(label, { url: `index.html?detail=${encodeURIComponent(selected.itemId)}&vault=${encodeURIComponent(itemVaultId)}`, title: "127Vaults · Item details", width: 620, height: 760, minWidth: 380, minHeight: 400 });
+      const child = new WebviewWindow(label, { url: `index.html?detail=${encodeURIComponent(selected.itemId)}&vault=${encodeURIComponent(itemVaultId)}`, title: "127Vaults · Item details", dragDropEnabled: false, width: 620, height: 760, minWidth: 380, minHeight: 400 });
       void child.once("tauri://error", event => notify("error", "Could not open item window", String(event.payload)));
     } catch (error) { notify("error", "Could not open item window", String(error)); }
   };
@@ -1344,7 +1345,7 @@ export function App() {
     return (
       <main className="ui-access-shell grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
         <section className="ui-access-card w-full max-w-lg rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
-          <div className="mb-6 flex items-center justify-center gap-3"><img src="/brand-mark.svg" alt="" width="40" height="40" /><img src="/wordmark.svg" alt="127 Vaults" width="127" height="40" /></div>
+          <div className="mb-6 flex items-center justify-center gap-3"><img src="/wordmark-red.svg" alt="127 Vaults" width="200" height="63" /></div>
           {registrationSuccess ? (
             <div className="grid min-h-[28rem] place-content-center text-center">
               <div className="mx-auto grid size-20 place-items-center rounded-full bg-emerald-400/15 text-emerald-300">
@@ -1466,7 +1467,7 @@ export function App() {
     return (
       <main className="ui-access-shell grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#18203d,#04071d_58%)] p-8">
         <section className="ui-access-card w-full max-w-md rounded-3xl border border-white/10 bg-[#11162b] p-8 shadow-2xl">
-          <div className="mx-auto mb-5 flex items-center justify-center gap-3"><img src="/brand-mark.svg" alt="" width="56" height="56" /><img src="/wordmark.svg" alt="127 Vaults" width="159" height="50" /></div>
+          <div className="mx-auto mb-5 flex items-center justify-center gap-3"><img src="/wordmark-red.svg" alt="127 Vaults" width="200" height="63" /></div>
           <h1 className="text-center text-2xl font-bold">Unlock 127Vaults</h1>
           <p className="mt-2 text-center text-sm text-slate-400">
             Open your encrypted vault on this device.
@@ -1582,7 +1583,7 @@ export function App() {
     <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
-          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}><img src="/brand-mark.svg" alt="" className="size-9 shrink-0" /><strong><img src="/wordmark.svg" alt="127 Vaults" width="127" height="40" /></strong></button>
+          <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}>{sidebarCollapsed && !compactSidebar && <img src="/brand-mark.svg" alt="127 Vaults" className="size-9 shrink-0" />}<strong><img src="/wordmark-red.svg" alt="127 Vaults" width="127" height="40" /></strong></button>
           {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="desktop-license-warning text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
             ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
             : licenseStatus.mode === "revoked"
@@ -1950,129 +1951,9 @@ export function App() {
               </>
             ) : (
               <>
-                <div className="ui-page-header desktop-detail-heading mb-7">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
-                      {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
-                    </p>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+<ReadonlyItem item={selected} revealed={revealed} toggleReveal={toggleReveal} copyValue={copyValue} dragValue={dragValue} endDrag={() => dragSession.end()} openWebsite={url => void openUrl(url)} actions={<>
                       <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" disabled={saving} onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" disabled={saving} onClick={beginEditing}>Edit</Button><IconButton label="Delete item" disabled={saving || busy} onClick={() => void deleteItem()}><Trash2 size={17} /></IconButton><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
-                      <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button>
-                    </div>
-                  </div>
-                  <div>
-                    <h2 className="mt-1 text-3xl font-bold">
-                      {selected.title || "Untitled"}
-                    </h2>
-                    {selected.website && (
-                      <button
-                        className="mt-1 block text-sm text-[#E0BB95] hover:underline"
-                        onClick={() => void openUrl(selected.website)}
-                      >
-                        {selected.website}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <PasskeyDetails fields={selected.customFields} />
-                {selected.customFields.find(f => f.id === TOTP_ID)?.value && <AuthenticatorCode value={selected.customFields.find(f => f.id === TOTP_ID)!.value} copy={copyValue} />}
-                <section hidden={itemType(selected.customFields) === "passkey" && !primaryFields(selected.customFields).length && !ordinaryFields(selected.customFields).length}>
-                  <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
-                    {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
-                  </h3>
-                  <div className="overflow-hidden rounded-2xl border border-white/8 bg-white/3">
-                    {[
-                      ...(ITEM_TYPES[itemType(selected.customFields)].username ? [{
-                        key: "username",
-                        label: "Username",
-                        value: selected.username,
-                        secret: false,
-                      }] : []),
-                      ...(ITEM_TYPES[itemType(selected.customFields)].password ? [{
-                        key: "password",
-                        label: "Password",
-                        value: selected.password,
-                        secret: true,
-                      }] : []),
-                      ...[...primaryFields(selected.customFields), ...ordinaryFields(selected.customFields)].map((field) => ({
-                        key: field.id,
-                        label: field.label,
-                        value: field.value,
-                        secret: field.type === "password",
-                      })),
-                    ].map((field, index) => (
-                      <div
-                        key={field.key}
-                        className={cn(
-                          "desktop-field-row grid min-h-16 grid-cols-[7rem_1fr_auto] items-center gap-4 px-4",
-                          index > 0 && "border-t border-white/7",
-                        )}
-                      >
-                        <span className="text-xs text-slate-500">
-                          {field.label}
-                        </span>
-                        <strong
-                          className={cn(
-                            "min-w-0 truncate text-sm",
-                            field.secret && "font-mono",
-                          )}
-                        >
-                          {field.secret && !revealed.has(field.key)
-                            ? "••••••••••••"
-                            : field.value || "—"}
-                        </strong>
-                        <div className="flex gap-1">
-                          {field.secret && (
-                            <IconButton
-                              label={`${revealed.has(field.key) ? "Hide" : "Reveal"} ${field.label}`}
-                              aria-pressed={revealed.has(field.key)}
-                              onClick={() => toggleReveal(field.key)}
-                            >
-                              {revealed.has(field.key) ? (
-                                <EyeOff size={15} />
-                              ) : (
-                                <Eye size={15} />
-                              )}
-                            </IconButton>
-                          )}
-                          <IconButton
-                            label={`Copy ${field.label}`}
-                            onClick={() => void copyValue(field.value)}
-                          >
-                            <Copy size={15} />
-                          </IconButton>
-                          <IconButton
-                            label={`Drag ${field.label}`}
-                            draggable
-                            onDragStart={(event) =>
-                              dragValue(event, field.label, field.value)
-                            }
-                            onDragEnd={() => dragSession.end()}
-                            title={`Drag ${field.label}`}
-                          >
-                            <GripVertical size={15} />
-                          </IconButton>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {sections(selected.customFields).map((section) => <section key={section.id} className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-white/3">
-                    <h3 className="border-b border-white/8 px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#E0BB95]">{section.label}</h3>
-                    {section.fields.map((field) => <div key={field.id} className="desktop-field-row grid min-h-16 grid-cols-[7rem_1fr_auto] items-center gap-4 border-b border-white/7 px-4 last:border-0">
-                      <span className="text-xs text-slate-500">{field.label}</span>
-                      <strong className="min-w-0 truncate text-sm">{field.type === "password" && !revealed.has(field.id) ? "••••••••••••" : field.value || "—"}</strong>
-                      <div className="flex gap-1">
-                        {field.type === "password" && <IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="ghost" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton>}
-                        <IconButton label={`Copy ${field.label}`} onClick={() => void copyValue(field.value)}><Copy size={16} aria-hidden="true" /></IconButton>
-                        <IconButton label={`Drag ${field.label}`} draggable onDragStart={(event) => dragValue(event, field.label, field.value)} onDragEnd={() => dragSession.end()}><GripVertical size={16} aria-hidden="true" /></IconButton>
-                      </div>
-                    </div>)}
-                  </section>)}
-                  {itemType(selected.customFields) === "wifi" && selected.customFields.find((field) => field.id === "ssid")?.value && <div className="mt-6 inline-grid gap-3 rounded-xl bg-white p-4 text-slate-900">
-                    <QRCodeSVG size={180} value={`WIFI:T:${selected.customFields.find((field) => field.id === "wifi_security")?.value || "WPA"};S:${selected.customFields.find((field) => field.id === "ssid")?.value.replace(/([\\;,:\"])/g, "\\$1")};P:${selected.password.replace(/([\\;,:\"])/g, "\\$1")};;`} />
-                    <span className="text-center text-xs font-semibold">Scan to join Wi-Fi</span>
-                  </div>}
-                </section>
+                      <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></>} />
               </>
             )}
           </div>
