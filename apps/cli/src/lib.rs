@@ -59,8 +59,44 @@ fn connector_probe_locked(result: Result<serde_json::Value, String>) -> bool {
     }
 }
 
+/// Confirms connector failures across probes; transient OS credential or IPC
+/// failures must not revoke an otherwise unlocked desktop session.
+#[derive(Default)]
+pub struct ConnectorLockConfirmation {
+    epoch: Option<u64>,
+    failures: u8,
+}
+
+impl ConnectorLockConfirmation {
+    pub fn observe(&mut self, epoch: u64, locked: bool) -> bool {
+        if self.epoch != Some(epoch) {
+            self.epoch = Some(epoch);
+            self.failures = 0;
+        }
+        self.failures = if locked {
+            self.failures.saturating_add(1)
+        } else {
+            0
+        };
+        self.failures >= 3
+    }
+}
+
 #[cfg(test)]
 mod connector_probe_tests {
+    #[test]
+    fn connector_lock_requires_consecutive_failures_in_the_same_unlock_session() {
+        let mut confirmation = super::ConnectorLockConfirmation::default();
+        assert!(!confirmation.observe(1, true));
+        assert!(!confirmation.observe(1, false));
+        assert!(!confirmation.observe(1, true));
+        assert!(!confirmation.observe(1, true));
+        assert!(!confirmation.observe(2, true));
+        assert!(!confirmation.observe(2, true));
+        assert!(confirmation.observe(2, true));
+        assert!(!confirmation.observe(2, false));
+    }
+
     #[test]
     fn busy_connector_is_not_a_lock_but_expired_or_denied_sessions_are() {
         use super::connector_probe_locked;

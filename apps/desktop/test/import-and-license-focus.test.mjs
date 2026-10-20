@@ -30,15 +30,18 @@ test('import preview uses the chosen destination rather than the currently displ
   assert.equal(calls.length, 2, 'no destination must prevent import');
 });
 
-function licenseHarness(cacheError = false) {
+function licenseHarness(cacheError = false, transientCacheError = false) {
   const start = source.indexOf('    const refreshLicenseStatus =');
   const code = source.slice(start, source.indexOf('    void refreshLicenseStatus();', start));
   const calls = [], locks = [], values = [];
+  let cacheAttempts = 0;
   const context = vm.createContext({ disposed: false, licenseBusy: false,
+    window: { setTimeout: callback => { callback(); return 1; } },
     invoke: async command => {
       calls.push(command);
       if (command === 'license_status') throw Error('status service unavailable');
-      if (cacheError) throw Error('License grace ended');
+      cacheAttempts++;
+      if (cacheError || (transientCacheError && cacheAttempts === 1)) throw Error('License cache temporarily unavailable');
       return { mode: 'read-only' };
     }, setLicenseStatus: value => values.push(value), lock: async reason => locks.push(reason),
   });
@@ -53,4 +56,31 @@ test('focus refresh failure retains an unlocked session only when cached license
   assert.equal(valid.values[0].mode, 'read-only');
   const expired = licenseHarness(true); await expired.context.refresh();
   assert.equal(expired.locks.length, 1, 'missing, revoked or expired cache must still lock');
+});
+
+
+test('an open import dialog survives transient license cache reads without selecting a file', async () => {
+  const transient = licenseHarness(false, true);
+  transient.context.importOpen = true;
+  transient.context.importFile = null;
+  for (let i = 0; i < 4; i++) await transient.context.refresh();
+  assert.equal(transient.locks.length, 0);
+  assert.equal(transient.values.length, 4);
+  assert.equal(transient.context.importOpen, true);
+  assert.equal(transient.context.importFile, null);
+  assert.deepEqual(transient.calls.slice(0, 3), ['license_status', 'license_access_status', 'license_access_status']);
+});
+
+test('import is opened from Settings vaults and closes Settings before showing its dialog', () => {
+  assert.doesNotMatch(source, /Actions for All items/);
+  const panel = source.slice(source.indexOf('{settingsTab === "vaults" &&'), source.indexOf('{settingsTab === "preferences" &&'));
+  const handler = panel.slice(panel.indexOf('onClick={() => {'), panel.indexOf('}}>Import passwords'));
+  const calls = [];
+  const context = vm.createContext({ viewMode: 'all', activeVaults: [{ vaultId: 'target' }], vaultId: 'other',
+    setSettingsOpen: value => calls.push(['settings', value]), setImportOpen: value => calls.push(['import', value]),
+    setImportVaultId: value => calls.push(['destination', value]),
+    setImportCount() {}, setImportSourceVaults() {}, setImportFile() {}, setImportError() {},
+  });
+  vm.runInContext(compile(handler.replace('onClick={() => {', '')), context);
+  assert.deepEqual(calls, [['settings', false], ['destination', 'target'], ['import', true]]);
 });

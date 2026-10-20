@@ -1038,6 +1038,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
+                let mut confirmation = vaults_cli::ConnectorLockConfirmation::default();
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                     let state = handle.state::<DesktopState>();
@@ -1050,7 +1051,7 @@ fn main() {
                         continue;
                     };
                     if state.epoch.current() != epoch
-                        || !vaults_cli::connector_agent_locked(&path)
+                        || !confirmation.observe(epoch, vaults_cli::connector_agent_locked(&path))
                         || !state.epoch.revoke(epoch)
                     {
                         continue;
