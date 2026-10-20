@@ -56,13 +56,24 @@ export function databaseContainerArgs(project) {
     '--filter', 'label=com.docker.compose.service=database', '--format', '{{.ID}}'];
 }
 
+export function installationPrivateDirectory(argv, configuration = '') {
+  const configured = /^VAULTS_TLS_DIR=(.+)\r?$/m.exec(configuration)?.[1]?.trim();
+  const supplied = argv.find((value,index) => argv[index-1] === '--restore-identity')
+    ?? argv.find((value,index) => argv[index-1] === '--private-dir');
+  if (configured && supplied && resolve(configured) !== resolve(supplied)) {
+    throw Error('Private directory does not match the existing installation.');
+  }
+  return resolve(supplied ?? configured ?? join(homedir(), '.127vaults-test'));
+}
+
 export async function runTestInstall(argv) {
 const action = argv[0];
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
 const useTailscale = argv.includes('--tailscale');
 const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?? (useTailscale ? await discoverTailscale() : '127.0.0.1');
 const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
-const privateDir = resolve(restoredIdentity ?? argv.find((value, index) => argv[index - 1] === '--private-dir') ?? join(homedir(), '.127vaults-test'));
+const configuration = await readFile('.env','utf8').catch(error => { if(error.code === 'ENOENT') return ''; throw error; });
+const privateDir = installationPrivateDirectory(argv, configuration);
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
 if (!['init', 'start', 'status', 'identify', 'license', 'revoke', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, revoke, stop, bootstrap, or restore.');
 const [endpointA, endpointB] = endpoint.split('.').map(Number);
