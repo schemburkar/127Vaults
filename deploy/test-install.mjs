@@ -39,7 +39,7 @@ export function nextSetupStep({ bootstrapRequired, license, seatUsage }, smtpCon
   if (license.clockState === 'rollback_detected') return 'Next: correct the host clock; licensed writes remain locked until time catches up.';
   if (license.mode === 'revoked') return 'Next: obtain and install a new signed license for this installation.';
   if (license.mode === 'read-only' || license.mode === 'locked') return 'Next: renew the signed license to restore vault writes.';
-  if (license.mode === 'experimental') return 'Next: install a signed test license for this installation.';
+  if (!['active', 'read-only', 'locked', 'revoked'].includes(license.mode)) return 'Next: install a signed license for this installation.';
   if (bootstrapRequired) return 'Next: run install bootstrap, then create the first owner in the HTTPS web client.';
   if (!smtpConfigured) return 'Next: configure and verify SMTP before inviting users.';
   if (seatUsage && seatUsage.activeUsers + seatUsage.reservedSeats >= license.maxActiveUsers) {

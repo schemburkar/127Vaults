@@ -2,6 +2,17 @@
 // decrypted indices/bodies, and account secrets must never be passed here.
 export const isInstalledApp = () => globalThis.matchMedia?.('(display-mode: standalone)').matches === true || globalThis.navigator?.standalone === true;
 export const networkUnavailable = error => ['SERVER_UNREACHABLE', 'SERVER_TIMEOUT'].includes(error.message);
+export function requireEntitlement(entitlement, { origin, device, installation, now = Date.now(), write = false }) {
+  const status = entitlement?.status;
+  if (entitlement?.kind !== 'license-entitlement-v1' || entitlement.origin !== origin || entitlement.device !== device
+    || entitlement.installation !== installation || !Number.isFinite(entitlement.observedAt) || now < entitlement.observedAt
+    || !['active', 'read-only'].includes(status?.mode)) throw Error('A valid license or trial is required. Ask your operator for a replacement license.');
+  const deadline = Date.parse(write ? status.expiresAt : status.readOnlyUntil);
+  if (!Number.isFinite(deadline) || now >= deadline || write && status.mode !== 'active') {
+    throw Error(write ? 'An active license is required for edits and imports.' : 'License grace period ended. Ask your operator for a trial or renewed license to access or export data.');
+  }
+  return status;
+}
 const copy = value => structuredClone(value);
 const uuid = bytes => {
   const hex = [...bytes].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -114,6 +125,10 @@ export class PwaReplica {
   }
   async saveUnlock(unlock) {
     return this.exclusive(() => this.commit({ ...this.state, unlock: copy(unlock) }));
+  }
+  async saveLicense(envelope) {
+    if (typeof envelope !== 'string' || envelope.length > 32768) throw Error('LOCAL_REPLICA_INVALID');
+    return this.exclusive(() => this.commit({ ...this.state, licenseEnvelope: envelope }));
   }
   async snapshot(records) {
     return this.exclusive(async () => {

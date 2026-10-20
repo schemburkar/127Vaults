@@ -5562,6 +5562,7 @@ version = "0.0.0"
 dependencies = [
  "atomic-write-file",
  "base64 0.22.1",
+ "chrono",
  "ciborium",
  "clap",
  "dirs",
@@ -5580,6 +5581,7 @@ dependencies = [
  "vaults-crypto",
  "vaults-protocol",
  "zeroize",
+ "zip",
 ]
 
 [[package]]
@@ -5616,6 +5618,7 @@ dependencies = [
  "tauri-plugin-opener",
  "url",
  "vaults-cli",
+ "zeroize",
 ]
 
 [[package]]

@@ -21,7 +21,7 @@ test('authenticated license status reports seat use without disclosing installat
     const response = await fetch(url, { headers: { cookie: `${AUTH_COOKIE}=${'A'.repeat(43)}` } });
     assert.equal(response.status, 200);
     const status = await response.json();
-    assert.equal(status.mode, 'experimental');
+    assert.equal(status.mode, 'missing');
     assert.equal(status.activeUsers, 2);
     assert.equal(status.reservedSeats, 1);
     assert.equal(status.seatsAvailable, null);

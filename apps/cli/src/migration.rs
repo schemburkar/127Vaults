@@ -1,0 +1,317 @@
+//! Local plaintext password migration. Never sends source files to a server.
+#![allow(clippy::missing_errors_doc)]
+use serde_json::{Value, json};
+use std::io::Read;
+
+pub const MAX_BYTES: usize = 32 * 1024 * 1024;
+
+fn text<'a>(value: &'a Value, key: &str) -> &'a str {
+    value[key].as_str().unwrap_or("")
+}
+fn record(title: &str, website: &str, username: &str, password: &str, source: &Value) -> Value {
+    json!({"title":title,"website":website,"username":username,"password":password,
+        "customFields":[{"id":"migration-source","label":"Original imported record (JSON)","type":"password","value":source.to_string()}]})
+}
+
+#[allow(clippy::too_many_lines)]
+pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
+    if bytes.len() > MAX_BYTES {
+        return Err("Import exceeds 32 MiB".into());
+    }
+    let mut out = Vec::new();
+    match format {
+        "lastpass" => {
+            let rows = csv(std::str::from_utf8(bytes).map_err(|_| "CSV must be UTF-8")?)?;
+            let header = rows.first().ok_or("CSV is empty")?;
+            if header
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != header.len()
+            {
+                return Err("CSV has duplicate column names".into());
+            }
+            for required in [
+                "url", "username", "password", "name", "extra", "grouping", "fav",
+            ] {
+                if !header.iter().any(|v| v == required) {
+                    return Err("Expected a LastPass CSV export".into());
+                }
+            }
+            for row in rows
+                .iter()
+                .skip(1)
+                .filter(|row| row.iter().any(|v| !v.is_empty()))
+            {
+                if row.len() != header.len() {
+                    return Err("CSV row has the wrong number of columns".into());
+                }
+                let source: Value = header
+                    .iter()
+                    .zip(row)
+                    .map(|(k, v)| (k.clone(), json!(v)))
+                    .collect();
+                out.push(record(
+                    text(&source, "name"),
+                    text(&source, "url"),
+                    text(&source, "username"),
+                    text(&source, "password"),
+                    &source,
+                ));
+            }
+        }
+        "bitwarden" => {
+            let data: Value =
+                serde_json::from_slice(bytes).map_err(|_| "Invalid Bitwarden JSON")?;
+            if data["encrypted"] != false {
+                return Err("Choose an unencrypted Bitwarden JSON export".into());
+            }
+            for item in data["items"].as_array().ok_or("Missing Bitwarden items")? {
+                if item["type"] != 1
+                    || item["login"]["fido2Credentials"]
+                        .as_array()
+                        .is_some_and(|a| !a.is_empty())
+                    || item["attachments"]
+                        .as_array()
+                        .is_some_and(|a| !a.is_empty())
+                {
+                    return Err("This importer supports login records without passkeys or attachments. No records were imported.".into());
+                }
+                out.push(record(
+                    text(item, "name"),
+                    item["login"]["uris"][0]["uri"].as_str().unwrap_or(""),
+                    text(&item["login"], "username"),
+                    text(&item["login"], "password"),
+                    item,
+                ));
+            }
+        }
+        "1password" => {
+            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+                .map_err(|_| "Choose a 1Password .1pux export")?;
+            if archive
+                .file_names()
+                .any(|name| name.starts_with("files/") && !name.ends_with('/'))
+            {
+                return Err("Attachments are not supported. No records were imported.".into());
+            }
+            let file = archive
+                .by_name("export.data")
+                .map_err(|_| "Missing 1Password export.data")?;
+            let mut plain = zeroize::Zeroizing::new(Vec::new());
+            file.take((MAX_BYTES + 1) as u64)
+                .read_to_end(&mut plain)
+                .map_err(|_| "Cannot read 1Password export")?;
+            if plain.len() > MAX_BYTES {
+                return Err("Expanded import exceeds 32 MiB".into());
+            }
+            let data: Value =
+                serde_json::from_slice(&plain).map_err(|_| "Invalid 1Password export")?;
+            for account in data["accounts"]
+                .as_array()
+                .ok_or("Missing 1Password accounts")?
+            {
+                for vault in account["vaults"]
+                    .as_array()
+                    .ok_or("Missing 1Password vaults")?
+                {
+                    for item in vault["items"].as_array().ok_or("Missing 1Password items")? {
+                        if item["categoryUuid"] != "001" {
+                            return Err("Only 1Password login records are supported. No records were imported.".into());
+                        }
+                        let fields = item["details"]["loginFields"]
+                            .as_array()
+                            .ok_or("Missing login fields")?;
+                        let field = |kind| {
+                            fields
+                                .iter()
+                                .find(|f| f["designation"] == kind)
+                                .map_or("", |f| text(f, "value"))
+                        };
+                        out.push(record(
+                            text(&item["overview"], "title"),
+                            text(&item["overview"], "url"),
+                            field("username"),
+                            field("password"),
+                            item,
+                        ));
+                    }
+                }
+            }
+        }
+        "127vaults" => {
+            let data: Value =
+                serde_json::from_slice(bytes).map_err(|_| "Invalid 127Vaults JSON")?;
+            if data["format"] != "127vaults-plaintext-v1" {
+                return Err("Unsupported export version".into());
+            }
+            for vault in data["vaults"].as_array().ok_or("Missing vaults")? {
+                let items = vault["items"].as_array().ok_or("Missing items")?;
+                let mut seen = std::collections::HashSet::new();
+                for item in items
+                    .iter()
+                    .chain(vault["pendingDrafts"].as_array().into_iter().flatten())
+                {
+                    let identity = json!([item["itemId"], item["index"], item["body"]]).to_string();
+                    if !seen.insert(identity) {
+                        continue;
+                    }
+                    let mut row = item["body"].clone();
+                    if !row.is_object() {
+                        return Err("Invalid exported item body".into());
+                    }
+                    row["title"] = item["index"]["title"].clone();
+                    row["website"] = item["index"]["website"].clone();
+                    if !items.iter().any(|current| {
+                        current["itemId"] == item["itemId"]
+                            && current["index"] == item["index"]
+                            && current["body"] == item["body"]
+                    }) {
+                        row["title"] = json!(format!("{} (recovered draft)", text(&row, "title")));
+                    }
+                    out.push(row);
+                }
+            }
+        }
+        _ => return Err("Format must be 1password, lastpass, bitwarden, or 127vaults".into()),
+    }
+    if out.is_empty() || out.len() > 10000 {
+        return Err("Import must contain 1–10000 records".into());
+    }
+    for row in &out {
+        if ["title", "website", "username", "password"]
+            .iter()
+            .any(|key| !row[key].is_string())
+            || !row["customFields"].is_array()
+            || row.to_string().len() > 48000
+        {
+            return Err(
+                "An imported record is invalid or too large; no records were imported".into(),
+            );
+        }
+        let fields = row["customFields"]
+            .as_array()
+            .ok_or("Invalid custom fields")?;
+        let mut ids = std::collections::HashSet::new();
+        for field in fields {
+            if ["id", "label", "type", "value"]
+                .iter()
+                .any(|key| !field[key].is_string())
+                || !ids.insert(text(field, "id"))
+                || !matches!(
+                    text(field, "type"),
+                    "text" | "password" | "url" | "date" | "email" | "number" | "note" | "metadata"
+                )
+            {
+                return Err("Invalid imported custom field; no records were imported".into());
+            }
+        }
+    }
+    Ok(out)
+}
+
+// RFC 4180 quoting, escaped quotes and embedded newlines; reject malformed input.
+fn csv(input: &str) -> Result<Vec<Vec<String>>, String> {
+    let mut rows = Vec::new();
+    let mut row = Vec::new();
+    let mut field = String::new();
+    let mut chars = input.trim_start_matches('\u{feff}').chars().peekable();
+    let mut quoted = false;
+    let mut closed = false;
+    while let Some(c) = chars.next() {
+        if quoted {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    quoted = false;
+                    closed = true;
+                }
+            } else {
+                field.push(c);
+            }
+        } else {
+            match c {
+                '"' if field.is_empty() && !closed => quoted = true,
+                ',' => {
+                    row.push(std::mem::take(&mut field));
+                    closed = false;
+                }
+                '\n' | '\r' => {
+                    if c == '\r' && chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    row.push(std::mem::take(&mut field));
+                    rows.push(std::mem::take(&mut row));
+                    closed = false;
+                }
+                _ if closed || c == '"' => return Err("Malformed quoted CSV".into()),
+                _ => field.push(c),
+            }
+        }
+    }
+    if quoted {
+        return Err("Unterminated CSV field".into());
+    }
+    if !row.is_empty() || !field.is_empty() || closed {
+        row.push(field);
+        rows.push(row);
+    }
+    Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn csv_preserves_secrets_and_multiline_notes() {
+        let rows = parse(b"url,username,password,extra,name,grouping,fav\r\nhttps://a,u,\"p,\"\"q\",\"line1\nline2\",A,g,0\r\n", "lastpass").unwrap();
+        assert_eq!(rows[0]["password"], "p,\"q");
+        assert!(
+            rows[0]["customFields"][0]["value"]
+                .as_str()
+                .unwrap()
+                .contains("line1\\nline2")
+        );
+        assert!(csv("a,\"unterminated").is_err());
+    }
+    #[test]
+    fn refuses_encrypted_and_unsupported_records_before_import() {
+        assert!(parse(br#"{"encrypted":true,"items":[]}"#, "bitwarden").is_err());
+        assert!(parse(br#"{"encrypted":false,"items":[{"type":2}]}"#, "bitwarden").is_err());
+        let data = br#"{"encrypted":false,"items":[{"type":1,"name":"A","login":{"username":"u","password":"p","uris":[]}}]}"#;
+        assert_eq!(parse(data, "bitwarden").unwrap()[0]["password"], "p");
+    }
+
+    #[test]
+    fn onepassword_zip_preserves_login_and_rejects_attachments() {
+        use std::io::Write as _;
+        let make = |attachment: bool| {
+            let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            writer
+                .start_file("export.data", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(br#"{"accounts":[{"vaults":[{"items":[{"categoryUuid":"001","overview":{"title":"Example","url":"https://example.invalid"},"details":{"notesPlain":"preserve notes","loginFields":[{"designation":"username","value":"user"},{"designation":"password","value":"secret"}]}}]}]}]}"#).unwrap();
+            if attachment {
+                writer
+                    .start_file(
+                        "files/attachment.txt",
+                        zip::write::SimpleFileOptions::default(),
+                    )
+                    .unwrap();
+                writer.write_all(b"attachment").unwrap();
+            }
+            writer.finish().unwrap().into_inner()
+        };
+        let rows = parse(&make(false), "1password").unwrap();
+        assert_eq!(rows[0]["password"], "secret");
+        assert!(
+            rows[0]["customFields"][0]["value"]
+                .as_str()
+                .unwrap()
+                .contains("preserve notes")
+        );
+        assert!(parse(&make(true), "1password").is_err());
+    }
+}

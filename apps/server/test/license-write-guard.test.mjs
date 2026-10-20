@@ -54,8 +54,11 @@ test('signed license grace blocks writes and renewal reopens them', async () => 
     const blocked = await fetch(`${url}/api/v1/vaults`, { method: 'POST', headers });
     assert.equal(blocked.status, 423);
     assert.deepEqual(await blocked.json(), { error: 'license_read_only' });
-    assert.equal((await fetch(`${url}/api/v1/vaults`, { method: 'GET' })).status, 204);
+    assert.equal((await fetch(`${url}/api/v1/vaults`, { method: 'GET' })).status, 401);
     assert.equal((await fetch(`${url}/api/v1/vaults/abc/restore`, { method: 'POST' })).status, 204);
+    assert.equal((await fetch(`${url}/api/v1/vaults`, { headers })).status, 204);
+    await issue('2025-10-01T00:00:00.000Z');
+    assert.equal((await fetch(`${url}/api/v1/vaults`, { headers })).status, 423);
     await issue('2030-10-01T00:00:00.000Z');
     assert.equal((await fetch(`${url}/api/v1/vaults`, { method: 'POST', headers })).status, 204);
     const signed = JSON.parse(await readFile(licenseFile, 'utf8'));

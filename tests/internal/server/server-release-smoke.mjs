@@ -18,7 +18,7 @@ for (let i = 2; i < process.argv.length; i += 2) {
   if (!['--bundle', '--work', '--compose-provider', '--port', '--upgrade-from', '--issuer-private-key'].includes(name) || !value || options[name]) throw Error('Use --bundle <server archive> --work <new external directory> --compose-provider <path> [--port <free loopback port>] [--upgrade-from <old archive>] [--issuer-private-key <protected fixture issuer>].');
   options[name] = value;
 }
-if (!options['--bundle'] || !options['--work'] || !options['--compose-provider']) throw Error('Bundle, workspace and Compose provider are required.');
+if (!options['--bundle'] || !options['--work'] || !options['--compose-provider'] || !options['--issuer-private-key']) throw Error('Bundle, workspace, Compose provider and fixture issuer key are required.');
 const work = resolve(options['--work']), archive = resolve(options['--bundle']);
 const rel = relative(root, work);
 if (!rel || !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`)) throw Error('Fixture workspace must be outside the checkout.');
@@ -125,6 +125,18 @@ try {
   projects.push(source);
   await check('verified HTTPS startup', async () => { await operator(source, ['install', 'start', ...provider]); await ready(); });
   const caPath = join(identity, 'ca/ca.crt'), trusted = { ...environment, NODE_EXTRA_CA_CERTS: caPath };
+  const id = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/.exec(await operator(source, ['install', 'identify', ...provider]))?.[0]; assert.ok(id);
+  if (options['--issuer-private-key']) {
+    await check('signed commercial fixture license before upgrade', async () => {
+      const signed = issueSelfHostedLicense({ privateKeyPem: await readFile(resolve(options['--issuer-private-key']), 'utf8'),
+        keyId: 'trial', installationId: id, plan: 'commercial', majorVersion: null,
+        maxActiveUsers: 5, sequence: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() });
+      const file = join(work, 'fixture-license.json'); await writeFile(file, signed.license, { mode: 0o600, flag: 'wx' });
+      await operator(source, ['install', 'license', '--file', file, ...provider, '--private-dir', identity]);
+      await operator(source, ['install', 'stop', ...provider]);
+      await operator(source, ['install', 'start', ...provider]); await ready();
+    });
+  }
   const bootstrapPath = join(work, 'bootstrap.txt');
   await check('owner and encrypted-item hostile paths', async () => {
     const bootstrap = await operator(source, ['install', 'bootstrap', ...provider]);
@@ -159,22 +171,10 @@ try {
     const logout = await http('/api/admin/session', { method: 'DELETE', headers: { cookie, origin, 'x-127v-admin-csrf': session.csrf } });
     assert.equal(logout.status, 200); assert.equal((await http('/api/admin/users', { headers: { cookie } })).status, 401);
   });
-  const id = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/.exec(await operator(source, ['install', 'identify', ...provider]))?.[0]; assert.ok(id);
   const project = /^VAULTS_PROJECT=(.+)$/m.exec(await readFile(join(source, '.env'), 'utf8'))?.[1]; assert.match(project, /^vaults-test-[a-f0-9]{12}$/);
   const databaseKey = join(work, 'database.key'), identityKey = join(work, 'identity.key');
   await writeFile(databaseKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
   await writeFile(identityKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
-  if (options['--issuer-private-key']) {
-    await check('signed commercial fixture license before upgrade', async () => {
-      const signed = issueSelfHostedLicense({ privateKeyPem: await readFile(resolve(options['--issuer-private-key']), 'utf8'),
-        keyId: 'trial', installationId: id, plan: 'commercial', majorVersion: null,
-        maxActiveUsers: 5, sequence: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() });
-      const file = join(work, 'fixture-license.json'); await writeFile(file, signed.license, { mode: 0o600, flag: 'wx' });
-      await operator(source, ['install', 'license', '--file', file, ...provider, '--private-dir', identity]);
-      await operator(source, ['install', 'stop', ...provider]);
-      await operator(source, ['install', 'start', ...provider]); await ready();
-    });
-  }
   if (options['--upgrade-from']) {
     await check('existing encrypted vault and signed license survive guarded compressed-bundle upgrade', async () => {
       const before = await readFile(join(source, '.env'));

@@ -14,7 +14,7 @@ export function createSetupHandler({ pool, origin, licenseFile, publicKeyFile, r
       if (result.rows.length !== 1) throw Error('installation_unavailable');
       const license = await loadLicenseStatus({ licenseFile, publicKeyFile, revocationFile, installationId: result.rows[0].id, clock });
       writeJson(res, 200, { ownerRequired: !result.rows[0].owner_exists,
-        licenseMode: license.mode, licenseEnforcement: license.mode === 'experimental' ? 'disabled' : 'vault-writes-and-seats',
+        licenseMode: license.mode, licenseEnforcement: 'vault-access-writes-and-seats',
         licenseClockState: license.clockState ?? 'not_applicable', smtpConfigured: Boolean(smtpConfigured) });
     } catch { writeError(res, 503, 'setup_status_unavailable'); }
     return true;

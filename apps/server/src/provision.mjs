@@ -48,7 +48,7 @@ try {
     if (!tenant) reject('Installation record missing.');
     if ((await client.query("SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND server_role='owner'",[tenant])).rowCount) reject('Bootstrap is already closed.');
     const entitlement = await inspectLicense(tenant);
-    if (!['active', 'experimental'].includes(entitlement.mode)) reject('Owner bootstrap requires an active signed license.');
+    if (!['active'].includes(entitlement.mode)) reject('Owner bootstrap requires an active signed license.');
     const keyPath=process.env.VAULTS_TOKEN_KEY_FILE, outputPath=process.env.VAULTS_BOOTSTRAP_OUTPUT;
     if (!keyPath || !outputPath) reject('Token key and bootstrap output paths are required.');
     const key=await readFile(keyPath); if(key.length!==32) reject('Token key must contain exactly 32 bytes.');

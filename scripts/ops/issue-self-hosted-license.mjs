@@ -7,7 +7,7 @@ import { verifyLicenseFile } from '../../apps/server/src/license-status.mjs';
 
 export function issueSelfHostedLicense({ privateKeyPem, keyId, installationId, plan, majorVersion,
   maxActiveUsers, sequence, expiresAt, now = new Date() }) {
-  if (!/^[A-Za-z0-9_-]{1,40}$/.test(keyId ?? '') || !['personal', 'commercial'].includes(plan)
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(keyId ?? '') || !['personal', 'commercial', 'trial', 'development'].includes(plan)
     || !Number.isSafeInteger(sequence) || sequence < 1 || !Number.isSafeInteger(maxActiveUsers)
     || maxActiveUsers < 1 || maxActiveUsers > 100000 || !Number.isFinite(now.getTime())
     || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= now.getTime()) throw Error('Invalid license request.');

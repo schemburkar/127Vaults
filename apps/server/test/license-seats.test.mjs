@@ -18,11 +18,12 @@ test('live invitation reservations count against a signed license cap', async ()
   await requireLicenseSeats(client(2, 3), 'installation', 0, now, entitlement);
 });
 
-test('grace and invalid license block new users while experimental installs remain available', async () => {
+test('grace and invalid license block new users and missing licenses block new users', async () => {
   await assert.rejects(requireLicenseSeats(client(1, 0), 'installation', 1, now,
     async () => ({ mode: 'read-only', maxActiveUsers: 5 })), error => error.code === 'license_inactive');
   await assert.rejects(requireLicenseSeats(client(1, 0), 'installation', 1, now,
     async () => { throw Error('invalid_license'); }), error => error.code === 'license_unavailable');
-  await requireLicenseSeats({ query: () => { throw Error('unexpected query'); } }, 'installation', 10, now,
-    async () => ({ mode: 'experimental' }));
+  await assert.rejects(requireLicenseSeats({ query: () => { throw Error('unexpected query'); } }, 'installation', 10, now,
+    async () => ({ mode: 'missing' })), error => error.code === 'license_inactive');
+  await assert.rejects(requireLicenseSeats(client(1, 0), 'installation', 1, now), error => error.code === 'license_unavailable');
 });

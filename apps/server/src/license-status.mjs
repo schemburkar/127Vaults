@@ -24,9 +24,9 @@ export function verifyLicenseFile(file, publicKeys, installationId) {
   try { payload = JSON.parse(bytes.toString('utf8')); } catch { fail(); }
   if (!keys(payload, ['licenseId', 'installationId', 'plan', 'majorVersion', 'maxActiveUsers', 'issuedAt', 'notBefore', 'expiresAt', 'sequence'])
     || !uuid.test(payload.licenseId) || payload.installationId !== installationId
-    || !['personal', 'commercial'].includes(payload.plan)
+    || !['personal', 'commercial', 'trial', 'development'].includes(payload.plan)
     || (payload.plan === 'personal' && (!Number.isSafeInteger(payload.majorVersion) || payload.majorVersion < 1))
-    || (payload.plan === 'commercial' && payload.majorVersion !== null)
+    || (payload.plan !== 'personal' && payload.majorVersion !== null)
     || !Number.isSafeInteger(payload.maxActiveUsers) || payload.maxActiveUsers < 1 || payload.maxActiveUsers > 100000
     || !Number.isSafeInteger(payload.sequence) || payload.sequence < 1
     || !iso(payload.issuedAt) || !iso(payload.notBefore) || !iso(payload.expiresAt)
@@ -39,7 +39,7 @@ export function verifyLicenseFile(file, publicKeys, installationId) {
 }
 
 export function licenseStatus(license, now = new Date()) {
-  if (!license) return { mode: 'experimental', plan: null, maxActiveUsers: null, expiresAt: null, readOnlyUntil: null };
+  if (!license) return { mode: 'missing', plan: null, maxActiveUsers: null, expiresAt: null, readOnlyUntil: null };
   const at = now.getTime();
   if (!Number.isFinite(at)) fail();
   const start = Date.parse(license.notBefore);

@@ -18,7 +18,7 @@ test('operator setup guidance prioritizes license and clock problems', () => {
   assert.match(nextSetupStep({ ...ready, license: { mode: 'locked', clockState: 'rollback_detected' } }, true), /correct the host clock/);
   assert.match(nextSetupStep({ ...ready, license: { mode: 'revoked' } }, true), /new signed license/);
   assert.match(nextSetupStep({ ...ready, license: { mode: 'read-only' } }, true), /renew the signed license/);
-  assert.match(nextSetupStep({ ...ready, license: { mode: 'experimental' } }, true), /install a signed test license/);
+  assert.match(nextSetupStep({ ...ready, license: { mode: 'missing' } }, true), /install a signed license/);
 });
 
 test('operator setup guidance covers owner, SMTP, seat capacity and ready state', () => {

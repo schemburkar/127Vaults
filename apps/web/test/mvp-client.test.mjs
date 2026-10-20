@@ -11,7 +11,9 @@ async function licenseHarness() {
   const elements = { vault: { hidden: false }, state: { textContent: 'Unlocked' } };
   const context = vm.createContext({ root: {}, serverAuthenticated: true, sessionGeneration: 1,
     document: { hidden: false }, $: id => elements[id],
-    call: path => { assert.equal(path, '/api/v1/license'); return new Promise(resolve => calls.push(resolve)); },
+    refreshEntitlement: () => new Promise(resolve => calls.push(resolve)),
+    checkLicense: () => ({ mode: 'active' }), networkUnavailable: () => false,
+    lock: async () => { context.root = null; elements.vault.hidden = true; context.sessionGeneration++; },
     window: { setInterval: (callback, delay) => { assert.equal(delay, 30000); timers.set(1, callback); return 1; },
       clearInterval: id => timers.delete(id), addEventListener: (name, callback) => events.set(name, callback), removeEventListener: name => events.delete(name) },
   });

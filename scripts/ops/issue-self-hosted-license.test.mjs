@@ -20,3 +20,13 @@ test('issuer rejects invalid terms and expiry', () => {
   assert.throws(() => issueSelfHostedLicense({ ...base, expiresAt: '2026-10-06T00:00:00.000Z' }), /Invalid license request/);
   assert.throws(() => issueSelfHostedLicense({ ...base, majorVersion: null }), /invalid_license/);
 });
+
+test('trial and development licenses use the same signed installation-bound validation', () => {
+  for (const plan of ['trial', 'development']) {
+    const { license, publicKeys } = issueSelfHostedLicense({ ...base, plan, majorVersion: null });
+    const verified = verifyLicenseFile(license, JSON.parse(publicKeys), installationId);
+    assert.equal(verified.plan, plan);
+    assert.equal(verified.majorVersion, null);
+    assert.throws(() => verifyLicenseFile(license, JSON.parse(publicKeys), randomUUID()));
+  }
+});

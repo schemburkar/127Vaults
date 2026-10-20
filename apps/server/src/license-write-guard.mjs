@@ -22,7 +22,9 @@ function sessionCookie(req) {
 export function createLicenseWriteGuard({ pool, authenticate, origin, licenseFile, publicKeyFile, revocationFile, clock }) {
   return async (req, res) => {
     const path = new URL(req.url, origin).pathname;
-    if (!isLicensedWrite(req.method, path)) return false;
+    const write = isLicensedWrite(req.method, path);
+    const read = req.method === 'GET' && (path === '/api/v1/vaults' || path.startsWith('/api/v1/vaults/') || path === '/api/v1/vault-settings');
+    if (!write && !read) return false;
     try {
       const token = sessionCookie(req);
       if (!token) throw new AuthError();
@@ -30,8 +32,8 @@ export function createLicenseWriteGuard({ pool, authenticate, origin, licenseFil
       const result = await pool.query('SELECT id FROM vaults.installation WHERE singleton=true');
       if (result.rows.length !== 1) throw Error('installation_unavailable');
       const status = await loadLicenseStatus({ licenseFile, publicKeyFile, revocationFile, installationId: result.rows[0].id, clock });
-      if (status.mode === 'active' || status.mode === 'experimental') return false;
-      writeError(res, 423, status.mode === 'revoked' ? 'license_revoked'
+      if (status.mode === 'active' || (!write && status.mode === 'read-only')) return false;
+      writeError(res, 423, status.mode === 'missing' ? 'license_required' : status.mode === 'revoked' ? 'license_revoked'
         : status.mode === 'locked' ? 'license_locked' : 'license_read_only');
     } catch (error) {
       writeError(res, error instanceof AuthError ? 401 : 503,

@@ -4,7 +4,7 @@ import init, {
   generate_secret,
 } from "/wasm/vaults_browser_fixture.js";
 import { PASSKEY_META, PASSKEY_KEY, readMetadata, passkeyFields } from '/app/passkeys.mjs';
-import { PwaReplica, isInstalledApp, networkUnavailable, replicaRead, recordRevision, collapseQueue } from '/app/pwa-replica.mjs';
+import { PwaReplica, isInstalledApp, networkUnavailable, replicaRead, recordRevision, collapseQueue, requireEntitlement } from '/app/pwa-replica.mjs';
 import { requestBrowserEnrollment, finishBrowserEnrollment } from '/app/browser-enrollment.mjs';
 import { VaultLifecycleClient } from '/app/vault-lifecycle.mjs';
 import { verifySyncHistory, verifyLatestPayload, verifyCheckpoints, checkpointHash, verifyQueuedOperation } from '/app/signed-sync.mjs';
@@ -179,6 +179,7 @@ async function remoteCall(path, { method = "GET", body, token = csrf } = {}) {
 }
 async function call(path, options = {}) {
   const method = options.method || 'GET';
+  if (root && (replicaRead(path) || path.startsWith('/api/v1/vaults'))) checkLicense(method !== 'GET');
   if (!installedApp || !replica || !root) return remoteCall(path, options);
   if (method === 'GET' && replicaRead(path)) {
     if (replica.state.snapshotAt || replica.local || replica.pending) return replica.read(path);
@@ -776,25 +777,47 @@ async function authenticateOnline(secret, password) {
       if (nextRoot && !delivered) { if (generation === sessionGeneration) core.release_root(nextRoot); nextRoot.free?.(); }
     }
 }
+let licenseEntitlement = null;
+function checkLicense(write = false) {
+  return requireEntitlement(licenseEntitlement, { origin: location.origin, device: identity?.deviceId, installation: identity?.installationId, write });
+}
+async function refreshEntitlement() {
+  const generation = sessionGeneration, activeRoot = root, activeReplica = replica;
+  if (!activeRoot) throw Error('LOCKED');
+  const status = await remoteCall('/api/v1/license');
+  if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED');
+  const next = { kind: 'license-entitlement-v1', origin: location.origin, device: identity.deviceId, installation: identity.installationId,
+    observedAt: Math.max(Date.now(), licenseEntitlement?.observedAt || 0), status };
+  licenseEntitlement = next;
+  if (activeReplica) await activeReplica.saveLicense(b64(core.encrypt_account_settings(activeRoot, te.encode(JSON.stringify(next)))));
+  if (generation !== sessionGeneration || root !== activeRoot) throw Error('LOCKED');
+  return checkLicense();
+}
 let stopLicenseStatus = () => {};
 function monitorLicenseStatus() {
   stopLicenseStatus();
   const generation = sessionGeneration;
   let disposed = false, refreshing = false;
   const refresh = async () => {
-    if (disposed || refreshing || !root || !serverAuthenticated || $("vault").hidden) return;
+    if (disposed || refreshing || !root || $("vault").hidden) return;
     refreshing = true;
     try {
-      const license = await call('/api/v1/license');
+      const license = serverAuthenticated ? await refreshEntitlement() : checkLicense();
       if (!disposed && generation === sessionGeneration && serverAuthenticated && !$("vault").hidden) {
+        if (!['active', 'read-only'].includes(license.mode)) { await lock(); $("state").textContent = 'A valid license or trial is required. Ask your operator for a replacement license.'; return; }
         const guidance = license.mode === 'read-only' ? 'Expired: vault and invitation writes are blocked during the 30-day read-only period.'
           : license.mode === 'revoked' ? 'Revoked: server writes are blocked. Ask the operator for a replacement license.'
             : license.mode === 'locked' ? 'Locked: server writes are blocked. Check expiry and the server clock.'
               : license.mode === 'active' ? `Active${license.expiresAt ? ` until ${license.expiresAt.slice(0, 10)}` : ''}.`
-                : 'Experimental license state.';
+                : 'A valid license is required.';
         $("state").textContent = `Unlocked · ${guidance}`;
       }
-    } catch { /* Advisory only; server enforcement still decides every write. */ }
+    } catch (error) {
+      if (!disposed && generation === sessionGeneration) {
+        try { if (!networkUnavailable(error)) throw error; checkLicense(); }
+        catch (failure) { await lock(); $("state").textContent = failure.message; }
+      }
+    }
     finally { refreshing = false; }
   };
   const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 30000);
@@ -836,6 +859,7 @@ async function login() {
       const authenticated = await authenticateOnline(secret, password);
       if (generation !== sessionGeneration) throw Error('LOCKED');
       root = authenticated.root;
+      await refreshEntitlement();
       if (replica) {
         await replica.saveUnlock(authenticated.unlock);
         if (replica.pending) {
@@ -846,7 +870,10 @@ async function login() {
     } catch (error) {
       if (!replica || !networkUnavailable(error) || !replica.state.unlock || !replica.state.snapshotAt) throw error;
       if (replica.state.unlock.origin !== location.origin || replica.state.unlock.deviceId !== identity.deviceId || replica.state.unlock.accountId !== identity.accountId) throw Error('SERVER_IDENTITY_CHANGED');
+      if (root) { core.release_root(root); root.free?.(); root = null; }
       root = core.unwrap_root(un(replica.state.unlock.envelope), un(replica.state.unlock.descriptor), password, secret);
+      licenseEntitlement = JSON.parse(td.decode(core.decrypt_account_settings(root, un(replica.state.licenseEnvelope || ""))));
+      checkLicense();
       authContext = replica.state.unlock.authContext;
       replica.local = true; serverAuthenticated = false;
       lastSynced = new Date(replica.state.snapshotAt);
@@ -1207,6 +1234,7 @@ async function syncInstalled({ interactive = true } = {}) {
     if (generation !== sessionGeneration || replica !== activeReplica) throw Error('LOCKED');
     if (vault) { core.release_vault(vault); vault.free?.(); vault = null; }
     core.release_root(root); root.free?.(); root = authenticated.root;
+    await refreshEntitlement();
     await activeReplica.saveUnlock(authenticated.unlock);
     try { await activeReplica.flush(remoteCall); }
     catch (error) {
@@ -2351,7 +2379,7 @@ async function lock(logout = true) {
   window.dispatchEvent(new Event("vaults:clear-generator"));
   clearTimeout(sessionTimer);
   core?.lock();
-  root = vault = catalogue = null;
+  root = vault = catalogue = null; licenseEntitlement = null;
   vaultId = csrf = authContext = null;
   replica = null; loadedItems = []; availableVaults = []; vaultSettings = { version: 1, names: {}, collections: [], default_view: null, removal_preference: null }; settingsRevision = null;
   browseView = null; browseItems = []; publishSettings(); applyDefaultView = false;
@@ -2759,7 +2787,7 @@ try {
   $("registration-exit").hidden = ownerSetupRequired;
   $("setup-guidance").textContent = setupState.licenseMode === "active"
     ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."
-    : "Run install bootstrap on the server and enter its one-time code below. This test server has no active license yet.";
+    : "Install a signed license on the server, then run install bootstrap and enter its one-time code below.";
   startupReady = true;
   setBusy(false);
   if (ownerSetupRequired) showRegistration();

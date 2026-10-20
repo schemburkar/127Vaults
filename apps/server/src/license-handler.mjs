@@ -27,7 +27,7 @@ export function createLicenseHandler({ pool, authenticate, origin, licenseFile, 
       writeJson(res, 200, { ...status, ...usage,
         seatsAvailable: status.maxActiveUsers === null ? null
           : Math.max(0, status.maxActiveUsers - usage.activeUsers - usage.reservedSeats),
-        enforcement: status.mode === 'experimental' ? 'disabled' : 'vault-writes-and-seats', scope: 'experimental' });
+        enforcement: 'vault-access-writes-and-seats', scope: 'installation' });
     } catch (error) {
       if (error instanceof AuthError) writeError(res, 401, 'authentication_required');
       else writeError(res, 503, 'license_status_unavailable');

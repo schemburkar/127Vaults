@@ -54,3 +54,7 @@ separate product; downloading this archive does not install it.
 These builds are unsigned and have no automatic updater. Verify the sender's
 checksums and read the accompanying license policy; that policy is not a public
 release license. Replacing client executables does not delete enrolled profiles.
+
+Password migration is available through `import` (preview, then `--confirm`) and
+`export --output FILE --plaintext`. See [password migration](password-migration.md)
+for supported sources, portable/native formats, license states and limits.

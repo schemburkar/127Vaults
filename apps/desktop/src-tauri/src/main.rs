@@ -326,6 +326,7 @@ fn with_session<T>(
         guard.take();
         return Err("vault is locked".to_owned());
     }
+    session.require_license(false)?;
     let result = action(session);
     if state.epoch.current() != expected {
         guard.take();
@@ -378,6 +379,7 @@ async fn unlock(
             &secret,
             master_password.as_bytes(),
         )?;
+        session.use_background_license_refresh();
         let online = session.is_online();
         let offline_reason = session.offline_reason().map(str::to_owned);
         let vaults = session.vault_list()?;
@@ -488,6 +490,31 @@ async fn session_activity(state: tauri::State<'_, DesktopState>) -> Result<(), S
 }
 
 #[tauri::command]
+async fn import_passwords(
+    app: tauri::AppHandle,
+    vault_id: String,
+    bytes: Vec<u8>,
+    format: String,
+    confirm: bool,
+) -> Result<Value, String> {
+    let epoch = app.state::<DesktopState>().epoch.current();
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = zeroize::Zeroizing::new(bytes);
+        let state = app.state::<DesktopState>();
+        if state.epoch.current() != epoch {
+            return Err("Vault was locked".into());
+        }
+        with_session(&state, |session| {
+            session.import_passwords_while(&vault_id, &bytes, &format, confirm, || {
+                state.epoch.current() == epoch
+            })
+        })
+    })
+    .await
+    .map_err(|_| "Import worker stopped".to_owned())?
+}
+
+#[tauri::command]
 fn item_list(state: tauri::State<'_, DesktopState>, vault_id: String) -> Result<Value, String> {
     with_session(&state, |session| session.item_list(&vault_id))
 }
@@ -499,25 +526,40 @@ fn device_list(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
 
 #[tauri::command]
 async fn license_status(state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
-    // Only request preparation holds the session mutex. A slow status endpoint
-    // must not block item commands, the webview thread, or locking the vault.
-    let request = with_session(&state, |session| session.license_status_request())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let response = request
-            .send()
-            .map_err(|_| "license status unavailable".to_owned())?;
-        if !response.status().is_success() {
-            return Err(format!(
-                "server rejected request ({})",
-                response.status().as_u16()
-            ));
+    let epoch = state.epoch.current();
+    let request = with_session(&state, |session| {
+        if session.is_online() {
+            Ok(Some(session.license_status_request()?))
+        } else {
+            Ok(None)
         }
-        response
-            .json()
-            .map_err(|_| "invalid server response".to_owned())
+    })?;
+    let Some(request) = request else {
+        return with_session(&state, |session| session.entitlement_status());
+    };
+    let received = tauri::async_runtime::spawn_blocking(move || {
+        vaults_cli::client::fetch_license_status(request)
     })
     .await
-    .map_err(|_| "license status worker stopped unexpectedly".to_owned())?
+    .map_err(|_| "License worker stopped")?;
+    if state.epoch.current() != epoch {
+        return Err("Vault was locked".into());
+    }
+    with_session(&state, |session| match received {
+        Ok(status) => {
+            session.cache_license_status(status)?;
+            session.entitlement_status()
+        }
+        Err(error)
+            if matches!(
+                error.as_str(),
+                "server connection failed" | "server request timed out"
+            ) =>
+        {
+            session.entitlement_status()
+        }
+        Err(error) => Err(error),
+    })
 }
 
 #[tauri::command]
@@ -1036,6 +1078,7 @@ fn main() {
             unlock,
             session_activity,
             item_list,
+            import_passwords,
             vault_list,
             vault_create,
             device_list,

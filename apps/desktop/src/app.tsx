@@ -143,6 +143,14 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFormat, setImportFormat] = useState("bitwarden");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importCount, setImportCount] = useState<number | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importGeneration = useRef(0);
+
   const [pendingChanges, setPendingChanges] = useState<number | null>(null);
   const [syncConflicts, setSyncConflicts] = useState(0);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "error">("idle");
@@ -320,6 +328,26 @@ export function App() {
     catch (error) { notify("error", "Could not revoke device", friendlyError(error)); }
   };
 
+  const runImport = async (confirm: boolean) => {
+    if (!importFile || !vaultId || importBusy) return;
+    if (importFile.size > 32 * 1024 * 1024) { setStatus("Choose an export smaller than 32 MiB."); return; }
+    const generation = ++importGeneration.current;
+    setImportBusy(true); setImportError(null);
+    let bytes: number[] = [];
+    try {
+      bytes = Array.from(new Uint8Array(await importFile.arrayBuffer()));
+      if (generation !== importGeneration.current) return;
+      const result = await invoke<{ records?: number; imported?: number }>("import_passwords", { vaultId, bytes, format: importFormat, confirm });
+      if (generation !== importGeneration.current) return;
+      if (confirm) {
+        setImportFile(null); setImportCount(null); setImportOpen(false);
+        const refreshed = await invoke<Summary[]>("item_list", { vaultId });
+        if (generation === importGeneration.current) { setItems(refreshed); setStatus(`Imported ${result.imported} items.`); }
+      } else { setImportCount(result.records ?? 0); }
+    } catch (error) { if (generation === importGeneration.current) { setImportError(String(error)); if (confirm) { setImportFile(null); setImportCount(null); } } }
+    finally { bytes.fill(0); if (generation === importGeneration.current) setImportBusy(false); }
+  };
+
   const lock = async (reason = "Locked") => {
     sessionRevocation.current.lock();
     syncReviewGeneration.current += 1;
@@ -330,6 +358,7 @@ export function App() {
     setBusy(true);
     void emit("vaults-locked").catch(() => {});
     setHealthOpen(false);
+    importGeneration.current++; setImportOpen(false); setImportFile(null); setImportCount(null); setImportBusy(false);
     setPendingChanges(null);
     setSyncConflicts(0);
     setFavoritesOnly(false);
@@ -1148,17 +1177,18 @@ export function App() {
     }).catch(() => { /* Explicit vault actions report their own errors. */ });
     let licenseBusy = false;
     const refreshLicenseStatus = async () => {
-      if (disposed || licenseBusy || !online) return;
+      if (disposed || licenseBusy) return;
       licenseBusy = true;
       try {
         const license = await invoke<NonNullable<typeof licenseStatus>>("license_status");
-        if (!disposed) setLicenseStatus(license);
-      } catch { /* Status is advisory; the server enforces write permissions. */ }
+        if (!disposed) {
+          setLicenseStatus(license);
+          if (!["active", "read-only"].includes(license.mode)) await lock("A valid license or trial is required. Ask your operator for a replacement license.");
+        }
+      } catch (error) { if (!disposed) await lock(String(error)); }
       finally { licenseBusy = false; }
     };
-    if (online) {
-      void refreshLicenseStatus();
-    } else { setLicenseStatus(null); }
+    void refreshLicenseStatus();
     const timer = window.setInterval(() => { if (!document.hidden) void refreshLicenseStatus(); }, 30000);
     window.addEventListener("focus", refreshLicenseStatus);
     return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", refreshLicenseStatus); };
@@ -1587,10 +1617,10 @@ export function App() {
           {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="desktop-license-warning text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
             ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
             : licenseStatus.mode === "revoked"
-              ? "License revoked: server writes are blocked. Ask the server operator for a replacement license."
+              ? "License revoked: vault access is blocked. Ask the server operator for a replacement license."
               : licenseStatus.mode === "locked"
-                ? "License locked: server writes are blocked. Check expiry and the server clock."
-                : "Experimental license state; confirm server operator status before relying on it."}><AlertTriangle size={17} aria-hidden="true" /></button>}
+                ? "License locked: vault access is blocked. Check expiry and the server clock."
+                : "A valid license is required. Ask the operator for a signed license."}><AlertTriangle size={17} aria-hidden="true" /></button>}
 
         </div>
         <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
@@ -1601,6 +1631,7 @@ export function App() {
         </Button>
         <Button variant="ghost" className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
         <Button variant="ghost" className="justify-start" onClick={() => setHealthOpen(true)}><ShieldCheck size={17} /><span>Password health</span></Button>
+        <Button variant="ghost" className="justify-start" disabled={!vaultId} onClick={() => { setImportOpen(true); setImportCount(null); setImportFile(null); setImportError(null); }}><Plus size={17} /><span>Import passwords</span></Button>
         <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-600">VAULTS</p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
         {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <Vault size={17} />
@@ -2056,6 +2087,20 @@ export function App() {
           </div>
         ))}
       </div>
+      {importOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" role="dialog" aria-modal="true" aria-labelledby="import-title">
+        <section className="w-full max-w-lg space-y-5 rounded-2xl border border-white/10 bg-[#0a0e21] p-6">
+          <h2 id="import-title" className="text-xl font-semibold">Import passwords</h2>
+          <p>Import into {activeVaults.find(v => v.vaultId === vaultId)?.name ?? "the selected vault"}. Files are read on this device. Repeating an import creates duplicates.</p>
+          <label className="block">Source<select className="ml-3 rounded bg-slate-800 p-2" value={importFormat} disabled={importBusy} onChange={e => { setImportFormat(e.target.value); setImportCount(null); setImportFile(null); }}>
+            <option value="bitwarden">Bitwarden JSON (unencrypted)</option><option value="1password">1Password 1PUX</option><option value="lastpass">LastPass CSV</option><option value="127vaults">127Vaults JSON</option>
+          </select></label>
+          <input key={importFormat} type="file" accept={importFormat === "1password" ? ".1pux" : importFormat === "lastpass" ? ".csv" : ".json"} disabled={importBusy} onChange={e => { setImportFile(e.target.files?.[0] ?? null); setImportCount(null); }} />
+          <p className="text-sm text-slate-400">Login records are supported. Extra source details are retained in a concealed custom field. Passkeys, attachments and other vendor item types must be migrated separately. Delete plaintext source files when finished.</p>
+          {importCount !== null && <p>{importCount} items ready to import.</p>}
+          {importError && <p role="alert" className="text-amber-300">{importError}</p>}
+          <div className="flex justify-end gap-3"><Button variant="ghost" disabled={importBusy} onClick={() => { importGeneration.current++; setImportOpen(false); setImportFile(null); setImportCount(null); setImportBusy(false); }}>Close</Button><Button disabled={!importFile || importBusy} onClick={() => void runImport(importCount !== null)}>{importBusy ? "Working…" : importCount === null ? "Preview" : "Import items"}</Button></div>
+        </section>
+      </div>}
       {settingsOpen && <dialog ref={settingsDialogRef} className="desktop-settings-dialog" aria-labelledby="desktop-settings-title" onCancel={() => setSettingsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
         <section className="desktop-settings">
           <aside className="desktop-settings-nav">

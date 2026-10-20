@@ -14,6 +14,122 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn desktop_license_checks_use_protected_cache_without_foreground_network_io() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let mut session = session(&format!("http://{}", listener.local_addr().unwrap()));
+    session.use_background_license_refresh();
+    let mut cached = session.cached_entitlement().unwrap();
+    cached["observedAt"] = json!(cached["observedAt"].as_u64().unwrap() - 60);
+    let encrypted = session
+        .core
+        .encrypt_account_settings(session.root, &serde_json::to_vec(&cached).unwrap())
+        .unwrap();
+    std::fs::write(
+        session.profile_dir.join("license-entitlement.enc"),
+        encrypted,
+    )
+    .unwrap();
+    session.require_license(false).unwrap();
+    session.require_license(true).unwrap();
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    std::fs::write(
+        session.profile_dir.join("license-entitlement.enc"),
+        b"tampered",
+    )
+    .unwrap();
+    assert!(session.require_license(false).is_err());
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
+fn migration_preserves_secrets_previews_without_writes_and_enforces_license_on_export() {
+    let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
+    session.online = false;
+    let source = br#"{"encrypted":false,"items":[{"type":1,"name":"Imported","notes":"keep me","login":{"username":"import-user","password":"import-secret","uris":[{"uri":"https://example.invalid"}]}}]}"#;
+    assert_eq!(
+        session
+            .import_passwords(&vault, source, "bitwarden", false)
+            .unwrap()["records"],
+        1
+    );
+    assert_eq!(
+        session.item_list(&vault).unwrap().as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        session
+            .import_passwords(&vault, source, "bitwarden", true)
+            .unwrap()["imported"],
+        1
+    );
+    assert_eq!(
+        session
+            .item_get(&vault, "Imported", Some("password"))
+            .unwrap(),
+        "import-secret"
+    );
+    let path = session.profile_dir.join("export.json");
+    assert_eq!(
+        session.export_passwords(&path, "127vaults").unwrap()["exported"],
+        2
+    );
+    let bytes = std::fs::read(&path).unwrap();
+    let document: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(document["vaults"][0]["items"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        crate::migration::parse(&bytes, "127vaults").unwrap().len(),
+        2
+    );
+    assert!(session.export_passwords(&path, "127vaults").is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let portable = session.profile_dir.join("bitwarden.json");
+    session.export_passwords(&portable, "bitwarden").unwrap();
+    assert_eq!(
+        crate::migration::parse(&std::fs::read(portable).unwrap(), "bitwarden")
+            .unwrap()
+            .len(),
+        2
+    );
+    let mut cached = session.cached_entitlement().unwrap();
+    cached["status"] = json!({"mode":"read-only","expiresAt":"2020-01-01T00:00:00Z","readOnlyUntil":"2099-01-31T00:00:00Z"});
+    let save = |session: &Session, value: &Value| {
+        let encrypted = session
+            .core
+            .encrypt_account_settings(session.root, &serde_json::to_vec(value).unwrap())
+            .unwrap();
+        std::fs::write(
+            session.profile_dir.join("license-entitlement.enc"),
+            encrypted,
+        )
+        .unwrap();
+    };
+    save(&session, &cached);
+    assert!(
+        session
+            .import_passwords(&vault, source, "bitwarden", true)
+            .is_err()
+    );
+    session
+        .export_passwords(&session.profile_dir.join("grace.json"), "127vaults")
+        .unwrap();
+    cached["status"]["readOnlyUntil"] = json!("2020-01-31T00:00:00Z");
+    save(&session, &cached);
+    let refused = session.profile_dir.join("refused.json");
+    assert!(session.export_passwords(&refused, "127vaults").is_err());
+    assert!(!refused.exists());
+    assert!(session.item_list(&vault).is_err());
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn disconnected_edit_reports_its_durable_queue_and_reconnect_reuses_the_request() {
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let unavailable = format!("http://{}", listener.local_addr().unwrap());
@@ -63,6 +179,7 @@ fn disconnected_edit_reports_its_durable_queue_and_reconnect_reuses_the_request(
     responses.push((200, json!({"revision":null,"envelope":null})));
     let (origin, worker) = fixture(responses);
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -131,6 +248,7 @@ fn failed_second_vault_reload_does_not_discard_first_vault_queue() {
     responses.push((503, json!({"error":"unavailable"})));
     let (origin, worker) = fixture(responses);
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -191,6 +309,7 @@ fn global_server_reload_requires_complete_authenticated_replacements() {
         };
         let (origin, worker) = fixture(responses);
         session.origin.clone_from(&origin);
+        seed_entitlement(&session);
         session.sync_transport = Some(HttpSyncTransport::new(
             session.client.clone(),
             origin,
@@ -302,6 +421,7 @@ fn unchanged_settings_review_allows_both_explicit_choices() {
         }
         let (origin, worker) = fixture(responses);
         session.origin = origin;
+        seed_entitlement(&session);
         session.resolve_vault_settings_conflict(keep).unwrap();
         assert!(!session.settings_conflict);
         assert!(session.settings_record.pending.is_none());
@@ -367,6 +487,7 @@ fn settings_choice_rechecks_authorization_and_reviewed_revision_before_discard()
             let preserved = std::fs::read(&file).unwrap();
             let (origin, worker) = fixture(vec![(status, response)]);
             session.origin = origin;
+            seed_entitlement(&session);
             let result = session.resolve_vault_settings_conflict(keep);
             assert!(
                 result.is_err(),
@@ -417,6 +538,7 @@ fn settings_authorization_failure_after_item_refresh_does_not_claim_online_sync(
         responses.push((status, json!({"error":"unavailable"})));
         let (origin, worker) = fixture(responses);
         session.origin = origin;
+        seed_entitlement(&session);
         let result = session.sync_now();
         if status == 503 {
             let result = result.unwrap();
@@ -470,7 +592,7 @@ pub(crate) fn session(origin: &str) -> Session {
         .unwrap();
     let directory =
         std::env::temp_dir().join(format!("127vaults-device-test-{}", uuid::Uuid::new_v4()));
-    Session {
+    let session = Session {
         client: Client::builder()
             .timeout(Duration::from_secs(10))
             .no_proxy()
@@ -494,10 +616,31 @@ pub(crate) fn session(origin: &str) -> Session {
         settings_remote: None,
         sync_transport: None,
         online: true,
+        background_license_refresh: false,
         offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
         accepted_device_heads: std::collections::HashMap::new(),
-    }
+    };
+    seed_entitlement(&session);
+    session
+}
+
+fn seed_entitlement(session: &Session) {
+    std::fs::create_dir_all(&session.profile_dir).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let plain = serde_json::to_vec(&json!({"kind":"license-entitlement-v1", "origin":session.origin, "installation":session.tenant_id, "observedAt":now, "status":{"mode":"active","expiresAt":"2099-01-01T00:00:00Z","readOnlyUntil":"2099-01-31T00:00:00Z"}})).unwrap();
+    let encrypted = session
+        .core
+        .encrypt_account_settings(session.root, &plain)
+        .unwrap();
+    std::fs::write(
+        session.profile_dir.join("license-entitlement.enc"),
+        encrypted,
+    )
+    .unwrap();
 }
 
 struct Request {
@@ -612,6 +755,7 @@ fn missing_server_item_distinguishes_a_queued_creation_from_an_edit() {
             ),
         ]);
         session.origin.clone_from(&origin);
+        seed_entitlement(&session);
         session.sync_transport = Some(HttpSyncTransport::new(
             session.client.clone(),
             origin,
@@ -833,6 +977,7 @@ fn native_reader_accepts_authenticated_deletion_and_refuses_stale_or_unauthentic
         }
         let (origin, worker) = fixture(responses);
         session.origin.clone_from(&origin);
+        seed_entitlement(&session);
         session.sync_transport = Some(HttpSyncTransport::new(
             session.client.clone(),
             origin,
@@ -1007,6 +1152,7 @@ fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
         // deletion endpoint. Actual native writes above produce both requests.
         let (origin, worker) = fixture([responses.clone(), responses].concat());
         session.origin.clone_from(&origin);
+        seed_entitlement(&session);
         session.sync_transport = Some(HttpSyncTransport::new(
             session.client.clone(),
             origin,
@@ -1084,6 +1230,7 @@ fn create_id_collision_preserves_real_draft_and_peer_until_explicit_choice() {
     first_snapshot.insert(2, (200, json!({"envelope":remote.items[0].body})));
     let (origin, worker) = fixture([first_snapshot, snapshot.clone(), snapshot].concat());
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -1305,6 +1452,7 @@ fn conflict_comparison_reads_verified_server_fields_without_sending_the_queue() 
     let responses = initial_snapshot_responses(&replica);
     let (origin, worker) = fixture([responses.clone(), responses].concat());
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -1505,6 +1653,7 @@ fn acknowledged_write_cannot_be_replaced_by_pre_acknowledgement_server_history()
     responses.insert(0, (200, json!({"accepted":true})));
     let (origin, worker) = fixture(responses);
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -1568,6 +1717,7 @@ fn acknowledged_write_is_pinned_by_verified_history_before_acknowledgement_is_cl
     );
     let (origin, history_worker) = fixture(responses);
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -1605,6 +1755,7 @@ fn acknowledged_write_is_pinned_by_verified_history_before_acknowledgement_is_cl
     );
     let (origin, fork_worker) = fixture(responses);
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,
@@ -1741,6 +1892,7 @@ fn repeated_hydration_reuses_verified_ciphertext_without_skipping_remote_history
         (200, checkpoint),
     ]);
     session.origin.clone_from(&origin);
+    seed_entitlement(&session);
     session.sync_transport = Some(HttpSyncTransport::new(
         session.client.clone(),
         origin,

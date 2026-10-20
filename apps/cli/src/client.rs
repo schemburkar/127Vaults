@@ -19,6 +19,22 @@ use vaults_crypto::{
     opaque::{self, Binding},
 };
 
+/// Receives an authenticated license response away from the desktop command thread.
+pub fn fetch_license_status(request: reqwest::blocking::RequestBuilder) -> Result<Value, String> {
+    let response = request
+        .send()
+        .map_err(|error| server_connection_error(&error))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "server rejected request ({})",
+            response.status().as_u16()
+        ));
+    }
+    response
+        .json()
+        .map_err(|_| "invalid server response".to_owned())
+}
+
 pub struct Session {
     client: Client,
     origin: String,
@@ -39,6 +55,7 @@ pub struct Session {
     settings_remote: Option<(Option<String>, Option<String>)>,
     sync_transport: Option<HttpSyncTransport>,
     online: bool,
+    background_license_refresh: bool,
     offline_reason: Option<String>,
     vault_handles: std::collections::HashMap<String, KeyHandle>,
     // Successful TLS receipts advance signing continuity without changing the
@@ -364,7 +381,7 @@ pub fn unlock_offline(
         .map_err(|_| "offline authentication failed".to_owned())?;
     let signing = stored_signing_key(config_dir, &server_id, &record.device_id)?;
     let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
-    Ok(Session {
+    let session = Session {
         client: Client::new(),
         origin,
         cookie: String::new(),
@@ -384,10 +401,13 @@ pub fn unlock_offline(
         settings_remote: None,
         sync_transport: None,
         online: false,
+        background_license_refresh: false,
         offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
         accepted_device_heads: std::collections::HashMap::new(),
-    })
+    };
+    session.require_license(false)?;
+    Ok(session)
 }
 
 fn profile(path: &Path, key: &str) -> Result<String, String> {
@@ -797,10 +817,12 @@ pub fn unlock(
         settings_remote: None,
         sync_transport: Some(sync_transport),
         online: true,
+        background_license_refresh: false,
         offline_reason: None,
         vault_handles: std::collections::HashMap::new(),
         accepted_device_heads: std::collections::HashMap::new(),
     };
+    session.require_license(false)?;
     session.hydrate_replicas()?;
     session.sync_vault_settings()?;
     save_offline_record(
@@ -954,6 +976,7 @@ impl Session {
     }
 
     pub fn resolve_vault_settings_conflict(&mut self, keep: &str) -> Result<Value, String> {
+        self.require_license(true)?;
         if !matches!(keep, "server" | "local") {
             return Err("choose server or local".to_owned());
         }
@@ -1023,6 +1046,7 @@ impl Session {
     }
 
     pub fn rename_vault(&mut self, selector: &str, name: &str) -> Result<Value, String> {
+        self.require_license(true)?;
         let id = self.resolve_vault_id(selector)?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 80 {
@@ -1040,6 +1064,7 @@ impl Session {
         name: &str,
         vaults: &[String],
     ) -> Result<Value, String> {
+        self.require_license(true)?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 80 || vaults.is_empty() {
             return Err("collection needs a name and at least one vault".to_owned());
@@ -1077,6 +1102,7 @@ impl Session {
     }
 
     pub fn remove_collection(&mut self, id: &str) -> Result<Value, String> {
+        self.require_license(true)?;
         self.edit_vault_settings(|settings| {
             let before = settings.collections.len();
             settings.collections.retain(|row| row.id != id);
@@ -1087,6 +1113,7 @@ impl Session {
     }
 
     pub fn set_removal_preference(&mut self, choice: Option<&str>) -> Result<Value, String> {
+        self.require_license(true)?;
         if choice.is_some_and(|value| !matches!(value, "move" | "archive")) {
             return Err("choose move or archive".to_owned());
         }
@@ -1204,6 +1231,7 @@ impl Session {
     }
 
     pub fn archive_vault(&mut self, selector: &str) -> Result<Value, String> {
+        self.require_license(true)?;
         if !self.online {
             return Err("vault removal requires an online session".to_owned());
         }
@@ -1243,6 +1271,7 @@ impl Session {
         source_selector: &str,
         destination_selector: &str,
     ) -> Result<Value, String> {
+        self.require_license(true)?;
         if !self.online {
             return Err("vault removal requires an online session".to_owned());
         }
@@ -1449,6 +1478,7 @@ impl Session {
     }
 
     pub fn restore_archived_vault(&mut self, selector: &str) -> Result<Value, String> {
+        self.require_license(true)?;
         if !self.online {
             return Err("vault restore requires an online session".to_owned());
         }
@@ -1506,6 +1536,7 @@ impl Session {
         kind: &str,
         selector: Option<&str>,
     ) -> Result<Value, String> {
+        self.require_license(true)?;
         let view = match kind {
             "all" => vault_settings::View::All,
             "vault" => vault_settings::View::Vault(
@@ -1586,6 +1617,7 @@ impl Session {
     }
 
     pub fn set_default_vault(&self, selector: Option<&str>) -> Result<Option<String>, String> {
+        self.require_license(true)?;
         let path = self.profile_dir.join("default-vault.txt");
         let Some(selector) = selector else {
             match fs::remove_file(path) {
@@ -1664,6 +1696,7 @@ impl Session {
     /// Asks the server to sign the current operation head, then verifies and
     /// pins the returned checkpoint during normal replica hydration.
     pub fn checkpoint_now(&mut self, vault_id: &str) -> Result<(), String> {
+        self.require_license(true)?;
         if !self.online {
             return Err("checkpoint requires an online session".to_owned());
         }
@@ -1682,6 +1715,7 @@ impl Session {
         item_id: &str,
         operation_id: &str,
     ) -> Result<(), String> {
+        self.require_license(true)?;
         self.replica_store.update(vault_id, |replica| {
             let before = replica.pending.len();
             replica.pending.retain(|entry| {
@@ -1700,6 +1734,7 @@ impl Session {
     }
 
     pub fn conflict_list(&self, vault_selector: &str) -> Result<Value, String> {
+        self.require_license(false)?;
         let vault_id = self.resolve_vault_id(vault_selector)?;
         let replica = self
             .replica_store
@@ -1742,6 +1777,7 @@ impl Session {
         operation_id: &str,
         keep: &str,
     ) -> Result<Value, String> {
+        self.require_license(true)?;
         let (vault_id, item_id) = self.conflict_item_id(vault_selector, operation_id)?;
         if keep == "server" {
             // An online agent may have lost its connection or authorization
@@ -1791,6 +1827,7 @@ impl Session {
         item_id: &str,
         operation_id: &str,
     ) -> Result<Value, String> {
+        self.require_license(false)?;
         let replica = self
             .replica_store
             .load(vault_id)?
@@ -1849,6 +1886,7 @@ impl Session {
         item_id: &str,
         operation_id: &str,
     ) -> Result<Value, String> {
+        self.require_license(false)?;
         let (_, pending_item) = self.conflict_item_id(vault_id, operation_id)?;
         if pending_item != item_id {
             return Err("pending conflict item does not match".to_owned());
@@ -1935,6 +1973,7 @@ impl Session {
     /// Verify every replacement before dropping unsynchronized local mutations.
     /// Unlike sync, this explicit action never uploads pending work.
     pub fn discard_local_changes(&mut self) -> Result<Value, String> {
+        self.require_license(true)?;
         if !self.online {
             return Err("server state is unavailable while offline".to_owned());
         }
@@ -2635,20 +2674,116 @@ impl Session {
         }
         r.json().map_err(|_| "invalid server response".to_owned())
     }
-    pub fn license_status(&self) -> Result<Value, String> {
-        let response = self
-            .license_status_request()?
-            .send()
-            .map_err(|error| server_connection_error(&error))?;
-        if !response.status().is_success() {
-            return Err(format!(
-                "server rejected request ({})",
-                response.status().as_u16()
-            ));
+    fn cached_entitlement(&self) -> Result<Value, String> {
+        let path = self.profile_dir.join("license-entitlement.enc");
+        if fs::metadata(&path)
+            .map_err(|_| "Reconnect to verify a signed license before accessing this profile")?
+            .len()
+            > 16384
+        {
+            return Err("Cached license is invalid".into());
         }
-        response
-            .json()
-            .map_err(|_| "invalid server response".to_owned())
+        let bytes = fs::read(path).map_err(|_| "Cached license is unavailable")?;
+        let plain = zeroize::Zeroizing::new(
+            self.core
+                .decrypt_account_settings(self.root, &bytes)
+                .map_err(|_| "Cached license could not be verified")?,
+        );
+        let value: Value =
+            serde_json::from_slice(&plain).map_err(|_| "Cached license is invalid")?;
+        if value["kind"] != "license-entitlement-v1"
+            || value["origin"] != self.origin
+            || value["installation"] != self.tenant_id
+        {
+            return Err("Cached license belongs to another installation".into());
+        }
+        Ok(value)
+    }
+
+    pub fn require_license(&self, write: bool) -> Result<(), String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "System clock is invalid")?
+            .as_secs()
+            .cast_signed();
+        let cached = self.cached_entitlement().ok();
+        let observed = cached
+            .as_ref()
+            .and_then(|value| value["observedAt"].as_i64())
+            .unwrap_or(0);
+        let status = if self.online
+            && !self.background_license_refresh
+            && (cached.is_none() || now - observed >= 30)
+        {
+            match self.license_status() {
+                Ok(status) => status,
+                Err(error)
+                    if matches!(
+                        error.as_str(),
+                        "server connection failed" | "server request timed out"
+                    ) && cached.is_some() =>
+                {
+                    cached.as_ref().ok_or("Cached license is unavailable")?["status"].clone()
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            cached.ok_or("Reconnect to verify a signed license before accessing this profile")?["status"].clone()
+        };
+        crate::entitlement::authorize(&status, observed, now, write)
+    }
+
+    /// Desktop refreshes authenticated license state in a background worker.
+    pub fn use_background_license_refresh(&mut self) {
+        self.background_license_refresh = true;
+    }
+
+    pub fn entitlement_status(&self) -> Result<Value, String> {
+        self.require_license(false)?;
+        let mut status = self.cached_entitlement()?["status"].clone();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "Invalid clock")?
+            .as_secs()
+            .cast_signed();
+        if crate::entitlement::authorize(&status, 0, now, true).is_err() {
+            status["mode"] = json!("read-only");
+        }
+        Ok(status)
+    }
+
+    pub fn license_status(&self) -> Result<Value, String> {
+        let status = fetch_license_status(self.license_status_request()?)?;
+        self.cache_license_status(status)
+    }
+
+    /// Stores only a status obtained through this profile's authenticated pinned HTTPS request.
+    pub fn cache_license_status(&self, status: Value) -> Result<Value, String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "System clock is invalid")?
+            .as_secs()
+            .cast_signed();
+        let previous = self
+            .cached_entitlement()
+            .ok()
+            .and_then(|value| value["observedAt"].as_i64())
+            .unwrap_or(0);
+        let plain = zeroize::Zeroizing::new(serde_json::to_vec(&json!({"kind":"license-entitlement-v1",
+            "origin":self.origin,"installation":self.tenant_id,"observedAt":now.max(previous),"status":status}))
+            .map_err(|_| "Could not encode license")?);
+        let encrypted = self
+            .core
+            .encrypt_account_settings(self.root, &plain)
+            .map_err(|_| "Could not protect cached license")?;
+        let mut file = atomic_write_file::AtomicWriteFile::open(
+            self.profile_dir.join("license-entitlement.enc"),
+        )
+        .map_err(|_| "Could not save cached license")?;
+        file.write_all(&encrypted)
+            .map_err(|_| "Could not save cached license")?;
+        file.commit().map_err(|_| "Could not save cached license")?;
+        Ok(status)
     }
 
     /// Prepares a license request without keeping the session borrowed during I/O.
@@ -2685,6 +2820,7 @@ impl Session {
         r.json().map_err(|_| "invalid server response".to_owned())
     }
     pub fn vault_list(&self) -> Result<Value, String> {
+        self.require_license(false)?;
         let replicas = self.replica_store.list()?;
         Ok(Value::Array(
             replicas
@@ -2708,6 +2844,7 @@ impl Session {
 
     /// Read pending item labels and changed field names without returning values.
     pub fn sync_review(&mut self) -> Result<Value, String> {
+        self.require_license(false)?;
         let mut rows = Vec::new();
         for replica in self.replica_store.list()? {
             if replica.pending.is_empty() {
@@ -2854,6 +2991,7 @@ impl Session {
             .ok_or_else(|| "invalid vault list".to_owned())
     }
     pub fn vault_create(&mut self, name: &str) -> Result<Value, String> {
+        self.require_license(true)?;
         if !self.online {
             return Err("vault creation requires an online session".to_owned());
         }
@@ -2909,6 +3047,7 @@ impl Session {
         )
     }
     fn open_vault(&mut self, selector: &str) -> Result<(String, KeyHandle, Vec<u8>), String> {
+        self.require_license(false)?;
         let vault_id = self.resolve_vault_id(selector)?;
         let replica = self
             .replica_store
@@ -2941,6 +3080,208 @@ impl Session {
             .map_err(|_| "local replica is invalid")?;
         Ok((vault_id, handle, catalogue))
     }
+    pub fn import_passwords(
+        &mut self,
+        vault: &str,
+        bytes: &[u8],
+        format: &str,
+        confirm: bool,
+    ) -> Result<Value, String> {
+        self.import_passwords_while(vault, bytes, format, confirm, || true)
+    }
+
+    pub fn import_passwords_while(
+        &mut self,
+        vault: &str,
+        bytes: &[u8],
+        format: &str,
+        confirm: bool,
+        mut active: impl FnMut() -> bool,
+    ) -> Result<Value, String> {
+        self.require_license(true)?;
+        self.open_vault(vault)?;
+        let rows = crate::migration::parse(bytes, format)?;
+        let existing = self
+            .item_list(vault)?
+            .as_array()
+            .ok_or("Invalid item list")?
+            .len();
+        if existing + rows.len() > 50 {
+            return Err(format!(
+                "This vault has room for {} more items. Split the import across vaults; no records were imported.",
+                50usize.saturating_sub(existing)
+            ));
+        }
+        if rows.len() * 2 + 4 > usize::from(self.core.remaining_creation_budget()) {
+            return Err("Lock and unlock before importing; the current encryption session is near its limit".into());
+        }
+
+        if !confirm {
+            return Ok(
+                json!({"preview":true,"records":rows.len(),"targetVault":vault,"note":"Original source details are retained in a concealed custom field. Import creates new items; repeated imports create duplicates."}),
+            );
+        }
+        let mut imported = 0;
+        for row in &rows {
+            if !active() {
+                return Err(format!(
+                    "Import stopped after {imported} records because the vault was locked"
+                ));
+            }
+            let result = self.item_upsert(
+                vault,
+                None,
+                row["title"].as_str().ok_or("Invalid imported title")?,
+                row["website"].as_str().ok_or("Invalid imported website")?,
+                row["username"]
+                    .as_str()
+                    .ok_or("Invalid imported username")?,
+                row["password"]
+                    .as_str()
+                    .ok_or("Invalid imported password")?,
+                row["customFields"]
+                    .as_array()
+                    .ok_or("Invalid imported fields")?,
+            );
+            if result.is_err() {
+                return Err(format!(
+                    "Import stopped after {imported} of {} records. Imported records are retained; do not repeat the entire file.",
+                    rows.len()
+                ));
+            }
+            imported += 1;
+        }
+        Ok(json!({"imported":imported}))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub fn export_passwords(&mut self, path: &Path, format: &str) -> Result<Value, String> {
+        if !matches!(format, "127vaults" | "bitwarden") {
+            return Err("Export format must be 127vaults or bitwarden".into());
+        }
+        self.require_license(false)?;
+        let listed = self.vault_list()?;
+        let mut vaults = Vec::new();
+        let mut count = 0;
+        for entry in listed.as_array().ok_or("Invalid vault list")? {
+            let selector = entry["vaultId"].as_str().ok_or("Invalid vault ID")?;
+            let (id, handle, catalogue) = self.open_vault(selector)?;
+            let replica = self
+                .replica_store
+                .load(&id)?
+                .ok_or("Local replica unavailable")?;
+            let mut items = Vec::new();
+            let decode =
+                |item: &str, catalogue: &[u8], index: &str, body: &str| -> Result<Value, String> {
+                    let part = |encoded: &str, purpose| -> Result<Value, String> {
+                        let encrypted = URL_SAFE_NO_PAD
+                            .decode(encoded)
+                            .map_err(|_| "Invalid local item")?;
+                        let plain = zeroize::Zeroizing::new(
+                            self.core
+                                .decrypt_private_part(
+                                    handle,
+                                    catalogue,
+                                    uuid_bytes(item)?,
+                                    &encrypted,
+                                    purpose,
+                                )
+                                .map_err(|_| "Item verification failed")?,
+                        );
+                        serde_json::from_slice(&plain).map_err(|_| "Invalid item data".to_owned())
+                    };
+                    Ok(json!({"itemId":item,"index":part(index,4)?,"body":part(body,3)?}))
+                };
+            for row in &replica.items {
+                items.push(decode(&row.item_id, &catalogue, &row.index, &row.body)?);
+                count += 1;
+            }
+            let mut drafts = Vec::new();
+            for pending in &replica.pending {
+                if pending.operation["kind"] == "item.delete" {
+                    continue;
+                }
+                let text = |key: &str| pending.request[key].as_str().ok_or("Invalid pending draft");
+                let draft_catalogue = URL_SAFE_NO_PAD
+                    .decode(text("catalogue")?)
+                    .map_err(|_| "Invalid draft catalogue")?;
+                let mut draft = decode(
+                    pending.operation["itemId"]
+                        .as_str()
+                        .ok_or("Invalid draft item")?,
+                    &draft_catalogue,
+                    text("index")?,
+                    text("body")?,
+                )?;
+                draft["operationId"] = pending.operation["opId"].clone();
+                drafts.push(draft);
+            }
+            if format == "bitwarden" && !replica.conflicts.is_empty() {
+                return Err("Resolve conflicts first or use 127vaults format to preserve separate pending drafts".into());
+            }
+            vaults.push(json!({"vault":entry,"items":items,"pendingDrafts":drafts,"conflicts":replica.conflicts}));
+        }
+        let document = if format == "127vaults" {
+            json!({"format":"127vaults-plaintext-v1","settings":self.vault_settings(),"vaults":vaults})
+        } else {
+            let mut items = Vec::new();
+            for vault in &vaults {
+                for item in vault["items"]
+                    .as_array()
+                    .ok_or("Invalid export item list")?
+                {
+                    let index = &item["index"];
+                    let body = &item["body"];
+                    if index["itemType"]
+                        .as_str()
+                        .is_some_and(|kind| !matches!(kind, "login" | "password"))
+                    {
+                        return Err("Bitwarden export supports login/password items only. Use 127vaults format to preserve all item types and passkeys.".into());
+                    }
+                    let fields = body["customFields"]
+                        .as_array()
+                        .ok_or("Invalid custom fields")?;
+                    if fields
+                        .iter()
+                        .any(|field| field["id"] == "__127vaults_passkey_key")
+                    {
+                        return Err(
+                            "Use 127vaults format to export passkey data without loss".into()
+                        );
+                    }
+                    let mut portable_fields: Vec<Value> = fields.iter().filter(|field| field["type"] != "metadata").map(|field| json!({"name":field["label"],"value":field["value"],"type":i32::from(field["type"] == "password")})).collect();
+                    portable_fields.push(json!({"name":"127Vaults original record (JSON)","value":item.to_string(),"type":1}));
+                    items.push(json!({"id":item["itemId"],"organizationId":null,"folderId":vault["vault"]["vaultId"],"type":1,"reprompt":0,"name":index["title"],"notes":null,"favorite":index["favorite"] == true,"fields":portable_fields,"login":{"username":body["username"],"password":body["password"],"totp":null,"uris":[{"uri":index["website"],"match":null}]}}));
+                }
+            }
+            json!({"encrypted":false,"folders":vaults.iter().map(|v|json!({"id":v["vault"]["vaultId"],"name":v["vault"]["name"]})).collect::<Vec<_>>(),"items":items})
+        };
+        let plain = zeroize::Zeroizing::new(
+            serde_json::to_vec_pretty(&document).map_err(|_| "Could not encode export")?,
+        );
+        self.require_license(false)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut output = options
+            .open(path)
+            .map_err(|_| "Cannot create export file; choose a new path in a private folder")?;
+        if output
+            .write_all(&plain)
+            .and_then(|()| output.sync_all())
+            .is_err()
+        {
+            drop(output);
+            let _ = fs::remove_file(path);
+            return Err("Could not finish export; incomplete file removed".into());
+        }
+        Ok(json!({"exported":count,"vaults":listed.as_array().map_or(0,Vec::len),"plaintext":true}))
+    }
+
     pub fn item_list(&mut self, vault_selector: &str) -> Result<Value, String> {
         let (vault_id, vault, catalogue) = self.open_vault(vault_selector)?;
         let listed = self
@@ -3220,6 +3561,7 @@ impl Session {
         password: &str,
         custom_fields: &[Value],
     ) -> Result<Value, String> {
+        self.require_license(true)?;
         if item_selector.is_some() && create_id.is_some() {
             return Err("item operation is invalid".to_owned());
         }

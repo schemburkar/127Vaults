@@ -89,10 +89,11 @@ async function findVaultTab() {
   });
 }
 function licenseNotice(license) {
-  if (!license || license.enforcement === 'disabled') return '';
+  if (!license) return '';
+  if (license.mode === 'missing') return ' A signed license is required. Ask your server operator.';
   if (license.mode === 'read-only') return ' License expired: server writes are blocked during the 30-day read-only period. Existing logins may still be filled.';
-  if (license.mode === 'revoked') return ' License revoked: server writes are blocked. Existing unlocked logins may still be available from this source.';
-  if (license.mode === 'locked') return ' License locked: server writes are blocked. Check the server operator status and renewal.';
+  if (license.mode === 'revoked') return ' License revoked: vault access is blocked. Ask your operator for a replacement license.';
+  if (license.mode === 'locked') return ' License locked: vault access is blocked. Ask your operator for a trial or renewed license.';
   return license.expiresAt ? ` License active until ${license.expiresAt.slice(0, 10)}.` : '';
 }
 async function loadSelectedSource() {

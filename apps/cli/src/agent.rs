@@ -81,6 +81,12 @@ struct Request {
     #[serde(default)]
     vault: Option<String>,
     #[serde(default)]
+    migration_file: Option<std::path::PathBuf>,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    confirm: bool,
+    #[serde(default)]
     destination: Option<String>,
     #[serde(default)]
     name: Option<String>,
@@ -221,6 +227,7 @@ fn dispatch(
                 | "item.list"
                 | "item.list.all"
                 | "item.get"
+                | "migration.export"
                 | "passkey.list"
                 | "passkey.targets"
                 | "passkey.get"
@@ -235,11 +242,39 @@ fn dispatch(
         }
         return Err("read-only agent command denied".to_owned());
     }
+    if !matches!(request.action.as_str(), "license.status" | "logout") {
+        session.require_license(false)?;
+    }
     let result = match request.action.as_str() {
         "status" => Ok(
             json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"offlineReason":session.offline_reason(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":4,"passkeyVerificationSession":passkey_session()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
+        "migration.import" => {
+            let path = request
+                .migration_file
+                .as_ref()
+                .ok_or("Import file is required")?;
+            let mut bytes = zeroize::Zeroizing::new(Vec::new());
+            fs::File::open(path)
+                .map_err(|_| "Import file is unavailable")?
+                .take((crate::migration::MAX_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Could not read import")?;
+            session.import_passwords(
+                request.vault.as_deref().ok_or("Target vault is required")?,
+                &bytes,
+                request.format.as_deref().ok_or("Format is required")?,
+                request.confirm,
+            )
+        }
+        "migration.export" => session.export_passwords(
+            request
+                .migration_file
+                .as_deref()
+                .ok_or("Output file is required")?,
+            request.format.as_deref().unwrap_or("127vaults"),
+        ),
         "vault.list" => session.vault_list(),
         "replica.status" => session.replica_status(),
         "license.status" => session.license_status(),

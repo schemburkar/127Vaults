@@ -11,7 +11,9 @@ mod passkeys;
 use generator::generate_command;
 pub use generator::{GenerateCommand, generate_secret};
 pub mod client;
+pub mod entitlement;
 pub mod extension_host;
+pub mod migration;
 pub mod replica;
 mod sync_transport;
 pub mod tailscale;
@@ -92,6 +94,30 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Import a local plaintext password export into a vault. Preview unless --confirm is supplied.
+    Import {
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        format: String,
+        #[arg(long)]
+        vault: String,
+        #[arg(long)]
+        confirm: bool,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    /// Export all local vaults, including secrets, to a new plaintext JSON file.
+    Export {
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value = "127vaults")]
+        format: String,
+        #[arg(long, required = true)]
+        plaintext: bool,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
     /// Generate a local cryptographically random secret (printed to stdout).
     Generate {
         #[command(subcommand)]
@@ -1863,6 +1889,36 @@ pub fn run(cli: Cli) -> Result<String, String> {
             serde_json::json!({"vault":vault,"clear":clear}),
         )?)
         .map_err(|_| "could not encode default vault".to_owned()),
+        Command::Import {
+            file,
+            format,
+            vault,
+            confirm,
+            config_dir,
+        } => {
+            let file = fs::canonicalize(file).map_err(|_| "Import file is unavailable")?;
+            serde_json::to_string_pretty(&agent::call(&effective_config_dir(&config_dir), "migration.import", serde_json::json!({"migration_file":file,"format":format,"vault":vault,"confirm":confirm}))?).map_err(|_| "Could not encode import result".to_owned())
+        }
+        Command::Export {
+            output,
+            format,
+            plaintext: _,
+            config_dir,
+        } => {
+            let output = if output.is_absolute() {
+                output
+            } else {
+                std::env::current_dir()
+                    .map_err(|_| "Working directory unavailable")?
+                    .join(output)
+            };
+            serde_json::to_string_pretty(&agent::call(
+                &effective_config_dir(&config_dir),
+                "migration.export",
+                serde_json::json!({"migration_file":output,"format":format}),
+            )?)
+            .map_err(|_| "Could not encode export result".to_owned())
+        }
         Command::Item {
             command:
                 ItemCommand::List {
