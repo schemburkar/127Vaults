@@ -40,7 +40,7 @@ struct Args {
     /// Private LAN IPv4 address for a fresh server (default: loopback).
     #[arg(long)]
     endpoint: Option<String>,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "endpoint")]
     tailscale: bool,
     /// Existing protected 32-byte backup key; required for server upgrades.
     #[arg(long)]
@@ -120,6 +120,50 @@ struct Release {
     installation_id: Option<String>,
 }
 
+fn validate_network_selection(args: &Args, state: &State) -> Result<()> {
+    if let Some(endpoint) = &args.endpoint {
+        let private = endpoint == "localhost"
+            || endpoint.parse::<std::net::Ipv4Addr>().is_ok_and(|address| {
+                address == std::net::Ipv4Addr::LOCALHOST || address.is_private()
+            });
+        if !private {
+            return Err("Use localhost, 127.0.0.1 or a private LAN IPv4 endpoint. Use --tailscale for native tailnet discovery".into());
+        }
+    }
+    if args.endpoint.is_none() && !args.tailscale {
+        return Ok(());
+    }
+    if !args.components.contains(&Product::Server) {
+        return Err("--endpoint and --tailscale apply only to server installations".into());
+    }
+    let existing = state
+        .records
+        .iter()
+        .find(|record| record.product == Product::Server);
+    let directory = args
+        .from
+        .as_ref()
+        .or(existing.map(|record| &record.directory));
+    if let Some(directory) = directory {
+        let config = fs::read_to_string(directory.join(".env"))?;
+        let endpoint = config
+            .lines()
+            .find_map(|line| line.strip_prefix("VAULTS_ENDPOINT_HOST="));
+        let tailnet = config
+            .lines()
+            .any(|line| line == "VAULTS_ACCESS_MODE=tailscale");
+        if (args.tailscale && !tailnet)
+            || args
+                .endpoint
+                .as_deref()
+                .is_some_and(|requested| Some(requested) != endpoint)
+        {
+            return Err("Existing server network settings are preserved. Changing endpoint or enabling Tailscale requires a separate backed-up network migration; omit the new network flags to upgrade".into());
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     if let Err(error) = execute(Args::parse()) {
         let _ = cliclack::outro_cancel(error.to_string());
@@ -185,6 +229,7 @@ fn execute(mut args: Args) -> Result<()> {
     let root = std::path::absolute(root)?;
     let initial_state = fs::read(root.join("installation.json")).ok();
     let mut state = State::load(&root)?;
+    validate_network_selection(&args, &state)?;
     if let Some(path) = &state.pending_upgrade {
         return Err(format!("Interrupted upgrade needs recovery. Inspect {} and the previous server; reconcile installation.json only after verifying identity, data, license and health", path.display()).into());
     }
@@ -718,6 +763,61 @@ fn replace_staged(staged: &Path, previous: &Path, root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn network_selection_keeps_same_mode_resumable_and_rejects_silent_migration() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir(&root).unwrap();
+        fs::write(
+            root.join(".env"),
+            "VAULTS_ACCESS_MODE=loopback\nVAULTS_ENDPOINT_HOST=127.0.0.1\n",
+        )
+        .unwrap();
+        let mut state = State::load(&root).unwrap();
+        state.record(Record {
+            product: Product::Server,
+            digest: "old".into(),
+            directory: root.clone(),
+            complete: true,
+            engine: Some("podman".into()),
+            provider: None,
+        });
+        let args =
+            Args::try_parse_from(["installer", "--components", "server", "--tailscale"]).unwrap();
+        assert!(validate_network_selection(&args, &state).is_err());
+        fs::write(
+            root.join(".env"),
+            "VAULTS_ACCESS_MODE=tailscale\nVAULTS_ENDPOINT_HOST=100.64.0.10\n",
+        )
+        .unwrap();
+        assert!(validate_network_selection(&args, &state).is_ok());
+        let args = Args::try_parse_from([
+            "installer",
+            "--components",
+            "server",
+            "--endpoint",
+            "10.0.0.11",
+        ])
+        .unwrap();
+        assert!(validate_network_selection(&args, &state).is_err());
+        let args =
+            Args::try_parse_from(["installer", "--components", "cli", "--tailscale"]).unwrap();
+        assert!(validate_network_selection(&args, &State::default()).is_err());
+        assert!(
+            Args::try_parse_from(["installer", "--endpoint", "10.0.0.1", "--tailscale"]).is_err()
+        );
+        for endpoint in ["8.8.8.8", "0.0.0.0", "127.0.0.2", "example.com"] {
+            let args = Args::try_parse_from([
+                "installer",
+                "--components",
+                "server",
+                "--endpoint",
+                endpoint,
+            ])
+            .unwrap();
+            assert!(validate_network_selection(&args, &State::default()).is_err());
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn client_updates_preserve_registered_path_and_previous_contents() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

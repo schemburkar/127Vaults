@@ -5,9 +5,34 @@ import { createReadStream, existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { isIP } from 'node:net';
+import { request } from 'node:https';
 import { resolve, join } from 'node:path';
 import { installLicenseFiles, installRevocationFile } from './license-files.mjs';
 import { discoverTailscale, enableTailnetForward, tailscaleIPv4 } from './private-network.mjs';
+
+function readinessProbe({ origin, ca, token }) {
+  return new Promise(resolveProbe => {
+    const req = request(new URL('/health/ready', origin), {
+      ca, timeout: 2000, headers: { authorization: `Bearer ${token}` },
+    }, response => {
+      response.resume();
+      response.on('end', () => resolveProbe(response.statusCode === 200));
+      response.on('error', () => resolveProbe(false));
+    });
+    req.on('error', () => resolveProbe(false));
+    req.on('timeout', () => { req.destroy(); resolveProbe(false); });
+    req.end();
+  });
+}
+
+export async function waitForReadiness({ origin, ca, token, attempts = 20,
+  probe = readinessProbe, pause = () => new Promise(done => setTimeout(done, 1000)) }) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (await probe({ origin, ca, token })) return;
+    if (attempt + 1 < attempts) await pause();
+  }
+  throw Error('Server did not become ready over verified HTTPS. Keep the existing identity and data, inspect container status, and rerun install start after resolving the cause.');
+}
 
 export function nextSetupStep({ bootstrapRequired, license, seatUsage }, smtpConfigured) {
   if (!license || license.mode === 'unavailable') return 'Next: inspect the signed license files and persistent clock checkpoint.';
@@ -246,7 +271,11 @@ else {
     }
     await runCompose(['up', '-d', '--no-build']);
     if (/^VAULTS_ACCESS_MODE=tailscale$/m.test(content)) await enableTailnetForward(configuredEndpoint);
-    console.log(`Open https://${configuredEndpoint}:12780 after verifying and trusting the local CA.`);
+    const publicationPort = /^VAULTS_PUBLISH_PORT=(\d+)$/m.exec(content)?.[1] || '12780';
+    await waitForReadiness({ origin: `https://${configuredEndpoint}:${publicationPort}`,
+      ca: await readFile(join(privateDir, 'ca/ca.crt')),
+      token: (await readFile(join(privateDir, 'runtime/readiness-token'), 'utf8')).trim() });
+    console.log(`Open https://${configuredEndpoint}:${publicationPort} after verifying and trusting the local CA.`);
   } else if (action === 'stop') await runCompose(['down']);
   else if (action === 'status') {
     await runCompose(['ps']);

@@ -32,6 +32,25 @@ export function nextPatch(version) {
   return values.join('.');
 }
 
+function compareVersions(a, b) {
+  const left = a.split('.').map(Number), right = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] - right[i];
+  return 0;
+}
+
+export function coordinatedVersions(current, overrides = {}, requested) {
+  for (const version of Object.values(current)) nextPatch(version);
+  const targets = new Set([...Object.values(overrides), ...(requested ? [requested] : [])]);
+  if (targets.size > 1) throw Error('A combined release must use one coordinated version for every component.');
+  const highest = Object.values(current).sort(compareVersions).at(-1);
+  const target = targets.size ? [...targets][0] : nextPatch(highest);
+  nextPatch(target);
+  if (Object.values(current).some(version => compareVersions(target, version) <= 0)) {
+    throw Error('The coordinated version must be newer than every current component; published versions cannot be reused.');
+  }
+  return Object.fromEntries(products.map(product => [product, target]));
+}
+
 export function retainPreviousMajors(catalogue, baseline, state) {
   const current = serverMajor(catalogue), previous = serverMajor(baseline);
   const history = (baseline.previousMajors || []).filter(row => row.majorVersion !== current && row.majorVersion !== previous);
@@ -47,7 +66,7 @@ export function retainPreviousMajors(catalogue, baseline, state) {
 export async function settingsFor(request) {
   const file = resolve(request.config || join(repository, '.cloudflare-deploy/release-set.json'));
   const value = await exists(file) ? await json(file) : {};
-  const allowed = ['deploymentConfig', 'outputRoot', 'cacheRoot', 'wslDistro', 'wslUser', 'linuxCacheRoot', 'composeProvider', 'sevenZip', 'port', 'versions', 'r2CredentialsFile'];
+  const allowed = ['deploymentConfig', 'outputRoot', 'cacheRoot', 'wslDistro', 'wslUser', 'linuxCacheRoot', 'composeProvider', 'sevenZip', 'port', 'version', 'versions', 'r2CredentialsFile'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw Error('Unknown release-set configuration field.');
   const path = (name, fallback) => resolve(dirname(file), value[name] || fallback);
   const settings = { deploymentConfig: path('deploymentConfig', 'config.json'),
@@ -57,7 +76,7 @@ export async function settingsFor(request) {
     linuxCacheRoot: value.linuxCacheRoot,
     composeProvider: path('composeProvider', join(process.env.LOCALAPPDATA || homedir(), 'Microsoft/WindowsApps/docker-compose.exe')),
     sevenZip: path('sevenZip', join(process.env.ProgramFiles || 'C:/Program Files', '7-Zip/7z.exe')),
-    port: value.port ?? 12935, versions: value.versions || {},
+    port: value.port ?? 12935, version: value.version, versions: value.versions || {},
     r2CredentialsFile: value.r2CredentialsFile ? path('r2CredentialsFile') : null,
     pointer: join(dirname(file), 'latest-release-set.json') };
   outside(repository, settings.outputRoot, 'OutputRoot'); outside(repository, settings.cacheRoot, 'CacheRoot');
@@ -79,22 +98,21 @@ export async function planSet(request, settings, active, deps = defaults) {
   const revision = await deps.git(repository, ['rev-parse', '--verify', `${request.ref || 'HEAD'}^{commit}`]);
   const label = setLabel(request.label || `release-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '').toLowerCase()}-${revision.slice(0, 7)}`);
   const baseline = await deps.checkLocalCatalogue(active.catalogueFile);
-  const versions = {};
+  const current = {};
   for (const product of products) {
-    if (product === 'installer') {
-      // Bootstrap catalogues may predate this app. Its independent protocol
-      // version comes from source, rather than incrementing with each server set.
-      const installer = await deps.createPlan({ repository, product, platform: 'both',
-        version: settings.versions[product], ref: revision, label, outputRoot: settings.outputRoot, cacheRoot: settings.cacheRoot });
-      versions[product] = installer.packageVersion;
-      continue;
-    }
     const artifact = baseline.artifacts.find(a => a.product === product && !a.supporting);
-    if (!artifact) throw Error(`Active catalogue has no ${product} package.`);
-    const manifest = await deps.verifyRelease(dirname(artifact.path));
-    versions[product] = settings.versions[product] || nextPatch(manifest.packageVersion);
-    // Validate numeric target-specific limits before any output is created.
-    await deps.createPlan({ repository, product, platform: ['desktop', 'cli'].includes(product) ? 'both' : 'native',
+    if (artifact) current[product] = (await deps.verifyRelease(dirname(artifact.path))).packageVersion;
+    else if (product !== 'installer') throw Error(`Active catalogue has no ${product} package.`);
+    if (product === 'installer') {
+      const source = await deps.createPlan({ repository, product, platform: 'both',
+        ref: revision, label, outputRoot: settings.outputRoot, cacheRoot: settings.cacheRoot });
+      if (!current[product] || compareVersions(source.packageVersion, current[product]) > 0) current[product] = source.packageVersion;
+    }
+  }
+  const versions = coordinatedVersions(current, settings.versions, settings.version);
+  for (const product of products) {
+    // Validate every target format before creating outputs or touching deployment state.
+    await deps.createPlan({ repository, product, platform: ['desktop', 'cli', 'installer'].includes(product) ? 'both' : 'native',
       version: versions[product], ref: revision, label, outputRoot: settings.outputRoot, cacheRoot: settings.cacheRoot });
   }
   return { schemaVersion: 1, revision, label, versions, baselineIdentity: await deps.catalogueIdentity(baseline),

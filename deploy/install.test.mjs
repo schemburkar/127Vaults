@@ -320,3 +320,16 @@ test('damaged identity blocks start but does not block stop or status', async ()
   assert.equal(await main(['status'], dependencies), 0);
   assert.deepEqual(calls, ['stop', 'status']);
 });
+
+
+test('Tailscale prerequisite failure is actionable, redacted and prevents setup readiness', async () => {
+  const dependencies = harness({ discoverTailscale: async () => { throw Error('PRIVATE-DIAGNOSTIC'); } });
+  const report = await diagnose(['--tailscale'], dependencies);
+  assert.equal(report.ready, false);
+  assert.equal(report.checks.find(check => check.id === 'tailscale').status, 'fail');
+  assert.doesNotMatch(JSON.stringify(report), /PRIVATE-DIAGNOSTIC/);
+  const mismatch = await diagnose(['--tailscale', '--endpoint', '100.64.0.10'], harness({ discoverTailscale: async () => '100.64.0.11' }));
+  assert.equal(mismatch.ready, false);
+  const ready = await diagnose(['--tailscale', '--endpoint', '100.64.0.10'], harness({ discoverTailscale: async () => '100.64.0.10' }));
+  assert.equal(ready.ready, true);
+});

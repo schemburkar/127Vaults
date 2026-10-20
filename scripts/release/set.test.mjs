@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, access, rm } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { buildSet, publishSet, nextPatch, retainPreviousMajors } from './set.mjs';
+import { buildSet, publishSet, nextPatch, coordinatedVersions, retainPreviousMajors } from './set.mjs';
 import { verifyRelease } from './verify-release.mjs';
 import { verifyEmbeddedAgreements, verifyLiveDelivery } from './verify-set.mjs';
 import { checkLocalCatalogue } from '../cloudflare/artifacts.mjs';
@@ -81,10 +81,9 @@ async function fixture(t) {
   return { root, calls, settings, active, deps, request };
 }
 
-test('set preview increments independent versions without creating outputs or publishing', async t => {
+test('set preview coordinates versions without creating outputs or publishing', async t => {
   const f = await fixture(t); const p = await buildSet({ ...f.request, plan: true }, f.settings, f.active, f.deps);
-  assert.equal(p.versions.server, '0.0.6'); assert.equal(p.versions.extension, '0.1.3');
-  assert.equal(p.versions.installer, '0.1.0');
+  assert.deepEqual(new Set(Object.values(p.versions)), new Set(['0.1.3']));
   assert.equal(p.releaseDirectories.length, 8); assert.equal(await present(p.directory), false); assert.deepEqual(f.calls, []);
   assert.throws(() => nextPatch('0.1.2.3'), /explicit/);
 });
@@ -181,4 +180,12 @@ test('live verification hashes all download ranges and refuses public access or 
   const verify = () => verifyLiveDelivery({ origin: 'https://vaults.example.com' }, catalogue, 'private-token', { fetchImpl, partSize: 5 });
   assert.equal((await verify()).status, 'passed'); corrupt = true; await assert.rejects(verify(), /checksum/);
   corrupt = false; publicAccess = true; await assert.rejects(verify(), /unauthenticated/);
+});
+
+test('coordinated releases advance every component and reject reuse or mixed overrides', () => {
+  const current = { server: '0.0.6', desktop: '0.0.5', cli: '0.0.4', extension: '0.1.3', installer: '0.1.0' };
+  assert.deepEqual(new Set(Object.values(coordinatedVersions(current))), new Set(['0.1.4']));
+  assert.deepEqual(new Set(Object.values(coordinatedVersions(current, {}, '0.2.0'))), new Set(['0.2.0']));
+  assert.throws(() => coordinatedVersions(current, { server: '0.2.0', desktop: '0.2.1' }), /one coordinated/);
+  for (const version of ['0.0.7', '0.1.3', 'bad']) assert.throws(() => coordinatedVersions(current, {}, version));
 });

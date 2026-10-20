@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { databaseContainerArgs, nextSetupStep } from './test-install.mjs';
+import { databaseContainerArgs, nextSetupStep, waitForReadiness } from './test-install.mjs';
 
 test('restore container selection is scoped by both Compose labels and refuses an invalid project', () => {
   const args = databaseContainerArgs('vaults-test-123456789abc');
@@ -26,4 +26,17 @@ test('operator setup guidance covers owner, SMTP, seat capacity and ready state'
   assert.match(nextSetupStep(ready, false), /configure and verify SMTP/);
   assert.match(nextSetupStep({ ...ready, seatUsage: { activeUsers: 3, reservedSeats: 2 } }, true), /higher user cap/);
   assert.match(nextSetupStep(ready, true), /invite users/);
+});
+
+
+test('startup waits through transient unready responses and stops after its retry budget', async () => {
+  let probes = 0, pauses = 0;
+  const context = { origin: 'https://100.64.0.10:12780', ca: Buffer.from('test CA'), token: 'private-token' };
+  await waitForReadiness({ ...context, attempts: 3, pause: async () => { pauses++; }, probe: async options => {
+    assert.equal(options.ca, context.ca); assert.equal(options.token, context.token); return ++probes === 3;
+  } });
+  assert.equal(probes, 3); assert.equal(pauses, 2);
+  probes = 0;
+  await assert.rejects(waitForReadiness({ ...context, attempts: 2, pause: async () => {}, probe: async () => { probes++; return false; } }), /verified HTTPS/);
+  assert.equal(probes, 2);
 });

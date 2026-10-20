@@ -9,8 +9,8 @@ From the Windows build host, use these two commands:
 .\release-set.ps1 publish
 ```
 
-`build` pins committed HEAD, increments each component's patch version from the
-active private catalogue, and prepares server/web/admin, Windows/Linux desktop,
+`build` pins committed HEAD and selects one coordinated version above every
+component in the active private catalogue (including the installer), and prepares server/web/admin, Windows/Linux desktop,
 Windows/Linux CLI and the Chromium extension. It runs the existing product gates,
 website/Cloudflare tests, checks the adopted agreements inside every package, and
 rehearses an isolated server upgrade from the active package plus backup/restore
@@ -48,11 +48,15 @@ Optional overrides live in the ignored `.cloudflare-deploy/release-set.json`:
   "deploymentConfig": "config.json",
   "wslDistro": "Ubuntu-24.04",
   "port": 12935,
-  "versions": { "server": "0.0.6", "desktop": "0.0.5", "cli": "0.0.4", "extension": "0.1.3" }
+  "version": "0.1.4"
 }
 ```
 
-Omit `versions` for automatic patch increments. Other optional fields are
+Omit `version` to increment the highest current component version and use that
+number for the entire set. An explicit version must exceed every component;
+reusing a published version or mixing component overrides is rejected. Legacy
+`versions` settings are accepted only when they resolve to one common newer
+version. This numbering does not replace protocol/compatibility checks. Other optional fields are
 `outputRoot`, `cacheRoot`, `wslUser`, `linuxCacheRoot`, `composeProvider`,
 `sevenZip` and `r2CredentialsFile`; Windows paths in JSON need escaped backslashes
 or forward slashes. Relative paths resolve against that private settings file.

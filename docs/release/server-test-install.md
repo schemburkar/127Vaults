@@ -193,3 +193,9 @@ For a **new** tailnet installation, sign in to the native Tailscale client, then
 Desktop can discover online Tailscale peers in its trust screen. CLI can use `127vaults server tailscale <server-name> --ca ca.crt --server-id <installation-id>`. Both still require verified CA material and the operator's installation identity. Cloudflare public hostnames are not an intranet-only option; Cloudflare private routing remains under review.
 
 Build a new bundle with a new manifest and image digest; do not replace image archives in an existing bundle. Take and rehearse an encrypted backup before any schema migration. Stop the application, run the reviewed migration with a bounded lock wait, start the new image, verify readiness and an authenticated client flow. Rollback uses the matching prior image and a **new** isolated restore from the pre-upgrade backup; do not run old code against a migrated volume. Packages remain experimental private-trial artifacts. Automatic updates and production release remain outside this procedure.
+
+Startup waits for an authenticated readiness response over HTTPS using the existing
+installation CA before reporting success. A startup timeout retains the identity
+and database; inspect the selected engine and rerun `install start` after fixing
+the cause. Tailscale setup verifies its resulting private TCP route and does not
+reset unrelated Serve routes.

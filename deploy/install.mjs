@@ -69,6 +69,7 @@ export async function inspectInstallation(directory, options) {
     const tailscale = /^VAULTS_ACCESS_MODE=tailscale\r?$/m.test(content);
     parseOptions(['--endpoint', values.VAULTS_ENDPOINT_HOST, '--private-dir', values.VAULTS_TLS_DIR, ...(tailscale ? ['--tailscale'] : [])], { directory });
     if (options.tailscale && !tailscale) throw Error('Existing installation needs an explicit network migration.');
+    if (tailscale) options.expectedTailnetAddress = values.VAULTS_ENDPOINT_HOST;
     if (tailscale && options.args && !options.args.includes('--tailscale')) options.args.push('--tailscale');
     if (options.endpoint && options.endpoint !== values.VAULTS_ENDPOINT_HOST) {
       return { id: 'installation', status: 'fail', message: 'Requested endpoint differs from the existing installation.', nextStep: 'Use the initialized endpoint. Changing it requires a reviewed certificate and network migration.' };
@@ -131,7 +132,13 @@ export function probe(program, args, { timeoutMs = 15000, cwd, env } = {}) {
   });
 }
 
-export async function diagnose(args, { directory = import.meta.dirname, platform = process.platform, nodeVersion = process.versions.node, runProbe = probe, verifyBundle = verify, inspectState = inspectInstallation } = {}) {
+async function discoverTailnet() {
+  const module = existsSync(resolve(import.meta.dirname, 'lib/private-network.mjs'))
+    ? new URL('./lib/private-network.mjs', import.meta.url) : new URL('./private-network.mjs', import.meta.url);
+  return (await import(module)).discoverTailscale();
+}
+
+export async function diagnose(args, { directory = import.meta.dirname, platform = process.platform, nodeVersion = process.versions.node, runProbe = probe, verifyBundle = verify, inspectState = inspectInstallation, discoverTailscale = discoverTailnet } = {}) {
   const options = parseOptions(args, { directory });
   const checks = [];
   const add = (id, status, message, nextStep) => checks.push({ id, status, message, ...(nextStep ? { nextStep } : {}) });
@@ -144,6 +151,17 @@ export async function diagnose(args, { directory = import.meta.dirname, platform
   const nodeOk = Number(nodeVersion.split('.')[0]) === 24;
   add('node', nodeOk ? 'pass' : 'fail', `Node.js ${nodeVersion}${nodeOk ? ' is supported.' : ' is unsupported.'}`, nodeOk ? undefined : 'Install Node.js 24 from https://nodejs.org/en/download and rerun doctor.');
   if (inspectState) checks.push(await inspectState(directory, options));
+  if (options.args.includes('--tailscale')) {
+    try {
+      const address = await discoverTailscale();
+      const expected = options.endpoint || options.expectedTailnetAddress;
+      if (expected && expected !== address) throw Error('Tailscale identity mismatch');
+      add('tailscale', 'pass', 'The native Tailscale client is online with the expected server identity.');
+    } catch {
+      add('tailscale', 'fail', 'Tailscale is unavailable, signed out, or does not match the configured endpoint.',
+        'Install/sign in to Tailscale, verify this node address, and rerun doctor. Existing installation identity and network configuration are preserved.');
+    }
+  }
   const engine = options.engine;
   const version = await runProbe(engine, ['--version'], { cwd: directory });
   add('engine', version.ok ? 'pass' : 'fail', version.ok ? `${engine} executable is available.` : `${engine} executable check failed (${version.reason}).`, version.ok ? undefined : `Install ${engine} and make its executable available on PATH; rerun doctor.`);
