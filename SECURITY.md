@@ -30,11 +30,10 @@ Web access also requires trusting the server that delivers the client code:
 a compromised server could alter that code. See the
 [web client trust boundary](docs/security/web-client-boundary.md).
 
-## Security assurance and reporting
+## Security documentation and reporting
 
-The design and implementation evidence are documented in [security documentation](docs/security/).
-127Vaults has not yet received an independent security audit; these controls describe
-the implemented approach, rather than a guarantee against every attack.
+The encryption design, client trust boundaries and implementation evidence are
+documented in [security documentation](docs/security/).
 
 Please report suspected vulnerabilities privately to the maintainers through the
 existing private project support channel. Do not include vault contents, passwords,

@@ -19,7 +19,7 @@ test('security overview links to published technical details with parameters mat
     assert.match(html, /persistent/i);
     assert.match(html, /metadata/);
     assert.match(html, /compromised server|server compromise/);
-    assert.match(html, /not received an independent security audit|not an independently audited/);
+    assert.doesNotMatch(html, /private.test implementation|private testing|experimental|independent.*audit|security certification/i);
     assert.match(html, /src="wordmark.svg"/);
     assert.doesNotMatch(html, /wordmark-red.svg/);
   }
