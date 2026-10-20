@@ -12,7 +12,7 @@ const run = promisify(execFile);
 export const repository = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 export const localDeploymentDirectory = join(repository, '.cloudflare-deploy');
 export const workerDirectory = join(repository, 'apps/public-intake/cloudflare');
-export const assetFiles = ['index.html', 'product.html', 'security.html', 'deployment.html', 'pricing.html',
+export const assetFiles = ['index.html', 'product.html', 'security.html', 'security-technical.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
   'trial.mjs', 'access-admin.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];

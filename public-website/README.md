@@ -11,7 +11,7 @@ The local site now includes access-admin.html for the protected operator inbox a
 
 This folder is an independent, static marketing site. It is separate from `apps/web`, the password-manager web client, and has no third-party build dependencies.
 
-The eight main marketing pages are Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Separate trial/operator and legacy simulation pages support their configured services. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five marketing pages are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root.
+The eight main marketing pages are Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Separate trial/operator and legacy simulation pages support their configured services. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five marketing pages and the linked `security-technical.html` page are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root. To regenerate only security pages, use `node public-website/build-pages.mjs security.html security-technical.html`. Keep published cryptographic parameters aligned with the implementation and run `node --test public-website/security.test.mjs`.
 
 Every page carries a visible coming-soon notice for Cloud, proposed pricing,
 and release availability. Product copy describes private vaults only; the Work
