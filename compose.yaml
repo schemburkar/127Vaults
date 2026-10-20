@@ -52,6 +52,10 @@ services:
       VAULTS_READINESS_TOKEN_FILE: /run/secrets/runtime/readiness-token
       VAULTS_DATABASE_PASSWORD_FILE: /run/secrets/runtime/postgres-password
       VAULTS_ADMIN_OPERATORS_FILE: /run/secrets/runtime/admin-operators.json
+      VAULTS_LICENSE_FILE: ${VAULTS_LICENSE_FILE:-}
+      VAULTS_LICENSE_PUBLIC_KEYS_FILE: ${VAULTS_LICENSE_PUBLIC_KEYS_FILE:-}
+      VAULTS_LICENSE_REVOCATION_FILE: ${VAULTS_LICENSE_REVOCATION_FILE:-}
+      VAULTS_LICENSE_CLOCK_FILE: /run/runtime/license-clock.json
       # Windows VM bind mounts cannot preserve host ACLs as POSIX mode bits.
       VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS: ${VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS:-0}
     ports:

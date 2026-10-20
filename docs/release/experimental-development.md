@@ -6,6 +6,23 @@ or a stable storage-format commitment.
 
 ## Supported v1 development path
 
+Development vault access requires a signed installation-bound development or
+trial license. The source Compose stack passes `VAULTS_LICENSE_FILE`,
+`VAULTS_LICENSE_PUBLIC_KEYS_FILE` and optional `VAULTS_LICENSE_REVOCATION_FILE`
+from `.env` into the server. Use container paths under
+`/run/secrets/runtime/licenses/`; matching host files belong in
+`VAULTS_TLS_DIR/runtime/licenses/`. The persistent license clock lives in the
+writable output directory. Keep the issuer private key outside the stack.
+After changing license settings, recreate the server container so it receives
+the new environment; a running Vite frontend alone does not reload server
+configuration.
+
+The startup preflight requires nonempty regular files for the server certificate,
+private key and configured CA. A directory accidentally created at a missing bind
+mount source is rejected. Preflight never creates a replacement identity. For a
+recognized older schema, preserve an encrypted database backup and rehearse its
+restore before running `pnpm mvp:migrate`; retain the existing identity and volume.
+
 The supported deployment is an OCI container stack: the server and PostgreSQL
 run as separate containers, and PostgreSQL uses an unexposed persistent volume.
 Podman with a Compose provider is the primary tested workflow; Docker Compose is

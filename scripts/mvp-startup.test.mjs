@@ -50,6 +50,20 @@ test('TLS preflight accepts a complete default identity', async t => {
   await ensureTlsReady({ VAULTS_TLS_DIR: identity }, 'dev');
 });
 
+test('TLS preflight rejects a directory created at a certificate mount path', async t => {
+  const { identity } = await fixture(t, ['live/server.crt', 'live/server.key']);
+  await mkdir(join(identity, 'ca', 'ca.crt'), { recursive: true });
+  await assert.rejects(ensureTlsReady({ VAULTS_TLS_DIR: identity }, 'dev'), /ca\.crt \(not a regular file\)/);
+});
+
+test('TLS preflight rejects an empty private key without changing the identity', async t => {
+  const { identity } = await fixture(t, required);
+  const key = join(identity, 'live', 'server.key');
+  await writeFile(key, '');
+  await assert.rejects(ensureTlsReady({ VAULTS_TLS_DIR: identity }, 'dev'), /server\.key \(empty file\)/);
+  assert.equal(await readFile(key, 'utf8'), '');
+});
+
 test('custom CA configuration requires that exact filename rather than falling back to ca.crt', async t => {
   const { identity } = await fixture(t, required);
   const values = { VAULTS_TLS_DIR: identity, VAULTS_CA_CERT_FILE: 'trusted-ca.crt' };
