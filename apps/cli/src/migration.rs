@@ -9,8 +9,37 @@ fn text<'a>(value: &'a Value, key: &str) -> &'a str {
     value[key].as_str().unwrap_or("")
 }
 fn record(title: &str, website: &str, username: &str, password: &str, source: &Value) -> Value {
-    json!({"title":title,"website":website,"username":username,"password":password,
-        "customFields":[{"id":"migration-source","label":"Original imported record (JSON)","type":"password","value":source.to_string()}]})
+    let notes = [
+        text(&source["details"], "notesPlain"),
+        text(source, "notes"),
+        text(source, "extra"),
+    ]
+    .into_iter()
+    .find(|value| !value.is_empty())
+    .unwrap_or("");
+    let mut fields = if notes.is_empty() {
+        vec![]
+    } else {
+        vec![json!({"id":"migration-notes","label":"Notes","type":"note","value":notes})]
+    };
+    // Map vendor text fields individually instead of exposing the source JSON.
+    for field in source["fields"].as_array().into_iter().flatten() {
+        if let Some(value) = field["value"].as_str() {
+            fields.push(json!({"id":format!("migration-field-{}",fields.len()),"label":text(field,"name"),"type":if field["type"] == 1 {"password"} else {"text"},"value":value}));
+        }
+    }
+    for section in source["details"]["sections"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        for field in section["fields"].as_array().into_iter().flatten() {
+            if let Some(value) = field["v"].as_str() {
+                fields.push(json!({"id":format!("migration-field-{}",fields.len()),"label":text(field,"t"),"type":if field["k"] == "concealed" {"password"} else {"text"},"value":value}));
+            }
+        }
+    }
+    json!({"title":title,"website":website,"username":username,"password":password,"customFields":fields})
 }
 
 pub const SOURCE_VAULTS: &str = "__source_vaults__";
@@ -425,6 +454,26 @@ fn csv(input: &str) -> Result<Vec<Vec<String>>, String> {
 mod tests {
     use super::*;
     #[test]
+    fn vendor_records_have_readable_notes_and_fields_without_raw_json() {
+        let source = json!({"notes":"Readable notes","fields":[{"name":"PIN","value":"1234","type":1}],
+            "details":{"sections":[{"fields":[{"t":"Text","k":"string","v":"value"}]}]},"vendorInternal":"not imported"});
+        let row = record("A", "https://example.invalid", "user", "password", &source);
+        assert_eq!(row["customFields"][0]["value"], "Readable notes");
+        assert_eq!(row["customFields"][0]["type"], "note");
+        assert_eq!(row["customFields"][1]["label"], "PIN");
+        assert_eq!(row["customFields"][1]["type"], "password");
+        assert_eq!(row["customFields"][2]["value"], "value");
+        assert!(!row.to_string().contains("migration-source"));
+        assert!(!row.to_string().contains("vendorInternal"));
+        assert!(
+            record("A", "", "", "", &json!({}))["customFields"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn source_vaults_preserve_grouping_and_do_not_merge_existing_names() {
         let data = br#"{"encrypted":false,"folders":[{"id":"a","name":"Personal"},{"id":"b","name":"Personal"}],"items":[{"type":1,"name":"One","folderId":"a","login":{}},{"type":1,"name":"Two","folderId":"b","login":{}},{"type":1,"name":"Three","folderId":"a","login":{}}]}"#;
         let rows = parse(data, "bitwarden").unwrap();
@@ -458,7 +507,7 @@ mod tests {
             rows[0]["customFields"][0]["value"]
                 .as_str()
                 .unwrap()
-                .contains("line1\\nline2")
+                .contains("line1\nline2")
         );
         assert!(csv("a,\"unterminated").is_err());
     }

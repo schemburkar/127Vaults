@@ -19,6 +19,46 @@ mod sync_transport;
 pub mod tailscale;
 pub mod vault_settings;
 
+/// Runs the desktop's read-only connector in the same executable as its UI.
+/// Normal UI startup returns `None`; unlock material is received only over stdin.
+#[must_use]
+pub fn desktop_connector_entry() -> Option<Result<String, String>> {
+    let args: Vec<_> = std::env::args_os().collect();
+    desktop_connector_command(&args).map(|command| {
+        command.and_then(|command| {
+            if let Command::AgentServe {
+                config_dir,
+                username,
+                read_only: true,
+            } = command
+            {
+                agent::serve(&config_dir, &username, true)
+            } else {
+                Err("Desktop connector must be read-only".into())
+            }
+        })
+    })
+}
+
+fn desktop_connector_command(args: &[std::ffi::OsString]) -> Option<Result<Command, String>> {
+    if args.get(1).is_none_or(|arg| arg != "agent-serve") {
+        return None;
+    }
+    Some(
+        Cli::try_parse_from(args)
+            .map(|cli| cli.command)
+            .map_err(|_| "Invalid desktop connector arguments".into()),
+    )
+}
+
+/// Only reuse connectors built with the desktop session contract.
+#[must_use]
+pub fn connector_agent_desktop_compatible(config_dir: &std::path::Path) -> bool {
+    agent::call(config_dir, "status", serde_json::json!({})).is_ok_and(|status| {
+        status["desktopConnectorProtocol"] == 1 && status["nativePasskeyProtocol"] == 4
+    })
+}
+
 /// Starts a local unlock agent that the read-only extension connector can use.
 ///
 /// # Errors
@@ -49,7 +89,21 @@ pub fn connector_agent_active(config_dir: &std::path::Path) -> bool {
 /// Reports a definite connector lock; a busy local agent is not a lock signal.
 #[must_use]
 pub fn connector_agent_locked(config_dir: &std::path::Path) -> bool {
-    connector_probe_locked(agent::call(config_dir, "status", serde_json::json!({})))
+    connector_agent_lock_reason(config_dir).is_some()
+}
+
+/// Returns the connector's concrete lock reason without any vault contents.
+#[must_use]
+pub fn connector_agent_lock_reason(config_dir: &std::path::Path) -> Option<String> {
+    let result = agent::call(config_dir, "status", serde_json::json!({}));
+    if !connector_probe_locked(result.clone()) {
+        return None;
+    }
+    Some(
+        result
+            .err()
+            .unwrap_or_else(|| "Connector session ended".into()),
+    )
 }
 
 fn connector_probe_locked(result: Result<serde_json::Value, String>) -> bool {
@@ -84,6 +138,37 @@ impl ConnectorLockConfirmation {
 
 #[cfg(test)]
 mod connector_probe_tests {
+    #[test]
+    fn embedded_connector_entry_accepts_only_the_agent_command() {
+        use std::ffi::OsString;
+        let args = |values: &[&str]| values.iter().map(OsString::from).collect::<Vec<_>>();
+        assert!(super::desktop_connector_command(&args(&["desktop"])).is_none());
+        assert!(super::desktop_connector_command(&args(&["desktop", "export"])).is_none());
+        assert!(
+            super::desktop_connector_command(&args(&["desktop", "agent-serve"]))
+                .unwrap()
+                .is_err()
+        );
+        let parsed = super::desktop_connector_command(&args(&[
+            "desktop",
+            "agent-serve",
+            "--username",
+            "test",
+            "--config-dir",
+            "profile",
+            "--read-only",
+        ]))
+        .unwrap()
+        .unwrap();
+        assert!(matches!(
+            parsed,
+            super::Command::AgentServe {
+                read_only: true,
+                ..
+            }
+        ));
+    }
+
     #[test]
     fn connector_lock_requires_consecutive_failures_in_the_same_unlock_session() {
         let mut confirmation = super::ConnectorLockConfirmation::default();

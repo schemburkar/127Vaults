@@ -61,3 +61,10 @@ test('replacing the parent type does not create an unrelated archived section', 
   assert.deepEqual(sections(fields), []);
   assert.ok(!fields.some(field => field.id === 'account_number'));
 });
+
+
+test('legacy raw imported JSON stays out of displayed and editable fields', () => {
+  const raw = {id:'migration-source',label:'Original imported record (JSON)',type:'password',value:'{"private":"legacy"}'};
+  const notes = {id:'migration-notes',label:'Notes',type:'note',value:'Readable note'};
+  assert.deepEqual(ordinaryFields([raw,notes]), [notes]);
+});

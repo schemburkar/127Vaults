@@ -408,8 +408,8 @@ export function App() {
   };
   useEffect(() => {
     let dispose: (() => void) | undefined, stopped = false;
-    void listen<{ epoch: number }>("vaults-connector-locked", event => {
-      if (sessionRevocation.current.revoke(event.payload.epoch)) void lock("Client locked. Unlock to continue.");
+    void listen<{ epoch: number; reason?: string }>("vaults-connector-locked", event => {
+      if (sessionRevocation.current.revoke(event.payload.epoch)) void lock(event.payload.reason ? `Client locked: ${event.payload.reason}` : "Client locked. Unlock to continue.");
     }).then(unlisten => { if (stopped) unlisten(); else dispose = unlisten; });
     return () => { stopped = true; dispose?.(); };
   }, []);
@@ -1213,7 +1213,7 @@ export function App() {
           try {
             const cached = await invoke<NonNullable<typeof licenseStatus>>("license_access_status");
             if (!disposed) setLicenseStatus(cached);
-          } catch { if (!disposed) await lock(String(error)); }
+          } catch (cachedError) { if (!disposed) await lock(String(cachedError)); }
         }
       }
       finally { licenseBusy = false; }
@@ -2127,7 +2127,7 @@ export function App() {
             <option value="bitwarden">Bitwarden JSON (unencrypted)</option><option value="1password">1Password 1PUX</option><option value="lastpass">LastPass CSV</option><option value="127vaults">127Vaults JSON</option>
           </select></label>
           <input key={importFormat} type="file" accept={importFormat === "1password" ? ".1pux" : importFormat === "lastpass" ? ".csv" : ".json"} disabled={importBusy} onChange={e => { setImportFile(e.target.files?.[0] ?? null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); }} />
-          <p className="text-sm text-slate-400">Login records are supported. Extra source details are retained in a concealed custom field. Passkeys, attachments and other vendor item types must be migrated separately. Delete plaintext source files when finished.</p>
+          <p className="text-sm text-slate-400">Login records are supported. Supported credentials and readable notes are imported. Passkeys, attachments and other vendor item types must be migrated separately. Delete plaintext source files when finished.</p>
           {importFormat === "1password" && importSelectedVaults !== null && <fieldset className="grid gap-2 rounded-xl border border-white/10 p-3" disabled={importBusy}><legend className="px-1 font-semibold">Source vaults to import</legend><p className="text-sm text-slate-400">Choose vaults from the account export. Supported type: Logins.</p><div className="max-h-44 overflow-auto">{importAvailableVaults.map(vault => <label key={vault.id} className="flex gap-2 py-1 text-sm"><input type="checkbox" checked={importSelectedVaults.includes(vault.id)} disabled={!vault.records} onChange={event => { setImportSelectedVaults(event.target.checked ? [...importSelectedVaults, vault.id] : importSelectedVaults.filter(id => id !== vault.id)); setImportCount(null); setImportSourceVaults([]); setImportError(null); }} /><span>{vault.name || "Unnamed vault"}{vault.account ? ` · ${vault.account}` : ""} · {vault.records} supported logins</span></label>)}</div></fieldset>}
           {importSkipped && importFormat === "1password" && <p className="text-sm text-amber-200" role="status">Excluded from this export: {importSkipped.items} unsupported items and {importSkipped.attachments} attachment files. Login credentials are imported even when their attachments are excluded. Keep the source export for anything excluded.</p>}
           {importCount !== null && <p>{importCount} items ready to import.</p>}

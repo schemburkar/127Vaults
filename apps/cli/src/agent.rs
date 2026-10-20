@@ -249,7 +249,7 @@ fn dispatch(
     }
     let result = match request.action.as_str() {
         "status" => Ok(
-            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"offlineReason":session.offline_reason(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":4,"passkeyVerificationSession":passkey_session()}),
+            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"offlineReason":session.offline_reason(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":4,"desktopConnectorProtocol":1,"passkeyVerificationSession":passkey_session()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "migration.import" => {

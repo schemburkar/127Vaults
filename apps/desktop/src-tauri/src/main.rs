@@ -15,8 +15,8 @@ use std::{
 use vaults_cli::{
     TrustArgs,
     client::{Session, unlock_with_offline_fallback},
-    connector_agent_active, connector_agent_native_capable, enroll_device_with_status,
-    establish_trust, start_connector_agent, stop_connector_agent, validate_trust,
+    connector_agent_active, enroll_device_with_status, establish_trust, start_connector_agent,
+    stop_connector_agent, validate_trust,
 };
 
 #[derive(Default)]
@@ -410,13 +410,8 @@ async fn unlock(
             default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected && row["retired"] != true))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
-        let connector_owned = if connector_agent_active(&config) && connector_agent_native_capable(&config) { false } else {
-            let executable = std::env::current_exe().ok().and_then(|path| {
-                let name = if cfg!(windows) { "127vaults.exe" } else { "127vaults" };
-                let sibling = path.parent()?.join(name);
-                sibling.is_file().then_some(sibling)
-            });
-            executable.as_deref().is_some_and(|exe| start_connector_agent(exe, &config, &username, &secret, master_password.as_bytes()).is_ok())
+        let connector_owned = if vaults_cli::connector_agent_desktop_compatible(&config) { false } else {
+            std::env::current_exe().ok().as_deref().is_some_and(|exe| start_connector_agent(exe, &config, &username, &secret, master_password.as_bytes()).is_ok())
         };
         Ok::<_, String>((
             session,
@@ -1039,7 +1034,24 @@ fn device_enrollment_status(state: tauri::State<'_, DesktopState>) -> Result<Val
         .map_err(|_| "enrollment state is unavailable".to_owned())
 }
 
+fn run_embedded_connector() -> bool {
+    if let Some(result) = vaults_cli::desktop_connector_entry() {
+        match result {
+            Ok(output) => println!("{output}"),
+            Err(error) => {
+                eprintln!("127Vaults connector: {error}");
+                std::process::exit(2);
+            }
+        }
+        return true;
+    }
+    false
+}
+
 fn main() {
+    if run_embedded_connector() {
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(DesktopState::default())
@@ -1058,14 +1070,18 @@ fn main() {
                     let Some((epoch, path)) = owned else {
                         continue;
                     };
+                    let reason = vaults_cli::connector_agent_lock_reason(&path);
                     if state.epoch.current() != epoch
-                        || !confirmation.observe(epoch, vaults_cli::connector_agent_locked(&path))
+                        || !confirmation.observe(epoch, reason.is_some())
                         || !state.epoch.revoke(epoch)
                     {
                         continue;
                     }
                     // Revoke access and notify every window before waiting on an in-flight network operation.
-                    let _ = handle.emit("vaults-connector-locked", json!({"epoch":epoch}));
+                    let _ = handle.emit(
+                        "vaults-connector-locked",
+                        json!({"epoch":epoch,"reason":reason}),
+                    );
                     if let Ok(mut session) = state.session.lock()
                         && session.as_ref().is_some_and(|(saved, _)| *saved == epoch)
                     {

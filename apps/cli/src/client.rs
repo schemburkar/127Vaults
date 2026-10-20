@@ -2701,12 +2701,14 @@ impl Session {
     }
 
     pub fn require_license(&self, write: bool) -> Result<(), String> {
+        // Sample time after reading the shared cache: another client may publish
+        // a newer observation while this process is descheduled during disk I/O.
+        let cached = self.cached_entitlement().ok();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| "System clock is invalid")?
             .as_secs()
             .cast_signed();
-        let cached = self.cached_entitlement().ok();
         let observed = cached
             .as_ref()
             .and_then(|value| value["observedAt"].as_i64())
@@ -3176,7 +3178,7 @@ impl Session {
 
         if !confirm {
             return Ok(
-                json!({"preview":true,"records":rows.len(),"targetVault":vault,"note":"Original source details are retained in a concealed custom field. Import creates new items; repeated imports create duplicates."}),
+                json!({"preview":true,"records":rows.len(),"targetVault":vault,"note":"Supported credentials and readable notes are imported. Import creates new items; repeated imports create duplicates."}),
             );
         }
         let mut imported = 0;

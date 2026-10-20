@@ -41,10 +41,11 @@ Use your actual vault name, ID or reference. Supported sources:
 - `bitwarden`: unencrypted JSON, login records without passkeys or attachments.
 - `127vaults`: the native plaintext JSON export described below.
 
-Vendor records retain their original JSON, including notes, additional URLs,
-custom fields and other source details, in a concealed custom field. These
-details are preserved for review rather than automatically converted into all
-127Vaults field types. Passwords and usernames populate their regular fields.
+Vendor imports populate the normal username, password and website fields. Notes
+and supported text/custom fields become readable individual fields; concealed
+vendor fields stay concealed. Raw source JSON is not added. Unsupported vendor
+metadata is not converted; retain the original export for omitted details.
+Legacy raw JSON fields are hidden in desktop without rewriting existing records.
 The 1Password importer skips unsupported types and login records without usable
 login fields. Attachment payloads are never opened or extracted; supported login
 credentials still import when the export contains attachments. The preview and
