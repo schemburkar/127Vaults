@@ -145,7 +145,7 @@ node server.mjs database backup --engine podman --container <project>_database_1
 node server.mjs database rehearse --engine podman --input D:\backups\vaults-20261002.127vbak --key-file D:\keys\vaults-backup.key
 ```
 
-The first command takes a transactionally consistent PostgreSQL custom dump of a known schema 1 through 8 installation, encrypts it in the authenticated `127VBAK1` envelope, verifies that envelope, and removes its plaintext temporary file. The second decrypts into a private temporary directory, starts a new unpublished `--network none` PostgreSQL container, proves its database is empty, restores in one transaction, checks installation/schema/account/item invariants, then removes that disposable container and temporary file. The source database and its volume are never modified. Temporary files are deleted, but ordinary filesystem deletion is not a secure erase guarantee; use an encrypted host filesystem for sensitive files. Keep the backup key separate from the encrypted backup.
+The first command takes a transactionally consistent PostgreSQL custom dump of a known schema 1 through 9 installation, encrypts it in the authenticated `127VBAK1` envelope, verifies that envelope, and removes its plaintext temporary file. The second decrypts into a private temporary directory, starts a new unpublished `--network none` PostgreSQL container, proves its database is empty, restores in one transaction, checks installation/schema/account/item invariants, then removes that disposable container and temporary file. The source database and its volume are never modified. Temporary files are deleted, but ordinary filesystem deletion is not a secure erase guarantee; use an encrypted host filesystem for sensitive files. Keep the backup key separate from the encrypted backup.
 
 The database backup is **not enough** to recover the installation. Back up its CA and runtime keys separately, with a second protected key and a separate storage location:
 
@@ -199,3 +199,12 @@ installation CA before reporting success. A startup timeout retains the identity
 and database; inspect the selected engine and rerun `install start` after fixing
 the cause. Tailscale setup verifies its resulting private TCP route and does not
 reset unrelated Serve routes.
+
+
+The 0.1.4 bundle uses schema 9. Guarded upgrades accept schemas 8 and 9,
+verify encrypted database and identity backups first, and dry-run the reviewed
+8→9 migration before applying it. If migration may have committed, the old
+server is not restarted automatically. A current-bundle combined restore requires
+a schema-9 backup; restore older backups with their matching bundle first, then
+perform the guarded upgrade. The recipient launcher resolves junction/symlink
+paths before deciding whether it is the executable entry point.

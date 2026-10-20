@@ -171,7 +171,7 @@ async function restoreDatabase() {
   try {
     await chmod(temporary, 0o700).catch(() => {});
     const metadata = JSON.parse(await run(process.execPath, ['server.mjs', 'envelope', 'open', '--input', input, '--output', dump, '--key-file', key], { quiet: true }));
-    if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-8') {
+    if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-9') {
       throw Error('Database backup does not match this restore identity or supported schema.');
     }
     await run(engine, ['load', '-i', 'postgres-image.tar']);
@@ -195,7 +195,7 @@ async function restoreDatabase() {
       await runCompose(['exec', '-T', 'database', 'rm', '-f', '/tmp/database.dump']).catch(() => {});
     }
     const state = await runCompose(['exec', '-T', 'database', 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', "SELECT i.id::text || ' ' || s.version::text FROM vaults.installation i CROSS JOIN vaults.schema_version s"], { quiet: true });
-    if (state !== `${restoreId} 8`) throw Error('Restored database installation or schema differs from the backup metadata.');
+    if (state !== `${restoreId} 9`) throw Error('Restored database installation or schema differs from the backup metadata.');
     console.log('Database restored into the new project and matched to the restored identity. Run install start, then verify an existing client login and item read.');
   } finally {
     await rm(temporary, { recursive: true, force: true });

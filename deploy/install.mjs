@@ -1,7 +1,7 @@
 // Self-contained recipient entry point. No pnpm, Rust or source checkout needed.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, realpathSync } from 'node:fs';
 import { lstat, readFile } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -254,6 +254,6 @@ export async function main(args, dependencies = {}) {
   } else await operator(action);
   return 0;
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   main(process.argv.slice(2)).then(code => { process.exitCode = code; }).catch(error => { console.error(`Installer: ${error.message}`); process.exitCode = 1; });
 }

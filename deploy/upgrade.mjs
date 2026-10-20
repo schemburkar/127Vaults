@@ -32,7 +32,7 @@ export async function upgradeInstallation({ directory, from, backupDirectory, ke
   const server = await container('server'), database = await container('database');
   const status = async id => JSON.parse(await command(engine, ['exec', id, 'node', 'apps/server/src/entry.mjs', 'provision', 'status']));
   const before = await status(server);
-  if (before.schemaVersion !== 8 || !/^[a-f0-9-]{36}$/.test(before.installationId)) throw Error('This upgrade supports existing schema 8 only. A reviewed migration is required for other schemas.');
+  if (![8, 9].includes(before.schemaVersion) || !/^[a-f0-9-]{36}$/.test(before.installationId)) throw Error('This upgrade supports existing schema 8 or 9 only. A reviewed migration is required for other schemas.');
   await mkdir(backupDirectory, { recursive: false, mode: 0o700 });
   if (process.platform === 'win32') {
     const { windowsOperatorSid } = await import(existsSync(new URL('../scripts/tls.mjs', import.meta.url)) ? '../scripts/tls.mjs' : './tls.mjs');
@@ -49,10 +49,24 @@ export async function upgradeInstallation({ directory, from, backupDirectory, ke
       '--output', join(backupDirectory, 'identity.vaultbak'), '--key-file', keyFile]);
     if (await readFile(join(from, '.env'), 'utf8') !== original) throw Error('Existing configuration changed during backup; upgrade refused.');
     await writeFile(join(directory, '.env'), original, { flag: 'wx', mode: 0o600 });
+    await command(engine, ['load', '-i', join(directory, 'server-image.tar')]);
+    const compose = ['compose', '-p', project, '-f', 'compose.test.yaml',
+      ...(/^SMTP_HOST=(.+)$/m.test(original) ? ['-f', 'compose.smtp.yaml'] : [])];
+    const schema = async action => JSON.parse(await command(engine, [...compose, 'run', '--rm', '--no-deps',
+      'server', 'node', 'apps/server/src/entry.mjs', 'schema', action]));
+    const current = await schema('status');
+    if (current.version !== before.schemaVersion) throw Error('Schema changed during upgrade backup; migration refused.');
+    if (current.version === 8) {
+      await schema('dry-run');
+      // After a migration may have committed, never restart the older server automatically.
+      starting = true;
+      await schema('apply');
+    }
+    if ((await schema('status')).version !== 9) throw Error('Upgrade schema migration did not reach schema 9.');
     starting = true;
     await command(process.execPath, [operator, 'install', 'start', ...options, '--private-dir', privateDir]);
     const after = await status(await container('server'));
-    if (after.installationId !== before.installationId || after.schemaVersion !== before.schemaVersion
+    if (after.installationId !== before.installationId || after.schemaVersion !== 9
       || after.seatUsage?.activeUsers !== before.seatUsage?.activeUsers || after.license?.mode !== before.license?.mode) throw Error('Upgrade identity, schema, users or license verification failed. Keep the backups and inspect the running installation.');
     await writeFile(join(backupDirectory, 'upgrade-receipt.json'), JSON.stringify({ installationId: after.installationId, project,
       schemaVersion: after.schemaVersion, completedAt: new Date().toISOString() }, null, 2), { flag: 'wx', mode: 0o600 });
