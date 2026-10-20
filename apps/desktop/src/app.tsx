@@ -147,6 +147,9 @@ export function App() {
   const [importVaultId, setImportVaultId] = useState("");
   const [importFormat, setImportFormat] = useState("bitwarden");
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importAvailableVaults, setImportAvailableVaults] = useState<{ id: string; name: string; account: string; records: number }[]>([]);
+  const [importSelectedVaults, setImportSelectedVaults] = useState<string[] | null>(null);
+  const [importSkipped, setImportSkipped] = useState<{ items: number; attachments: number } | null>(null);
   const [importCount, setImportCount] = useState<number | null>(null);
   const [importSourceVaults, setImportSourceVaults] = useState<{ name: string; records: number }[]>([]);
   const [importBusy, setImportBusy] = useState(false);
@@ -339,16 +342,23 @@ export function App() {
     try {
       bytes = Array.from(new Uint8Array(await importFile.arrayBuffer()));
       if (generation !== importGeneration.current) return;
-      const result = await invoke<{ records?: number; imported?: number; sourceVaults?: { name: string; records: number }[] }>("import_passwords", { vaultId: importVaultId, bytes, format: importFormat, confirm });
+      const inspect = importFormat === "1password" && importSelectedVaults === null;
+      const result = await invoke<{ records?: number; imported?: number; sourceVaults?: { name: string; records: number }[]; availableVaults?: typeof importAvailableVaults; skippedItems?: number; skippedAttachments?: number }>("import_passwords", { vaultId: importVaultId, bytes, format: importFormat, confirm, selectedVaults: importFormat === "1password" ? importSelectedVaults : null, inspect });
       if (generation !== importGeneration.current) return;
+      setImportSkipped({ items: result.skippedItems ?? 0, attachments: result.skippedAttachments ?? 0 });
+      if (inspect) {
+        const choices = result.availableVaults ?? [];
+        setImportAvailableVaults(choices); setImportSelectedVaults(choices.filter(vault => vault.records > 0).map(vault => vault.id));
+        return;
+      }
       if (confirm) {
-        setImportFile(null); setImportCount(null); setImportSourceVaults([]); setImportOpen(false);
+        setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); setImportOpen(false);
         const refreshedVaults = await invoke<VaultSummary[]>("vault_list");
         if (generation !== importGeneration.current) return;
         const refreshed = viewMode === "single" ? await invoke<Summary[]>("item_list", { vaultId }) : await listVisibleItems(refreshedVaults.filter(vault => !vault.retired));
-        if (generation === importGeneration.current) { setVaults(refreshedVaults); setItems(refreshed); setStatus(`Imported ${result.imported} items.`); }
+        if (generation === importGeneration.current) { setVaults(refreshedVaults); setItems(refreshed); setStatus(`Imported ${result.imported} items. ${result.skippedItems ?? 0} unsupported items and ${result.skippedAttachments ?? 0} attachment files excluded from the export.`); }
       } else { setImportCount(result.records ?? 0); setImportSourceVaults(result.sourceVaults ?? []); }
-    } catch (error) { if (generation === importGeneration.current) { setImportError(String(error)); if (confirm) { setImportFile(null); setImportCount(null); setImportSourceVaults([]); } } }
+    } catch (error) { if (generation === importGeneration.current) { setImportError(String(error)); if (confirm) { setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); } } }
     finally { bytes.fill(0); if (generation === importGeneration.current) setImportBusy(false); }
   };
 
@@ -362,7 +372,7 @@ export function App() {
     setBusy(true);
     void emit("vaults-locked").catch(() => {});
     setHealthOpen(false);
-    importGeneration.current++; setImportOpen(false); setImportFile(null); setImportCount(null); setImportSourceVaults([]); setImportBusy(false);
+    importGeneration.current++; setImportOpen(false); setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); setImportBusy(false);
     setPendingChanges(null);
     setSyncConflicts(0);
     setFavoritesOnly(false);
@@ -2107,21 +2117,23 @@ export function App() {
         ))}
       </div>
       {importOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" role="dialog" aria-modal="true" aria-labelledby="import-title">
-        <section className="w-full max-w-lg space-y-5 rounded-2xl border border-white/10 bg-[#0a0e21] p-6">
+        <section className="max-h-[90vh] overflow-auto w-full max-w-lg space-y-5 rounded-2xl border border-white/10 bg-[#0a0e21] p-6">
           <h2 id="import-title" className="text-xl font-semibold">Import passwords</h2>
           <p>{importVaultId === "__source_vaults__" ? "Create separate vaults from the source grouping. Existing vaults are kept; duplicate names get an imported suffix. An online connection is required." : "Import all items into the selected existing vault, or choose Source vaults to preserve the source grouping."} Files are read on this device; repeating an import creates duplicates.</p>
           <label className="block">Import into vault<select className="ml-3 rounded bg-slate-800 p-2" aria-label="Import into vault" value={importVaultId} disabled={importBusy} onChange={event => { setImportVaultId(event.target.value); setImportCount(null); setImportSourceVaults([]); setImportError(null); }}>
             <option value="" disabled>Choose a destination</option><option value="__source_vaults__" disabled={!online}>Source vaults</option>{activeVaults.map(vault => <option key={vault.vaultId} value={vault.vaultId}>{vault.name}</option>)}
           </select></label>
-          <label className="block">Source<select className="ml-3 rounded bg-slate-800 p-2" value={importFormat} disabled={importBusy} onChange={e => { setImportFormat(e.target.value); setImportCount(null); setImportSourceVaults([]); setImportFile(null); }}>
+          <label className="block">Source<select className="ml-3 rounded bg-slate-800 p-2" value={importFormat} disabled={importBusy} onChange={e => { setImportFormat(e.target.value); setImportCount(null); setImportSourceVaults([]); setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); }}>
             <option value="bitwarden">Bitwarden JSON (unencrypted)</option><option value="1password">1Password 1PUX</option><option value="lastpass">LastPass CSV</option><option value="127vaults">127Vaults JSON</option>
           </select></label>
-          <input key={importFormat} type="file" accept={importFormat === "1password" ? ".1pux" : importFormat === "lastpass" ? ".csv" : ".json"} disabled={importBusy} onChange={e => { setImportFile(e.target.files?.[0] ?? null); setImportCount(null); setImportSourceVaults([]); }} />
+          <input key={importFormat} type="file" accept={importFormat === "1password" ? ".1pux" : importFormat === "lastpass" ? ".csv" : ".json"} disabled={importBusy} onChange={e => { setImportFile(e.target.files?.[0] ?? null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); }} />
           <p className="text-sm text-slate-400">Login records are supported. Extra source details are retained in a concealed custom field. Passkeys, attachments and other vendor item types must be migrated separately. Delete plaintext source files when finished.</p>
+          {importFormat === "1password" && importSelectedVaults !== null && <fieldset className="grid gap-2 rounded-xl border border-white/10 p-3" disabled={importBusy}><legend className="px-1 font-semibold">Source vaults to import</legend><p className="text-sm text-slate-400">Choose vaults from the account export. Supported type: Logins.</p><div className="max-h-44 overflow-auto">{importAvailableVaults.map(vault => <label key={vault.id} className="flex gap-2 py-1 text-sm"><input type="checkbox" checked={importSelectedVaults.includes(vault.id)} disabled={!vault.records} onChange={event => { setImportSelectedVaults(event.target.checked ? [...importSelectedVaults, vault.id] : importSelectedVaults.filter(id => id !== vault.id)); setImportCount(null); setImportSourceVaults([]); setImportError(null); }} /><span>{vault.name || "Unnamed vault"}{vault.account ? ` · ${vault.account}` : ""} · {vault.records} supported logins</span></label>)}</div></fieldset>}
+          {importSkipped && importFormat === "1password" && <p className="text-sm text-amber-200" role="status">Excluded from this export: {importSkipped.items} unsupported items and {importSkipped.attachments} attachment files. Login credentials are imported even when their attachments are excluded. Keep the source export for anything excluded.</p>}
           {importCount !== null && <p>{importCount} items ready to import.</p>}
           {importSourceVaults.length > 0 && <div className="max-h-40 overflow-auto text-sm"><p className="font-semibold">Vaults to create</p><ul>{importSourceVaults.map((vault, index) => <li key={index}>{vault.name} · {vault.records} items</li>)}</ul></div>}
           {importError && <p role="alert" className="text-amber-300">{importError}</p>}
-          <div className="flex justify-end gap-3"><Button variant="ghost" disabled={importBusy} onClick={() => { importGeneration.current++; setImportOpen(false); setImportFile(null); setImportCount(null); setImportSourceVaults([]); setImportBusy(false); }}>Close</Button><Button disabled={!importFile || !importVaultId || importBusy} onClick={() => void runImport(importCount !== null)}>{importBusy ? "Working…" : importCount === null ? "Preview" : "Import items"}</Button></div>
+          <div className="flex justify-end gap-3"><Button variant="ghost" disabled={importBusy} onClick={() => { importGeneration.current++; setImportOpen(false); setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); setImportBusy(false); }}>Close</Button><Button disabled={!importFile || !importVaultId || importBusy || (importFormat === "1password" && importSelectedVaults !== null && importSelectedVaults.length === 0)} onClick={() => void runImport(importCount !== null)}>{importBusy ? "Working…" : importFormat === "1password" && importSelectedVaults === null ? "Read export" : importCount === null ? "Preview" : "Import items"}</Button></div>
         </section>
       </div>}
       {settingsOpen && <dialog ref={settingsDialogRef} className="desktop-settings-dialog" aria-labelledby="desktop-settings-title" onCancel={() => setSettingsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
@@ -2143,7 +2155,7 @@ export function App() {
               <section className="rounded-xl border border-white/10 p-4"><h3 className="font-bold">Import passwords</h3><p className="mt-2 text-sm text-slate-400">Bring passwords from another password manager into source vaults or a vault you choose.</p><Button variant="secondary" className="mt-3" disabled={!activeVaults.length && !online} onClick={() => {
                 setSettingsOpen(false);
                 setImportVaultId(viewMode === "single" && activeVaults.some(vault => vault.vaultId === vaultId) ? vaultId : activeVaults.length === 1 ? activeVaults[0].vaultId : "");
-                setImportOpen(true); setImportCount(null); setImportSourceVaults([]); setImportFile(null); setImportError(null);
+                setImportOpen(true); setImportCount(null); setImportSourceVaults([]); setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportError(null);
               }}>Import passwords…</Button></section>
 
               {removalPlan?.pending && <div className="rounded-xl border border-amber-300/30 bg-amber-300/8 p-4 text-sm"><strong>Pending {removalPlan.choice} operation</strong><p className="mt-1 text-slate-300">{removalPlan.stage === "copying" ? "Destination copies are being prepared." : "The final server request is ready to retry."} {removalPlan.itemMappings?.length ?? 0} mapped item(s).</p><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}

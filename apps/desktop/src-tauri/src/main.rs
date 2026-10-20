@@ -496,6 +496,8 @@ async fn import_passwords(
     bytes: Vec<u8>,
     format: String,
     confirm: bool,
+    selected_vaults: Option<Vec<String>>,
+    inspect: Option<bool>,
 ) -> Result<Value, String> {
     let epoch = app.state::<DesktopState>().epoch.current();
     tauri::async_runtime::spawn_blocking(move || {
@@ -505,9 +507,15 @@ async fn import_passwords(
             return Err("Vault was locked".into());
         }
         with_session(&state, |session| {
-            session.import_passwords_while(&vault_id, &bytes, &format, confirm, || {
-                state.epoch.current() == epoch
-            })
+            session.import_passwords_selected(
+                &vault_id,
+                &bytes,
+                &format,
+                confirm,
+                selected_vaults.as_deref(),
+                inspect.unwrap_or(false),
+                || state.epoch.current() == epoch,
+            )
         })
     })
     .await

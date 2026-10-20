@@ -14,6 +14,73 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn onepassword_inspection_and_selection_import_only_supported_selected_logins() {
+    let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
+    session.online = false;
+    let data = json!({"accounts":[{"attrs":{"uuid":"a"},"vaults":[
+        {"attrs":{"uuid":"one","name":"One"},"items":[{"categoryUuid":"001","overview":{"title":"Chosen"},"details":{"loginFields":[{"designation":"password","value":"chosen-secret"}]}}]},
+        {"attrs":{"uuid":"two","name":"Two"},"items":[{"categoryUuid":"001","overview":{"title":"Excluded"},"details":{"loginFields":[]}},{"categoryUuid":"002"}]}
+    ]}]});
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer
+        .start_file("export.data", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    writer.write_all(data.to_string().as_bytes()).unwrap();
+    writer
+        .start_file("files/document", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    writer.write_all(b"excluded attachment").unwrap();
+    let bytes = writer.finish().unwrap().into_inner();
+    let inspected = session
+        .import_passwords_selected(&vault, &bytes, "1password", false, None, true, || true)
+        .unwrap();
+    assert_eq!(inspected["availableVaults"].as_array().unwrap().len(), 2);
+    assert_eq!(inspected["skippedItems"], 1);
+    assert_eq!(
+        session.item_list(&vault).unwrap().as_array().unwrap().len(),
+        1
+    );
+    let selected = vec!["a:0/one:0".to_string()];
+    let preview = session
+        .import_passwords_selected(
+            &vault,
+            &bytes,
+            "1password",
+            false,
+            Some(&selected),
+            false,
+            || true,
+        )
+        .unwrap();
+    assert_eq!(preview["records"], 1);
+    let imported = session
+        .import_passwords_selected(
+            &vault,
+            &bytes,
+            "1password",
+            true,
+            Some(&selected),
+            false,
+            || true,
+        )
+        .unwrap();
+    assert_eq!(imported["imported"], 1);
+    assert_eq!(imported["skippedAttachments"], 1);
+    assert_eq!(
+        session
+            .item_get(&vault, "Chosen", Some("password"))
+            .unwrap(),
+        "chosen-secret"
+    );
+    assert!(session.item_get(&vault, "Excluded", None).is_err());
+    assert_eq!(
+        session.item_list(&vault).unwrap().as_array().unwrap().len(),
+        2
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn source_vault_preview_plans_separate_destinations_without_creating_anything() {
     let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
     let replica = session.replica_store.load(&vault).unwrap().unwrap();

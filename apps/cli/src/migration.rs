@@ -82,12 +82,42 @@ pub fn source_plan(
     Ok(plans)
 }
 
-#[allow(clippy::too_many_lines)]
+pub struct ImportReport {
+    pub rows: Vec<Value>,
+    pub vaults: Vec<Value>,
+    pub skipped_items: usize,
+    pub skipped_attachments: usize,
+}
+
+impl ImportReport {
+    #[must_use]
+    pub fn summary(&self) -> Value {
+        json!({"availableVaults":self.vaults,"skippedItems":self.skipped_items,
+            "skippedAttachments":self.skipped_attachments,"supportedItems":self.rows.len()})
+    }
+}
+
 pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
+    let report = parse_selected(bytes, format, None)?;
+    if report.rows.is_empty() {
+        return Err("No supported login records match this import selection".into());
+    }
+    Ok(report.rows)
+}
+
+#[allow(clippy::too_many_lines)]
+pub fn parse_selected(
+    bytes: &[u8],
+    format: &str,
+    selected_vaults: Option<&[String]>,
+) -> Result<ImportReport, String> {
     if bytes.len() > MAX_BYTES {
         return Err("Import exceeds 32 MiB".into());
     }
     let mut out = Vec::new();
+    let mut skipped_items = 0;
+    let mut skipped_attachments = 0;
+    let mut vaults = Vec::new();
     match format {
         "lastpass" => {
             let rows = csv(std::str::from_utf8(bytes).map_err(|_| "CSV must be UTF-8")?)?;
@@ -174,12 +204,11 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
         "1password" => {
             let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
                 .map_err(|_| "Choose a 1Password .1pux export")?;
-            if archive
+            // Attachment payloads are never opened or extracted.
+            skipped_attachments = archive
                 .file_names()
-                .any(|name| name.starts_with("files/") && !name.ends_with('/'))
-            {
-                return Err("Attachments are not supported. No records were imported.".into());
-            }
+                .filter(|name| name.starts_with("files/") && !name.ends_with('/'))
+                .count();
             let file = archive
                 .by_name("export.data")
                 .map_err(|_| "Missing 1Password export.data")?;
@@ -204,9 +233,29 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
                     .iter()
                     .enumerate()
                 {
+                    let source_id = format!(
+                        "{}:{account_index}/{}:{vault_index}",
+                        text(&account["attrs"], "uuid"),
+                        text(&vault["attrs"], "uuid")
+                    );
+                    let items = vault["items"].as_array().ok_or("Missing 1Password items")?;
+                    let supported = items
+                        .iter()
+                        .filter(|item| {
+                            item["categoryUuid"] == "001"
+                                && item["details"]["loginFields"].is_array()
+                        })
+                        .count();
+                    vaults.push(json!({"id":source_id,"name":text(&vault["attrs"],"name"),"account":text(&account["attrs"],"name"),"records":supported}));
                     for item in vault["items"].as_array().ok_or("Missing 1Password items")? {
-                        if item["categoryUuid"] != "001" {
-                            return Err("Only 1Password login records are supported. No records were imported.".into());
+                        if item["categoryUuid"] != "001"
+                            || !item["details"]["loginFields"].is_array()
+                        {
+                            skipped_items += 1;
+                            continue;
+                        }
+                        if selected_vaults.is_some_and(|ids| !ids.contains(&source_id)) {
+                            continue;
                         }
                         let fields = item["details"]["loginFields"]
                             .as_array()
@@ -281,7 +330,7 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
         }
         _ => return Err("Format must be 1password, lastpass, bitwarden, or 127vaults".into()),
     }
-    if out.is_empty() || out.len() > 10000 {
+    if (out.is_empty() && format != "1password") || out.len() > 10000 {
         return Err("Import must contain 1–10000 records".into());
     }
     for row in &out {
@@ -313,7 +362,12 @@ pub fn parse(bytes: &[u8], format: &str) -> Result<Vec<Value>, String> {
             }
         }
     }
-    Ok(out)
+    Ok(ImportReport {
+        rows: out,
+        vaults,
+        skipped_items,
+        skipped_attachments,
+    })
 }
 
 // RFC 4180 quoting, escaped quotes and embedded newlines; reject malformed input.
@@ -417,7 +471,46 @@ mod tests {
     }
 
     #[test]
-    fn onepassword_zip_preserves_login_and_rejects_attachments() {
+    fn onepassword_selection_precedes_capacity_checks_and_reports_mixed_content() {
+        use std::io::Write as _;
+        let login = json!({"categoryUuid":"001","overview":{"title":"Login"},"details":{"loginFields":[{"designation":"password","value":"secret"}]}});
+        let data = json!({"accounts":[{"attrs":{"uuid":"account","name":"Account"},"vaults":[
+            {"attrs":{"uuid":"large","name":"Large"},"items":vec![login.clone();101]},
+            {"attrs":{"uuid":"small","name":"Small"},"items":[login,{"categoryUuid":"002"},{"categoryUuid":"001","details":{}}]}
+        ]}]});
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .start_file("export.data", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(data.to_string().as_bytes()).unwrap();
+        writer
+            .start_file(
+                "files/ignored.bin",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"never imported").unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        let all = parse_selected(&bytes, "1password", None).unwrap();
+        assert_eq!(all.rows.len(), 102);
+        assert!(source_plan(&all.rows, &[], 0).is_err());
+        assert_eq!(all.vaults.len(), 2);
+        assert_eq!(all.vaults[1]["records"], 1);
+        assert_eq!(all.skipped_items, 2);
+        assert_eq!(all.skipped_attachments, 1);
+        assert!(!all.summary().to_string().contains("secret"));
+        let selected =
+            parse_selected(&bytes, "1password", Some(&["account:0/small:1".into()])).unwrap();
+        assert_eq!(selected.rows.len(), 1);
+        assert_eq!(
+            source_plan(&selected.rows, &[], 0).unwrap()[0].name,
+            "Small"
+        );
+        assert!(parse_selected(b"not a zip", "1password", None).is_err());
+    }
+
+    #[test]
+    fn onepassword_zip_preserves_login_and_skips_attachments() {
         use std::io::Write as _;
         let make = |attachment: bool| {
             let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
@@ -447,6 +540,22 @@ mod tests {
                 .unwrap()
                 .contains("preserve notes")
         );
-        assert!(parse(&make(true), "1password").is_err());
+        let report = parse_selected(&make(true), "1password", None).unwrap();
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.skipped_attachments, 1);
+        let selection = vec!["account:0/vault-one:0".to_string()];
+        assert_eq!(
+            parse_selected(&make(true), "1password", Some(&selection))
+                .unwrap()
+                .rows
+                .len(),
+            1
+        );
+        assert!(
+            parse_selected(&make(true), "1password", Some(&[]))
+                .unwrap()
+                .rows
+                .is_empty()
+        );
     }
 }

@@ -8,7 +8,7 @@ Encrypted vault data is preserved when access is blocked.
 
 ## Import
 
-In desktop, open **All items → ⋯ → Import passwords**, choose the destination
+In desktop, open **Settings → Vaults → Import passwords**, choose the destination
 vault or **Source vaults**, select a source and file, preview the count, then choose
 **Import items**. A named destination combines all imported items into that vault.
 **Source vaults** creates separate vaults using 1Password vaults, Bitwarden folders,
@@ -32,7 +32,11 @@ is available through an unlocked CLI agent:
 
 Use your actual vault name, ID or reference. Supported sources:
 
-- `1password`: unencrypted `.1pux`, login records only.
+- `1password`: unencrypted `.1pux`, login records only. In desktop, choose **Read
+  export**, select the source vaults, then preview and confirm. Vault selection
+  happens before destination capacity checks, so a small vault can be imported
+  from a larger account export. Tags and individual item selection are not yet
+  available.
 - `lastpass`: UTF-8 CSV with url, username, password, extra, name, grouping and fav columns. Quoted commas, quotes and multiline notes are supported.
 - `bitwarden`: unencrypted JSON, login records without passkeys or attachments.
 - `127vaults`: the native plaintext JSON export described below.
@@ -41,8 +45,14 @@ Vendor records retain their original JSON, including notes, additional URLs,
 custom fields and other source details, in a concealed custom field. These
 details are preserved for review rather than automatically converted into all
 127Vaults field types. Passwords and usernames populate their regular fields.
-The importer rejects unsupported 1Password/Bitwarden item types, passkeys and
-attachments before writing any records. LastPass secure-note data remains in
+The 1Password importer skips unsupported types and login records without usable
+login fields. Attachment payloads are never opened or extracted; supported login
+credentials still import when the export contains attachments. The preview and
+completion summary report unsupported-item and attachment-file counts for the
+whole export, including unselected vaults. These counts exclude deliberately
+unselected supported logins. Keep the original export for excluded content.
+Bitwarden still rejects unsupported item types, passkeys and attachments before
+writing any records. LastPass secure-note data remains in
 the original-record field; attachments are not part of its CSV export.
 
 Files are read locally; only newly encrypted vault records are synced. Files are

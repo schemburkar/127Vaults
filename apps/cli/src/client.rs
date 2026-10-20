@@ -3115,10 +3115,48 @@ impl Session {
         confirm: bool,
         mut active: impl FnMut() -> bool,
     ) -> Result<Value, String> {
+        self.import_passwords_selected(vault, bytes, format, confirm, None, false, &mut active)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn import_passwords_selected(
+        &mut self,
+        vault: &str,
+        bytes: &[u8],
+        format: &str,
+        confirm: bool,
+        selected_vaults: Option<&[String]>,
+        inspect: bool,
+        mut active: impl FnMut() -> bool,
+    ) -> Result<Value, String> {
         self.require_license(true)?;
-        let rows = crate::migration::parse(bytes, format)?;
+        let report = crate::migration::parse_selected(bytes, format, selected_vaults)?;
+        let summary = report.summary();
+        if inspect {
+            return Ok(summary);
+        }
+        if report.rows.is_empty() {
+            return Err(
+                "No supported login records match this import selection. No items were imported."
+                    .into(),
+            );
+        }
+        let mut result = self.import_password_rows(vault, &report.rows, confirm, &mut active)?;
+        for (key, value) in summary.as_object().ok_or("Invalid import summary")? {
+            result[key] = value.clone();
+        }
+        Ok(result)
+    }
+
+    fn import_password_rows(
+        &mut self,
+        vault: &str,
+        rows: &[Value],
+        confirm: bool,
+        mut active: impl FnMut() -> bool,
+    ) -> Result<Value, String> {
         if vault == crate::migration::SOURCE_VAULTS {
-            return self.import_source_vaults(&rows, confirm, &mut active);
+            return self.import_source_vaults(rows, confirm, &mut active);
         }
         self.open_vault(vault)?;
         let existing = self
@@ -3142,7 +3180,7 @@ impl Session {
             );
         }
         let mut imported = 0;
-        for row in &rows {
+        for row in rows {
             if !active() {
                 return Err(format!(
                     "Import stopped after {imported} records because the vault was locked"
