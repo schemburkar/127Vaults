@@ -55,6 +55,24 @@ versions. It does not alter published package manifests or downloaded server hel
 `--hostname` is available for future DNS-capable server bundles and is refused for
 the unchanged 0.1.7 server. See the server runbook for the prepared private-CA DNS mode.
 
+Installer 0.1.9 also supports `--keep-existing-license` for an already licensed
+server. Package downloads still require a valid entitled invitation, but its
+activation binding is independent of the existing server's license. Setup verifies
+the running server's active license against its local installation identity before
+planning and verifies that identity, plan, expiry and seat limit again afterward.
+It does not call trial activation, download/install a trial license, reset expiry,
+or change either installation's binding. This option cannot initialize an unlicensed
+server. Interactive setup offers it when the download invitation belongs to another
+installation; unattended use must opt in explicitly. Directly issued development
+licenses have no invitation link of their own.
+
+For example, reuse the approved package-access invitation with
+`127vaults-install --components server --keep-existing-license --plan` first.
+Remove `--plan` for the guarded update, supplying the existing backup key and a new
+backup directory when prompted. The packaged smoke script accepts
+`--check-existing-license-plan` with `VAULTS_INSTALL_INVITATION` in the process
+environment to verify this path without performing an update or activation.
+
 For a server installed outside this app, adopt its initialized bundle on the first run:
 
 ```sh

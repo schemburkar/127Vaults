@@ -202,9 +202,95 @@ pub fn check_fresh_port(endpoint: Option<&str>, tailscale: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn existing_license(directory: &Path, engine: &str) -> Result<Value> {
+    if !["podman", "docker"].contains(&engine) {
+        return Err("Select the existing server engine".into());
+    }
+    let project = project(directory)?;
+    let output = Command::new(engine)
+        .args([
+            "ps",
+            "--filter",
+            &format!("label=com.docker.compose.project={project}"),
+            "--filter",
+            "label=com.docker.compose.service=server",
+            "--format",
+            "{{.ID}}",
+        ])
+        .bounded_output()?;
+    if !output.status.success() {
+        return Err("Cannot inspect the licensed server".into());
+    }
+    let ids = String::from_utf8(output.stdout)?;
+    let ids: Vec<_> = ids.split_whitespace().collect();
+    if ids.len() != 1 {
+        return Err(
+            "Keeping a license requires exactly one healthy running server for this installation"
+                .into(),
+        );
+    }
+    let output = Command::new(engine)
+        .args([
+            "exec",
+            ids[0],
+            "node",
+            "apps/server/src/entry.mjs",
+            "provision",
+            "status",
+        ])
+        .bounded_output()?;
+    if !output.status.success() {
+        return Err("Cannot verify the existing server license".into());
+    }
+    let status: Value = serde_json::from_slice(&output.stdout)?;
+    let config = fs::read_to_string(directory.join(".env"))?;
+    let private = config
+        .lines()
+        .find_map(|line| line.strip_prefix("VAULTS_TLS_DIR="))
+        .ok_or("Existing identity directory is missing")?;
+    let identity = fs::read_to_string(Path::new(private).join("installation-id"))?;
+    license_identity(&status, identity.trim())
+}
+
+pub fn license_identity(status: &Value, identity: &str) -> Result<Value> {
+    let license = &status["license"];
+    let plan = license["plan"].as_str().unwrap_or_default();
+    if status["installationId"] != identity
+        || license["mode"] != "active"
+        || !["development", "personal", "commercial", "trial"].contains(&plan)
+        || license["expiresAt"].as_str().is_none()
+        || license["clockState"] == "rollback_detected"
+    {
+        return Err("The running server must report an active license bound to this installation. No license, trial or server state was changed".into());
+    }
+    Ok(
+        serde_json::json!({"installationId":identity,"plan":plan,"expiresAt":license["expiresAt"],
+        "maxActiveUsers":license["maxActiveUsers"]}),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preserving_a_license_requires_active_matching_server_evidence() {
+        let status = serde_json::json!({"installationId":"this-machine","license":{
+            "mode":"active","plan":"development","expiresAt":"2027-10-20T00:00:00Z",
+            "maxActiveUsers":5,"clockState":"trusted"}});
+        assert_eq!(
+            license_identity(&status, "this-machine").unwrap()["plan"],
+            "development"
+        );
+        assert!(license_identity(&status, "another-machine").is_err());
+        for mode in ["missing", "unavailable", "revoked", "locked", "read-only"] {
+            let mut changed = status.clone();
+            changed["license"]["mode"] = mode.into();
+            assert!(license_identity(&changed, "this-machine").is_err());
+        }
+        let mut changed = status;
+        changed["license"]["clockState"] = "rollback_detected".into();
+        assert!(license_identity(&changed, "this-machine").is_err());
+    }
     #[test]
     fn discovery_requires_matching_bundle_and_project() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

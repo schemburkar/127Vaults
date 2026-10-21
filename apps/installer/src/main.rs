@@ -73,6 +73,11 @@ struct Args {
     /// List published local servers without an invitation or installation changes.
     #[arg(long)]
     discover: bool,
+    /// Update an already licensed server without activating/downloading a trial license.
+    #[arg(long)]
+    keep_existing_license: bool,
+    #[arg(skip)]
+    expected_license: Option<serde_json::Value>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -270,6 +275,9 @@ fn execute(mut args: Args) -> Result<()> {
     if args.from.is_some() && !args.components.contains(&Product::Server) {
         return Err("--from applies to server installations; include --components server".into());
     }
+    if args.keep_existing_license && !args.components.contains(&Product::Server) {
+        return Err("--keep-existing-license requires an existing server selection".into());
+    }
     let invitation = match args.invitation.take() {
         Some(value) => Invitation::parse(&value)?,
         None if interactive => {
@@ -327,7 +335,37 @@ fn execute(mut args: Args) -> Result<()> {
         return Err("Invalid release metadata".into());
     }
     if args.components.contains(&Product::Server) {
-        verify_invitation_binding(&state, release.installation_id.as_deref())?;
+        let binding = verify_invitation_binding(&state, release.installation_id.as_deref());
+        if args.keep_existing_license || binding.is_err() {
+            let record = state
+                .records
+                .iter()
+                .find(|r| r.product == Product::Server && r.complete)
+                .ok_or(
+                    "Keeping an existing license requires a discovered/adopted initialized server",
+                )?;
+            let license = discovery::existing_license(
+                &record.directory,
+                record.engine.as_deref().unwrap_or_default(),
+            )?;
+            if !args.keep_existing_license {
+                if !interactive || args.yes {
+                    return Err("This invitation activates another installation. To use it only for authorized package downloads while retaining this server's active license, rerun with --keep-existing-license".into());
+                }
+                args.keep_existing_license = cliclack::confirm(format!(
+                    "This machine already has an active {} license. Keep it and use the invitation only for package downloads? No trial activation or rebinding will occur.",
+                    license["plan"].as_str().unwrap_or_default())).interact()?;
+                if !args.keep_existing_license {
+                    binding?;
+                }
+            }
+            args.expected_license = Some(license);
+            cliclack::log::info(
+                "Keep this server's existing license. Package access uses the invitation; trial activation and license replacement are skipped",
+            )?;
+        } else {
+            binding?;
+        }
     }
     let mut selected = Vec::new();
     for &product in &args.components {
@@ -846,6 +884,16 @@ fn finish_license(
     args: &Args,
     engine: &str,
 ) -> Result<()> {
+    if args.keep_existing_license {
+        let actual = discovery::existing_license(directory, engine)?;
+        if args.expected_license.as_ref() != Some(&actual) {
+            return Err("Existing installation/license changed during the update. Preserve backups and inspect the running server; no trial license was installed".into());
+        }
+        cliclack::log::success(
+            "Existing license, installation binding and expiry preserved; no trial activation or license download",
+        )?;
+        return Ok(());
+    }
     let mut identify = Command::new(node);
     identify
         .current_dir(directory)

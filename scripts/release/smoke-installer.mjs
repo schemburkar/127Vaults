@@ -36,11 +36,21 @@ assert.equal(await execute(binary,['--version'],{capture:true}),`127vaults-insta
 const command = ['--discover',...(args.includes('--engine') ? ['--engine',option('--engine')] : [])];
 const servers = JSON.parse(await execute(binary,command,{capture:true}));
 assert.ok(Array.isArray(servers));
+let existingLicensePlan = false;
+if (args.includes('--check-existing-license-plan')) {
+  if (!process.env.VAULTS_INSTALL_INVITATION) throw Error('Set VAULTS_INSTALL_INVITATION in this process; it is never written to the receipt.');
+  const plan = await execute(binary,['--components','server','--keep-existing-license','--plan',
+    ...(args.includes('--engine') ? ['--engine',option('--engine')] : [])],{capture:true});
+  assert.ok(plan.includes('Keep this server\'s existing license'));
+  assert.ok(plan.includes('Upgrade:'));
+  assert.ok(!plan.includes('Install / resume:'));
+  existingLicensePlan = true;
+}
 assert.equal(await snapshot(),before,'Read-only discovery changed installer state');
 const output = resolve(option('--output'));
 await mkdir(resolve(output,'..'),{recursive:true});
 await writeFile(output,JSON.stringify({status:'passed',testedAt:new Date().toISOString(),packageVersion:manifest.packageVersion,
-  sourceRevision:manifest.sourceRevision,binary,servers,installerStateUnchanged:true,
+  sourceRevision:manifest.sourceRevision,binary,servers,installerStateUnchanged:true,existingLicensePlan,
   checks:['Release hashes verified','Consumer archive extracted','Embedded version matches','Live discovery completed without state changes'],
   limitation:'No setup, upgrade, trial activation or publication performed'},null,2)+'\n',{flag:'wx'});
 console.log(`Local installer ready: ${binary}\nReceipt: ${output}`);
