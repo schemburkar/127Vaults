@@ -129,7 +129,10 @@ async function initialize() {
   if (existsSync('.env')) throw Error('.env already exists; preserving installation identity.');
   if (useTailscale && await discoverTailscale() !== networkAddress) throw Error('Endpoint does not match this online Tailscale device.');
   if (validServerHostname(endpoint)) await verifyHostnameAddress(endpoint, networkAddress);
-  await checkPublication(useTailscale || networkAddress === 'localhost' ? '127.0.0.1' : networkAddress);
+  // Restoring an explicit existing identity does not create replacement keys.
+  // Its publication is checked when that restored project is started; isolated
+  // restore rehearsals may intentionally use a different configured port.
+  if (!restoredIdentity) await checkPublication(useTailscale || networkAddress === 'localhost' ? '127.0.0.1' : networkAddress);
   if (privateDir === resolve('.') || privateDir.startsWith(resolve('.') + '\\') || privateDir.startsWith(resolve('.') + '/')) throw Error('Private directory must be outside the bundle.');
   if (restoredIdentity) {
     for (const name of ['ca/ca.crt', 'ca/ca.key', 'live/server.crt', 'live/server.key', 'runtime/token.key', 'runtime/checkpoint.key', 'runtime/postgres-password', 'runtime/readiness-token']) {
