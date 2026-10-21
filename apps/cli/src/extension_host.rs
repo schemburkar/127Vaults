@@ -88,8 +88,29 @@ fn site_origin(value: &str) -> Result<String, String> {
 fn website_matches(row: &Value, site: &str) -> bool {
     row["website"]
         .as_str()
-        .and_then(|website| url::Url::parse(website).ok())
-        .is_some_and(|url| url.origin().ascii_serialization() == site)
+        .and_then(|website| {
+            let website = website.trim();
+            if website.is_empty()
+                || website.starts_with("//")
+                || website.contains('\\')
+                || website.chars().any(char::is_whitespace)
+            {
+                return None;
+            }
+            let normalized = if website.contains("://") {
+                website.to_owned()
+            } else {
+                format!("https://{website}")
+            };
+            url::Url::parse(&normalized).ok()
+        })
+        .is_some_and(|url| {
+            url.scheme() == "https"
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.host_str().is_some_and(|host| !host.contains('*'))
+                && url.origin().ascii_serialization() == site
+        })
 }
 
 fn field_value<'a>(fields: &'a [Value], id: &str) -> Option<&'a str> {
@@ -452,6 +473,48 @@ mod tests {
     }
 
     #[test]
+    fn bare_websites_match_only_the_same_https_origin() {
+        for saved in [
+            "vercel.com",
+            " VERCEL.COM ",
+            "vercel.com/login",
+            "https://vercel.com/login",
+            "vercel.com:443",
+        ] {
+            let row = json!({"website":saved});
+            assert!(website_matches(&row, "https://vercel.com"));
+            for other in [
+                "http://vercel.com",
+                "https://app.vercel.com",
+                "https://vercel.com.evil.test",
+                "https://vercel.com:444",
+            ] {
+                assert!(!website_matches(&row, other), "{saved} -> {other}");
+            }
+        }
+        assert!(website_matches(
+            &json!({"website":"vercel.com:444/path"}),
+            "https://vercel.com:444"
+        ));
+        for saved in [
+            "",
+            "//vercel.com",
+            "http://vercel.com",
+            "user@vercel.com",
+            "https://user:pass@vercel.com",
+            "*.vercel.com",
+            "vercel.com\\@evil.test",
+            "vercel.\tcom",
+            "https:vercel.com",
+        ] {
+            assert!(
+                !website_matches(&json!({"website":saved}), "https://vercel.com"),
+                "{saved}"
+            );
+        }
+    }
+
+    #[test]
     fn only_exact_https_origin_items_are_listed() {
         let section = "87311a33-a992-4528-90aa-5ddc87646031";
         let rows = json!([{"vaultId":"876e252c-a31b-4a0a-9f30-d7d0cb85b658","itemId":"a0ca6518-8943-46f3-acbe-ac0b721f0932"}]);
@@ -473,5 +536,15 @@ mod tests {
         );
         assert!(entry_fields(&summary, section, "https://evil.accounts.example.test").is_err());
         assert!(site_origin("http://accounts.example.test").is_err());
+        let mut bare = summary.clone();
+        bare["website"] = json!("accounts.example.test");
+        bare["customFields"][1]["value"] = json!("accounts.example.test/other");
+        let entries = list_entries(&rows, &origin, |_, _| Ok(bare.clone())).unwrap();
+        assert_eq!(entries.as_array().unwrap().len(), 2);
+        assert_eq!(entries[0]["website"], "accounts.example.test");
+        assert!(entry_fields(&bare, "", &origin).is_ok());
+        assert!(entry_fields(&bare, section, &origin).is_ok());
+        assert!(entry_fields(&bare, "", "https://accounts.example.test.evil.test").is_err());
+        assert!(entry_fields(&bare, section, "https://evil.accounts.example.test").is_err());
     }
 }

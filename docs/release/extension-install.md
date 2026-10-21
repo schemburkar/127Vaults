@@ -26,5 +26,11 @@ Use the Windows PowerShell script or Linux shell script in that client package.
 Test with a sample login on an HTTPS site you control. Unlock the source,
 open the popup, choose the matching login and request fill. The form is not
 submitted automatically. The passkey provider is opt-in and experimental.
+Matching logins appear on any HTTPS page of the saved site's exact host and port,
+even without a login form. A saved bare domain such as `vercel.com` is interpreted
+as HTTPS for matching only; its stored value is unchanged. Paths do not restrict
+matching. Subdomains, different ports, HTTP pages and lookalike domains do not
+match automatically. This applies to Desktop, CLI and unlocked web sources,
+including related logins.
 There is no store signature or automatic update; compare package checksums with
 the sender and reload the extension after replacing its files.

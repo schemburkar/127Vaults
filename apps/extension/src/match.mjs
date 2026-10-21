@@ -7,10 +7,17 @@ export function originOf(value) {
 }
 
 export function matchingLogin(website, pageUrl) {
-  const saved = originOf(website);
+  const saved = savedWebsiteOrigin(website);
   const page = originOf(pageUrl);
   // Port is significant. No eTLD/suffix matching or HTTP downgrade.
   return Boolean(saved && page && saved === page);
+}
+
+export function savedWebsiteOrigin(website) {
+  if (typeof website !== 'string') return null;
+  const value = website.trim();
+  if (!value || /[\s\\]/u.test(value) || value.startsWith('//')) return null;
+  return originOf(value.includes('://') ? value : `https://${value}`);
 }
 
 export function permissionPattern(origin) {

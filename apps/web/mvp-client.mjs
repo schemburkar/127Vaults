@@ -1842,7 +1842,13 @@ async function fetchItem(itemId, index) {
 // extension reads this object in the page's main world after obtaining explicit
 // permission for this vault origin. No credential is pushed to other pages.
 function extensionOrigin(website) {
-  try { const url = new URL(website); return url.protocol === 'https:' ? url.origin : null; }
+  if (typeof website !== 'string') return null;
+  const value = website.trim();
+  if (!value || /[\s\\]/u.test(value) || value.startsWith('//')) return null;
+  try {
+    const url = new URL(value.includes('://') ? value : `https://${value}`);
+    return url.protocol === 'https:' && !url.username && !url.password && url.hostname && !url.hostname.includes('*') ? url.origin : null;
+  }
   catch { return null; }
 }
 function extensionRelatedLogins(item, siteOrigin) {
