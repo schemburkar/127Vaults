@@ -193,6 +193,20 @@ test('live verification hashes all download ranges and refuses public access or 
   const verify = () => verifyLiveDelivery({ origin: 'https://vaults.example.com' }, catalogue, 'private-token', { fetchImpl, partSize: 5 });
   assert.equal((await verify()).status, 'passed'); corrupt = true; await assert.rejects(verify(), /checksum/);
   corrupt = false; publicAccess = true; await assert.rejects(verify(), /unauthenticated/);
+  publicAccess = false;
+  let transient = true;
+  assert.equal((await verifyLiveDelivery({ origin: 'https://vaults.example.com' }, catalogue, 'private-token', {
+    partSize: 5,
+    fetchImpl: async (...args) => {
+      if (transient) { transient = false; throw new TypeError('fetch failed'); }
+      return fetchImpl(...args);
+    },
+  })).status, 'passed');
+  let attempts = 0;
+  await assert.rejects(verifyLiveDelivery({ origin: 'https://vaults.example.com' }, catalogue, 'private-token', {
+    fetchImpl: async () => { attempts++; throw new TypeError('persistent fetch failure'); },
+  }), /persistent fetch failure/);
+  assert.equal(attempts, 3);
 });
 
 test('coordinated releases advance every component and reject reuse or mixed overrides', () => {

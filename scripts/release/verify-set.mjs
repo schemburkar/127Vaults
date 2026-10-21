@@ -34,19 +34,32 @@ export async function verifyEmbeddedAgreements(directories, settings, run = exec
   }
 }
 
-export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl = fetch, partSize = 16 * 1024 * 1024 } = {}) {
+export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl = fetch, partSize = 4 * 1024 * 1024 } = {}) {
   const auth = { Authorization: `Bearer ${token}` };
-  const request = (path, options = {}) => fetchImpl(config.origin + path, {
-    ...options, headers: { ...auth, ...options.headers }, redirect: 'error', signal: AbortSignal.timeout(45000),
+  const request = async (path, options = {}, read = response => response, authenticated = true) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const response = await fetchImpl(config.origin + path, {
+          ...options, headers: { ...(authenticated ? auth : {}), ...options.headers }, redirect: 'error', signal: AbortSignal.timeout(45000),
+        });
+        if ([502, 503, 504].includes(response.status) && attempt < 2) {
+          await response.body?.cancel();
+        } else return await read(response);
+      } catch (error) {
+        if (attempt >= 2 || !(error instanceof TypeError || ['AbortError', 'TimeoutError'].includes(error.name))) throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  };
+  const listed = await request('/api/access-admin/releases', {}, async response => {
+    assert.equal(response.status, 200, 'Live release catalogue unavailable');
+    return response.json();
   });
-  const response = await request('/api/access-admin/releases');
-  assert.equal(response.status, 200, 'Live release catalogue unavailable');
-  const listed = await response.json();
   assert.equal(listed.sourceRevision, catalogue.sourceRevision);
   assert.deepEqual(listed.artifacts.map(a => [a.id, a.sha256, a.sizeBytes]), catalogue.artifacts.map(a => [a.id, a.sha256, a.sizeBytes]));
   for (const asset of catalogue.artifacts.filter(a => !a.supporting)) {
     const path = '/api/access-admin/releases/artifacts/' + asset.id;
-    const denied = await fetchImpl(config.origin + path, { method: 'HEAD', redirect: 'error', signal: AbortSignal.timeout(20000) });
+    const denied = await request(path, { method: 'HEAD' }, response => response, false);
     assert.equal(denied.status, 401, 'Installer accepted unauthenticated access');
     const head = await request(path, { method: 'HEAD' });
     assert.equal(head.status, 200);
@@ -57,10 +70,11 @@ export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl =
   const digest = createHash('sha256');
   for (let start = 0; start < server.sizeBytes; start += partSize) {
     const end = Math.min(server.sizeBytes, start + partSize) - 1;
-    const part = await request('/api/access-admin/releases/artifacts/server', { headers: { Range: `bytes=${start}-${end}` } });
-    assert.equal(part.status, 206);
-    assert.equal(part.headers.get('content-range'), `bytes ${start}-${end}/${server.sizeBytes}`);
-    const bytes = Buffer.from(await part.arrayBuffer());
+    const bytes = await request('/api/access-admin/releases/artifacts/server', { headers: { Range: `bytes=${start}-${end}` } }, async part => {
+      assert.equal(part.status, 206);
+      assert.equal(part.headers.get('content-range'), `bytes ${start}-${end}/${server.sizeBytes}`);
+      return Buffer.from(await part.arrayBuffer());
+    });
     assert.equal(bytes.length, end - start + 1);
     digest.update(bytes);
   }
