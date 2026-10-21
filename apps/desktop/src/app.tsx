@@ -6,7 +6,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { createSessionRevocation } from "./session-revocation.mjs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { FieldValueEditor, FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
@@ -845,8 +845,17 @@ export function App() {
       if (!field.label.trim())
         nextErrors[`custom-${field.id}`] = "Field name is required.";
     });
+    const names = new Set<string>();
+    ordinaryFields(draft.customFields).forEach(field => {
+      const name = field.label.trim().toLocaleLowerCase();
+      if (names.has(name)) nextErrors[`custom-${field.id}`] = "Use a unique field name.";
+      names.add(name);
+    });
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
+      const invalidSection = sections(draft.customFields).find(section => section.fields.some(field => nextErrors[`custom-${field.id}`]));
+      if (invalidSection) setExpandedRelatedId(invalidSection.id);
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('main [aria-invalid="true"]')?.focus());
       notify(
         "error",
         "Check the highlighted fields",
@@ -1071,7 +1080,8 @@ export function App() {
     event.dataTransfer.setData("text/plain", payload);
     // A plain text payload is accepted by native input fields.
   };
-  const updateCustom = (id: string, patch: Partial<CustomField>) =>
+  const updateCustom = (id: string, patch: Partial<CustomField>) => {
+    if (patch.type) setRevealed(current => { const next = new Set(current); next.delete(id); return next; });
     selected &&
     setSelected({
       ...selected,
@@ -1079,6 +1089,7 @@ export function App() {
         field.id === id ? { ...field, ...patch } : field,
       ),
     });
+  };
   const addRelated = (type: SectionType, label: string) => {
     if (!selected) return;
     const existing = sections(selected.customFields).filter((section) => section.type === type).length;
@@ -1100,7 +1111,7 @@ export function App() {
   const knownFieldEditor = (field: CustomField) => <label key={field.id} className="grid gap-2 text-sm text-slate-400">
     {field.label}
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-      <Input type={field.type === "password" && !revealed.has(field.id) ? "password" : "text"} value={field.value} onChange={(e) => updateCustom(field.id, { value: e.target.value })} />
+      <FieldValueEditor kind={field.type} revealed={revealed.has(field.id)} value={field.value} aria-label={field.label || "Field value"} onValueChange={(value) => updateCustom(field.id, { value })} />
       {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
     </div>
   </label>;
@@ -1901,8 +1912,8 @@ export function App() {
                     {expandedRelatedId === section.id && <div className="grid gap-4 border-t border-white/10 p-4">
                       <label className="grid gap-2 text-sm text-slate-400">Name<Input value={section.label} onChange={(event) => setSelected({ ...selected, customFields: renameSection(selected.customFields, section.id, event.target.value) })} placeholder="e.g. Daily spending card" /></label>
                       {section.type === "custom" ? section.fields.map((field) => <div key={field.id} className="grid gap-2 rounded-lg border border-white/10 p-3 sm:grid-cols-[1fr_8rem]">
-                        <label className="grid gap-2 text-xs text-slate-400">Field name<Input value={field.label} aria-invalid={!!errors[`custom-${field.id}`]} onChange={(event) => updateCustom(field.id, { label: event.target.value })} /></label>
-                        <label className="grid gap-2 text-xs text-slate-400">Kind<FieldTypePicker value={field.type || "text"} onChange={(type) => updateCustom(field.id, { type })} options={["text", "password", "url", "number"]} /></label>
+                        <label className="grid gap-2 text-xs text-slate-400">Field name<Input maxLength={128} value={field.label} aria-invalid={!!errors[`custom-${field.id}`]} title={errors[`custom-${field.id}`] || undefined} onChange={(event) => updateCustom(field.id, { label: event.target.value })} /></label>
+                        <label className="grid gap-2 text-xs text-slate-400">Kind<FieldTypePicker value={field.type || "text"} onChange={(type) => updateCustom(field.id, { type })} /></label>
                         <div className="sm:col-span-2">{knownFieldEditor(field)}</div>
                         <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setSelected({ ...selected, customFields: selected.customFields.filter((row) => row.id !== field.id) })}><Trash2 size={14} />Remove field</Button>
                       </div>) : section.fields.map(knownFieldEditor)}
@@ -1918,6 +1929,7 @@ export function App() {
                     </h3>
                     <Button
                       variant="secondary"
+                      disabled={selected.customFields.length >= 50 || ordinaryFields(selected.customFields).length >= 32}
                       onClick={() =>
                         setSelected({
                           ...selected,
@@ -1945,6 +1957,7 @@ export function App() {
                       >
                         <Input
                           aria-label="Field name"
+                          maxLength={128}
                           aria-invalid={!!errors[`custom-${field.id}`]}
                           className={
                             errors[`custom-${field.id}`]
@@ -1958,17 +1971,7 @@ export function App() {
                         />
                         <FieldTypePicker value={field.type || "text"} onChange={(type) => updateCustom(field.id, { type })} />
                         <div className={field.type === "password" ? "grid grid-cols-[minmax(0,1fr)_auto] gap-2" : "grid"}>
-                          <Input
-                            type={
-                              field.type === "password" && !revealed.has(field.id)
-                                ? "password"
-                                : "text"
-                            }
-                            value={field.value}
-                            onChange={(e) =>
-                              updateCustom(field.id, { value: e.target.value })
-                            }
-                          />
+                          <FieldValueEditor kind={field.type} revealed={revealed.has(field.id)} value={field.value} aria-label={field.label || "Field value"} onValueChange={(value) => updateCustom(field.id, { value })} />
                           {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
                         </div>
                         <Button

@@ -1719,7 +1719,7 @@ function collectCustomFields() {
       if (!label) throw Error("CUSTOM_FIELD_NAME_REQUIRED");
       if (labels.has(key)) throw Error("CUSTOM_FIELD_NAME_DUPLICATE");
       labels.add(key);
-      let type = row.querySelector("select").value,
+      let type = row.querySelector(".field-type-value").value,
         value = row.querySelector(".custom-value").value;
       if (type === "url" && value) value = normalizeWebsite(value);
       return { id: row.dataset.fieldId, label, type, value };

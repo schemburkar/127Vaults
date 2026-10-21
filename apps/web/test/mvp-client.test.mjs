@@ -191,10 +191,10 @@ test("custom fields stay in encrypted item bodies and domains normalize to HTTPS
   assert.match(html, /id="view-custom-fields"/);
   assert.match(source, /fields = collectCustomFields\(\)/);
   assert.match(source, /customFields: fields/);
-  assert.match(
-    app,
-    /"text",\s+"password",\s+"url",\s+"date",\s+"email",\s+"number",\s+"note"/,
-  );
+  assert.match(app, /FieldTypePicker value=/);
+  const picker = await readFile(new URL('../../../packages/ui/src/field-type-picker.tsx', import.meta.url), 'utf8');
+  for (const kind of ['text', 'password', 'url', 'date', 'email', 'number', 'note']) assert.match(picker, new RegExp(kind + ':'));
+  assert.match(source, /querySelector\("\.field-type-value"\)/);
   assert.match(source, /`https:\/\/\$\{value\}`/);
   assert.match(source, /parsed\.username\s+\|\|\s+parsed\.password/);
 });

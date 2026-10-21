@@ -10,3 +10,5 @@ export { IconButton } from "./icon-button";
 export { PasskeyDetails } from "./passkey-details";
 
 export { FieldTypePicker } from "./field-type-picker";
+
+export { FieldValueEditor } from "./field-value-editor";
