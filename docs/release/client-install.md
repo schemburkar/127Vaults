@@ -45,6 +45,28 @@ Chrome, Chromium and Edge user manifest locations are registered on Linux.
 The Linux registration script needs Python 3. Flatpak/sandboxed browsers need
 separate native messaging integration and are not covered by this script.
 
+### Windows: connector forbidden despite a matching extension ID
+
+`Access to the specified native messaging host is forbidden` means the browser
+rejected access before starting the host. Compare the running extension's
+`chrome.runtime.id` with `allowed_origins` in the manifest referenced by the
+browser's current-user native-host registry key. Use the installed host's stable
+path, rather than an earlier development build.
+
+Run registration and inspect the registry from a normal Windows PowerShell
+session launched outside packaged development tools. Packaged applications can
+give their child processes a virtualized registry view: a registration command
+and a fresh browser launched by the same tool can agree while the user's already
+running browser still reads an older registration. A successful direct host
+request or isolated browser test does not establish that the user's browser is
+connected.
+
+After registration, reopen the popup in the user's existing browser session and
+verify that it selects Desktop and displays its connection status. Separately
+verify a known matching test login; an empty result on a site without a matching
+website address is not evidence of a connector failure. Keep registry diagnostics
+and screenshots free of vault secrets.
+
 To disconnect on Windows remove the current-user
 `Software\Google\Chrome\NativeMessagingHosts\com.127vaults.connector` and/or
 `Software\Microsoft\Edge\NativeMessagingHosts\com.127vaults.connector` registry
