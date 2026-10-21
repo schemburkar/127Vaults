@@ -58,7 +58,7 @@ type CollectionSummary = { id: string; name: string; vault_ids: string[] };
 type VaultSettings = { collections: CollectionSummary[]; defaultView: { kind: string; id?: string } | null; removalPreference: string | null; pending: boolean; conflict: boolean };
 type RemovalPlan = { pending: boolean; choice?: "archive" | "move" | "restore"; sourceVaultId?: string; destinationVaultId?: string | null; stage?: "copying" | "finalizing"; itemMappings?: { source_item_id: string; destination_item_id: string }[] };
 type RemovalResult = { receipt: { choice?: string; itemCount?: number; restored?: boolean }; vaults: VaultSummary[]; settings: VaultSettings };
-type UnlockResult = { sessionEpoch: number; online: boolean; offlineReason: string | null; vaultId: string; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null; secretRemembered: boolean };
+type UnlockResult = { extensionConnectorActive?: boolean; extensionConnectorError?: string | null; sessionEpoch: number; online: boolean; offlineReason: string | null; vaultId: string; vaults: VaultSummary[]; items: Summary[]; settings: VaultSettings; viewKind: string; collectionId: string | null; secretRemembered: boolean };
 type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
@@ -568,6 +568,7 @@ export function App() {
           ? "The server is reachable but its checkpoint key differs from this replica. Local data and pending changes were preserved. Restore the original server identity before reconnecting."
           : `Working from the encrypted offline replica. Online unlock failed: ${result.offlineReason || "reason unavailable"}`,
       );
+      if (result.extensionConnectorActive === false) notify("error", "Browser extension is disconnected", "The vault is unlocked, but its local connector could not start: " + (result.extensionConnectorError || "reason unavailable") + ". Lock and unlock Desktop to retry.");
       if (result.items[0]) await openItem(result.items[0], result.vaultId);
       return result.online;
     } catch (e) {

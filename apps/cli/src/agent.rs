@@ -757,10 +757,38 @@ pub fn start_with_executable(
     )
     .read_line(&mut ready)
     .map_err(|_| "local unlock agent did not start")?;
-    if ready.trim() != "ready" {
-        return Err("local unlock agent did not start".to_owned());
+    connector_startup_result(&ready)
+}
+
+fn connector_startup_result(ready: &str) -> Result<(), String> {
+    if ready.trim() == "ready" {
+        return Ok(());
     }
-    Ok(())
+    let error = serde_json::from_str::<Value>(ready)
+        .ok()
+        .and_then(|value| value["error"].as_str().map(str::to_owned))
+        .filter(|error| !error.is_empty() && error.len() <= 512)
+        .unwrap_or_else(|| "local unlock agent did not start".to_owned());
+    Err(error)
+}
+
+#[cfg(test)]
+mod startup_tests {
+    #[test]
+    fn startup_preserves_diagnostics_and_requires_explicit_readiness() {
+        assert!(super::connector_startup_result("ready\n").is_ok());
+        assert_eq!(
+            super::connector_startup_result(r#"{"error":"offline unlock is not provisioned"}"#)
+                .unwrap_err(),
+            "offline unlock is not provisioned"
+        );
+        for response in ["", "not ready", "{}", r#"{"error":42}"#] {
+            assert_eq!(
+                super::connector_startup_result(response).unwrap_err(),
+                "local unlock agent did not start"
+            );
+        }
+    }
 }
 
 #[allow(clippy::needless_pass_by_value)]

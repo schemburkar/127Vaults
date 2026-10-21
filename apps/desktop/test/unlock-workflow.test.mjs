@@ -83,3 +83,26 @@ test('unlocked online desktop refreshes expiry and renewal without overlapping r
   assert.equal(harness.values.license.mode, 'active');
   harness.dispose();
 });
+
+test('connector startup failure leaves desktop usable and reports the diagnostic', { timeout: 1000 }, async () => {
+  const calls = [], values = {}, notices = [];
+  const context = { sessionRevocation: { current: createSessionRevocation() }, busy: false, unlocked: false, username: 'fixture', rememberedSecret: true,
+    showSecretEntry: false, accountSecret: '', masterPassword: 'synthetic-password-long-enough',
+    Date, requestAnimationFrame: callback => callback(),
+    dragSession: { unlock() {} }, friendlyError: String, notify(...args) { notices.push(args); }, openItem: async () => {},
+    invoke: async command => {
+      calls.push(command);
+      if (command !== 'unlock') return new Promise(() => {});
+      return { extensionConnectorActive: false, extensionConnectorError: "offline unlock is not provisioned", sessionEpoch: 1, online: true, vaultId: 'fixture', vaults: [], items: [], settings: { collections: [] }, viewKind: 'all', secretRemembered: true };
+    },
+  };
+  for (const setter of new Set(unlockSource.match(/set[A-Z]\w+/g))) context[setter] = value => { values[setter] = value; };
+  const sandbox = vm.createContext(context);
+  vm.runInContext(compile(unlockSource + '\nglobalThis.runUnlock = unlock;'), sandbox);
+  assert.equal(await sandbox.runUnlock(), true);
+  assert.deepEqual(calls, ['unlock']);
+  assert.equal(values.setUnlocked, true);
+  assert.equal(values.setMasterPassword, '');
+  assert.equal(values.setBusy, false);
+  assert.ok(notices.some(args => args[1] === 'Browser extension is disconnected' && args[2].includes('offline unlock is not provisioned')));
+});

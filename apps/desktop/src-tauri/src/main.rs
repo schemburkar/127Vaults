@@ -410,12 +410,19 @@ async fn unlock(
             default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected && row["retired"] != true))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
-        let connector_owned = if vaults_cli::connector_agent_desktop_compatible(&config) { false } else {
-            std::env::current_exe().ok().as_deref().is_some_and(|exe| start_connector_agent(exe, &config, &username, &secret, master_password.as_bytes()).is_ok())
+        let connector_start = if vaults_cli::connector_agent_desktop_compatible(&config) {
+            Ok(false)
+        } else {
+            std::env::current_exe()
+                .map_err(|_| "Desktop executable is unavailable".to_owned())
+                .and_then(|exe| start_connector_agent(&exe, &config, &username, &secret, master_password.as_bytes()))
+                .map(|()| true)
         };
+        let connector_error = connector_start.as_ref().err().cloned();
+        let connector_owned = connector_start.unwrap_or(false);
         Ok::<_, String>((
             session,
-            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered,"extensionConnectorActive":connector_owned || connector_agent_active(&config)}),
+            json!({"online":online,"offlineReason":offline_reason,"vaultId":initial_vault,"vaults":vaults,"items":items,"settings":settings,"viewKind":view_kind,"collectionId":collection_id,"secretRemembered":secret_remembered,"extensionConnectorActive":connector_owned || connector_agent_active(&config),"extensionConnectorError":connector_error}),
             connector_owned.then_some(config),
         ))
     })
@@ -1039,6 +1046,7 @@ fn run_embedded_connector() -> bool {
         match result {
             Ok(output) => println!("{output}"),
             Err(error) => {
+                println!("{}", json!({"error":error}));
                 eprintln!("127Vaults connector: {error}");
                 std::process::exit(2);
             }

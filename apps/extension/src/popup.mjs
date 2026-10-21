@@ -302,15 +302,31 @@ $('lock-vault').onclick = async () => {
     await passkeys.refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
+async function refreshLocalItems() {
+  const source = selectedSource, revision = sourceLoadRevision;
+  if (!['desktop', 'cli'].includes(source) || !$('frames').hidden || pending) return;
+  const listed = await native({ action: 'list', source, siteOrigin: originOf(targetTab.url) });
+  if (source !== selectedSource || revision !== sourceLoadRevision || pending || !$('frames').hidden || document.hidden) return;
+  const next = Array.isArray(listed) ? listed : [];
+  if (JSON.stringify(next) !== JSON.stringify(items)) {
+    items = next;
+    renderItems();
+  }
+}
+
 $('search').oninput = renderItems;
 refresh().catch(error => status(errorMessage(error), true));
+let pollingSources = false;
 setInterval(async () => {
-  if (document.hidden || pending || refreshInProgress || !$('frames').hidden) return;
+  if (document.hidden || pending || refreshInProgress || pollingSources || !$('frames').hidden) return;
+  pollingSources = true;
   try {
     await passkeys.refresh();
     await passkeys.refreshSaved();
     const sources = (await native({ action: 'sources' })).sources || [];
     const next = JSON.stringify(sources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
     if (next !== sourceSignature) await refresh();
+    else await refreshLocalItems();
   } catch { /* Manual refresh reports connector errors without interrupting the current form. */ }
+  finally { pollingSources = false; }
 }, 3000);
