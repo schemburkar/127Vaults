@@ -180,11 +180,11 @@ test('release catalogues preserve older-major download routes across updates', (
 
 test('live verification hashes all download ranges and refuses public access or altered bytes', async () => {
   const bytes = Buffer.from('complete-server-download'), asset = { id: 'server', sha256: sha(bytes), sizeBytes: bytes.length, supporting: false };
-  const catalogue = { sourceRevision: revision, artifacts: [asset] }; let corrupt = false, publicAccess = false;
+  const catalogue = { sourceRevision: revision, artifacts: [asset] }; let corrupt = false, publicAccess = false, rateLimited = false;
   const fetchImpl = async (url, options = {}) => {
     assert.ok(!url.includes('private-token'));
     if (url.endsWith('/releases')) return Response.json(catalogue);
-    if (!options.headers?.Authorization) return new Response(null, { status: publicAccess ? 200 : 401 });
+    if (!options.headers?.Authorization) return new Response(null, { status: publicAccess ? 200 : rateLimited ? 429 : 401 });
     if (options.method === 'HEAD') return new Response(null, { headers: { 'content-length': String(bytes.length) } });
     const [, start, end] = /bytes=(\d+)-(\d+)/.exec(options.headers.Range);
     const body = Buffer.from(bytes.subarray(Number(start), Number(end) + 1)); if (corrupt) body[0] ^= 1;
@@ -194,6 +194,8 @@ test('live verification hashes all download ranges and refuses public access or 
   assert.equal((await verify()).status, 'passed'); corrupt = true; await assert.rejects(verify(), /checksum/);
   corrupt = false; publicAccess = true; await assert.rejects(verify(), /unauthenticated/);
   publicAccess = false;
+  rateLimited = true;
+  assert.deepEqual((await verify()).unauthenticatedDenialStatuses, [429]);
   let transient = true;
   assert.equal((await verifyLiveDelivery({ origin: 'https://vaults.example.com' }, catalogue, 'private-token', {
     partSize: 5,

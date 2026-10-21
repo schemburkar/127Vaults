@@ -36,6 +36,7 @@ export async function verifyEmbeddedAgreements(directories, settings, run = exec
 
 export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl = fetch, partSize = 4 * 1024 * 1024 } = {}) {
   const auth = { Authorization: `Bearer ${token}` };
+  const unauthenticatedDenialStatuses = new Set();
   const request = async (path, options = {}, read = response => response, authenticated = true) => {
     for (let attempt = 0; ; attempt++) {
       try {
@@ -60,7 +61,10 @@ export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl =
   for (const asset of catalogue.artifacts.filter(a => !a.supporting)) {
     const path = '/api/access-admin/releases/artifacts/' + asset.id;
     const denied = await request(path, { method: 'HEAD' }, response => response, false);
-    assert.equal(denied.status, 401, 'Installer accepted unauthenticated access');
+    // Repeated rehearsals can exhaust the admin endpoint's unauthenticated rate
+    // limit. Both responses deny access; authenticated download checks follow.
+    assert.ok([401, 429].includes(denied.status), 'Installer accepted unauthenticated access');
+    unauthenticatedDenialStatuses.add(denied.status);
     const head = await request(path, { method: 'HEAD' });
     assert.equal(head.status, 200);
     assert.equal(Number(head.headers.get('content-length')), asset.sizeBytes);
@@ -80,5 +84,6 @@ export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl =
   }
   assert.equal(digest.digest('hex'), server.sha256, 'Live server download checksum mismatch');
   return { status: 'passed', artifacts: catalogue.artifacts.length, authenticatedServerBytes: server.sizeBytes,
+    unauthenticatedDenialStatuses: [...unauthenticatedDenialStatuses].sort(),
     sourceRevision: catalogue.sourceRevision, verifiedAt: new Date().toISOString() };
 }
