@@ -36,4 +36,10 @@ node scripts/ops/development-access.mjs --config .cloudflare-deploy/config.json 
 
 The command uses the configured operator credential, saves the invitation privately
 and does not send email. Never submit the issuer private key or a backup key.
+For the same operator-approved requester on a different development installation,
+replace `--request-id` with `--source-request-id <existing-request-id>`. The script
+uses that requester's existing contact in the normal request endpoint, approves only
+the newly created request and leaves the original installation's invitation alone.
+If matching development access already exists, it reuses it instead of creating a
+duplicate. Normal intake notifications may run; no invitation email is sent.
 Do not bypass the service by editing D1 records or changing signed license dates.
