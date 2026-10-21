@@ -12,6 +12,7 @@ import { encryptionKey, limiterKey, seal, unseal } from '../cloudflare/crypto.mj
 import { TrialStore } from '../cloudflare/store.mjs';
 import { handleRequest, prune } from '../cloudflare/worker.mjs';
 import { stageAssets } from '../../../scripts/cloudflare/config.mjs';
+import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
 
 const origin = 'https://trial.example.com';
 const admin = '/api/access-admin/requests';
@@ -78,6 +79,35 @@ async function fixture(t, options = {}) {
   return { mf, dispose, mfOptions, db, bucket, bindings, operatorToken, intakeKey, publicKeys, catalogue, archive, sha256,
     get, post, submit, approve, requestInput, env: { ...bindings, DB: db, ARTIFACTS: bucket } };
 }
+
+test('operator attaches an existing development license without changing identity, expiry or signed bytes',async t=>{
+  const f=await fixture(t),id=await f.submit(),installationId=randomUUID();
+  const expiresAt=new Date(Date.now()+365*86400000).toISOString();
+  const {license}=issueSelfHostedLicense({privateKeyPem:f.bindings.TRIAL_ISSUER_PRIVATE_KEY,keyId:'trial',installationId,
+    plan:'development',majorVersion:null,maxActiveUsers:5,sequence:3,expiresAt});
+  assert.equal((await f.post(`${admin}/${id}/approve-development`,{license})).status,401);
+  assert.equal((await f.post(`${admin}/${id}/approve-development`,{license:'{}'},f.operatorToken)).status,400);
+  const response=await f.post(`${admin}/${id}/approve-development`,{license},f.operatorToken);
+  assert.equal(response.status,200,await response.clone().text());const a=await response.json();const token=a.link.split('.').at(-1),base=`/api/trials/${id}`;
+  assert.equal(a.kind,'development');assert.equal(a.installationId,installationId);assert.equal(a.expiresAt,expiresAt);
+  assert.equal(await(await f.get(`${base}/license`,token)).text(),license);
+  assert.equal((await f.post(`${base}/activate`,{installationId},token)).status,200);
+  assert.equal((await f.post(`${base}/activate`,{installationId:randomUUID()},token)).status,409);
+  await f.db.prepare('UPDATE access_requests SET received_at = ? WHERE id = ?').bind(Date.now()-91*86400000,id).run();
+  await prune(f.env);assert.equal((await f.get(base,token)).status,200);
+  const rotated=await f.post(`${admin}/${id}/rotate`,{},f.operatorToken);assert.equal(rotated.status,200);
+  const next=await rotated.json();assert.equal(next.kind,'development');assert.equal(next.expiresAt,expiresAt);
+});
+
+test('new development invitations activate the explicitly approved duration, never the trial duration',async t=>{
+  const f=await fixture(t),id=await f.submit(),expiresAt=new Date(Date.now()+365*86400000).toISOString();
+  const response=await f.post(`${admin}/${id}/approve-development`,{maxUsers:7,expiresAt},f.operatorToken);
+  assert.equal(response.status,200);const a=await response.json(),token=a.link.split('.').at(-1),base=`/api/trials/${id}`,installationId=randomUUID();
+  assert.equal((await f.post(`${base}/activate`,{installationId},token)).status,200);
+  const license=verifyLicenseFile(await(await f.get(`${base}/license`,token)).text(),f.publicKeys,installationId);
+  assert.equal(license.plan,'development');assert.equal(license.expiresAt,expiresAt);assert.equal(license.maxActiveUsers,7);
+  assert.equal((await(await f.get(base,token)).json()).trialDays,0);
+});
 
 test('installer authenticates entitled releases and enforces a server-controlled version floor', async t => {
   const f = await fixture(t, { bindings: { INSTALLER_MIN_VERSION: '0.2.0' } });

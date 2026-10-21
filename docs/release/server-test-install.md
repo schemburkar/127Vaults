@@ -171,6 +171,13 @@ checkout and requires only Node 24 in an extracted bundle.
 
 ## Backup and restore rehearsal
 
+New server bundles create and display recovery settings during normal setup,
+including a protected random key under `~/.127vaults/keys/`, a separate backup
+folder and `~/.127vaults/installations/<project>/recovery.json`. This is automatic
+in installer 0.1.10 even when downloading the older 0.1.7 server bundle. The JSON
+contains paths, not secret key bytes. Keep an independent safe copy of the key.
+Existing manual backup keys remain necessary for their corresponding older archives.
+
 Create a random 32-byte backup key in a protected path that is **not** the installation directory or backup destination, using `node server.mjs database keygen --output <private-key-path>`; retain an offline recovery copy. The same `server.mjs` command is used in the source checkout and extracted bundle. Set the exact database container name from `node server.mjs install status`. The project name is generated during `init` and recorded in `.env`, preventing a new test identity from accidentally reusing an older test volume.
 
 ```powershell

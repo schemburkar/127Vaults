@@ -47,7 +47,7 @@ if (args.includes('--check-existing-license-plan')) {
     {windowsHide:true,timeout:60000,maxBuffer:1048576});
   const plan = result.stdout + result.stderr;
   assert.ok(plan.includes('Keep this server\'s existing license'));
-  assert.ok(plan.includes('Upgrade:'));
+  assert.ok(plan.includes('Upgrade:') || plan.includes('Check existing installation:'));
   assert.ok(!plan.includes('Install / resume:'));
   existingLicensePlan = true;
 }

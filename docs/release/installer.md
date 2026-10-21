@@ -47,7 +47,43 @@ Fresh setup checks port availability before initialization and gives each new
 installation a separate private identity directory under the installer state root.
 An already-bound invitation must match the selected installation before an upgrade
 starts. Normal upgrades preserve identity, data, CA, licenses, admin credentials and
-trial expiry; they still require the protected backup key and a new backup directory.
+trial expiry. Installer 0.1.10 automatically manages the backup key and a new
+backup directory; explicit backup path options remain available.
+
+## Automatic backup onboarding (0.1.10)
+
+Fresh server setup generates a random backup encryption key and shows its full
+path, backup folder and saved settings. Defaults are under the current user's home:
+
+```text
+~/.127vaults/keys/<server-project>.key
+~/.127vaults/backups/<server-project>/
+~/.127vaults/installations/<server-project>/recovery.json
+```
+
+On Windows `~` is normally `C:\Users\<username>`. Keys are protected by owner-only
+Unix permissions or a restricted Windows ACL. The recovery JSON stores locations,
+not key contents or invitation credentials. Keep a separate safe copy of the key;
+the same disk's copy alone is not off-machine recovery. Updates reuse the saved key
+and choose a new backup folder automatically. The plan shows those paths before
+confirmation. Lost saved keys are never silently regenerated.
+
+Existing installations without saved backup settings are onboarded on the next
+installer run; a newly generated key protects future backups, not older archives.
+Older backups still require their original key. To retain a known manual key,
+provide `--backup-key-file PATH` once; its location is saved. `--backup-dir` can
+override the next backup destination. The standalone server setup has equivalent
+onboarding in the next server bundle. For an already installed older server, the
+source operator helper is `node deploy/recovery.mjs --directory <initialized-bundle>`.
+
+Extension setup selects the newest installed native connector by its companion
+CLI version, checks it meets the extension package version, displays the selection,
+and replaces browser registration. On Windows it closes ports to the previously
+registered binary when the path changes. A stale CLI receipt must not downgrade
+a newer Desktop connector. Read-only site matching can be checked with
+`node scripts/release/smoke-native-host.mjs <host> --site-origin https://vercel.com
+--source desktop --expect-count 1 --receipt <new-private-receipt.json>`; no password
+is retrieved.
 
 The local 0.1.8 installer continues to obtain deployables from the current entitled
 Cloudflare catalogue (currently 0.1.7); its version does not select matching component
@@ -68,8 +104,8 @@ licenses have no invitation link of their own.
 
 For example, reuse the approved package-access invitation with
 `127vaults-install --components server --keep-existing-license --plan` first.
-Remove `--plan` for the guarded update, supplying the existing backup key and a new
-backup directory when prompted. The packaged smoke script accepts
+Remove `--plan` for the guarded update. From 0.1.10 the saved recovery settings
+supply the key and a new backup directory automatically. The packaged smoke script accepts
 `--check-existing-license-plan` with `VAULTS_INSTALL_INVITATION` in the process
 environment to verify this path without performing an update or activation.
 
@@ -81,7 +117,12 @@ For a server installed outside this app, adopt its initialized bundle on the fir
   --backup-key-file /separate/existing-32-byte-key
 ```
 
-Subsequent updates omit `--from`, and supply a new `--backup-dir` and the existing `--backup-key-file` when a new server artifact is offered. The existing upgrader stops writes, makes and rehearses an encrypted backup, preserves identity/configuration/license, starts the new bundle, and checks identity/schema/users/license. It currently supports schema 8. An initial adoption compares against an unknown artifact digest and therefore performs a verified upgrade even if the operator believes the payload is already current.
+Subsequent updates omit `--from` and reuse the saved recovery settings; backup path
+flags are optional overrides. The existing upgrader stops writes, makes and rehearses
+an encrypted backup, preserves identity/configuration/license, starts the new bundle,
+and checks identity/schema/users/license. It supports schema 8 and 9. An initial
+adoption compares against an unknown artifact digest and therefore performs a verified
+upgrade even if the operator believes the payload is already current.
 
 ## Build and server policy
 

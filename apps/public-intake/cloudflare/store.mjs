@@ -44,9 +44,9 @@ export class TrialStore {
       .bind(key, window, (window + 1) * period, maximum).first();
     return Boolean(result);
   }
-  async expiredContacts(limit = 100) {
-    const { results } = await this.db.prepare('SELECT * FROM access_requests WHERE contact IS NOT NULL AND received_at <= ? LIMIT ?')
-      .bind(this.now() - 90 * 86400000, limit).all();
+  async expiredContacts(limit = 100, afterId = '') {
+    const { results } = await this.db.prepare('SELECT * FROM access_requests WHERE contact IS NOT NULL AND received_at <= ? AND id > ? ORDER BY id LIMIT ?')
+      .bind(this.now() - 90 * 86400000, afterId, limit).all();
     return Promise.all(results.map(row => this.decode(row)));
   }
   async pruneLimits() {

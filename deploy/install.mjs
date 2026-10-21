@@ -264,6 +264,9 @@ export async function main(args, dependencies = {}) {
       await check(parsed.tailscale || parsed.endpoint === 'localhost' ? '127.0.0.1' : parsed.endpoint ?? '127.0.0.1');
       await operator('init');
     }
+    const recovery = dependencies.ensureRecovery ?? (await import(existsSync(new URL('./lib/recovery.mjs',import.meta.url))
+      ? './lib/recovery.mjs' : './recovery.mjs')).ensureRecovery;
+    await recovery(directory,{log});
     await operator('start');
     await operator('status');
     log('Trust the generated CA certificate after confirming its fingerprint. Use install bootstrap for the first-owner code.');

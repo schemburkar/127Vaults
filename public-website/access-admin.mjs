@@ -47,6 +47,7 @@ function clearInvitation() {
 async function refresh() {
   const data = await (await api()).json();
   emailDryRun = data.emailDryRun === true;
+  const canApproveDevelopment=data.permissions?.approveDevelopment===true;
   $('request-alert-status').textContent = data.requestAlertsEnabled === true ? 'New-request email alerts are on.' : 'New-request email alerts are off.';
   $('operator-login').hidden = true; $('inbox').hidden = false;
   $('logout').hidden = false;
@@ -118,7 +119,7 @@ async function refresh() {
         closeMenu();
         button.disabled = true;
         try {
-          const response = await api(`/${row.id}/${action}`, typeof value === 'function' ? value() : value);
+          const response = await api(`/${row.id}/${action}`, typeof value === 'function' ? await value() : value);
           if (action === 'revocation') {
             const url = URL.createObjectURL(await response.blob()); const a = document.createElement('a');
             a.href = url; a.download = 'trial-revocation.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -149,6 +150,17 @@ async function refresh() {
       const users = document.createElement('input'); users.type = 'number'; users.min = '1'; users.max = '100'; users.value = String(row.maxUsers ?? row.requestedSeats ?? 1);
       users.className = 'request-users'; users.setAttribute('aria-label', `Maximum vault users for ${row.email}`); usersCell.replaceChildren(users);
       if (['personal', 'commercial'].includes(row.plan)) act('Approve', 'approve', () => ({ maxUsers: Number(users.value) }), `Approve a 10-day trial for ${row.email}?`);
+      if(canApproveDevelopment){
+      const developmentLicense=document.createElement('input');developmentLicense.type='file';developmentLicense.accept='.json,application/json';
+      developmentLicense.setAttribute('aria-label',`Existing signed development license for ${row.email}`);usersCell.append(developmentLicense);
+      const developmentExpiry=document.createElement('input');developmentExpiry.type='date';developmentExpiry.setAttribute('aria-label','Development expiry for a new license; leave empty when attaching an existing signed license');usersCell.append(developmentExpiry);
+      act('Approve development access','approve-development',async()=>{
+        const file=developmentLicense.files?.[0];
+        if(file){if(file.size>1600) throw Error('Choose the signed development license JSON, not a private issuer key.');return {license:await file.text()};}
+        if(!developmentExpiry.value) throw Error('Choose a development expiry date or attach an existing signed development license.');
+        return {maxUsers:Number(users.value),expiresAt:`${developmentExpiry.value}T23:59:59.000Z`};
+      },'Create development download access for this signed license, preserving its installation identity, expiry and limits? Its operator contact is retained while development access is active.');
+      }
       act('Decline', 'reject', {}, 'Decline this access request?');
     }
     if (row.state === 'approved') {

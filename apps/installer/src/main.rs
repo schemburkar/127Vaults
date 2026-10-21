@@ -1,5 +1,6 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 mod archive;
+mod backups;
 mod discovery;
 mod extension_setup;
 mod prerequisites;
@@ -365,6 +366,23 @@ fn execute(mut args: Args) -> Result<()> {
             )?;
         } else {
             binding?;
+            // Keep an already active license instead of reinstalling its signed sequence.
+            if release.installation_id.is_some()
+                && let Some(record) = state
+                    .records
+                    .iter()
+                    .find(|r| r.product == Product::Server && r.complete)
+                && let Ok(license) = discovery::existing_license(
+                    &record.directory,
+                    record.engine.as_deref().unwrap_or_default(),
+                )
+            {
+                args.keep_existing_license = true;
+                args.expected_license = Some(license);
+                cliclack::log::info(
+                    "Keep this server's existing license. This invitation already belongs to this installation; no activation or license replacement is needed",
+                )?;
+            }
         }
     }
     let mut selected = Vec::new();
@@ -403,35 +421,43 @@ fn execute(mut args: Args) -> Result<()> {
                 .iter()
                 .any(|r| r.product == Product::Server && r.complete && r.digest != asset.sha256)
     });
-    if upgrade && !args.plan {
-        if interactive && !args.yes {
-            if args.backup_key_file.is_none() {
-                args.backup_key_file = Some(PathBuf::from(
-                    cliclack::input("Path to the existing protected 32-byte backup key")
-                        .interact::<String>()?,
-                ));
-            }
+    let home = dirs::home_dir().ok_or("Cannot locate the home directory for recovery settings")?;
+    let recovery = state
+        .records
+        .iter()
+        .find(|r| r.product == Product::Server)
+        .filter(|r| {
+            args.components.contains(&Product::Server) && r.directory.join(".env").is_file()
+        })
+        .map(|r| backups::plan(&home, &r.directory, args.backup_key_file.as_deref()))
+        .transpose()?;
+    if let Some(record) = &recovery {
+        args.backup_key_file = Some(record.key_file.clone());
+        if upgrade {
             if args.backup_dir.is_none() {
-                args.backup_dir = Some(PathBuf::from(
-                    cliclack::input("New backup directory outside the bundles and identity folder")
-                        .interact::<String>()?,
-                ));
+                args.backup_dir = Some(
+                    record
+                        .backup_root
+                        .join(format!("upgrade-{}", uuid::Uuid::new_v4())),
+                );
+            }
+            if args.backup_dir.as_ref().is_some_and(|p| p.exists()) {
+                return Err("Upgrade backup directory must be new".into());
             }
         }
-        let key = args
-            .backup_key_file
-            .as_ref()
-            .ok_or("Server upgrade requires --backup-key-file EXISTING-32-BYTE-KEY")?;
-        if fs::metadata(key)?.len() != 32 {
-            return Err("Backup key must contain exactly 32 bytes".into());
-        }
-        let backup = args
-            .backup_dir
-            .as_ref()
-            .ok_or("Server upgrade requires --backup-dir NEW-DIRECTORY")?;
-        if backup.exists() {
-            return Err("Upgrade backup directory must be new".into());
-        }
+        cliclack::log::info(format!(
+            "Backup key ({}): {}\nBackup folder: {}",
+            if record.key_file.exists() {
+                "reuse"
+            } else {
+                "generate securely after confirmation"
+            },
+            record.key_file.display(),
+            args.backup_dir
+                .as_ref()
+                .unwrap_or(&record.backup_root)
+                .display()
+        ))?;
     }
     if args.components.contains(&Product::Pwa) {
         if !args.components.contains(&Product::Server) && args.server_url.is_none() {
@@ -512,6 +538,14 @@ fn execute(mut args: Args) -> Result<()> {
             &root,
             !args.no_install_prerequisites,
         )?;
+        if let Some(record) = &recovery {
+            let directory = state
+                .records
+                .iter()
+                .find(|r| r.product == Product::Server)
+                .ok_or("Missing server")?;
+            backups::prepare(record, node.as_ref().unwrap(), &directory.directory)?;
+        }
     }
     let mut server_directory = None;
     for (product, asset) in selected {
@@ -654,6 +688,10 @@ fn execute(mut args: Args) -> Result<()> {
                     provider: args.compose_provider.clone(),
                 });
                 state.save(&root)?;
+                if recovery.is_none() {
+                    let record = backups::plan(&home, &directory, args.backup_key_file.as_deref())?;
+                    backups::prepare(&record, node, &directory)?;
+                }
                 finish_license(&api, &release, node, &directory, &args, &engine)?;
                 server_directory = Some(directory.clone());
             }

@@ -24,19 +24,22 @@ fn discover_host(candidates: &[PathBuf]) -> Option<PathBuf> {
     } else {
         "127vaults-extension-host"
     };
+    let mut hosts = Vec::new();
     for directory in candidates {
         if let Ok(found) = crate::archive::find(directory, name) {
-            return Some(found.join(name));
+            hosts.push(found.join(name));
         }
     }
     #[cfg(windows)]
     {
         // Desktop's receipt points to its setup package; NSIS owns the actual path.
         let output = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command",
-            "$p=(Get-Item 'HKCU:\\Software\\127Vaults\\127Vaults Desktop' -ErrorAction SilentlyContinue).GetValue(''); if($p){Write-Output (Join-Path $p '127vaults-extension-host.exe')}"]).output().ok()?;
-        let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-        if path.is_file() {
-            return Some(path);
+            "$p=(Get-Item 'HKCU:\\Software\\127Vaults\\127Vaults Desktop' -ErrorAction SilentlyContinue).GetValue(''); if($p){Write-Output (Join-Path $p '127vaults-extension-host.exe')}; Get-CimInstance Win32_Process -Filter \"Name='vaults-desktop-poc.exe'\" | ForEach-Object {if($_.ExecutablePath){Join-Path (Split-Path -Parent $_.ExecutablePath) '127vaults-extension-host.exe'}}"]).output().ok()?;
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let path = PathBuf::from(line.trim());
+            if path.is_file() && !hosts.contains(&path) {
+                hosts.push(path);
+            }
         }
     }
     #[cfg(not(windows))]
@@ -45,17 +48,57 @@ fn discover_host(candidates: &[PathBuf]) -> Option<PathBuf> {
         "/usr/local/bin/127vaults-extension-host",
     ] {
         if Path::new(path).is_file() {
-            return Some(PathBuf::from(path));
+            hosts.push(PathBuf::from(path));
         }
     }
-    None
+    // A stale CLI receipt must not downgrade a freshly installed Desktop connector.
+    newest_host(hosts, connector_version)
+}
+
+fn newest_host(
+    hosts: Vec<PathBuf>,
+    version: impl Fn(&Path) -> Option<[u32; 3]>,
+) -> Option<PathBuf> {
+    hosts
+        .into_iter()
+        .max_by_key(|host| version(host).unwrap_or([0, 0, 0]))
+}
+
+fn connector_version(host: &Path) -> Option<[u32; 3]> {
+    let cli = host.parent()?.join(if cfg!(windows) {
+        "127vaults.exe"
+    } else {
+        "127vaults"
+    });
+    let output = Command::new(cli).arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let version = text.trim().strip_prefix("127vaults ")?;
+    parse_version(version)
+}
+
+fn parse_version(version: &str) -> Option<[u32; 3]> {
+    let values: Vec<u32> = version
+        .split('.')
+        .map(str::parse)
+        .collect::<std::result::Result<_, _>>()
+        .ok()?;
+    values.try_into().ok()
 }
 
 fn windows_registration_script() -> String {
-    format!(
+    let mut script = format!(
         "param([string]$IdsCsv,[string]$HostPath)\n& {{\n{}\n}} -ExtensionIds ($IdsCsv.Split(',')) -HostBinary $HostPath -Browser Both\nif(!$?){{throw 'Connector registration failed'}}\nforeach($browser in @('Microsoft\\Edge','Google\\Chrome')){{\n$key='HKCU:\\Software\\'+$browser+'\\NativeMessagingHosts\\com.127vaults.connector'\n$p=(Get-Item -LiteralPath $key -ErrorAction Stop).GetValue('')\n$m=Get-Content -LiteralPath $p -Raw | ConvertFrom-Json\nif($m.path -ne $HostPath){{throw 'Connector registration path mismatch'}}\nforeach($id in $IdsCsv.Split(',')){{if($m.allowed_origins -notcontains ('chrome-extension://'+$id+'/')){{throw 'Extension ID registration mismatch'}}}}\n}}\n",
         include_str!("../../extension/install-native-host.ps1")
-    )
+    );
+    let remember = r"$previousHosts=@();foreach($browser in @('Microsoft\Edge','Google\Chrome')){try{$p=(Get-Item ('HKCU:\Software\'+$browser+'\NativeMessagingHosts\com.127vaults.connector') -ErrorAction Stop).GetValue('');$previousHosts+=((Get-Content -LiteralPath $p -Raw|ConvertFrom-Json).path)}catch{}}";
+    script = script.replacen("\n& {\n", &format!("\n{remember}\n& {{\n"), 1);
+    // Existing native ports otherwise keep using the previously registered binary.
+    script.push_str(r#"Get-CimInstance Win32_Process -Filter "Name='127vaults-extension-host.exe'" | Where-Object {$_.ExecutablePath -and $_.ExecutablePath -ne $HostPath -and $previousHosts -contains $_.ExecutablePath} | ForEach-Object {Stop-Process -Id $_.ProcessId -ErrorAction Stop}
+"#);
+    script
 }
 
 fn ps_literal(value: &str) -> String {
@@ -166,6 +209,21 @@ pub fn setup(
     if !host.is_file() {
         return Err("Native connector executable does not exist".into());
     }
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(directory.join("manifest.json"))?)?;
+    if let Some(required) = manifest["version"].as_str().and_then(parse_version)
+        && connector_version(&host).is_none_or(|actual| actual < required)
+    {
+        return Err(format!("The extension requires connector {}.{}.{} or newer. Update Desktop/CLI first; the older connector was not registered",required[0],required[1],required[2]).into());
+    }
+    cliclack::log::info(format!(
+        "Browser connector: {} (version {})",
+        host.display(),
+        connector_version(&host).map_or_else(
+            || "unknown".into(),
+            |v| format!("{}.{}.{}", v[0], v[1], v[2])
+        )
+    ))?;
     let host = fs::canonicalize(host)?;
     #[cfg(windows)]
     let host = PathBuf::from(
@@ -195,6 +253,19 @@ pub fn setup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn newer_desktop_connector_wins_over_first_old_cli_candidate() {
+        let cli = PathBuf::from("old-cli");
+        let desktop = PathBuf::from("new-desktop");
+        let chosen = newest_host(vec![cli, desktop.clone()], |p| {
+            Some(if p == Path::new("old-cli") {
+                [0, 1, 5]
+            } else {
+                [0, 1, 7]
+            })
+        });
+        assert_eq!(chosen, Some(desktop));
+    }
     #[cfg(windows)]
     #[test]
     fn windows_registration_launcher_handles_paths_and_reports_failure() {

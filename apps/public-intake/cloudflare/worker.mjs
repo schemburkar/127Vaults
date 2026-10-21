@@ -6,10 +6,14 @@ import { TrialStore, Conflict } from './store.mjs';
 import { validateCatalogue, catalogueIdentity, publicArtifact, serverMajor } from './catalogue.mjs';
 import { byteRange } from './download.mjs';
 import { installerPolicy, installerProtocol } from './installer.mjs';
+import { developmentPolicy } from './development.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
 
 const day = 86400000;
+const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
+  && Date.parse(record.entitlementExpiresAt) > at;
+const retained = (row,at) => at - row.receivedAt < 90 * day || activeDevelopment(row.trial,at);
 const installationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
 const keyCache = new WeakMap(), issuerCache = new WeakMap();
@@ -44,7 +48,8 @@ async function body(request) {
 const empty = input => { if (Object.keys(input).length) fail(400, 'invalid_request'); };
 function summary(record, mailer) {
   return { state: record?.state ?? 'requested', maxUsers: record?.maxUsers, archivedAt: record?.archivedAt ?? null,
-    approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
+    approvedAt: record?.approvedAt, kind: record?.kind ?? 'trial', entitlementExpiresAt: record?.entitlementExpiresAt,
+    linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
     emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState && !record.replacementRequest),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
     serverMajorVersion: record?.state === 'approved' ? entitledMajor(record) : undefined,
@@ -195,7 +200,7 @@ async function dispatch(request, env, now, schedule) {
   }
   if (path === '/api/access-admin/requests' && request.method === 'GET') {
     const { catalogue } = await release(env);
-    const requests = await Promise.all((await store.list()).filter(row => at - row.receivedAt < 90 * day).map(async row => {
+    const requests = await Promise.all((await store.list()).filter(row => retained(row,at)).map(async row => {
       let updateAvailable = false, downloadAvailable = false;
       if (row.trial?.state === 'approved') {
         try {
@@ -205,16 +210,16 @@ async function dispatch(request, env, now, schedule) {
       }
       return { ...row.contact, id: row.id, ...summary(row.trial, mailer), updateAvailable, downloadAvailable };
     }));
-    return json(200, { permissions: { download: true, manageInstallations: true }, requests, emailEnabled: Boolean(mailer),
+    return json(200, { permissions: { download: true, manageInstallations: true, approveDevelopment:true }, requests, emailEnabled: Boolean(mailer),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
   const input = request.method === 'POST' ? await body(request) : null;
   if (admin) {
-    if (!row?.contact || at - row.receivedAt >= 90 * day) fail(404, 'not_found');
+    if (!row?.contact || !retained(row,at)) fail(404, 'not_found');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
       return json(200, { email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     }
@@ -222,6 +227,19 @@ async function dispatch(request, env, now, schedule) {
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
     if (action === 'archive' || action === 'unarchive') {
       empty(input); record = { state: 'requested', ...record, archivedAt: action === 'archive' ? new Date(at).toISOString() : null };
+    } else if (action === 'approve-development') {
+      if (record && record.state !== 'requested') fail(409,'state_changed');
+      const {catalogue,identity} = await release(env);
+      let policy;
+      try {policy = await developmentPolicy(input,catalogue.issuerPublicKeys,at);} catch {fail(400,'invalid_development_policy');}
+      const value = token();
+      const link = `${env.PUBLIC_INTAKE_ORIGIN}/trial?open=1#${id}.${value}`;
+      record = {...policy,state:'approved',approvedAt:new Date(at).toISOString(),payment:'none',trialDays:0,
+        serverMajorVersion:serverMajor(catalogue),tokenHash:await hash(value),linkExpiresAt:new Date(at+30*day).toISOString(),
+        ticketHash:null,ticketUntil:0,sourceRevision:catalogue.sourceRevision,releaseHash:identity,
+        invitation:{subject:'Your 127Vaults development access',text:`Development access is ready:\n${link}\n\nUse the normal installer to install or update this development server. Development license expiry: ${policy.entitlementExpiresAt}. Preserve existing server identity and data. No payment or 10-day trial is created.`}};
+      await store.save(row,record);
+      return json(200,{...summary(record,mailer),link,email:row.contact.email,subject:record.invitation.subject,message:record.invitation.text});
     } else if (action === 'approve' || action === 'rotate' || action === 'update-release') {
       if ((action === 'approve' && record && record.state !== 'requested') || (action !== 'approve' && record?.state !== 'approved')) fail(409, 'state_changed');
       if (action === 'approve') {
@@ -232,7 +250,7 @@ async function dispatch(request, env, now, schedule) {
       if (action === 'update-release' && record.license && !await verifyLicenseIssuer(record.license, catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
       const value = token();
       record = { ...record, state: 'approved', maxUsers: record?.maxUsers ?? input.maxUsers,
-        approvedAt: record?.approvedAt ?? new Date(at).toISOString(), payment: 'none', trialDays: 10, serverMajorVersion: record?.serverMajorVersion ?? (action === 'approve' ? serverMajor(catalogue) : entitledMajor(record)),
+        approvedAt: record?.approvedAt ?? new Date(at).toISOString(), payment: 'none', trialDays: record?.kind === 'development' ? 0 : 10, serverMajorVersion: record?.serverMajorVersion ?? (action === 'approve' ? serverMajor(catalogue) : entitledMajor(record)),
         tokenHash: await hash(value), linkExpiresAt: new Date(at + 30 * day).toISOString(),
         ticketHash: null, ticketUntil: 0, sourceRevision: catalogue.sourceRevision, releaseHash: identity };
       // A query forces document navigation even from a legacy trial page whose
@@ -244,6 +262,8 @@ async function dispatch(request, env, now, schedule) {
       if (action === 'update-release') record.upgradeOfferedAt = new Date(at).toISOString();
       if (action === 'update-release') record.invitation = { subject: 'Updated 127Vaults packages for your existing installation',
         text: `Updated packages are available:\n${link}\n\nBack up and upgrade your existing installation. Do not initialize replacement keys or a new database. Your installation binding, signed license and trial expiry are unchanged. This does not start another trial. Use fictitious data only.` };
+      if (record.kind === 'development') record.invitation = {subject:'Your 127Vaults development access',
+        text:`Development packages are available:\n${link}\n\nDevelopment license expiry: ${record.entitlementExpiresAt}. Preserve your existing installation, license, data and backup key. No trial activation is required for an already bound server.`};
       await store.save(row, record);
       return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     } else if (action === 'replace-installation') {
@@ -303,7 +323,7 @@ async function dispatch(request, env, now, schedule) {
     await store.save(row, record, action === 'erase');
     return json(200, { ...summary(record, mailer), hasRevocation: Boolean(record.revocation), installedLicenseUnaffected: action !== 'replace-installation' && Boolean(record.license) });
   }
-  if (!record || record.state !== 'approved' || at >= Date.parse(record.linkExpiresAt) || !row.contact || at - row.receivedAt >= 90 * day) fail(404, 'link_unavailable');
+  if (!record || record.state !== 'approved' || at >= Date.parse(record.linkExpiresAt) || !row.contact || !retained(row,at)) fail(404, 'link_unavailable');
   const { catalogue, publicKey, signingKey } = await entitledRelease(env, record);
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith('__Secure-127v-trial='))?.slice('__Secure-127v-trial='.length);
   const ticketValid = action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method) && record.ticketHash
@@ -317,7 +337,7 @@ async function dispatch(request, env, now, schedule) {
     installationId: record.installationId ?? null, sourceRevision: catalogue.sourceRevision,
     artifacts: catalogue.artifacts.map(publicArtifact),
   });
-  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), trialDays: 10, payment: 'none',
+  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), trialDays: record.kind === 'development' ? 0 : 10, payment: 'none',
     sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   if (action === 'ticket' && request.method === 'POST') {
     empty(input); const value = token(); record = { ...record, ticketHash: await hash(value), ticketUntil: at + 300000 };
@@ -350,10 +370,11 @@ async function dispatch(request, env, now, schedule) {
     const installationId = input.installationId.toLowerCase();
     if (record.license && record.installationId !== installationId) fail(409, 'already_bound');
     if (!record.license) {
-      const issuedAt = new Date(at).toISOString(), expiresAt = new Date(at + 10 * day).toISOString();
+      const issuedAt = new Date(at).toISOString(), expiresAt = record.kind === 'development' ? record.entitlementExpiresAt : new Date(at + 10 * day).toISOString();
+      if (Date.parse(expiresAt) <= at) fail(409,'license_expired');
       record = { ...record, installationId, activatedAt: issuedAt, expiresAt,
         license: await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
-          licenseId: crypto.randomUUID(), installationId, plan: 'commercial', majorVersion: null,
+          licenseId: crypto.randomUUID(), installationId, plan: record.kind === 'development' ? 'development' : 'commercial', majorVersion: null,
           maxActiveUsers: record.maxUsers, issuedAt, notBefore: issuedAt, expiresAt, sequence: 1,
         }) };
       await store.save(row, record);
@@ -381,13 +402,22 @@ export async function handleRequest(request, env, options = {}) {
 export async function prune(env, { now = () => Date.now() } = {}) {
   const store = await setup(env, now);
   let signingKey;
-  for (const row of await store.expiredContacts()) {
+  let afterId='',closed=0;
+  while(closed<100){
+    const rows=await store.expiredContacts(100,afterId);
+    if(!rows.length)break;
+    for (const row of rows) {
+    afterId=row.id;
+    if (activeDevelopment(row.trial,now())) continue;
     const record = { ...row.trial };
     if (record.license && !record.revocation) {
       signingKey ??= (await release(env)).signingKey;
       await revoke(record, env, signingKey, now());
     }
     try { await store.save(row, close(record, now()), true); } catch (error) { if (!(error instanceof Conflict)) throw error; }
+    closed++;if(closed>=100)break;
+    }
+    if(rows.length<100)break;
   }
   await store.pruneLimits();
 }

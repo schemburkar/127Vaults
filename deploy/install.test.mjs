@@ -44,6 +44,7 @@ function harness(overrides = {}) {
     verifyBundle: async () => {},
     inspectState: null,
     checkPublication: async () => {},
+    ensureRecovery: async () => {},
     runProbe: async (program, args) => { calls.push([program, args]); return healthy; },
     ...overrides
   };

@@ -97,6 +97,14 @@ function showInstaller(record) {
 }
 function showLicense(record) {
   showInstaller(record);
+  if(record.kind === 'development') {
+    document.querySelector('.trial-main > .kicker').textContent='DEVELOPMENT ACCESS';
+    document.querySelector('.trial-main > h1').textContent='Your development installation.';
+    document.querySelector('.trial-main > h1 + p').textContent='Approved development access through the standard signed-license and installer flow.';
+    $('trial-activate').querySelector('button').textContent='Activate development license';
+    $('bind-confirm').nextElementSibling.textContent='This is my development server. Activation binds the license to this installation without starting a trial.';
+    $('trial-terms').textContent='Development access uses the displayed license expiry. Downloads and updates do not reset the expiry or change the server identity. Keep your backup key safe and separate from encrypted backups.';
+  }
   const upgrading = Boolean(record.upgradeOfferedAt && record.installationId && !record.replacementCount && !record.replacementRequest);
   $('trial-upgrade').hidden = !upgrading;
   $('trial-prepare').hidden = Boolean(record.installationId);
@@ -111,7 +119,9 @@ function showLicense(record) {
   $('download-replacement-revocation').hidden = !record.replacementRequest && !record.replacementCount;
   $('trial-dates').textContent = record.expiresAt
     ? `Bound to ${record.installationId}. Writes expire ${new Date(record.expiresAt).toLocaleString()}.`
-    : `Up to ${record.maxUsers} vault users. The 10 days start when you activate. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
+    : record.kind === 'development'
+      ? `Development access for up to ${record.maxUsers} vault users, licensed until ${new Date(record.entitlementExpiresAt).toLocaleString()}. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`
+      : `Up to ${record.maxUsers} vault users. The 10 days start when you activate. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
 }
 async function download(action, filename) {
   const response = await api(action); const url = URL.createObjectURL(await response.blob());
