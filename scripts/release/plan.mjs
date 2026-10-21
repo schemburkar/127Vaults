@@ -10,7 +10,8 @@ const rust = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'crat
 const node = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
 const policy = ['LICENSE.md', 'COMMERCIAL-LICENSE.md'];
 export const productInputs = {
-  installer: ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'apps/installer', ...policy, 'docs/release/installer.md'],
+  installer: ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'apps/installer',
+    'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', ...policy, 'docs/release/installer.md'],
   desktop: [...rust, ...node, ...policy, 'apps/desktop', 'packages/ui', 'apps/extension/src/passkeys.mjs',
     'apps/extension/src/passkeys.d.mts', 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/client-install.md'],
   cli: [...rust, ...policy, 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/cli-install.md'],

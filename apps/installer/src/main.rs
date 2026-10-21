@@ -1,5 +1,6 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 mod archive;
+mod extension_setup;
 mod prerequisites;
 mod transport;
 
@@ -59,6 +60,12 @@ struct Args {
     /// HTTPS address of the existing server for PWA setup on a client machine.
     #[arg(long)]
     server_url: Option<String>,
+    /// IDs shown by Chrome/Edge after loading the extension (comma-separated).
+    #[arg(long, value_delimiter = ',', value_parser = extension_setup::parse_id)]
+    extension_ids: Vec<String>,
+    /// Installed native connector executable, if it cannot be found automatically.
+    #[arg(long)]
+    extension_host: Option<PathBuf>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -192,7 +199,7 @@ fn execute(mut args: Args) -> Result<()> {
             .item(
                 Product::Extension,
                 "Browser extension",
-                "Stage extension and show browser approval steps",
+                "Install extension and connect it to Desktop or CLI",
             )
             .item(Product::Cli, "CLI", "Terminal client and native connector")
             .item(
@@ -583,12 +590,38 @@ fn execute(mut args: Args) -> Result<()> {
             product,
             digest: asset.sha256,
             directory,
-            complete: true,
+            complete: product != Product::Extension,
             engine: Some(engine.clone()),
             provider: args.compose_provider.clone(),
         });
         state.save(&root)?;
         cliclack::log::success(format!("{} package installed", product.name()))?;
+    }
+    if args.components.contains(&Product::Extension) {
+        let index = state
+            .records
+            .iter()
+            .position(|r| r.product == Product::Extension)
+            .ok_or("Extension package is missing")?;
+        // Older receipts marked extraction as complete; require connector setup too.
+        state.records[index].complete = false;
+        state.save(&root)?;
+        let candidates: Vec<_> = state
+            .records
+            .iter()
+            .filter(|r| matches!(r.product, Product::Cli | Product::Desktop) && r.complete)
+            .map(|r| r.directory.clone())
+            .collect();
+        extension_setup::setup(
+            &root,
+            &state.records[index].directory,
+            &args.extension_ids,
+            args.extension_host.as_deref(),
+            &candidates,
+            interactive,
+        )?;
+        state.records[index].complete = true;
+        state.save(&root)?;
     }
     if let Some(directory) = server_directory {
         let mut bootstrap = Command::new(node.as_ref().ok_or("Server runtime unavailable")?);
