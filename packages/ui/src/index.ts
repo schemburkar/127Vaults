@@ -8,3 +8,5 @@ export { KeyboardHelp } from "./keyboard-help";
 export * from "./product-features.mjs";
 export { IconButton } from "./icon-button";
 export { PasskeyDetails } from "./passkey-details";
+
+export { FieldTypePicker } from "./field-type-picker";

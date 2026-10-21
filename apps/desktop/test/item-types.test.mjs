@@ -68,3 +68,15 @@ test('legacy raw imported JSON stays out of displayed and editable fields', () =
   const notes = {id:'migration-notes',label:'Notes',type:'note',value:'Readable note'};
   assert.deepEqual(ordinaryFields([raw,notes]), [notes]);
 });
+
+test('backup codes are masked recovery details separate from TOTP metadata', () => {
+  const option = RELATED_TYPES.login.find(option => option.type === 'backup');
+  assert.equal(option.label, 'Backup code');
+  const fields = addRelatedSection([{ id: '__127vaults_totp', label: 'Authenticator secret', type: 'password', value: 'JBSWY3DPEHPK3PXP' }], option.type, option.label);
+  const [section] = sections(fields);
+  assert.equal(section.type, 'backup');
+  assert.deepEqual(section.fields.map(({label, type}) => ({label, type})), [{label: 'Backup code', type: 'password'}]);
+  assert.equal(fields.find(field => field.id === '__127vaults_totp').value, 'JBSWY3DPEHPK3PXP');
+  const legacy = sections(addRelatedSection([], 'password', 'Authenticator or backup code'));
+  assert.equal(legacy[0].fields[0].type, 'password');
+});

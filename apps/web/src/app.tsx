@@ -25,7 +25,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
@@ -218,7 +218,7 @@ function CustomFieldsEditor() {
       <section className="mt-7 border-t border-white/10 pt-6"><div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold uppercase tracking-[.08em] text-slate-500">Related to this {ITEM_TYPES[itemType(fields)].label}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(fields).length} added</span></div>
         <div className="mt-4 grid gap-3">{sections(fields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/3"><div className="flex flex-wrap items-center gap-2 p-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><KeyRound size={17} /></span><button type="button" className="min-w-0 flex-1 text-left" aria-expanded={expandedRelatedId === section.id} onClick={() => setExpandedRelatedId(expandedRelatedId === section.id ? null : section.id)}><strong className="block truncate text-sm text-white">{section.label}</strong><span className="mt-1 block text-xs text-slate-500">{section.type === "custom" ? CUSTOM_SECTION.label : SECTION_TYPES[section.type].label} · {section.fields.filter((field) => field.value).length} field(s) added</span></button><Button type="button" size="sm" variant="ghost" onClick={() => setExpandedRelatedId(expandedRelatedId === section.id ? null : section.id)}>{expandedRelatedId === section.id ? "Done" : "Edit"}</Button><Button type="button" size="sm" variant="ghost" title={`Remove ${section.label}`} onClick={() => { setFields((current) => removeSection(current, section.id)); if (expandedRelatedId === section.id) setExpandedRelatedId(null); }}><Trash2 size={15} />Remove</Button></div>
           {expandedRelatedId !== section.id && section.fields.map((field) => <input key={field.id} type="hidden" className="typed-value" data-field-id={field.id} data-field-label={field.label} data-field-type={field.type} value={field.value} readOnly />)}
-          {expandedRelatedId === section.id && <div className="grid gap-4 border-t border-white/10 p-4"><label className={fieldLabel}>Name<Input value={section.label} onChange={(event) => setFields((current) => renameSection(current, section.id, event.target.value))} placeholder="e.g. Daily spending card" /></label>{section.type === "custom" ? section.fields.map((field) => <div key={field.id} className="grid gap-2 rounded-lg border border-white/10 p-3 sm:grid-cols-[1fr_8rem]"><label className={fieldLabel}>Field name<Input required value={field.label} onChange={(event) => update(field.id, { label: event.target.value })} /></label><label className={fieldLabel}>Kind<select className="min-h-11 rounded-xl border border-white/10 bg-[#11162b] px-3 text-sm text-white" value={field.type} onChange={(event) => update(field.id, { type: event.target.value })}><option value="text">Text</option><option value="password">Secret</option><option value="url">URL</option><option value="number">Number</option></select></label><div className="sm:col-span-2">{typedEditor(field)}</div><Button type="button" size="sm" variant="ghost" className="justify-self-start" onClick={() => setFields((current) => current.filter((row) => row.id !== field.id))}><Trash2 size={14} />Remove field</Button></div>) : section.fields.map(typedEditor)}{section.type === "custom" && <Button type="button" variant="secondary" className="justify-self-start" onClick={() => { if (fields.length >= 50) return; setFields((current) => addSectionField(current, section.id)); }}><Plus size={15} />Add field</Button>}</div>}
+          {expandedRelatedId === section.id && <div className="grid gap-4 border-t border-white/10 p-4"><label className={fieldLabel}>Name<Input value={section.label} onChange={(event) => setFields((current) => renameSection(current, section.id, event.target.value))} placeholder="e.g. Daily spending card" /></label>{section.type === "custom" ? section.fields.map((field) => <div key={field.id} className="grid gap-2 rounded-lg border border-white/10 p-3 sm:grid-cols-[1fr_8rem]"><label className={fieldLabel}>Field name<Input required value={field.label} onChange={(event) => update(field.id, { label: event.target.value })} /></label><label className={fieldLabel}>Kind<FieldTypePicker value={field.type || "text"} onChange={(type) => update(field.id, { type })} options={["text", "password", "url", "number"]} /></label><div className="sm:col-span-2">{typedEditor(field)}</div><Button type="button" size="sm" variant="ghost" className="justify-self-start" onClick={() => setFields((current) => current.filter((row) => row.id !== field.id))}><Trash2 size={14} />Remove field</Button></div>) : section.fields.map(typedEditor)}{section.type === "custom" && <Button type="button" variant="secondary" className="justify-self-start" onClick={() => { if (fields.length >= 50) return; setFields((current) => addSectionField(current, section.id)); }}><Plus size={15} />Add field</Button>}</div>}
         </div>)}</div><RelatedPicker type={itemType(fields)} onSelect={addRelated} />
       </section>
       <div className="mt-7 flex items-center justify-between gap-3"><h3 className="text-xs font-bold uppercase tracking-[.08em] text-slate-500">Custom fields</h3><Button id="add-custom-field" type="button" variant="secondary"><Plus size={16} />Add field</Button></div>
@@ -241,26 +241,7 @@ function CustomFieldsEditor() {
               aria-label={`Custom field ${index + 1} name`}
               onChange={(event) => update(id, { label: event.target.value })}
             />
-            <select
-              className="min-h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-[#E0BB95] focus:ring-4 focus:ring-[#E0BB95]/10"
-              value={field.type || "text"}
-              aria-label={`Custom field ${index + 1} type`}
-              onChange={(event) => update(id, { type: event.target.value })}
-            >
-              {[
-                "text",
-                "password",
-                "url",
-                "date",
-                "email",
-                "number",
-                "note",
-              ].map((kind) => (
-                <option key={kind} value={kind}>
-                  {kind[0].toUpperCase() + kind.slice(1)}
-                </option>
-              ))}
-            </select>
+            <FieldTypePicker value={field.type || "text"} onChange={(type) => update(id, { type })} />
             <div className="grid gap-2 max-[560px]:col-span-2">
               <div className={field.type === "password" ? "grid grid-cols-[minmax(0,1fr)_auto] gap-2" : "grid"}>
               {field.type === "note" ? (

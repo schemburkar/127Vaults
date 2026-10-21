@@ -41,9 +41,10 @@ export const TYPE_GROUPS: { label: string; types: ItemType[] }[] = [
   { label: "Financials", types: ["bank", "card"] },
   { label: "Devices and networks", types: ["wifi", "router", "ssh"] },
 ];
-export type SectionType = ItemType | "security" | "custom";
+export type SectionType = ItemType | "security" | "backup" | "custom";
 export const SECTION_TYPES: Record<Exclude<SectionType, "custom">, { label: string; fields: Omit<ItemField, "value">[] }> = {
   ...ITEM_TYPES,
+  backup: { label: "Backup code", fields: [{ id: "code", label: "Backup code", type: "password" }] },
   security: { label: "Security info", fields: [
     { id: "question", label: "Security question", type: "text" },
     { id: "answer", label: "Answer", type: "password" },
@@ -53,7 +54,7 @@ export const CUSTOM_SECTION = { label: "Custom details", fields: [] as Omit<Item
 export const RELATED_TYPES: Record<ItemType, { type: SectionType; label: string; description: string }[]> = {
   login: [
     { type: "security", label: "Recovery details", description: "Security question and answer" },
-    { type: "password", label: "Authenticator or backup code", description: "A named recovery secret" },
+    { type: "backup", label: "Backup code", description: "A recovery code; use Authenticator above for TOTP setup" },
     { type: "login", label: "Another login", description: "A second account for the same service" },
   ],
   passkey: [],

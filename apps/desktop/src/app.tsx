@@ -6,7 +6,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { createSessionRevocation } from "./session-revocation.mjs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, cn, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
@@ -1902,7 +1902,7 @@ export function App() {
                       <label className="grid gap-2 text-sm text-slate-400">Name<Input value={section.label} onChange={(event) => setSelected({ ...selected, customFields: renameSection(selected.customFields, section.id, event.target.value) })} placeholder="e.g. Daily spending card" /></label>
                       {section.type === "custom" ? section.fields.map((field) => <div key={field.id} className="grid gap-2 rounded-lg border border-white/10 p-3 sm:grid-cols-[1fr_8rem]">
                         <label className="grid gap-2 text-xs text-slate-400">Field name<Input value={field.label} aria-invalid={!!errors[`custom-${field.id}`]} onChange={(event) => updateCustom(field.id, { label: event.target.value })} /></label>
-                        <label className="grid gap-2 text-xs text-slate-400">Kind<select className="rounded-xl border border-white/10 bg-[#11162b] px-3 text-sm" value={field.type} onChange={(event) => updateCustom(field.id, { type: event.target.value })}><option value="text">Text</option><option value="password">Secret</option><option value="url">URL</option><option value="number">Number</option></select></label>
+                        <label className="grid gap-2 text-xs text-slate-400">Kind<FieldTypePicker value={field.type || "text"} onChange={(type) => updateCustom(field.id, { type })} options={["text", "password", "url", "number"]} /></label>
                         <div className="sm:col-span-2">{knownFieldEditor(field)}</div>
                         <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setSelected({ ...selected, customFields: selected.customFields.filter((row) => row.id !== field.id) })}><Trash2 size={14} />Remove field</Button>
                       </div>) : section.fields.map(knownFieldEditor)}
@@ -1956,25 +1956,7 @@ export function App() {
                             updateCustom(field.id, { label: e.target.value })
                           }
                         />
-                        <select
-                          className="rounded-xl border border-white/10 bg-[#11162b] px-3 text-sm"
-                          value={field.type}
-                          onChange={(e) =>
-                            updateCustom(field.id, { type: e.target.value })
-                          }
-                        >
-                          {[
-                            "text",
-                            "password",
-                            "url",
-                            "date",
-                            "email",
-                            "number",
-                            "note",
-                          ].map((type) => (
-                            <option key={type}>{type}</option>
-                          ))}
-                        </select>
+                        <FieldTypePicker value={field.type || "text"} onChange={(type) => updateCustom(field.id, { type })} />
                         <div className={field.type === "password" ? "grid grid-cols-[minmax(0,1fr)_auto] gap-2" : "grid"}>
                           <Input
                             type={
