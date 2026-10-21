@@ -1,7 +1,7 @@
 # Build a complete Windows/Linux installer set, then publish it explicitly.
 [CmdletBinding()]
 param(
-    [Parameter(Position=0)][ValidateSet('build','publish')][string]$Action = 'build',
+    [Parameter(Position=0)][ValidateSet('build','publish','verify')][string]$Action = 'build',
     [string]$Config,
     [string]$Label,
     [string]$Ref = 'HEAD',

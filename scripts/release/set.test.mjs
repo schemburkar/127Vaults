@@ -141,6 +141,19 @@ test('publish preview runs no remote commands and failed live check preserves pr
   assert.equal(await present(join(f.settings.cacheRoot, 'sets/fixture-set/published.json')), false);
 });
 
+test('verification-only resumes a deployed set without uploading or deploying again', async t => {
+  const f = await fixture(t);
+  await buildSet(f.request, f.settings, f.active, f.deps);
+  const verify = f.deps.verifyLiveDelivery;
+  f.deps.verifyLiveDelivery = async () => { throw Error('temporary network failure'); };
+  await assert.rejects(publishSet({}, f.settings, f.active, f.deps), /temporary network/);
+  f.calls.length = 0;
+  f.deps.verifyLiveDelivery = verify;
+  await publishSet({ action: 'verify' }, f.settings, f.active, f.deps);
+  assert.ok(!f.calls.some(call => ['backup', 'dry-run', 'provision', 'upload', 'deploy'].includes(call)));
+  assert.equal((await json(join(f.settings.cacheRoot, 'sets/fixture-set/published.json'))).status, 'passed');
+});
+
 test('embedded license checker rejects an installer containing different terms', async t => {
   const f = await fixture(t); const dir = dirname((await json(f.active.catalogueFile)).artifacts.find(a => a.product === 'desktop').path);
   await assert.rejects(verifyEmbeddedAgreements([dir], { sevenZip: 'fixture' }, async () => 'different terms'), /Embedded agreement differs/);

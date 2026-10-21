@@ -54,6 +54,13 @@ cargo clippy --locked -p vaults-installer --all-targets -- -D warnings
 
 Combined releases use the coordinated version selected by `release-set.ps1` for every product, including the installer. The packaged installer executable and metadata must report that same version; `apps/installer/Cargo.toml` remains the development default. Add verified installer release directories to the trial catalogue input alongside the existing products. Builds stay internal until the complete combined release is accepted and published. Do not publish intermediate installers or client/server builds separately.
 
+Use `release-set.ps1 build -Label NAME`, followed by `release-set.ps1 publish -Label NAME`.
+If deployment succeeds but live download verification is interrupted, resume with
+`release-set.ps1 verify -Label NAME`. This rechecks the tested packages and upgrade
+evidence, confirms the saved Cloudflare target, verifies live authenticated downloads
+and their checksum, and writes the publication receipts only after success. It
+does not upload packages, provision resources or deploy the Worker again.
+
 The authenticated `GET /api/trials/:id/installer` endpoint returns protocol 1, installation binding, entitled artifacts and `minimumInstallerVersion`. It does not expose R2 keys or bearer credentials. Installer requests include `X-127Vaults-Installer-Version` and use the existing bearer header. Configure `minimumInstallerVersion` in the Cloudflare deployment config (default `0.1.0`) to retire old installers. An authenticated installer below that floor receives HTTP 426 on plan, download and activation requests. Missing/invalid versions on the installer endpoint are also rejected. Browser flows remain available; this is a compatibility floor, not a replacement authentication boundary. Invalid operator policy fails closed.
 
 The prompt design draws on [cliclack / Clack](https://docs.rs/cliclack/0.5.6/cliclack/) and argument parsing uses [clap](https://docs.rs/clap/4.6.1/clap/).

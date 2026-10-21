@@ -223,6 +223,20 @@ export async function publishSet(request, settings, active, deps = defaults) {
   try {
     unlockDeployment = await acquireLock(settings.deploymentConfig + '.publish-lock');
     const secrets = await deps.loadSecrets(active, catalogue);
+    if (request.action === 'verify') {
+      const config = await json(join(directory, 'deployment.json'));
+      for (const key of ['origin', 'accountId', 'workerName', 'bucketName', 'databaseName']) {
+        if (config[key] !== active[key]) throw Error('Saved deployment belongs to a different Cloudflare target.');
+      }
+      if (config.releaseId !== record.label || config.catalogueFile !== record.catalogueFile
+        || config.stateDirectory !== join(directory, 'cloudflare')) throw Error('Saved deployment does not match the tested release set.');
+      const delivery = await deps.verifyLiveDelivery(config, catalogue, secrets.OPERATOR_TOKEN);
+      await saveJson(join(directory, 'delivery.json'), delivery);
+      await saveJson(settings.deploymentConfig, config);
+      await saveJson(join(directory, 'published.json'), { label: record.label, versions: record.versions, ...delivery });
+      console.log(`Published and verified complete installer set: ${record.label}`);
+      return delivery;
+    }
     const credentials = settings.r2CredentialsFile ? await json(settings.r2CredentialsFile)
       : await exists(join(active.secretsDirectory, 'r2-upload.json')) ? await json(join(active.secretsDirectory, 'r2-upload.json')) : process.env;
     if (!credentials.R2_ACCESS_KEY_ID || !credentials.R2_SECRET_ACCESS_KEY) throw Error('Configure the private R2 upload credentials before publishing.');
@@ -254,9 +268,9 @@ export async function publishSet(request, settings, active, deps = defaults) {
 
 export async function runSet(request) {
   if (request.help) {
-    console.log('release-set.ps1 build|publish [-Plan] [-Label name] [-Ref commit] [-Config private-settings.json]\nBuild: all Windows/Linux installers, checks, embedded agreements, catalogue and isolated upgrade/restore.\nPublish: backup, Cloudflare dry-run, R2 upload/hash verification, one deployment and live download verification.\nDefault configuration: .cloudflare-deploy/release-set.json (optional). Receipts stay in the private release cache.'); return;
+    console.log('release-set.ps1 build|publish|verify [-Plan] [-Label name] [-Ref commit] [-Config private-settings.json]\nBuild: all Windows/Linux installers, checks, embedded agreements, catalogue and isolated upgrade/restore.\nPublish: backup, Cloudflare dry-run, R2 upload/hash verification, one deployment and live download verification.\nVerify: retry live checks and finalize a deployed set without uploading or deploying.\nDefault configuration: .cloudflare-deploy/release-set.json (optional). Receipts stay in the private release cache.'); return;
   }
-  if (!['build', 'publish'].includes(request.action)) throw Error('Choose build or publish.');
+  if (!['build', 'publish', 'verify'].includes(request.action)) throw Error('Choose build, publish or verify.');
   const settings = await settingsFor(request), active = await loadConfig(settings.deploymentConfig);
   return request.action === 'build' ? buildSet(request, settings, active) : publishSet(request, settings, active);
 }
@@ -266,7 +280,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     let request;
     if (process.argv[2] === '--request') { let input = ''; for await (const chunk of process.stdin) input += chunk; request = JSON.parse(input.replace(/^\uFEFF/, '')); }
     else if (process.argv[2] === '--help') request = { help: true };
-    else throw Error('Use release-set.ps1 build|publish.');
+    else throw Error('Use release-set.ps1 build|publish|verify.');
     await runSet(request);
   })().catch(error => { console.error(`Release set: ${error.message}`); process.exitCode = 1; });
 }
