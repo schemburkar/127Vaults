@@ -1,9 +1,26 @@
-import { isIP } from 'node:net';
+import { isIP, createServer } from 'node:net';
+import { lookup } from 'node:dns/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const execute = promisify(execFile);
+export const { validServerHostname } = await import(existsSync(new URL('../apps/server/src/hostname.mjs', import.meta.url))
+  ? '../apps/server/src/hostname.mjs' : './hostname.mjs');
+export async function verifyHostnameAddress(hostname, address, resolveHost = lookup) {
+  if (!validServerHostname(hostname)) throw Error('Use an exact lowercase DNS name; .local and .localhost aliases are unsupported.');
+  const answers = await resolveHost(hostname, { all: true, family: 4 });
+  if (!answers.length || answers.some(answer => answer.address !== address)) {
+    throw Error('Every DNS answer must match the selected private server address. Configure private DNS or the client hosts file before setup.');
+  }
+}
+export function checkPublication(address = '127.0.0.1', port = 12780) {
+  return new Promise((done, reject) => {
+    const server = createServer();
+    server.once('error', () => reject(Error(`Cannot reserve ${address}:${port}. Update/adopt the existing server or resolve the port conflict before creating another identity. No trial was activated.`)));
+    server.listen({ host: address, port, exclusive: true }, () => server.close(done));
+  });
+}
 export function tailscaleProgram({ platform = process.platform, programFiles = process.env.ProgramFiles, exists = existsSync } = {}) {
   const installed = programFiles && join(programFiles, 'Tailscale', 'tailscale.exe');
   return platform === 'win32' && installed && exists(installed) ? installed : 'tailscale';
@@ -23,6 +40,12 @@ export function tailscaleSelf(source) {
 export async function discoverTailscale(run = execute) {
   const { stdout } = await run(tailscaleProgram(), ['status', '--json'], { windowsHide: true, timeout: 10000, maxBuffer: 1048576 });
   return tailscaleSelf(stdout);
+}
+export async function discoverTailscaleIdentity(run = execute) {
+  const { stdout } = await run(tailscaleProgram(), ['status', '--json'], { windowsHide: true, timeout: 10000, maxBuffer: 1048576 });
+  const address = tailscaleSelf(stdout);
+  const hostname = JSON.parse(stdout).Self?.DNSName?.replace(/\.$/, '').toLowerCase();
+  return { address, hostname: validServerHostname(hostname) && hostname.endsWith('.ts.net') ? hostname : null };
 }
 export async function enableTailnetForward(endpoint, run = execute) {
   if (!tailscaleIPv4(endpoint) || await discoverTailscale(run) !== endpoint) throw Error('Tailscale identity differs from the configured installation.');

@@ -43,6 +43,7 @@ function harness(overrides = {}) {
     nodeVersion: '24.20.0',
     verifyBundle: async () => {},
     inspectState: null,
+    checkPublication: async () => {},
     runProbe: async (program, args) => { calls.push([program, args]); return healthy; },
     ...overrides
   };
@@ -67,6 +68,23 @@ test('options keep identity outside the bundle and preserve argument boundaries'
   }
   const args = ['--private-dir', '../private identity', '--compose-provider', 'provider with spaces.exe'];
   assert.deepEqual(parseOptions(args, { directory }).args, args);
+});
+
+test('custom hostnames require a private network and never weaken endpoint validation', () => {
+  assert.equal(parseOptions(['--endpoint','192.168.1.20','--hostname','vault.home.arpa']).hostname,'vault.home.arpa');
+  assert.equal(parseOptions(['--tailscale','--hostname','vault.example.com']).hostname,'vault.example.com');
+  for (const args of [['--hostname','vault.home.arpa'],['--endpoint','127.0.0.1','--hostname','vault.home.arpa'],
+    ['--endpoint','8.8.8.8','--hostname','vault.example.com'],['--tailscale','--hostname','vault.local']]) assert.throws(() => parseOptions(args));
+});
+
+test('fresh setup refuses a port conflict before invoking init or start', async () => {
+  const directory = await mkdtemp(join(tmpdir(),'vaults-port-conflict-'));
+  try {
+    await assert.rejects(main(['setup'], harness({directory, log:()=>{},
+      checkPublication:async () => {throw Error('port occupied');},
+      runOperator:async () => assert.fail('must not initialize or start')})), /port occupied/);
+    await assert.rejects(readFile(join(directory,'.env')), {code:'ENOENT'});
+  } finally {await rm(directory,{recursive:true,force:true});}
 });
 
 test('doctor reports all independent failures without exposing command output', async () => {

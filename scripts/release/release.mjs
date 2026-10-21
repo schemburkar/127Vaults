@@ -173,6 +173,12 @@ async function build(plan, platform, attempt) {
   await copyFile(join(source, `docs/release/${documentation}.md`), join(payload, 'README.md'));
   await copyLicenses(source, payload);
   await copyFile(join(import.meta.dirname, 'verify-release.mjs'), join(payload, 'verify-release.mjs'));
+  if (plan.product === 'installer') {
+    const binary = join(source, 'target/release', process.platform === 'win32' ? '127vaults-install.exe' : '127vaults-install');
+    const actual = await execute(binary, ['--version'], { capture: true, quiet: true });
+    if (actual !== `127vaults-install ${plan.packageVersion}`) throw Error(`Packaged installer reports ${actual}; expected ${plan.packageVersion}.`);
+    checks.push({ name: 'installer embedded version', status: 'passed' });
+  }
   if (['desktop', 'cli'].includes(plan.product)) {
     const host = join(source, 'target/release', process.platform === 'win32' ? '127vaults-extension-host.exe' : '127vaults-extension-host');
     await execute(process.execPath, [join(import.meta.dirname, 'smoke-native-host.mjs'), host]);

@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { windowsOperatorSid } from '../scripts/tls.mjs';
+import { windowsOperatorSid, certificateSan } from '../scripts/tls.mjs';
+
+test('private-CA SAN is exact DNS or IP and cannot inject certificate extensions', () => {
+  assert.equal(certificateSan('vault.home.arpa'), 'DNS:vault.home.arpa');
+  assert.equal(certificateSan('home.tail123.ts.net'), 'DNS:home.tail123.ts.net');
+  assert.equal(certificateSan('127.0.0.1'), 'IP:127.0.0.1');
+  for (const name of ['*.example.com','vault.local','home.localhost','Vault.Example.com','example.com\nDNS:evil.test','example.com,IP:8.8.8.8','8.8.999.1']) {
+    assert.throws(() => certificateSan(name));
+  }
+});
 
 test('Windows ACL identity comes from the token SID, independent of domain and localized account names', () => {
   assert.equal(windowsOperatorSid((program, args) => {

@@ -35,3 +35,21 @@ test('Host, Origin, forwarded headers, and SNI are exact', () => {
   assert.equal(sniAllowed('', config), true);
   assert.equal(sniAllowed('evil.test', config), false);
 });
+
+test('custom DNS preserves private publication and exact hostname boundaries', () => {
+  for (const mode of ['private-lan','tailscale']) {
+    const address = mode === 'tailscale' ? '100.64.0.10' : '192.168.1.20';
+    const env = { VAULTS_ACCESS_MODE:mode, VAULTS_BIND:'172.28.127.2', VAULTS_NETWORK_ADDRESS:address,
+      VAULTS_ENDPOINT_HOST:'vault.home.arpa', VAULTS_PUBLISH_ADDRESS:mode === 'tailscale' ? '127.0.0.1' : address };
+    const config = transportConfig(env);
+    assert.equal(config.origin,'https://vault.home.arpa:12780');
+    assert.equal(sniAllowed('vault.home.arpa',config),true);
+    assert.equal(sniAllowed('',config),false);
+    assert.equal(sniAllowed(address,config),false);
+    for (const host of [address,'evil.example.com']) {
+      assert.equal(requestAllowed({rawHeaders:['Host',`${host}:12780`],headers:{host:`${host}:12780`}},config),false);
+    }
+    for (const name of ['vault.local','vault.localhost','*.example.com']) assert.throws(() => transportConfig({...env,VAULTS_ENDPOINT_HOST:name}));
+    assert.throws(() => transportConfig({...env,VAULTS_NETWORK_ADDRESS:'8.8.8.8'}));
+  }
+});

@@ -43,6 +43,13 @@ The user's subsequent direction prefers a loopback origin behind a private conne
 
 **Acceptance:** Using published packages, host on one tailnet computer and complete server trust, account/device enrollment, approval, sync and offline-client recovery on another. Verify that unapproved hosts/origins and unintended network interfaces remain inaccessible. Document the supported private-network path and distinguish it from a single-machine loopback setup.
 
+2026-10-21 DNS follow-up for SRV-021: fresh-install custom hostnames and full
+MagicDNS selection are implemented locally with exact private-CA DNS certificates,
+separate private publication addresses and DNS-address validation. Focused tests
+and isolated real certificate/HTTPS acceptance pass. These server changes are not
+in deployed 0.1.7; packaged client/server onboarding acceptance and an explicit
+existing-origin migration remain open. Public ACME automation is deferred.
+
 ## SRV-020 — API-first server boundary (post-MVP priority)
 
 **Decision:** Prioritize after MVP acceptance. Preserve the option of a future

@@ -113,6 +113,39 @@ This native-provider path requires the updated launcher. Previously published bu
 
 For invited-user email verification, configure a trusted SMTP-over-TLS service on port 465. After `init`, append `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, and `VAULTS_INSTALLATION_LABEL` to `.env`. Write the SMTP password alone to `<private directory>/runtime/smtp-password` with operator-only permissions; do not put it in `.env`. On `start`, the installer adds `compose.smtp.yaml`, which gives only the server an outbound network while PostgreSQL remains on the private backend. Invalid SMTP configuration fails startup. This external SMTP path needs a live provider and egress test before invited-user onboarding; the default installation supports only the first owner.
 
+## Friendly server hostnames (prepared; requires the next server bundle)
+
+The deployed 0.1.7 server does not support this mode. For a fresh DNS-capable
+bundle, keep same-device setup on localhost, or select a private LAN address and
+an exact hostname:
+
+```powershell
+node install.mjs setup --endpoint 192.168.1.20 --hostname vault.home.arpa
+node install.mjs setup --tailscale
+node install.mjs setup --tailscale --hostname vault.example.com
+```
+
+Fresh Tailscale setup prefers the online node's full MagicDNS `.ts.net` name,
+falling back to its verified tailnet IPv4 when no usable name is available.
+The network address remains separate from the browser hostname. Setup checks
+that the hostname's IPv4 answers match that address before generating keys.
+Administrators must configure DNS or hosts-file entries on every client; setup
+does not change DNS or host files. `.local`, `.localhost` aliases, wildcards,
+public bind addresses and public Funnel remain unsupported.
+
+Certificates initially use the installation's private CA with an exact DNS SAN.
+Verify and trust that CA on each client. Public ACME/Let's Encrypt issuance and
+automated renewal are not implemented by this mode. Tailscale retains private TCP
+forwarding and loopback publication. LAN publication remains on the selected
+private address; exact Host, Origin and TLS-name checks are retained.
+Clients still verify installation identity and checkpoint continuity.
+
+Existing installations retain their configured origin during upgrades. Renaming
+one requires an explicit backed-up migration, client reconnection, browser/PWA
+storage and passkey review; these commands do not silently rename it. The repeatable
+isolated certificate/HTTPS check is `node tests/internal/server/hostname-smoke.mjs
+--output <new-private-receipt.json>` from the source checkout.
+
 ## Enable the internal admin console
 
 The loopback server bundle includes the local management console at `/admin/` and its

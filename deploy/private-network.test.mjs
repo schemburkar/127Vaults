@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tailscaleSelf, enableTailnetForward, tailscaleProgram } from './private-network.mjs';
+import { tailscaleSelf, enableTailnetForward, tailscaleProgram, discoverTailscaleIdentity, verifyHostnameAddress, checkPublication } from './private-network.mjs';
+import { createServer } from 'node:net';
+
+test('MagicDNS discovery returns the full node name and keeps the verified address', async () => {
+  const source = JSON.stringify({BackendState:'Running',Self:{Online:true,TailscaleIPs:['100.64.0.10'],DNSName:'home.tail123.ts.net.'}});
+  assert.deepEqual(await discoverTailscaleIdentity(async () => ({stdout:source})), {address:'100.64.0.10',hostname:'home.tail123.ts.net'});
+});
+
+test('custom DNS must resolve only to the selected private address', async () => {
+  await verifyHostnameAddress('vault.home.arpa','192.168.1.20',async () => [{address:'192.168.1.20'}]);
+  for (const answers of [[], [{address:'8.8.8.8'}], [{address:'192.168.1.20'}, {address:'192.168.1.21'}]]) {
+    await assert.rejects(verifyHostnameAddress('vault.example.com','192.168.1.20',async () => answers), /Every DNS answer/);
+  }
+  await assert.rejects(verifyHostnameAddress('vault.local','192.168.1.20'), /exact lowercase/);
+});
+
+test('occupied publication port fails before any identity can be created', async () => {
+  const server = createServer();
+  await new Promise(done => server.listen(0,'127.0.0.1',done));
+  const port = server.address().port;
+  try { await assert.rejects(checkPublication('127.0.0.1',port), /Update\/adopt/); }
+  finally { await new Promise(done => server.close(done)); }
+  await checkPublication('127.0.0.1',port);
+});
 
 const self = JSON.stringify({BackendState:'Running',Self:{Online:true,TailscaleIPs:['100.64.0.10','fd7a:115c:a1e0::1']}});
 test('Tailscale discovery uses the online native node identity, never a visitor-supplied address', () => {

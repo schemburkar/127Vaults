@@ -8,7 +8,7 @@ import { isIP } from 'node:net';
 import { request } from 'node:https';
 import { resolve, join } from 'node:path';
 import { installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
-import { discoverTailscale, enableTailnetForward, tailscaleIPv4 } from './private-network.mjs';
+import { discoverTailscale, discoverTailscaleIdentity, enableTailnetForward, tailscaleIPv4, validServerHostname, verifyHostnameAddress, checkPublication } from './private-network.mjs';
 
 function readinessProbe({ origin, ca, token }) {
   return new Promise(resolveProbe => {
@@ -70,15 +70,19 @@ export async function runTestInstall(argv) {
 const action = argv[0];
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
 const useTailscale = argv.includes('--tailscale');
-const endpoint = argv.find((value, index) => argv[index - 1] === '--endpoint') ?? (useTailscale ? await discoverTailscale() : '127.0.0.1');
+const tailnet = useTailscale ? await discoverTailscaleIdentity() : null;
+const networkAddress = argv.find((value, index) => argv[index - 1] === '--endpoint') ?? tailnet?.address ?? '127.0.0.1';
+const hostname = argv.find((value, index) => argv[index - 1] === '--hostname');
+const endpoint = hostname ?? tailnet?.hostname ?? networkAddress;
 const restoredIdentity = argv.find((value, index) => argv[index - 1] === '--restore-identity');
 const configuration = await readFile('.env','utf8').catch(error => { if(error.code === 'ENOENT') return ''; throw error; });
 const privateDir = installationPrivateDirectory(argv, configuration);
 const provider = argv.find((value, index) => argv[index - 1] === '--compose-provider');
 if (!['init', 'start', 'status', 'identify', 'license', 'revoke', 'stop', 'bootstrap', 'restore'].includes(action)) throw Error('Use init, start, status, identify, license, revoke, stop, bootstrap, or restore.');
-const [endpointA, endpointB] = endpoint.split('.').map(Number);
-if (!['127.0.0.1', 'localhost'].includes(endpoint) && !(isIP(endpoint) === 4 &&
-  (endpointA === 10 || (endpointA === 192 && endpointB === 168) || (endpointA === 172 && endpointB >= 16 && endpointB <= 31))) && !(useTailscale && tailscaleIPv4(endpoint))) throw Error('Use loopback, a private IPv4 endpoint, or discovered Tailscale with --tailscale.');
+const [endpointA, endpointB] = networkAddress.split('.').map(Number);
+if (!['127.0.0.1', 'localhost'].includes(networkAddress) && !(isIP(networkAddress) === 4 &&
+  (endpointA === 10 || (endpointA === 192 && endpointB === 168) || (endpointA === 172 && endpointB >= 16 && endpointB <= 31))) && !(useTailscale && tailscaleIPv4(networkAddress))) throw Error('Use loopback, a private IPv4 endpoint, or discovered Tailscale with --tailscale.');
+if (hostname && (!validServerHostname(hostname) || ['127.0.0.1', 'localhost'].includes(networkAddress))) throw Error('Custom hostnames require an explicit private LAN address or Tailscale. Keep localhost for same-device installations.');
 
 async function run(program, argv, { quiet = false } = {}) {
   const child = spawn(program, argv, { stdio: quiet ? ['ignore', 'pipe', 'pipe'] : 'inherit', windowsHide: true,
@@ -123,7 +127,9 @@ async function runCompose(args, options) {
 }
 async function initialize() {
   if (existsSync('.env')) throw Error('.env already exists; preserving installation identity.');
-  if (useTailscale && await discoverTailscale() !== endpoint) throw Error('Endpoint does not match this online Tailscale device.');
+  if (useTailscale && await discoverTailscale() !== networkAddress) throw Error('Endpoint does not match this online Tailscale device.');
+  if (validServerHostname(endpoint)) await verifyHostnameAddress(endpoint, networkAddress);
+  await checkPublication(useTailscale || networkAddress === 'localhost' ? '127.0.0.1' : networkAddress);
   if (privateDir === resolve('.') || privateDir.startsWith(resolve('.') + '\\') || privateDir.startsWith(resolve('.') + '/')) throw Error('Private directory must be outside the bundle.');
   if (restoredIdentity) {
     for (const name of ['ca/ca.crt', 'ca/ca.key', 'live/server.crt', 'live/server.key', 'runtime/token.key', 'runtime/checkpoint.key', 'runtime/postgres-password', 'runtime/readiness-token']) {
@@ -156,9 +162,10 @@ async function initialize() {
     `VAULTS_SERVER_IP=172.28.${chosenOctet}.2`,
     `VAULTS_DATABASE_IP=172.28.${chosenOctet}.3`,
     `VAULTS_TLS_DIR=${privateDir.replaceAll('\\', '/')}`,
-    `VAULTS_ACCESS_MODE=${useTailscale ? 'tailscale' : endpoint === '127.0.0.1' || endpoint === 'localhost' ? 'loopback' : 'private-lan'}`,
+    `VAULTS_ACCESS_MODE=${useTailscale ? 'tailscale' : networkAddress === '127.0.0.1' || networkAddress === 'localhost' ? 'loopback' : 'private-lan'}`,
     `VAULTS_ENDPOINT_HOST=${endpoint}`,
-    `VAULTS_PUBLISH_ADDRESS=${useTailscale || endpoint === 'localhost' ? '127.0.0.1' : endpoint}`,
+    `VAULTS_NETWORK_ADDRESS=${networkAddress}`,
+    `VAULTS_PUBLISH_ADDRESS=${useTailscale || networkAddress === 'localhost' ? '127.0.0.1' : networkAddress}`,
     `VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS=${process.platform === 'win32' ? '1' : '0'}`,
     ''
   ].join('\n');
@@ -256,7 +263,9 @@ else {
     await verifyBundle();
     const content = await readFile('.env', 'utf8');
     const configuredEndpoint = /^VAULTS_ENDPOINT_HOST=(.+)$/m.exec(content)?.[1];
-    if (!configuredEndpoint || (argv.includes('--endpoint') && endpoint !== configuredEndpoint)) throw Error('Start endpoint must match the initialized installation.');
+    const configuredAddress = /^VAULTS_NETWORK_ADDRESS=(.+)$/m.exec(content)?.[1] ?? configuredEndpoint;
+    if (!configuredEndpoint || (argv.includes('--endpoint') && networkAddress !== configuredAddress)
+      || (hostname && hostname !== configuredEndpoint)) throw Error('Start endpoint must match the initialized installation.');
     if (/^SMTP_HOST=(.+)$/m.test(content)) {
       const dir = /^VAULTS_TLS_DIR=(.+)$/m.exec(content)?.[1];
       if (!dir || !existsSync(join(dir, 'runtime', 'smtp-password'))) throw Error('Configured SMTP requires runtime/smtp-password outside the bundle.');
@@ -281,7 +290,7 @@ else {
       if (actual !== restoreId) throw Error('Restored database and identity installation IDs differ; server start refused.');
     }
     await runCompose(['up', '-d', '--no-build']);
-    if (/^VAULTS_ACCESS_MODE=tailscale$/m.test(content)) await enableTailnetForward(configuredEndpoint);
+    if (/^VAULTS_ACCESS_MODE=tailscale$/m.test(content)) await enableTailnetForward(configuredAddress);
     const publicationPort = /^VAULTS_PUBLISH_PORT=(\d+)$/m.exec(content)?.[1] || '12780';
     await waitForReadiness({ origin: `https://${configuredEndpoint}:${publicationPort}`,
       ca: await readFile(join(privateDir, 'ca/ca.crt')),

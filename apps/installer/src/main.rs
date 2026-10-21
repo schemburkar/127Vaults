@@ -1,5 +1,6 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 mod archive;
+mod discovery;
 mod extension_setup;
 mod prerequisites;
 mod transport;
@@ -41,6 +42,9 @@ struct Args {
     /// Private LAN IPv4 address for a fresh server (default: loopback).
     #[arg(long)]
     endpoint: Option<String>,
+    /// Exact custom DNS name, with private-CA TLS (requires a newer server bundle).
+    #[arg(long)]
+    hostname: Option<String>,
     #[arg(long, conflicts_with = "endpoint")]
     tailscale: bool,
     /// Existing protected 32-byte backup key; required for server upgrades.
@@ -66,6 +70,9 @@ struct Args {
     /// Installed native connector executable, if it cannot be found automatically.
     #[arg(long)]
     extension_host: Option<PathBuf>,
+    /// List published local servers without an invitation or installation changes.
+    #[arg(long)]
+    discover: bool,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -74,6 +81,8 @@ struct State {
     records: Vec<Record>,
     #[serde(default)]
     pending_upgrade: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    preserved_server_setups: Vec<Record>,
 }
 #[derive(Serialize, Deserialize)]
 struct Record {
@@ -92,6 +101,7 @@ impl State {
                 format: 1,
                 records: vec![],
                 pending_upgrade: None,
+                preserved_server_setups: vec![],
             });
         }
         let state: Self = serde_json::from_slice(&fs::read(path)?)?;
@@ -128,6 +138,30 @@ struct Release {
 }
 
 fn validate_network_selection(args: &Args, state: &State) -> Result<()> {
+    if let Some(hostname) = &args.hostname {
+        let valid = hostname.len() <= 253
+            && hostname.contains('.')
+            && !hostname.ends_with(".local")
+            && !hostname.ends_with(".localhost")
+            && hostname.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label
+                        .bytes()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+            });
+        if !valid
+            || (!args.tailscale
+                && args
+                    .endpoint
+                    .as_deref()
+                    .is_none_or(|e| matches!(e, "localhost" | "127.0.0.1")))
+        {
+            return Err("Use an exact lowercase DNS hostname with --endpoint PRIVATE-IP or --tailscale; .local/.localhost aliases are unsupported".into());
+        }
+    }
     if let Some(endpoint) = &args.endpoint {
         let private = endpoint == "localhost"
             || endpoint.parse::<std::net::Ipv4Addr>().is_ok_and(|address| {
@@ -137,7 +171,7 @@ fn validate_network_selection(args: &Args, state: &State) -> Result<()> {
             return Err("Use localhost, 127.0.0.1 or a private LAN IPv4 endpoint. Use --tailscale for native tailnet discovery".into());
         }
     }
-    if args.endpoint.is_none() && !args.tailscale {
+    if args.endpoint.is_none() && !args.tailscale && args.hostname.is_none() {
         return Ok(());
     }
     if !args.components.contains(&Product::Server) {
@@ -156,12 +190,20 @@ fn validate_network_selection(args: &Args, state: &State) -> Result<()> {
         let endpoint = config
             .lines()
             .find_map(|line| line.strip_prefix("VAULTS_ENDPOINT_HOST="));
+        let address = config
+            .lines()
+            .find_map(|line| line.strip_prefix("VAULTS_NETWORK_ADDRESS="))
+            .or(endpoint);
         let tailnet = config
             .lines()
             .any(|line| line == "VAULTS_ACCESS_MODE=tailscale");
         if (args.tailscale && !tailnet)
             || args
                 .endpoint
+                .as_deref()
+                .is_some_and(|requested| Some(requested) != address)
+            || args
+                .hostname
                 .as_deref()
                 .is_some_and(|requested| Some(requested) != endpoint)
         {
@@ -180,6 +222,13 @@ fn main() {
 
 #[allow(clippy::too_many_lines)] // Sequential orchestration; helpers own side effects.
 fn execute(mut args: Args) -> Result<()> {
+    if args.discover {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&discovery::discover(args.engine.as_deref())?)?
+        );
+        return Ok(());
+    }
     cliclack::intro("127Vaults · Setup")?;
     let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     if args.components.is_empty() {
@@ -236,10 +285,13 @@ fn execute(mut args: Args) -> Result<()> {
     let root = std::path::absolute(root)?;
     let initial_state = fs::read(root.join("installation.json")).ok();
     let mut state = State::load(&root)?;
-    validate_network_selection(&args, &state)?;
     if let Some(path) = &state.pending_upgrade {
         return Err(format!("Interrupted upgrade needs recovery. Inspect {} and the previous server; reconcile installation.json only after verifying identity, data, license and health", path.display()).into());
     }
+    if args.components.contains(&Product::Server) && args.from.is_none() {
+        reconcile_server(&mut args, &mut state)?;
+    }
+    validate_network_selection(&args, &state)?;
     if let Some(path) = &args.compose_provider {
         args.compose_provider = Some(fs::canonicalize(path)?);
     }
@@ -247,7 +299,11 @@ fn execute(mut args: Args) -> Result<()> {
         if args.engine.is_none() {
             return Err("Adopting an existing server requires --engine podman|docker to preserve its engine".into());
         }
-        if state.records.iter().any(|r| r.product == Product::Server) {
+        if state
+            .records
+            .iter()
+            .any(|r| r.product == Product::Server && r.complete)
+        {
             return Err(
                 "Server already tracked; omit --from and use the recorded installation".into(),
             );
@@ -269,6 +325,9 @@ fn execute(mut args: Args) -> Result<()> {
     let release: Release = api.request("installer", None)?.json()?;
     if release.protocol_version != 1 || release.source_revision.len() < 40 {
         return Err("Invalid release metadata".into());
+    }
+    if args.components.contains(&Product::Server) {
+        verify_invitation_binding(&state, release.installation_id.as_deref())?;
     }
     let mut selected = Vec::new();
     for &product in &args.components {
@@ -359,7 +418,20 @@ fn execute(mut args: Args) -> Result<()> {
         cliclack::outro("Plan complete; no local installation changes made")?;
         return Ok(());
     }
-    if !args.yes && (!interactive || !cliclack::confirm("Proceed with this plan? Server setup binds this trial and starts its 10 days. Missing prerequisites will be installed.").interact()?) { return Err("Installation cancelled; use --yes with explicit components for automation".into()); }
+    let confirmation = if state
+        .records
+        .iter()
+        .any(|r| r.product == Product::Server && r.complete)
+    {
+        "Proceed with this update plan? Existing server identity, data and trial expiry are preserved. Missing prerequisites will be installed."
+    } else {
+        "Proceed with this plan? Fresh server activation starts the trial's 10 days. Missing prerequisites will be installed."
+    };
+    if !args.yes && (!interactive || !cliclack::confirm(confirmation).interact()?) {
+        return Err(
+            "Installation cancelled; use --yes with explicit components for automation".into(),
+        );
+    }
     fs::create_dir_all(&root)?;
     let lock = root.join("installer.lock");
     let mut file = OpenOptions::new().write(true).create_new(true).open(&lock).map_err(|_| "Installer lock exists. If no installer is running, inspect the interrupted installation before removing installer.lock")?;
@@ -369,9 +441,8 @@ fn execute(mut args: Args) -> Result<()> {
         return Err("Installation state changed while preparing the plan; rerun to inspect the updated installation".into());
     }
     // Reload under the lock so another invocation cannot silently replace newer state.
-    if args.from.is_none() {
-        state = State::load(&root)?;
-    }
+    // The unchanged on-disk snapshot was checked above. Keep the read-only
+    // discovery/adoption decisions prepared before confirmation.
     state.save(&root)?;
     let has_server = args.components.contains(&Product::Server);
     let node = if has_server {
@@ -470,6 +541,13 @@ fn execute(mut args: Args) -> Result<()> {
                 work
             }
         };
+        if product == Product::Server && args.hostname.is_some() {
+            let supported = fs::read_to_string(directory.join("lib/private-network.mjs"))
+                .is_ok_and(|source| source.contains("verifyHostnameAddress"));
+            if !supported {
+                return Err("This catalogue server does not support custom DNS yet. Deployed 0.1.7 can be installed/upgraded without --hostname; use a future DNS-capable server release for this option. Downloaded bytes were not modified".into());
+            }
+        }
         if matches!(product, Product::Cli | Product::Extension)
             && let Some(previous) = old_directory.as_ref()
         {
@@ -511,11 +589,20 @@ fn execute(mut args: Args) -> Result<()> {
                     prerequisites::run(&mut command)?;
                     state.pending_upgrade = None;
                 } else {
+                    discovery::check_fresh_port(args.endpoint.as_deref(), args.tailscale)?;
                     let mut command = Command::new(node);
                     command
                         .current_dir(&directory)
                         .args(["install.mjs", "setup"]);
                     add_options(&mut command, &args, &engine, true);
+                    // Each fresh installation gets its own identity outside the bundle.
+                    // Never silently reuse the legacy global ~/.127vaults-test keys.
+                    if !directory.join(".env").exists() {
+                        command.arg("--private-dir").arg(
+                            root.join("identities")
+                                .join(uuid::Uuid::new_v4().to_string()),
+                        );
+                    }
                     prerequisites::run(&mut command)?;
                 }
                 // Save successful setup/upgrade before license network access, so a
@@ -652,6 +739,85 @@ fn execute(mut args: Args) -> Result<()> {
     Ok(())
 }
 
+fn reconcile_server(args: &mut Args, state: &mut State) -> Result<()> {
+    let servers = discovery::discover(args.engine.as_deref())?;
+    reconcile_discovered(args, state, servers)
+}
+
+fn reconcile_discovered(
+    args: &mut Args,
+    state: &mut State,
+    servers: Vec<discovery::Server>,
+) -> Result<()> {
+    if servers.len() > 1 {
+        let paths = servers
+            .iter()
+            .map(|s| format!("{} ({})", s.directory.display(), s.engine))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("Multiple published servers found. Select the intended initialized bundle with --from and --engine; preserve all installations:\n{paths}").into());
+    }
+    let old = state.records.iter().find(|r| r.product == Product::Server);
+    if let Some(server) = servers.into_iter().next() {
+        let matches = old.is_some_and(|r| {
+            fs::canonicalize(&r.directory).ok().as_ref() == Some(&server.directory)
+        });
+        if !matches {
+            if old.is_some_and(|r| r.complete) {
+                return Err("The recorded server differs from the running server. Inspect both installations and explicitly select the intended state directory; neither was modified".into());
+            }
+            if let Some(record) = old {
+                cliclack::log::warning(format!(
+                    "An incomplete separate setup is preserved at {}. The published server will be updated instead",
+                    record.directory.display()
+                ))?;
+            }
+            if let Some(index) = state
+                .records
+                .iter()
+                .position(|r| r.product == Product::Server)
+            {
+                let preserved = state.records.remove(index);
+                state.preserved_server_setups.push(preserved);
+            }
+            cliclack::log::info(format!(
+                "Found existing server: {}. Preserve its identity, database, CA, license and admin account",
+                server.directory.display()
+            ))?;
+            args.engine = Some(server.engine.clone());
+            state.record(Record {
+                product: Product::Server,
+                digest: String::new(),
+                directory: server.directory,
+                complete: true,
+                engine: Some(server.engine),
+                provider: args.compose_provider.clone(),
+            });
+        }
+    } else if old.is_none_or(|r| !r.complete) {
+        discovery::check_fresh_port(args.endpoint.as_deref(), args.tailscale)?;
+    }
+    Ok(())
+}
+
+fn verify_invitation_binding(state: &State, binding: Option<&str>) -> Result<()> {
+    let Some(expected) = binding else {
+        return Ok(());
+    };
+    let record = state.records.iter().find(|r| r.product == Product::Server)
+        .ok_or("This invitation is already bound to an installation. Start/adopt that server with --from; a replacement requires approval")?;
+    let config = fs::read_to_string(record.directory.join(".env"))?;
+    let private = config
+        .lines()
+        .find_map(|line| line.strip_prefix("VAULTS_TLS_DIR="))
+        .ok_or("Missing existing installation identity directory")?;
+    let actual = fs::read_to_string(Path::new(private).join("installation-id"))?;
+    if actual.trim() != expected {
+        return Err("Invitation is bound to another installation. No upgrade or new identity was started; select the matching server or request an approved replacement".into());
+    }
+    Ok(())
+}
+
 fn add_options(command: &mut Command, args: &Args, engine: &str, fresh: bool) {
     if engine == "docker" {
         command.arg("--docker");
@@ -665,6 +831,9 @@ fn add_options(command: &mut Command, args: &Args, engine: &str, fresh: bool) {
         }
         if args.tailscale {
             command.arg("--tailscale");
+        }
+        if let Some(hostname) = &args.hostname {
+            command.arg("--hostname").arg(hostname);
         }
     }
 }
@@ -851,6 +1020,66 @@ mod tests {
         }
         fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn discovers_running_server_instead_of_resuming_unrelated_fresh_setup() {
+        let mut args = Args::try_parse_from(["installer", "--components", "server"]).unwrap();
+        let mut state = State::default();
+        state.record(Record {
+            product: Product::Server,
+            digest: "failed".into(),
+            directory: PathBuf::from("failed-separate-setup"),
+            complete: false,
+            engine: Some("podman".into()),
+            provider: None,
+        });
+        let server = || discovery::Server {
+            directory: PathBuf::from("running-server"),
+            engine: "podman".into(),
+            project: "vaults-test-123456abcdef".into(),
+        };
+        reconcile_discovered(&mut args, &mut state, vec![server()]).unwrap();
+        assert_eq!(state.records[0].directory, PathBuf::from("running-server"));
+        assert!(state.records[0].complete);
+        assert!(state.records[0].digest.is_empty());
+        assert_eq!(
+            state.preserved_server_setups[0].directory,
+            PathBuf::from("failed-separate-setup")
+        );
+        assert_eq!(args.engine.as_deref(), Some("podman"));
+        assert!(reconcile_discovered(&mut args, &mut state, vec![server(), server()]).is_err());
+        state.records[0].directory = PathBuf::from("another-complete-server");
+        assert!(reconcile_discovered(&mut args, &mut state, vec![server()]).is_err());
+        assert_eq!(
+            state.records[0].directory,
+            PathBuf::from("another-complete-server")
+        );
+    }
+
+    #[test]
+    fn bound_trial_refuses_another_identity_before_upgrade() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir(&root).unwrap();
+        fs::write(
+            root.join(".env"),
+            format!("VAULTS_TLS_DIR={}\n", root.display()),
+        )
+        .unwrap();
+        fs::write(root.join("installation-id"), "known-id\n").unwrap();
+        let mut state = State::default();
+        assert!(verify_invitation_binding(&state, Some("known-id")).is_err());
+        state.record(Record {
+            product: Product::Server,
+            digest: "old".into(),
+            directory: root.clone(),
+            complete: true,
+            engine: Some("podman".into()),
+            provider: None,
+        });
+        assert!(verify_invitation_binding(&state, Some("known-id")).is_ok());
+        assert!(verify_invitation_binding(&state, Some("other-id")).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn client_updates_preserve_registered_path_and_previous_contents() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

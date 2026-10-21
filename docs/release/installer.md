@@ -34,6 +34,27 @@ For unattended extension setup, provide `--extension-ids ID` (comma-separated fo
 
 ## Existing servers and upgrades
 
+Installer 0.1.8 discovers running 127Vaults installations publishing port 12780
+through Podman/Docker before selecting fresh setup. It verifies the Compose project
+against the initialized bundle and offers the existing server as a guarded upgrade.
+An incomplete separate setup is retained in the installer receipt and on disk.
+Multiple published installations or a conflicting completed receipt require explicit
+selection/recovery; an occupied port never causes an automatic IP/port change.
+`127vaults-install --discover` lists these candidates without an invitation or writes.
+Stopped/unpublished servers can be adopted explicitly with `--from`.
+
+Fresh setup checks port availability before initialization and gives each new
+installation a separate private identity directory under the installer state root.
+An already-bound invitation must match the selected installation before an upgrade
+starts. Normal upgrades preserve identity, data, CA, licenses, admin credentials and
+trial expiry; they still require the protected backup key and a new backup directory.
+
+The local 0.1.8 installer continues to obtain deployables from the current entitled
+Cloudflare catalogue (currently 0.1.7); its version does not select matching component
+versions. It does not alter published package manifests or downloaded server helpers.
+`--hostname` is available for future DNS-capable server bundles and is refused for
+the unchanged 0.1.7 server. See the server runbook for the prepared private-CA DNS mode.
+
 For a server installed outside this app, adopt its initialized bundle on the first run:
 
 ```sh
@@ -51,6 +72,15 @@ cargo test --locked -p vaults-installer
 cargo clippy --locked -p vaults-installer --all-targets -- -D warnings
 .\release.ps1 installer -Platform both -Label installer-test
 ```
+
+For the local Windows 0.1.8 installer against the unchanged live catalogue:
+
+```powershell
+.\release.ps1 installer -Platform windows -Version 0.1.8 -Label installer-discovery-dns-20261021
+```
+
+The release script checks the executable's embedded version and retains its
+manifest and verification receipt under the normal versioned releases directory.
 
 Combined releases use the coordinated version selected by `release-set.ps1` for every product, including the installer. The packaged installer executable and metadata must report that same version; `apps/installer/Cargo.toml` remains the development default. Add verified installer release directories to the trial catalogue input alongside the existing products. Builds stay internal until the complete combined release is accepted and published. Do not publish intermediate installers or client/server builds separately.
 

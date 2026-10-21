@@ -5,6 +5,11 @@ import { createReadStream, existsSync, realpathSync } from 'node:fs';
 import { lstat, readFile } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Keep argument/doctor diagnostics usable even when a bundle is incomplete.
+const validServerHostname = value => typeof value === 'string' && value === value.toLowerCase()
+  && value.length <= 253 && value.includes('.') && !/^\d+(?:\.\d+)*$/.test(value)
+  && !['local', 'localhost'].some(suffix => value === suffix || value.endsWith(`.${suffix}`))
+  && value.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
 
 export async function verify(directory) {
   const manifest = JSON.parse(await readFile(resolve(directory, 'manifest.json'), 'utf8'));
@@ -23,7 +28,7 @@ export function parseOptions(args, { directory = import.meta.dirname } = {}) {
   const seen = new Set();
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
-    if (!['--docker', '--json', '--tailscale', '--compose-provider', '--endpoint', '--private-dir'].includes(flag)) throw Error(`Unknown option: ${flag}. Use --help.`);
+    if (!['--docker', '--json', '--tailscale', '--compose-provider', '--endpoint', '--hostname', '--private-dir'].includes(flag)) throw Error(`Unknown option: ${flag}. Use --help.`);
     if (seen.has(flag)) throw Error(`Duplicate option: ${flag}.`);
     seen.add(flag);
     if (flag === '--docker') { options.engine = 'docker'; continue; }
@@ -32,6 +37,10 @@ export function parseOptions(args, { directory = import.meta.dirname } = {}) {
     const value = args[++i];
     if (!value || value.startsWith('--') || /[\r\n\0]/.test(value)) throw Error(`${flag} requires a valid value.`);
     if (flag === '--compose-provider') options.provider = value;
+    if (flag === '--hostname') {
+      if (!validServerHostname(value)) throw Error('Use an exact lowercase DNS hostname; .local and .localhost aliases are unsupported.');
+      options.hostname = value;
+    }
     if (flag === '--endpoint') {
       options.endpoint = value;
       const octets = value.split('.');
@@ -46,6 +55,7 @@ export function parseOptions(args, { directory = import.meta.dirname } = {}) {
     }
   }
   if (options.engine === 'docker' && options.provider) throw Error('--compose-provider is for Podman. Docker uses docker compose.');
+  if (options.hostname && !options.tailscale && (!options.endpoint || ['localhost', '127.0.0.1'].includes(options.endpoint))) throw Error('Custom hostnames require a private LAN endpoint or --tailscale.');
   return options;
 }
 
@@ -67,11 +77,12 @@ export async function inspectInstallation(directory, options) {
     }
     if (!/^vaults-test-[a-f0-9]{12}$/.test(values.VAULTS_PROJECT) || !isAbsolute(values.VAULTS_TLS_DIR)) throw Error('configuration');
     const tailscale = /^VAULTS_ACCESS_MODE=tailscale\r?$/m.test(content);
-    parseOptions(['--endpoint', values.VAULTS_ENDPOINT_HOST, '--private-dir', values.VAULTS_TLS_DIR, ...(tailscale ? ['--tailscale'] : [])], { directory });
+    const address = /^VAULTS_NETWORK_ADDRESS=(.+)\r?$/m.exec(content)?.[1] ?? values.VAULTS_ENDPOINT_HOST;
+    parseOptions(['--endpoint', address, ...(address !== values.VAULTS_ENDPOINT_HOST ? ['--hostname', values.VAULTS_ENDPOINT_HOST] : []), '--private-dir', values.VAULTS_TLS_DIR, ...(tailscale ? ['--tailscale'] : [])], { directory });
     if (options.tailscale && !tailscale) throw Error('Existing installation needs an explicit network migration.');
-    if (tailscale) options.expectedTailnetAddress = values.VAULTS_ENDPOINT_HOST;
+    if (tailscale) options.expectedTailnetAddress = address;
     if (tailscale && options.args && !options.args.includes('--tailscale')) options.args.push('--tailscale');
-    if (options.endpoint && options.endpoint !== values.VAULTS_ENDPOINT_HOST) {
+    if ((options.endpoint && options.endpoint !== address) || (options.hostname && options.hostname !== values.VAULTS_ENDPOINT_HOST)) {
       return { id: 'installation', status: 'fail', message: 'Requested endpoint differs from the existing installation.', nextStep: 'Use the initialized endpoint. Changing it requires a reviewed certificate and network migration.' };
     }
     if (options.privateDir && options.privateDir !== resolve(values.VAULTS_TLS_DIR)) {
@@ -219,7 +230,7 @@ export async function main(args, dependencies = {}) {
       } else rest.push(options[i]);
     }
     if (!values['--from'] || !values['--backup-dir'] || !values['--backup-key-file']) throw Error('Upgrade requires --from, --backup-dir and --backup-key-file.');
-    if (rest.some(flag => ['--endpoint', '--private-dir', '--tailscale', '--json'].includes(flag))) throw Error('Upgrade preserves the existing network and identity. Configure network changes separately after verification.');
+    if (rest.some(flag => ['--endpoint', '--hostname', '--private-dir', '--tailscale', '--json'].includes(flag))) throw Error('Upgrade preserves the existing network and identity. Configure network changes separately after verification.');
     parseOptions(rest, {directory});
     await prerequisites(rest, {...dependencies, directory, inspectState: null});
     const module = existsSync(resolve(directory, 'lib/upgrade.mjs')) ? new URL('./lib/upgrade.mjs', import.meta.url) : new URL('./upgrade.mjs', import.meta.url);
@@ -247,7 +258,12 @@ export async function main(args, dependencies = {}) {
   log('Bundle checksums and prerequisites verified.');
   const operator = command => (dependencies.runOperator ?? run)(process.execPath, ['server.mjs', 'install', command, ...resolvedOptions], directory);
   if (action === 'setup') {
-    if (!existsSync(resolve(directory, '.env'))) await operator('init');
+    if (!existsSync(resolve(directory, '.env'))) {
+      const check = dependencies.checkPublication ?? (await import(existsSync(new URL('./lib/private-network.mjs', import.meta.url))
+        ? './lib/private-network.mjs' : './private-network.mjs')).checkPublication;
+      await check(parsed.tailscale || parsed.endpoint === 'localhost' ? '127.0.0.1' : parsed.endpoint ?? '127.0.0.1');
+      await operator('init');
+    }
     await operator('start');
     await operator('status');
     log('Trust the generated CA certificate after confirming its fingerprint. Use install bootstrap for the first-owner code.');

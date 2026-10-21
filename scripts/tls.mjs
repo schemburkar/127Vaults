@@ -1,10 +1,17 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, realpathSync, readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, realpathSync, readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { relative, resolve } from 'node:path';
 
 const IMAGE = 'docker.io/alpine/openssl:3.5.4';
+const { validServerHostname } = await import(existsSync(new URL('../apps/server/src/hostname.mjs', import.meta.url))
+  ? '../apps/server/src/hostname.mjs' : './hostname.mjs');
+export function certificateSan(endpoint) {
+  if (endpoint === 'localhost' || validServerHostname(endpoint)) return `DNS:${endpoint}`;
+  if (isIP(endpoint)) return `IP:${endpoint}`;
+  throw new Error('Use localhost, a literal IP or an exact lowercase DNS hostname (no .local/.localhost aliases).');
+}
 export function windowsOperatorSid(run = spawnSync) {
   const result = run('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
   const matches = result.stdout?.match(/\bS-1-\d+(?:-\d+)+\b/g) ?? [];
@@ -15,10 +22,10 @@ export function runTls(argv) {
 const action = argv[0];
 const endpoint = argv[1];
 const targetArg = argv[2];
-if (!['init', 'renew'].includes(action) || !targetArg || !(endpoint === 'localhost' || isIP(endpoint))) {
+if (!['init', 'renew'].includes(action) || !targetArg) {
   throw new Error('Usage: node server.mjs tls init|renew localhost|<literal-ip> <absolute-private-directory>');
 }
-if (isIP(endpoint) === 0 && endpoint !== 'localhost') throw new Error('Custom DNS names are forbidden.');
+const san = certificateSan(endpoint);
 const target = resolve(targetArg);
 const fromRepo = relative(resolve('.'), target);
 if (fromRepo === '' || (!fromRepo.startsWith('..') && !fromRepo.includes(':'))) throw new Error('TLS private directory must be outside the repository.');
@@ -28,7 +35,6 @@ if (process.platform === 'win32' && action === 'init') {
   const acl = spawnSync('icacls', [target, '/inheritance:r', '/grant:r', `${operator}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '/T', '/C'], { stdio: 'inherit', windowsHide: true });
   if (acl.error || acl.status !== 0) throw new Error('Could not restrict the TLS-directory ACL.');
 } else chmodSync(target, 0o700);
-const san = endpoint === 'localhost' ? 'DNS:localhost' : `IP:${endpoint}`;
 const script = String.raw`
 umask 077
 mkdir -p /tls/ca /tls/live /tls/pending
