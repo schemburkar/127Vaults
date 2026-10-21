@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve, join, relative, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { verifyRelease } from './verify-release.mjs';
 import { execute } from './process.mjs';
 
@@ -39,8 +41,11 @@ assert.ok(Array.isArray(servers));
 let existingLicensePlan = false;
 if (args.includes('--check-existing-license-plan')) {
   if (!process.env.VAULTS_INSTALL_INVITATION) throw Error('Set VAULTS_INSTALL_INVITATION in this process; it is never written to the receipt.');
-  const plan = await execute(binary,['--components','server','--keep-existing-license','--plan',
-    ...(args.includes('--engine') ? ['--engine',option('--engine')] : [])],{capture:true});
+  // cliclack sends its human-readable plan to stderr, including on success.
+  const result = await promisify(execFile)(binary,['--components','server','--keep-existing-license','--plan',
+    ...(args.includes('--engine') ? ['--engine',option('--engine')] : [])],
+    {windowsHide:true,timeout:60000,maxBuffer:1048576});
+  const plan = result.stdout + result.stderr;
   assert.ok(plan.includes('Keep this server\'s existing license'));
   assert.ok(plan.includes('Upgrade:'));
   assert.ok(!plan.includes('Install / resume:'));
