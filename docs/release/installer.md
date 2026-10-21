@@ -81,6 +81,11 @@ For the local Windows 0.1.8 installer against the unchanged live catalogue:
 
 The release script checks the executable's embedded version and retains its
 manifest and verification receipt under the normal versioned releases directory.
+To extract the verified consumer archive for local testing and check read-only
+server discovery, run `node scripts/release/smoke-installer.mjs --release <release-directory>
+--extract-to <new-directory-outside-release> --output <new-private-receipt.json>`.
+The extracted installer remains available for the human install/update test;
+this command never performs that update or changes trial activation.
 
 Combined releases use the coordinated version selected by `release-set.ps1` for every product, including the installer. The packaged installer executable and metadata must report that same version; `apps/installer/Cargo.toml` remains the development default. Add verified installer release directories to the trial catalogue input alongside the existing products. Builds stay internal until the complete combined release is accepted and published. Do not publish intermediate installers or client/server builds separately.
 
