@@ -219,7 +219,9 @@ by a delayed provider response. Check email activity before deliberately rotatin
 and sending again. Without email configuration, Review invitation and Copy remain
 available for your existing mail client.
 
-An hourly scheduled task erases contact and invitation data older than 90 days,
+In the request desk, an activated trial has **Actions → Extend trial**. Choose 1–60 additional days. The extension starts at the later of now or the current expiry, so expired trials can resume. A signed license with a higher sequence preserves the installation, plan, major-version entitlement and user limit. Share the prepared invitation; the recipient must download and install the updated license on the existing server. No email is sent automatically. Extensions rotate the private link, invalidate download tickets, and reject stale expiry values. Closed, development and pending replacement records cannot be extended.
+
+An hourly scheduled task erases contact and invitation data older than 90 days (active development access and active trial extensions are retained until their entitlement expires),
 closes access, retains minimal encrypted issuance/revocation evidence and prunes
 expired limit rows. It processes at most 100 expired contacts per invocation,
 appropriate for this internal group. Authorization also refuses expired contact

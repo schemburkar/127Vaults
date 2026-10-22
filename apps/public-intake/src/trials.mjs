@@ -51,16 +51,23 @@ export async function readAccessRequests(dataFile, key) {
   }));
 }
 
-export async function pruneAccessRequests({ dataFile, key, now = new Date() }) {
+export async function pruneAccessRequests({ dataFile, key, dataDir, now = new Date() }) {
   await mkdir(dirname(dataFile), { recursive: true, mode: 0o700 });
   return withFileLock(`${dataFile}.lock`, async () => {
     const source = await readFile(dataFile, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
     const lines = source.split('\n').filter(Boolean);
-    const kept = lines.filter(line => {
+    const keep = await Promise.all(lines.map(async line => {
       const received = Date.parse(unseal(line, key).receivedAt);
       if (!Number.isFinite(received)) throw Error('Invalid request date.');
-      return now.getTime() - received < 90 * 86400000;
-    });
+      if (now.getTime() - received < 90 * 86400000) return true;
+      if (!dataDir) return false;
+      const recordKey = createHash('sha256').update(key).update('private-trials-v1').digest();
+      let record;
+      try { record = unseal(await readFile(join(dataDir, hash(line) + '.json'), 'utf8'), recordKey); }
+      catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+      return record.state === 'approved' && Boolean(record.extendedAt) && Date.parse(record.expiresAt) > now.getTime();
+    }));
+    const kept = lines.filter((_, index) => keep[index]);
     if (kept.length !== lines.length) {
       const temporary = `${dataFile}.${randomUUID()}.tmp`;
       await writeFile(temporary, kept.length ? kept.join('\n') + '\n' : '', { flag: 'wx', mode: 0o600 });
@@ -159,7 +166,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
           return { ...request, ...summary(record), updateAvailable: record?.state === 'approved' && record.releaseHash !== releaseHash };
         })), sourceRevision: catalogue.sourceRevision, emailEnabled: Boolean(mailer), emailDryRun: mailer?.mode === 'dry-run' });
       }
-      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
+      const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
       const [, , id, action] = route;
       // Finish lower-trust body reads before taking a record lock or reading
@@ -198,6 +205,25 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
             } catch { record.emailState = 'unknown'; }
             await save(id, record);
             return json(res, 200, summary(record));
+          }
+          if (action === 'extend') {
+            if (record?.state !== 'approved' || !record.license || record.revocation) return json(res, 409, { error: 'extension_unavailable' });
+            if (Object.keys(input).sort().join(',') !== 'days,expectedExpiresAt' || !Number.isSafeInteger(input.days) || input.days < 1 || input.days > 60) return json(res, 400, { error: 'invalid_request' });
+            if (input.expectedExpiresAt !== record.expiresAt) return json(res, 409, { error: 'state_changed' });
+            let old;
+            try { old = verifyLicenseFile(record.license, catalogue.issuerPublicKeys, record.installationId); }
+            catch { return json(res, 409, { error: 'license_issuer_changed' }); }
+            const expiresAt = new Date(Math.max(now().getTime(), Date.parse(record.expiresAt)) + input.days * 86400000).toISOString();
+            const license = issueSelfHostedLicense({ privateKeyPem: issuerPrivateKey, keyId: issuerKeyId,
+              installationId: record.installationId, plan: old.plan, majorVersion: old.majorVersion,
+              maxActiveUsers: old.maxActiveUsers, sequence: old.sequence + 1, expiresAt, now: now() }).license;
+            const token = randomBytes(32).toString('base64url'), link = origin + '/trial.html?open=1#' + id + '.' + token;
+            record = { ...record, license, expiresAt, extendedAt: now().toISOString(), tokenHash: hash(token),
+              linkExpiresAt: new Date(Math.max(Date.parse(expiresAt), now().getTime() + 30 * 86400000)).toISOString(), ticketHash: null, ticketUntil: 0,
+              invitation: { subject: 'Your 127Vaults trial has been extended', text: 'Your trial has been extended until ' + expiresAt + '. Open your private link:\n' + link + '\n\nDownload the updated license and install it on your existing server to apply the extension. Keep the existing installation, data and keys. Your user limit and major-version access are unchanged.' } };
+            delete record.emailState; delete record.emailAttemptedAt;
+            await save(id, record);
+            return json(res, 200, { ...summary(record), link, email: request.email, subject: record.invitation.subject, message: record.invitation.text });
           }
           if (action === 'approve' || action === 'rotate' || action === 'update-release') {
             if (action === 'approve' && !['personal', 'commercial'].includes(request.plan)) return json(res, 409, { error: 'plan_unavailable' });

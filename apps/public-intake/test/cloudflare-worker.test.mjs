@@ -580,3 +580,34 @@ test('self-service replacement request revokes old license; owner issues a new b
     body: JSON.stringify({ ...request, installationId: randomUUID() }) }), f.env, { now: () => future });
   assert.equal(expiredRequest.status, 409); assert.equal((await expiredRequest.json()).error, 'license_expired');
 });
+
+
+test('operator extends active and expired trials with signed monotonic licenses and stale-write protection', async t => {
+  const f = await fixture(t), id = await f.submit(), a = await f.approve(id), installationId = randomUUID();
+  assert.equal((await f.post(admin + '/' + id + '/extend', {days: 10, expectedExpiresAt: null}, f.operatorToken)).status, 409);
+  await f.post(a.base + '/activate', {installationId}, a.token);
+  const old = verifyLicenseFile(await (await f.get(a.base + '/license', a.token)).text(), f.publicKeys, installationId);
+  const input = { days: 20, expectedExpiresAt: old.expiresAt };
+  assert.equal((await f.post(admin + '/' + id + '/extend', input, a.token)).status, 401);
+  for (const days of [0, -1, 61, 1.5, '10']) assert.equal((await f.post(admin + '/' + id + '/extend', {...input, days}, f.operatorToken)).status, 400);
+  const response = await f.post(admin + '/' + id + '/extend', input, f.operatorToken);
+  assert.equal(response.status, 200, await response.clone().text());
+  const extended = await response.json(), nextToken = extended.link.split('.').at(-1);
+  assert.match(extended.message, /install it on your existing server/);
+  assert.equal(Date.parse(extended.expiresAt) - Date.parse(old.expiresAt), 20 * 86400000);
+  const next = verifyLicenseFile(await (await f.get(a.base + '/license', nextToken)).text(), f.publicKeys, installationId);
+  assert.equal(next.sequence, old.sequence + 1); assert.equal(next.maxActiveUsers, old.maxActiveUsers);
+  assert.equal(next.majorVersion, old.majorVersion); assert.equal(next.plan, old.plan);
+  assert.equal((await f.get(a.base, a.token)).status, 401);
+  assert.equal((await f.post(admin + '/' + id + '/extend', input, f.operatorToken)).status, 409);
+  const at = Date.parse(next.expiresAt) + 86400000;
+  const expired = await handleRequest(new Request(origin + admin + '/' + id + '/extend', {method:'POST', headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer ' + f.operatorToken}, body:JSON.stringify({days:5,expectedExpiresAt:next.expiresAt})}), f.env, {now:()=>at});
+  assert.equal(expired.status, 200, await expired.clone().text());
+  const renewed = await expired.json(); assert.equal(Date.parse(renewed.expiresAt), at + 5 * 86400000);
+  await f.db.prepare('UPDATE access_requests SET received_at = ? WHERE id = ?').bind(at - 100 * 86400000, id).run();
+  await prune(f.env, {now:()=>at});
+  const inbox = await handleRequest(new Request(origin + admin, {headers:{Authorization:'Bearer ' + f.operatorToken}}), f.env, {now:()=>at});
+  assert.equal((await inbox.json()).requests.length, 1);
+  await prune(f.env, {now:()=>Date.parse(renewed.expiresAt) + 1});
+  assert.equal((await f.db.prepare('SELECT contact FROM access_requests WHERE id = ?').bind(id).first()).contact, null);
+});

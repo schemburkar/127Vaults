@@ -95,7 +95,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       issuerKeyId: env.PUBLIC_TRIAL_ISSUER_KEY_ID ?? 'trial',
       catalogue: await loadTrialArtifacts(env.PUBLIC_TRIAL_CATALOGUE_FILE) });
     limitDirs.push(resolve(env.PUBLIC_TRIAL_DATA_DIR, 'request-limits'));
-    const pruneRequests = () => pruneAccessRequests({ dataFile: env.PUBLIC_INTAKE_DATA_FILE, key })
+    const pruneRequests = () => pruneAccessRequests({ dataFile: env.PUBLIC_INTAKE_DATA_FILE, key, dataDir: env.PUBLIC_TRIAL_DATA_DIR })
       .catch(() => process.stderr.write('Access request retention failed; inspect the protected data store.\n'));
     await pruneRequests();
     setInterval(pruneRequests, 86400000).unref();

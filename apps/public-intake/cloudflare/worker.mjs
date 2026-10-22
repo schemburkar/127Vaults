@@ -13,7 +13,8 @@ import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-ale
 const day = 86400000;
 const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
   && Date.parse(record.entitlementExpiresAt) > at;
-const retained = (row,at) => at - row.receivedAt < 90 * day || activeDevelopment(row.trial,at);
+const activeExtension = (record,at) => record?.state === 'approved' && record.extendedAt && Date.parse(record.expiresAt) > at;
+const retained = (row,at) => at - row.receivedAt < 90 * day || activeDevelopment(row.trial,at) || activeExtension(row.trial,at);
 const installationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
 const keyCache = new WeakMap(), issuerCache = new WeakMap();
@@ -213,7 +214,7 @@ async function dispatch(request, env, now, schedule) {
     return json(200, { permissions: { download: true, manageInstallations: true, approveDevelopment:true }, requests, emailEnabled: Boolean(mailer),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
@@ -264,6 +265,25 @@ async function dispatch(request, env, now, schedule) {
         text: `Updated packages are available:\n${link}\n\nBack up and upgrade your existing installation. Do not initialize replacement keys or a new database. Your installation binding, signed license and trial expiry are unchanged. This does not start another trial. Use fictitious data only.` };
       if (record.kind === 'development') record.invitation = {subject:'Your 127Vaults development access',
         text:`Development packages are available:\n${link}\n\nDevelopment license expiry: ${record.entitlementExpiresAt}. Preserve your existing installation, license, data and backup key. No trial activation is required for an already bound server.`};
+      await store.save(row, record);
+      return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
+    } else if (action === 'extend') {
+      if (record?.state !== 'approved' || record.kind === 'development' || !record.license || record.replacementRequest || record.revocation) fail(409, 'extension_unavailable');
+      if (Object.keys(input).sort().join(',') !== 'days,expectedExpiresAt' || !Number.isSafeInteger(input.days) || input.days < 1 || input.days > 60) fail(400, 'invalid_request');
+      if (input.expectedExpiresAt !== record.expiresAt) fail(409, 'state_changed');
+      const { signingKey, catalogue } = await entitledRelease(env, record);
+      if (!await verifyLicenseIssuer(record.license, catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
+      const old = JSON.parse(new TextDecoder().decode(from64(JSON.parse(record.license).payload)));
+      const expiresAt = new Date(Math.max(at, Date.parse(record.expiresAt)) + input.days * day).toISOString();
+      const issuedAt = new Date(at).toISOString();
+      const license = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
+        ...old, licenseId: crypto.randomUUID(), issuedAt, notBefore: issuedAt, expiresAt, sequence: old.sequence + 1,
+      });
+      const value = token(), link = env.PUBLIC_INTAKE_ORIGIN + '/trial?open=1#' + id + '.' + value;
+      record = { ...record, license, expiresAt, extendedAt: issuedAt,
+        tokenHash: await hash(value), linkExpiresAt: new Date(Math.max(Date.parse(expiresAt), at + 30 * day)).toISOString(), ticketHash: null, ticketUntil: 0,
+        invitation: { subject: 'Your 127Vaults trial has been extended', text: 'Your trial has been extended until ' + expiresAt + '. Open your private link:\n' + link + '\n\nDownload the updated license and install it on your existing server to apply the extension. Keep the existing installation, data and keys. Your user limit and major-version access are unchanged.' } };
+      delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
       await store.save(row, record);
       return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     } else if (action === 'replace-installation') {
@@ -408,7 +428,7 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(!rows.length)break;
     for (const row of rows) {
     afterId=row.id;
-    if (activeDevelopment(row.trial,now())) continue;
+    if (activeDevelopment(row.trial,now()) || activeExtension(row.trial,now())) continue;
     const record = { ...row.trial };
     if (record.license && !record.revocation) {
       signingKey ??= (await release(env)).signingKey;

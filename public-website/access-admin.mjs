@@ -119,7 +119,9 @@ async function refresh() {
         closeMenu();
         button.disabled = true;
         try {
-          const response = await api(`/${row.id}/${action}`, typeof value === 'function' ? await value() : value);
+          const input = typeof value === 'function' ? await value() : value;
+          if (input === null) return;
+          const response = await api(`/${row.id}/${action}`, input);
           if (action === 'revocation') {
             const url = URL.createObjectURL(await response.blob()); const a = document.createElement('a');
             a.href = url; a.download = 'trial-revocation.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -138,7 +140,7 @@ async function refresh() {
           if (data.message && data.email) {
             clearInvitation(); $('invite-to').value = data.email; $('invite-subject').value = data.subject; $('invite-message').value = data.message;
             $('invitation').hidden = false; $('invite-message').focus();
-            status('Invitation ready to review.');
+            status(action === 'extend' ? 'Trial extended. Review the invitation below and share it. The person must install the updated license on their existing server.' : 'Invitation ready to review.');
           } else if (action === 'replace-installation') status('Replacement license issued. The customer can use the existing private link to download it. Review and send the replacement invitation if needed.');
           else status(data.hasRevocation ? 'Link closed. Download the signed revocation and install it on the trial server to revoke its installed license.' : 'Request updated.');
         } catch (error) { status(error.message); }
@@ -164,6 +166,13 @@ async function refresh() {
       act('Decline', 'reject', {}, 'Decline this access request?');
     }
     if (row.state === 'approved') {
+      if (row.kind !== 'development' && row.installationId && !row.replacementRequest) act('Extend trial', 'extend', () => {
+        const answer = prompt('Extra trial days for ' + row.email + ' (1-60). Added from the later of today or the current expiry. They must install the updated license.', '10');
+        if (answer === null) return null;
+        const days = Number(answer);
+        if (!Number.isSafeInteger(days) || days < 1 || days > 60) throw Error('Enter a whole number from 1 to 60.');
+        return { days, expectedExpiresAt: row.expiresAt };
+      });
       if (row.replacementRequest) act('Issue replacement license', 'replace-installation', { installationId: row.replacementRequest.installationId, retired: true }, `Issue a replacement license for ${row.replacementRequest.installationId}? The customer confirmed the old installation is retired. Preserve the original expiry and limits. The signed old-license revocation must be applied on an old server if reachable.`);
       if ((row.replacementRequest || row.replacementCount)) act('Download old license revocation', 'revocation', undefined);
       if (row.canPreviewInvitation) act('Review invitation', 'invitation', undefined);
