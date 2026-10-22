@@ -74,8 +74,8 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
         const email = String(body.email ?? '').trim().toLowerCase();
         if (Object.keys(body).sort().join(',') !== 'consent,email' || !emailPattern.test(email)
           || body.consent !== true) return reply(res, 400, { error: 'invalid_request' });
-        if (!await allow('customer-email', email, 3, 3600000)
-          || !await allow('customer-address', req.socket.remoteAddress ?? 'unknown', 20, 3600000)) {
+        if (!await allow('customer-address', req.socket.remoteAddress ?? 'unknown', 20, 3600000)
+          || !await allow('customer-email', email, 3, 3600000)) {
           return reply(res, 429, { error: 'rate_limited' });
         }
         return serialized(email, async () => {

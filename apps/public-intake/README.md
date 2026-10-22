@@ -37,4 +37,9 @@ The opt-in simulation now also exposes `customer-account.html` and `/api/custome
 
 Order and account data are encrypted at rest with domain-separated keys derived from the intake key. Pending test orders are pruned after 30 days, licensed test orders 90 days after their current license expiry, unverified customer records after one day, and verified customer records after one year since last sign-in. The scheduled cleanup runs at startup and daily. The customer can erase their account and linked test orders through the account page; this does not remove an installed license. Hashed request-limit records persist across process restarts and are pruned after 48 hours. Run one intake instance against a data directory; the file store is not a distributed rate limiter. A public reverse proxy still needs IP-aware edge abuse controls and monitored SMTP.
 
+Filesystem locks are never reclaimed based on age: a slow live operation may still
+commit. A busy record fails closed. After a crash, stop the intake process and
+confirm that no process is using its data directory before removing orphaned
+`.lock` directories. Restart only after that offline maintenance is complete.
+
 The standalone waitlist uses a separate encrypted append-only file and is not covered by customer-account erasure. When unpaid trials are enabled, its contact rows are available through the operator inbox and support erasure and 90-day retention. Legal privacy review, key rotation and off-host recovery remain general launch gates. Do not enable the mock service on a public production site.

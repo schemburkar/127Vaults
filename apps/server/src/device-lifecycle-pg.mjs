@@ -41,7 +41,17 @@ export class PgDeviceLifecycleStore {
         if (!registered || registered.lifecycle_status !== 'active' || !Buffer.from(registered.signing_public_key).equals(Buffer.from(e.proposed_signing_public_key))) fail('ENROLLMENT_INVALID', 409);
         return { version: 1, deviceId: e.proposed_device_id, credentialEpoch: Number(registered.credential_epoch_seen) };
       }
-      const credential = (await client.query('SELECT credential_epoch FROM vaults.authentication_credentials WHERE tenant_id=$1 AND account_id=$2', [e.tenant_id, e.account_id])).rows[0];
+      // Approval is a delegated device authority, so an unconsumed request must
+      // not outlive revocation or account/device credential replacement. Lock
+      // these rows through insertion so revocation cannot pass this check.
+      const credential = (await client.query(`SELECT c.credential_epoch FROM vaults.devices d
+        JOIN vaults.accounts a ON(a.tenant_id=d.tenant_id AND a.id=d.account_id)
+        JOIN vaults.authentication_credentials c ON(c.tenant_id=a.tenant_id AND c.account_id=a.id)
+        WHERE d.tenant_id=$1 AND d.account_id=$2 AND d.id=$3
+          AND d.lifecycle_status='active' AND d.credential_epoch=c.credential_epoch
+          AND a.enrollment_state='active' AND a.suspended_at IS NULL
+        FOR UPDATE OF d,a,c`, [e.tenant_id, e.account_id, e.approver_device_id])).rows[0];
+      if (!credential) fail('ENROLLMENT_INVALID', 409);
       await client.query("INSERT INTO vaults.devices(tenant_id,id,account_id,signing_public_key,credential_epoch,lifecycle_status,auth_epoch,credential_epoch_seen,credential_state,protection_class) VALUES($1,$2,$3,$4,$5,'active',1,$5,'current','unknown')", [e.tenant_id, e.proposed_device_id, e.account_id, e.proposed_signing_public_key, Number(credential.credential_epoch)]);
       await client.query('UPDATE vaults.device_enrollment_requests SET consumed_at=$3 WHERE tenant_id=$1 AND id=$2', [e.tenant_id, e.id, this.now()]);
       return { version: 1, deviceId: e.proposed_device_id, credentialEpoch: Number(credential.credential_epoch) };

@@ -162,6 +162,9 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       const route = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
       if (!route || !idPattern.test(route[2])) return json(res, 404, { error: 'not_found' });
       const [, , id, action] = route;
+      // Finish lower-trust body reads before taking a record lock or reading
+      // authoritative trial state. A slow sender must not hold this lock.
+      const inputBody = req.method === 'POST' ? await body(req) : null;
       const result = await withFileLock(join(dataDir, `${id}.lock`), async () => {
         let record = await optional(id);
         if (admin) {
@@ -172,7 +175,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
           }
           if (action === 'revocation' && req.method === 'GET' && record?.revocation) return download(res, 'trial-revocation.json', record.revocation);
           if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
-          const input = await body(req);
+          const input = inputBody;
           if (action === 'archive' || action === 'unarchive') {
             if (Object.keys(input).length) return json(res, 400, { error: 'invalid_request' });
             record = { state: 'requested', ...record, archivedAt: action === 'archive' ? now().toISOString() : null };
@@ -264,7 +267,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
         if (!action && req.method === 'GET') return json(res, 200, { ...summary(record), trialDays: 10, payment: 'none',
           sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(({ path: _, ...asset }) => asset) });
         if (action === 'ticket' && req.method === 'POST') {
-          if (Object.keys(await body(req)).length) return json(res, 400, { error: 'invalid_request' });
+          if (Object.keys(inputBody).length) return json(res, 400, { error: 'invalid_request' });
           const value = randomBytes(32).toString('base64url');
           record.ticketHash = hash(value); record.ticketUntil = now().getTime() + 5 * 60000;
           await save(id, record);
@@ -272,7 +275,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
           return json(res, 200, { ready: true }, { 'Set-Cookie': `${secure ? '__Secure-127v-trial' : '127v-trial-local'}=${value}; Path=${cookiePath}; Max-Age=300; ${secure ? 'Secure; ' : ''}HttpOnly; SameSite=Strict` });
         }
         if (action === 'activate' && req.method === 'POST') {
-          const input = await body(req);
+          const input = inputBody;
           if (Object.keys(input).join(',') !== 'installationId' || !uuid.test(input.installationId)) return json(res, 400, { error: 'invalid_request' });
           const installationId = input.installationId.toLowerCase();
           if (record.license && record.installationId !== installationId) return json(res, 409, { error: 'already_bound' });

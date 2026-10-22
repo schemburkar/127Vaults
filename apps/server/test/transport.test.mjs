@@ -26,7 +26,7 @@ test('refuses public, wildcard, mismatched, and custom-domain exposure', () => {
 
 test('Host, Origin, forwarded headers, and SNI are exact', () => {
   const config = transportConfig({});
-  const request = (host, origin, extra = {}) => ({ rawHeaders: ['Host', host], headers: { host, ...(origin ? { origin } : {}), ...extra } });
+  const request = (host, origin, extra = {}) => ({ url: '/', rawHeaders: ['Host', host], headers: { host, ...(origin ? { origin } : {}), ...extra } });
   assert.equal(requestAllowed(request(config.authority, config.origin), config), true);
   assert.equal(requestAllowed(request('evil.test:12780', config.origin), config), false);
   assert.equal(requestAllowed(request(config.authority, 'https://evil.test'), config), false);
@@ -47,7 +47,7 @@ test('custom DNS preserves private publication and exact hostname boundaries', (
     assert.equal(sniAllowed('',config),false);
     assert.equal(sniAllowed(address,config),false);
     for (const host of [address,'evil.example.com']) {
-      assert.equal(requestAllowed({rawHeaders:['Host',`${host}:12780`],headers:{host:`${host}:12780`}},config),false);
+      assert.equal(requestAllowed({url:'/',rawHeaders:['Host',`${host}:12780`],headers:{host:`${host}:12780`}},config),false);
     }
     for (const name of ['vault.local','vault.localhost','*.example.com']) assert.throws(() => transportConfig({...env,VAULTS_ENDPOINT_HOST:name}));
     assert.throws(() => transportConfig({...env,VAULTS_NETWORK_ADDRESS:'8.8.8.8'}));

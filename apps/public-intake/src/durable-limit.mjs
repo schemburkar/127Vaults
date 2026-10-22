@@ -16,8 +16,8 @@ export function createDurableLimit({ directory, now = () => Date.now() }) {
       try { await mkdir(lock); acquired = true; break; }
       catch (error) {
         if (error.code !== 'EEXIST') throw error;
-        const age = await stat(lock).then(info => now() - info.mtimeMs).catch(() => 0);
-        if (age > 60000) await rm(lock, { recursive: true, force: true });
+        // Age cannot distinguish a slow live owner from a crashed process.
+        // Orphaned locks may be removed only while intake is stopped.
         await new Promise(resolve => setTimeout(resolve, 25));
       }
     }
@@ -45,8 +45,8 @@ export async function withFileLock(lock, work) {
     try { await mkdir(lock); acquired = true; break; }
     catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      const age = await stat(lock).then(info => Date.now() - info.mtimeMs).catch(() => 0);
-      if (age > 60000) await rm(lock, { recursive: true, force: true });
+      // Never replace a live owner's lock: it may still commit its work.
+      // Recover orphaned lock directories only with intake stopped.
       await new Promise(resolve => setTimeout(resolve, 25));
     }
   }

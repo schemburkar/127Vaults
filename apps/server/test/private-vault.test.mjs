@@ -3,7 +3,7 @@ const raw=n=>{let b=Buffer.alloc(n);b[6]=0x40;b[8]=0x80;return b};
 import { createHash, randomUUID } from 'node:crypto';
 import { PgPrivateVaultStore } from '../src/private-vault-pg.mjs';
 
-function deletionFixture({ mutateNext, stale=false, retired=false, historyError=false, receipt=null }={}) {
+function deletionFixture({ mutateNext, stale=false, retired=false, historyError=false, receipt=null, receiptCount=0 }={}) {
  const auth={tenantId:randomUUID(),accountId:randomUUID(),deviceId:randomUUID()},vault=randomUUID(),item=randomUUID(),sibling=randomUUID(),base=randomUUID(),revision=randomUUID(),calls=[];
  const ids=[item,sibling].sort(),toBytes=id=>Buffer.from(id.replaceAll('-',''),'hex');
  const entry=id=>{const b=Buffer.alloc(136,7);toBytes(id).copy(b);return b};
@@ -11,7 +11,7 @@ function deletionFixture({ mutateNext, stale=false, retired=false, historyError=
  const old=record(base,null,ids.map(entry)),next=record(revision,base,[entry(sibling)]);mutateNext?.(next,{item,sibling,toBytes});
  const length=Buffer.alloc(4);length.writeUInt32BE(next.length);
  const signedOperation={vaultId:vault,itemId:item,kind:'item.delete',payloadHash:createHash('sha256').update(length).update(next).digest('hex')};
- const c={async query(sql,params){calls.push({sql,params});if(sql.startsWith('SELECT count'))return{rows:[{n:0}]};if(sql.startsWith('SELECT fingerprint,response'))return{rows:receipt?[receipt]:[]};if(sql.startsWith('SELECT * FROM vaults.private_vaults'))return{rows:[{catalogue:old,catalogue_revision:stale?randomUUID():base,retired_at:retired?new Date():null}]};if(sql.startsWith('DELETE FROM'))return{rowCount:1,rows:[]};return{rows:[]}},release(){}};
+ const c={async query(sql,params){calls.push({sql,params});if(sql.startsWith('SELECT count'))return{rows:[{n:receiptCount}]};if(sql.startsWith('SELECT fingerprint,response'))return{rows:receipt?[receipt]:[]};if(sql.startsWith('SELECT * FROM vaults.private_vaults'))return{rows:[{catalogue:old,catalogue_revision:stale?randomUUID():base,retired_at:retired?new Date():null}]};if(sql.startsWith('DELETE FROM'))return{rowCount:1,rows:[]};return{rows:[]}},release(){}};
  const store=new PgPrivateVaultStore({async connect(){return c}},{async appendInTransaction(connection,a,operation){assert.equal(connection,c);assert.equal(a,auth);assert.equal(operation,signedOperation);calls.push({sql:'SIGNED_HISTORY'});if(historyError)throw Error('history failed')}});
  const proposal={auth,vault,item,method:'DELETE',path:`/api/v1/vaults/${vault}/items/${item}`,raw:Buffer.from('exact encrypted delete request'),requestId:randomUUID(),baseCatalogueRevision:base,catalogueBytes:next,action:'item.delete',signedOperation};
  return{store,proposal,calls,revision};
@@ -46,8 +46,14 @@ test('deletion refuses stale, retired, sibling-changing and non-removing catalog
 test('exact deletion replay returns its receipt without deleting again, while changed request bytes are refused',async()=>{
  const f=deletionFixture(),m=Buffer.from(f.proposal.method),p=Buffer.from(f.proposal.path),n=Buffer.alloc(4),h=createHash('sha256');n.writeUInt32BE(m.length);h.update(n).update(m);n.writeUInt32BE(p.length);const fp=h.update(n).update(p).update(f.proposal.raw).digest();
  const receipt={fingerprint:fp,response:{catalogueRevision:f.revision}};
- const replay=deletionFixture({receipt});replay.proposal={...f.proposal};assert.deepEqual(await replay.store.mutate(replay.proposal),receipt.response);assert.equal(replay.calls.some(c=>c.sql.startsWith('DELETE FROM')),false);
+ const replay=deletionFixture({receipt,receiptCount:10000});replay.proposal={...f.proposal};assert.deepEqual(await replay.store.mutate(replay.proposal),receipt.response);assert.equal(replay.calls.some(c=>c.sql.startsWith('DELETE FROM')),false);
  replay.proposal.raw=Buffer.from('changed');await assert.rejects(replay.store.mutate(replay.proposal),{code:'REQUEST_ID_REUSED'});
+});
+
+test('the receipt ceiling still refuses a new mutation',async()=>{
+ const f=deletionFixture({receiptCount:10000});
+ await assert.rejects(f.store.mutate(f.proposal),{code:'EXPERIMENTAL_LIMIT'});
+ assert.equal(f.calls.some(c=>c.sql.startsWith('DELETE FROM')),false);
 });
 test('strict base64url and record bounds',()=>{assert.deepEqual(bytes(Buffer.from('x').toString('base64url'),2),Buffer.from('x'));assert.throws(()=>bytes('eA==',2),VaultError);let d=Buffer.alloc(102);d.write('PVD1');d[10]=0x40;d[12]=0x80;d[26]=0x40;d[28]=0x80;d[42]=0x40;d[44]=0x80;assert.equal(directory(d).entries.length,0);let m=Buffer.alloc(110);m.write('PVM1');m[10]=0x40;m[12]=0x80;m[26]=0x40;m[28]=0x80;m.writeBigUInt64BE(1n,36);m[50]=0x40;m[52]=0x80;assert.equal(catalogue(m).entries.length,0)});
 

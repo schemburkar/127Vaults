@@ -38,6 +38,12 @@ export function transportConfig(env) {
 }
 
 export function requestAllowed(req, config) {
+  // This is an origin server, not a proxy. Reject targets whose URL parsing
+  // could throw in a downstream handler or select another authority.
+  if (typeof req.url !== 'string' || !req.url.startsWith('/') || req.url.startsWith('//')
+    || /[\\#\u0000-\u0020\u007f]/.test(req.url)) return false;
+  try { if (new URL(req.url, config.origin).origin !== config.origin) return false; }
+  catch { return false; }
   const hosts = req.rawHeaders.filter((_, i) => i % 2 === 0 && req.rawHeaders[i].toLowerCase() === 'host');
   if (hosts.length !== 1 || req.headers.host !== config.authority) return false;
   if (req.headers.origin !== undefined && req.headers.origin !== config.origin) return false;

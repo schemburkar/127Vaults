@@ -103,8 +103,8 @@ export function createMockSelfHostHandler({ origin, key, dataDir, bundleFile, is
         || typeof input.email !== 'string' || !email.test(input.email.trim())
         || typeof input.organization !== 'string' || input.organization.length > 120
         || input.website !== '') return bad(res);
-      if (!await allow('mock-order-email', input.email.trim().toLowerCase(), 3, 3600000)
-        || !await allow('mock-order-address', req.socket.remoteAddress ?? 'unknown', 30, 3600000)) {
+      if (!await allow('mock-order-address', req.socket.remoteAddress ?? 'unknown', 30, 3600000)
+        || !await allow('mock-order-email', input.email.trim().toLowerCase(), 3, 3600000)) {
         return json(res, 429, { error: 'rate_limited' });
       }
       const id = randomUUID();
