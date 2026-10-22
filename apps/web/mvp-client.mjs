@@ -2091,6 +2091,8 @@ async function deleteItem() {
 async function save(event, retry = false) {
   event.preventDefault();
   if ((busy && !retry) || !root) return;
+  const generation = sessionGeneration, activeRoot = root;
+  const currentSession = () => generation === sessionGeneration && root === activeRoot;
   let titleInput = $("title"), titleError = $("title-error");
   titleInput.setAttribute("aria-invalid", String(!titleInput.value.trim()));
   titleError.classList.toggle("hidden", !!titleInput.value.trim());
@@ -2144,10 +2146,12 @@ async function save(event, retry = false) {
       made.index(),
       made.body(),
     );
+    if (!currentSession()) return;
     await call(
       `/api/v1/vaults/${vaultId}/items${itemId ? `/${itemId}` : ""}`,
       { method: itemId ? "PUT" : "POST", body: payload },
     );
+    if (!currentSession()) return;
     accepted = true;
     let acceptedRevision = uuid(made.catalogue().slice(44, 60));
     catalogue = made.catalogue();
@@ -2156,12 +2160,16 @@ async function save(event, retry = false) {
     updateSessionDates();
     clearItem();
     await reload();
+    if (!currentSession()) return;
     if (uuid(catalogue.slice(44, 60)) !== acceptedRevision) throw Error("SAVE_REVISION_MISMATCH");
     let summary = loadedItems.find((row) => row.row.itemId === newId);
     if (!summary) throw Error("SAVED_ITEM_MISSING");
-    displayItem(await fetchItem(newId, summary.index));
+    const savedItem = await fetchItem(newId, summary.index);
+    if (!currentSession()) return;
+    displayItem(savedItem);
     toast(replica?.pending ? "Saved on this device" : itemId ? "Item updated" : "Item created", replica?.pending ? "Your encrypted change is saved locally and will sync when connected." : "Your encrypted change was saved successfully.", "success");
   } catch (e) {
+    if (!currentSession()) return;
     if (accepted) {
       toast("Item saved; refresh needs attention", "The server accepted the encrypted change, but the fresh replica could not be verified. Sync before editing again.", "error");
       return;
@@ -2175,17 +2183,22 @@ async function save(event, retry = false) {
       let serverItem = null, serverLoadFailed = false;
       try {
         await reload({ preserveDraft: true });
+        if (!currentSession()) return;
         let summary = loadedItems.find((row) => row.row.itemId === draft?.itemId);
         if (summary) serverItem = await fetchItem(summary.row.itemId, summary.index);
       } catch (loadError) {
+        if (!currentSession()) return;
         serverLoadFailed = true;
         toast("Server version could not be loaded", safeError(loadError), "error");
       }
+      if (!currentSession()) return;
       if (serverLoadFailed) { beginEdit(draft, true); return; }
       let choice = await resolveConflict(draft, serverItem);
+      if (!currentSession()) return;
       if (choice === "mine") {
         beginEdit(serverItem ? draft : { ...draft, itemId: null }, true);
         await new Promise(requestAnimationFrame);
+        if (!currentSession()) return;
         await save(event, true);
       } else if (choice === "server") {
         if (serverItem) displayItem(serverItem); else clearItem();
@@ -2193,6 +2206,7 @@ async function save(event, retry = false) {
       } else if (choice?.kind === "merge") {
         beginEdit(choice.item, true);
         await new Promise(requestAnimationFrame);
+        if (!currentSession()) return;
         await save(event, true);
       } else if (draft) {
         beginEdit(draft, true);
@@ -2202,7 +2216,7 @@ async function save(event, retry = false) {
     else if (e.message.startsWith("CUSTOM_FIELD_"))
       document.querySelector("#custom-fields .custom-label:invalid")?.focus();
   } finally {
-    setBusy(false);
+    if (currentSession()) setBusy(false);
   }
 }
 function resolveConflict(local, server) {
