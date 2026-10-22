@@ -44,3 +44,19 @@ test('secret values are masked unless explicitly revealed and disable text assis
   assert.equal(hidden.props.spellCheck, false);
   assert.equal(render('password', 'secret', { revealed: true }).props.type, 'text');
 });
+
+test('addresses, phones and SSH text keep their original string values', () => {
+  assert.equal(render('phone', '+01 (234) 005').props.inputMode, 'tel');
+  const address = render('address', 'One\nTwo');
+  assert.equal(address.type, 'textarea');
+  const key = 'KEY\r\n  untouched==\r\n';
+  const hidden = render('password', key, {'data-field-id':'key',className:'typed-value'});
+  const stored = hidden.props.children[0];
+  assert.equal(stored.props.type, 'hidden');
+  assert.equal(stored.props.value, key);
+  assert.equal(stored.props['data-field-id'], 'key');
+  const revealed = render('password', key, {revealed:true});
+  assert.equal(revealed.type, 'textarea');
+  assert.equal(revealed.props.value, key);
+  assert.equal(revealed.props['data-original-value'], key);
+});

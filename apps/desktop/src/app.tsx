@@ -11,7 +11,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { createDragSession } from "./drag-session.mjs";
 import { browseColumnValue, browseGroups, type BrowseMode } from "./item-browser";
 import { choicesForConflict } from "./conflict-choice.mjs";
-import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
+import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addWebsite, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "./item-types";
 import {
   PanelsTopLeft,
   ExternalLink,
@@ -88,8 +88,18 @@ const generateSecret = (options: GeneratorOptions) => invoke<string>("generate_s
 function DesktopSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
   return <SecretGenerator {...props} autoGenerate triggerIcon={<RefreshCw size={16} aria-hidden="true" />} />;
 }
-const TYPE_ICONS = { login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound, passkey: KeyRound };
+const TYPE_ICONS = { note: Terminal, identity: Globe2, passport: Globe2, license: Globe2, membership: Globe2, database: Globe2, email: Globe2, medical: Globe2, api: Globe2, custom: Globe2, login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound, passkey: KeyRound };
 const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
+  note: "Private text and notes",
+  identity: "Personal details and addresses",
+  passport: "Passport details and dates",
+  license: "License details and keys",
+  membership: "Membership and rewards details",
+  database: "Database connection credentials",
+  email: "Mail account credentials",
+  medical: "Private health information",
+  api: "Service access credentials",
+  custom: "Your own fields and sections",
   login: "Website or app sign-in",
   passkey: "Passwordless website sign-in",
   bank: "Account and online banking",
@@ -149,7 +159,7 @@ export function App() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importAvailableVaults, setImportAvailableVaults] = useState<{ id: string; name: string; account: string; records: number }[]>([]);
   const [importSelectedVaults, setImportSelectedVaults] = useState<string[] | null>(null);
-  const [importSkipped, setImportSkipped] = useState<{ items: number; attachments: number } | null>(null);
+  const [importSkipped, setImportSkipped] = useState<{ items: number; attachments: number; fields: number; archived: number; types: Record<string, number> } | null>(null);
   const [importCount, setImportCount] = useState<number | null>(null);
   const [importSourceVaults, setImportSourceVaults] = useState<{ name: string; records: number }[]>([]);
   const [importBusy, setImportBusy] = useState(false);
@@ -343,9 +353,9 @@ export function App() {
       bytes = Array.from(new Uint8Array(await importFile.arrayBuffer()));
       if (generation !== importGeneration.current) return;
       const inspect = importFormat === "1password" && importSelectedVaults === null;
-      const result = await invoke<{ records?: number; imported?: number; sourceVaults?: { name: string; records: number }[]; availableVaults?: typeof importAvailableVaults; skippedItems?: number; skippedAttachments?: number }>("import_passwords", { vaultId: importVaultId, bytes, format: importFormat, confirm, selectedVaults: importFormat === "1password" ? importSelectedVaults : null, inspect });
+      const result = await invoke<{ records?: number; imported?: number; sourceVaults?: { name: string; records: number }[]; availableVaults?: typeof importAvailableVaults; skippedItems?: number; skippedAttachments?: number; skippedFields?: number; skippedArchived?: number; importedTypes?: Record<string, number> }>("import_passwords", { vaultId: importVaultId, bytes, format: importFormat, confirm, selectedVaults: importFormat === "1password" ? importSelectedVaults : null, inspect });
       if (generation !== importGeneration.current) return;
-      setImportSkipped({ items: result.skippedItems ?? 0, attachments: result.skippedAttachments ?? 0 });
+      setImportSkipped({ items: result.skippedItems ?? 0, attachments: result.skippedAttachments ?? 0, fields: result.skippedFields ?? 0, archived: result.skippedArchived ?? 0, types: result.importedTypes ?? {} });
       if (inspect) {
         const choices = result.availableVaults ?? [];
         setImportAvailableVaults(choices); setImportSelectedVaults(choices.filter(vault => vault.records > 0).map(vault => vault.id));
@@ -356,7 +366,7 @@ export function App() {
         const refreshedVaults = await invoke<VaultSummary[]>("vault_list");
         if (generation !== importGeneration.current) return;
         const refreshed = viewMode === "single" ? await invoke<Summary[]>("item_list", { vaultId }) : await listVisibleItems(refreshedVaults.filter(vault => !vault.retired));
-        if (generation === importGeneration.current) { setVaults(refreshedVaults); setItems(refreshed); setStatus(`Imported ${result.imported} items. ${result.skippedItems ?? 0} unsupported items and ${result.skippedAttachments ?? 0} attachment files excluded from the export.`); }
+        if (generation === importGeneration.current) { setVaults(refreshedVaults); setItems(refreshed); setStatus(`Imported ${result.imported} items. ${result.skippedItems ?? 0} items and ${result.skippedAttachments ?? 0} files excluded. ${result.skippedFields ?? 0} fields omitted or retained without native behavior.`); }
       } else { setImportCount(result.records ?? 0); setImportSourceVaults(result.sourceVaults ?? []); }
     } catch (error) { if (generation === importGeneration.current) { setImportError(String(error)); if (confirm) { setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); } } }
     finally { bytes.fill(0); if (generation === importGeneration.current) setImportBusy(false); }
@@ -1850,6 +1860,7 @@ export function App() {
                         }
                       />
                     </label>}
+                    {itemType(selected.customFields) === "login" && <Button variant="secondary" onClick={() => setSelected({ ...selected, customFields: addWebsite(selected.customFields) })}>Add another website</Button>}
                   </div>
                 </section>
                 <section className="ui-page-section mt-8">
@@ -1900,7 +1911,7 @@ export function App() {
                   </div>
                 </section>
                 <PasskeyDetails fields={selected.customFields} onRemove={() => setSelected({ ...selected, customFields: [...setItemType(selected.customFields.filter(f => f.id !== "__127vaults_passkey" && f.id !== "__127vaults_passkey_key"), itemType(selected.customFields) === "passkey" ? "login" : itemType(selected.customFields)), { id: "__127vaults_remove_passkey", label: "Remove passkey", type: "metadata", value: "true" }] })} />
-                {(itemType(selected.customFields) !== "passkey" || selected.customFields.some(f => f.id === TOTP_ID && f.value)) && <AuthenticatorEditor value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />}
+                {(itemType(selected.customFields) !== "passkey" || selected.customFields.some(f => f.id === TOTP_ID && f.value)) && <AuthenticatorEditor copy={copyValue} value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />}
                 <section className="ui-page-section mt-8 border-t border-white/10 pt-7">
                   <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
                   <div className="grid gap-3">{sections(selected.customFields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/12 bg-white/3">
@@ -2113,9 +2124,9 @@ export function App() {
             <option value="bitwarden">Bitwarden JSON (unencrypted)</option><option value="1password">1Password 1PUX</option><option value="lastpass">LastPass CSV</option><option value="127vaults">127Vaults JSON</option>
           </select></label>
           <input key={importFormat} type="file" accept={importFormat === "1password" ? ".1pux" : importFormat === "lastpass" ? ".csv" : ".json"} disabled={importBusy} onChange={e => { setImportFile(e.target.files?.[0] ?? null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); }} />
-          <p className="text-sm text-slate-400">Login records are supported. Supported credentials and readable notes are imported. Passkeys, attachments and other vendor item types must be migrated separately. Delete plaintext source files when finished.</p>
-          {importFormat === "1password" && importSelectedVaults !== null && <fieldset className="grid gap-2 rounded-xl border border-white/10 p-3" disabled={importBusy}><legend className="px-1 font-semibold">Source vaults to import</legend><p className="text-sm text-slate-400">Choose vaults from the account export. Supported type: Logins.</p><div className="max-h-44 overflow-auto">{importAvailableVaults.map(vault => <label key={vault.id} className="flex gap-2 py-1 text-sm"><input type="checkbox" checked={importSelectedVaults.includes(vault.id)} disabled={!vault.records} onChange={event => { setImportSelectedVaults(event.target.checked ? [...importSelectedVaults, vault.id] : importSelectedVaults.filter(id => id !== vault.id)); setImportCount(null); setImportSourceVaults([]); setImportError(null); }} /><span>{vault.name || "Unnamed vault"}{vault.account ? ` · ${vault.account}` : ""} · {vault.records} supported logins</span></label>)}</div></fieldset>}
-          {importSkipped && importFormat === "1password" && <p className="text-sm text-amber-200" role="status">Excluded from this export: {importSkipped.items} unsupported items and {importSkipped.attachments} attachment files. Login credentials are imported even when their attachments are excluded. Keep the source export for anything excluded.</p>}
+          <p className="text-sm text-slate-400">1Password imports supported item types, notes, custom fields, additional websites and authenticator setup. Bitwarden and LastPass import logins. Passkeys and files are excluded. For documents, use your preferred cloud storage and save a link in a URL field here. Delete plaintext source files when finished.</p>
+          {importFormat === "1password" && importSelectedVaults !== null && <fieldset className="grid gap-2 rounded-xl border border-white/10 p-3" disabled={importBusy}><legend className="px-1 font-semibold">Source vaults to import</legend><p className="text-sm text-slate-400">Choose vaults from the account export. Documents and archived items are excluded.</p><div className="max-h-44 overflow-auto">{importAvailableVaults.map(vault => <label key={vault.id} className="flex gap-2 py-1 text-sm"><input type="checkbox" checked={importSelectedVaults.includes(vault.id)} disabled={!vault.records} onChange={event => { setImportSelectedVaults(event.target.checked ? [...importSelectedVaults, vault.id] : importSelectedVaults.filter(id => id !== vault.id)); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); setImportError(null); }} /><span>{vault.name || "Unnamed vault"}{vault.account ? ` · ${vault.account}` : ""} · {vault.records} supported items</span></label>)}</div></fieldset>}
+          {importSkipped && importFormat === "1password" && <p className="text-sm text-amber-200" role="status">Excluded from the whole export: {importSkipped.items} items (including {importSkipped.archived} archived items) and {importSkipped.attachments} files (documents, attachments or icons). Selected item types: {Object.entries(importSkipped.types).map(([type, count]) => `${ITEM_TYPES[type as ItemType]?.label || type}: ${count}`).join(", ") || "None"}. {importSkipped.fields} fields omitted or retained without native behavior. Tags, favorites, history and item links are not restored. Keep the source export for excluded data.</p>}
           {importCount !== null && <p>{importCount} items ready to import.</p>}
           {importSourceVaults.length > 0 && <div className="max-h-40 overflow-auto text-sm"><p className="font-semibold">Vaults to create</p><ul>{importSourceVaults.map((vault, index) => <li key={index}>{vault.name} · {vault.records} items</li>)}</ul></div>}
           {importError && <p role="alert" className="text-amber-300">{importError}</p>}

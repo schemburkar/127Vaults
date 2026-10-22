@@ -86,8 +86,22 @@ fn site_origin(value: &str) -> Result<String, String> {
 }
 
 fn website_matches(row: &Value, site: &str) -> bool {
-    row["website"]
-        .as_str()
+    website_value_matches(row["website"].as_str().unwrap_or(""), site)
+        || row["customFields"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|field| {
+                field["type"] == "url"
+                    && field["id"]
+                        .as_str()
+                        .is_some_and(|id| id.starts_with("website-alias-"))
+                    && website_value_matches(field["value"].as_str().unwrap_or(""), site)
+            })
+}
+
+fn website_value_matches(website: &str, site: &str) -> bool {
+    Some(website)
         .and_then(|website| {
             let website = website.trim();
             if website.is_empty()
@@ -111,6 +125,21 @@ fn website_matches(row: &Value, site: &str) -> bool {
                 && url.host_str().is_some_and(|host| !host.contains('*'))
                 && url.origin().ascii_serialization() == site
         })
+}
+
+#[test]
+fn additional_websites_match_only_explicit_login_aliases() {
+    let mut row = json!({"website":"https://primary.test","customFields":[
+        {"id":"website-alias-one","type":"url","value":"https://other.test/login"},
+        {"id":"document-link","type":"url","value":"https://drive.test/document"}
+    ]});
+    assert!(website_matches(&row, "https://other.test"));
+    assert!(!website_matches(&row, "https://drive.test"));
+    assert!(!website_matches(&row, "https://sub.other.test"));
+    assert!(!website_matches(&row, "http://other.test"));
+    assert!(!website_matches(&row, "https://other.test:444"));
+    row["customFields"][0]["type"] = json!("text");
+    assert!(!website_matches(&row, "https://other.test"));
 }
 
 fn field_value<'a>(fields: &'a [Value], id: &str) -> Option<&'a str> {
@@ -169,7 +198,7 @@ fn entry_fields(summary: &Value, entry_id: &str, site: &str) -> Result<(String, 
 fn login_entries(summary: &Value, vault_id: &str, site: &str) -> Vec<Value> {
     let mut entries = Vec::new();
     if summary["itemType"] == "login" && website_matches(summary, site) {
-        entries.push(json!({"vaultId":vault_id,"itemId":summary["itemId"],"entryId":"", "title":summary["title"],"website":summary["website"],"username":summary["username"]}));
+        entries.push(json!({"vaultId":vault_id,"itemId":summary["itemId"],"entryId":"", "title":summary["title"],"website":if website_value_matches(summary["website"].as_str().unwrap_or(""),site) {summary["website"].clone()} else {json!(site)},"username":summary["username"]}));
     }
     if let Some(fields) = summary["customFields"].as_array() {
         for marker in fields.iter().filter(|field| field["type"] == "metadata") {

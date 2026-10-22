@@ -646,7 +646,7 @@ pub struct ItemInputArgs {
     #[arg(long, value_name = "KEY=VALUE")]
     field: Vec<String>,
     /// First-party item type (defaults to login).
-    #[arg(long = "type", value_parser = ["login", "bank", "card", "wifi", "router", "ssh", "password"])]
+    #[arg(long = "type", value_parser = ["login", "bank", "card", "wifi", "router", "ssh", "password", "note", "identity", "passport", "license", "membership", "database", "email", "medical", "api", "custom"])]
     item_type: Option<String>,
 }
 
@@ -1447,7 +1447,15 @@ fn item_fields_from_args(
                 if label.is_empty()
                     || !matches!(
                         kind,
-                        "text" | "password" | "url" | "date" | "email" | "number" | "note"
+                        "text"
+                            | "password"
+                            | "url"
+                            | "date"
+                            | "email"
+                            | "number"
+                            | "note"
+                            | "phone"
+                            | "address"
                     )
                     || custom_fields.iter().any(|field: &serde_json::Value| {
                         field["label"]
@@ -1514,7 +1522,23 @@ fn item_fields_from_args(
         .unwrap_or("login");
     if !matches!(
         kind,
-        "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password"
+        "login"
+            | "bank"
+            | "card"
+            | "wifi"
+            | "router"
+            | "ssh"
+            | "password"
+            | "note"
+            | "identity"
+            | "passport"
+            | "license"
+            | "membership"
+            | "database"
+            | "email"
+            | "medical"
+            | "api"
+            | "custom"
     ) {
         return Err("item type is unsupported".to_owned());
     }
@@ -1570,7 +1594,16 @@ fn item_fields_from_args(
             .ok_or("each custom field needs a supported type")?;
         if !matches!(
             kind,
-            "text" | "password" | "url" | "date" | "email" | "number" | "note" | "metadata"
+            "text"
+                | "password"
+                | "url"
+                | "date"
+                | "email"
+                | "number"
+                | "note"
+                | "phone"
+                | "address"
+                | "metadata"
         ) {
             return Err("each custom field needs a supported type".to_owned());
         }
@@ -1633,12 +1666,36 @@ fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(),
                 || field["type"] != "metadata"
                 || !matches!(
                     section_type,
-                    "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password" | "security"
+                    "login"
+                        | "bank"
+                        | "card"
+                        | "wifi"
+                        | "router"
+                        | "ssh"
+                        | "password"
+                        | "note"
+                        | "identity"
+                        | "passport"
+                        | "license"
+                        | "membership"
+                        | "database"
+                        | "email"
+                        | "medical"
+                        | "api"
+                        | "custom"
+                        | "security"
+                        | "backup"
                 )
             {
                 return Err("section marker is invalid".to_owned());
             }
             sections.insert(section);
+        } else if id == "__127vaults_totp" {
+            if field["type"] != "password"
+                || !crate::migration::supported_totp(field["value"].as_str().unwrap_or(""))
+            {
+                return Err("authenticator setup is unsupported".to_owned());
+            }
         } else if field["type"] == "metadata"
             || id.starts_with("__127vaults_") && !id.starts_with("__127vaults_field:")
         {

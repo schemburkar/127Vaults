@@ -25,3 +25,17 @@ test('web source matches bare websites without modifying stored data', () => {
   assert.equal(entries[0].website, website);
   assert.equal(extensionRelatedLogins(item, 'https://app.vercel.com').length, 0);
 });
+
+test('additional websites match exactly and ordinary document links do not', () => {
+  const matches = new Function(source.slice(start, end) + ';return extensionWebsiteMatches')();
+  const item = {body:{customFields:[{id:'website-alias-1',type:'url',value:'https://other.test/login'},{id:'document',type:'url',value:'https://drive.test/doc'}]}};
+  assert.equal(matches(item,'https://primary.test','https://other.test'),true);
+  for (const origin of ['https://drive.test','https://sub.other.test','http://other.test','https://other.test:444']) assert.equal(matches(item,'https://primary.test',origin),false);
+});
+test('web saves keep original line endings unless text is edited', () => {
+  const startValue = source.indexOf('function fieldInputValue(input) {');
+  const endValue = source.indexOf('function collectCustomFields()', startValue);
+  const read = new Function(source.slice(startValue,endValue)+';return fieldInputValue')();
+  assert.equal(read({dataset:{originalValue:'KEY\r\n'},value:'KEY\n'}),'KEY\r\n');
+  assert.equal(read({dataset:{originalValue:'KEY\r\n'},value:'EDITED\n'}),'EDITED\n');
+});

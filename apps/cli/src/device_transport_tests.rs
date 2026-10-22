@@ -14,6 +14,54 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn onepassword_native_item_and_authenticator_survive_encrypted_import() {
+    let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
+    session.online = false;
+    let setup = "otpauth://totp/Example?secret=JBSWY3DPEHPK3PXP&issuer=Example";
+    let data = json!({"accounts":[{"vaults":[{"items":[
+        {"categoryUuid":"106","overview":{"title":"Imported passport"},"details":{"sections":[{"title":"Passport","fields":[{"id":"number","title":"Passport number","value":{"string":"000123"}}]}]}},
+        {"categoryUuid":"001","overview":{"title":"Imported authenticator"},"details":{"sections":[{"title":"Security","fields":[{"title":"Authenticator","value":{"totp":setup}}]}]}}
+    ]}]}]});
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer
+        .start_file("export.data", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    writer.write_all(data.to_string().as_bytes()).unwrap();
+    let bytes = writer.finish().unwrap().into_inner();
+    let preview = session
+        .import_passwords_selected(&vault, &bytes, "1password", false, None, false, || true)
+        .unwrap();
+    assert_eq!(preview["records"], 2);
+    assert_eq!(preview["importedTypes"]["passport"], 1);
+    assert_eq!(
+        session.item_list(&vault).unwrap().as_array().unwrap().len(),
+        1
+    );
+    let imported = session
+        .import_passwords_selected(&vault, &bytes, "1password", true, None, false, || true)
+        .unwrap();
+    assert_eq!(imported["imported"], 2);
+    let passport = session.item_get(&vault, "Imported passport", None).unwrap();
+    assert_eq!(passport["itemType"], "passport");
+    assert_eq!(
+        session
+            .item_get(&vault, "Imported passport", Some("number"))
+            .unwrap(),
+        "000123"
+    );
+    let auth = session
+        .item_get(&vault, "Imported authenticator", None)
+        .unwrap();
+    assert!(!auth.to_string().contains("JBSWY"));
+    assert_eq!(
+        session
+            .item_get(&vault, "Imported authenticator", Some("__127vaults_totp"))
+            .unwrap(),
+        setup
+    );
+}
+
+#[test]
 fn onepassword_inspection_and_selection_import_only_supported_selected_logins() {
     let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
     session.online = false;

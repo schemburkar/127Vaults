@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Button } from './button';
 import { Input } from './input';
+import { IconButton } from './icon-button';
 import { parseTotp, totp } from './product-features.mjs';
 
-export function AuthenticatorEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export function AuthenticatorEditor({ value, onChange, copy }: { value: string; onChange: (value: string) => void; copy: (value: string) => Promise<unknown> }) {
+  const [copyStatus, setCopyStatus] = useState('');
   let error = '';
   if (value.trim()) try { parseTotp(value); } catch (e) { error = (e as Error).message; }
-  return <section className="mt-7 grid gap-3"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Authenticator</h3><label className="grid gap-2 text-sm text-slate-400">Setup secret or otpauth URI<Input type="password" autoComplete="off" value={value} onChange={e => onChange(e.target.value)} placeholder="Paste the service’s setup key" aria-invalid={!!error} /></label><p className="text-xs text-slate-500">Optional. The setup secret is encrypted with this item. Leave blank to remove it.</p>{error && <p role="alert" className="text-xs text-red-300">{error}</p>}</section>;
+  return <section className="mt-7 grid gap-3"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Authenticator</h3><label className="grid gap-2 text-sm text-slate-400">Setup secret or otpauth URI<div className="flex gap-2"><Input type="password" autoComplete="off" value={value} onChange={e => { setCopyStatus(''); onChange(e.target.value); }} placeholder="Paste the service’s setup key" aria-invalid={!!error} /><IconButton label="Copy authenticator setup secret or URI" disabled={!value} onClick={() => { void copy(value).then(() => setCopyStatus('Setup value copied')).catch(() => setCopyStatus('Could not copy setup value')); }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></IconButton></div></label><p className="text-xs text-slate-500">Optional. The setup secret is encrypted with this item. Leave blank to remove it.</p>{copyStatus && <p role="status" className="text-xs text-slate-400">{copyStatus}</p>}{error && <p role="alert" className="text-xs text-red-300">{error}</p>}</section>;
 }
 
 export function AuthenticatorCode({ value, copy }: { value: string; copy: (value: string) => Promise<unknown> }) {

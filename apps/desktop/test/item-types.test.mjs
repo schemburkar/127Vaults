@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RELATED_TYPES, addRelatedSection, addSection, addSectionField, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType } from '../src/item-types.ts';
+import { RELATED_TYPES, addWebsite, addRelatedSection, addSection, addSectionField, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType } from '../src/item-types.ts';
 
 test('passkey reserved fields are hidden and survive attempted type conversion', () => {
   const fields = setItemType([{ id: '__127vaults_passkey', label: 'Passkey', type: 'metadata', value: '{}' }, { id: '__127vaults_passkey_key', label: 'Private key', type: 'password', value: 'secret' }], 'passkey');
@@ -79,4 +79,22 @@ test('backup codes are masked recovery details separate from TOTP metadata', () 
   assert.equal(fields.find(field => field.id === '__127vaults_totp').value, 'JBSWY3DPEHPK3PXP');
   const legacy = sections(addRelatedSection([], 'password', 'Authenticator or backup code'));
   assert.equal(legacy[0].fields[0].type, 'password');
+});
+
+ test('imported types and custom sections remain editable and classified', () => {
+  for (const type of ['note','identity','passport','license','membership','database','email','medical','api','custom']) {
+    const fields = setItemType([], type);
+    assert.equal(itemType(fields), type);
+    const withSection = addSection(fields, 'custom');
+    assert.equal(sections(withSection)[0].type, 'custom');
+  }
+});
+
+test('additional websites keep unique editable labels after deletion', () => {
+  const first = addWebsite([]);
+  const second = addWebsite(first);
+  assert.equal(second[1].label, 'Additional website 2');
+  const replacement = addWebsite(second.slice(1));
+  assert.equal(new Set(replacement.map(field => field.label)).size, 2);
+  assert.ok(replacement.every(field => field.id.startsWith('website-alias-') && field.type === 'url'));
 });

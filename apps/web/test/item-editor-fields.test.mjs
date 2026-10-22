@@ -4,7 +4,7 @@ import test from 'node:test';
 
 test('saving a collapsed related detail retains its marker and every field once', async () => {
   const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
-  const start = source.indexOf('function collectCustomFields() {');
+  const start = source.indexOf('function fieldInputValue(input) {');
   const end = source.indexOf('\nfunction renderCustomFields(', start);
   assert.ok(start >= 0 && end > start);
   const marker = { dataset: { fieldId: '__127vaults_section:card-1', fieldLabel: 'Section', fieldType: 'metadata' }, value: 'card|Daily spending card' };
@@ -26,7 +26,7 @@ test('saving a collapsed related detail retains its marker and every field once'
 
 test('custom field saving reads the styled picker value and preserves string values', async () => {
   const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
-  const start = source.indexOf('function collectCustomFields() {');
+  const start = source.indexOf('function fieldInputValue(input) {');
   const end = source.indexOf('\nfunction renderCustomFields(', start);
   let kind = 'password', value = '000123';
   const row = { dataset: { fieldId: 'custom-1' }, querySelector(selector) {

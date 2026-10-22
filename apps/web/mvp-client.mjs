@@ -1710,6 +1710,10 @@ function addCustomField(field = {}) {
     new CustomEvent("vaults:add-editor-field", { detail: field }),
   );
 }
+function fieldInputValue(input) {
+  const original = input.dataset?.originalValue;
+  return original !== undefined && original.replace(/\r\n?/g, '\n') === input.value.replace(/\r\n?/g, '\n') ? original : input.value;
+}
 function collectCustomFields() {
   let labels = new Set();
   let custom = [...document.querySelectorAll("#custom-fields .custom-field")].map(
@@ -1720,7 +1724,7 @@ function collectCustomFields() {
       if (labels.has(key)) throw Error("CUSTOM_FIELD_NAME_DUPLICATE");
       labels.add(key);
       let type = row.querySelector(".field-type-value").value,
-        value = row.querySelector(".custom-value").value;
+        value = fieldInputValue(row.querySelector(".custom-value"));
       if (type === "url" && value) value = normalizeWebsite(value);
       return { id: row.dataset.fieldId, label, type, value };
     },
@@ -1728,7 +1732,7 @@ function collectCustomFields() {
   let typed = [...document.querySelectorAll("#custom-fields .typed-value")].map((input) => {
     let label = input.dataset.fieldLabel?.trim();
     if (!label) throw Error("CUSTOM_FIELD_NAME_REQUIRED");
-    return { id: input.dataset.fieldId, label, type: input.dataset.fieldType, value: input.value };
+    return { id: input.dataset.fieldId, label, type: input.dataset.fieldType, value: fieldInputValue(input) };
   });
   let metadata = [...document.querySelectorAll('#custom-fields input.item-metadata[data-field-id]')].map((input) => ({
     id: input.dataset.fieldId,
@@ -1744,6 +1748,8 @@ function renderCustomFields(fields = [], password = "") {
   );
 }
 const itemKinds = {
+  note: {label:"Secure note"}, identity:{label:"Identity"}, passport:{label:"Passport"}, license:{label:"License"}, membership:{label:"Membership"}, medical:{label:"Medical record"}, custom:{label:"Custom item"},
+  database:{label:"Database",username:true,password:true,website:true},email:{label:"Email account",username:true,password:true,website:true},api:{label:"API credential",username:true,password:true,website:true},
   passkey: { label: "Passkey", website: true },
   login: { label: "Login", username: true, password: true, website: true },
   bank: { label: "Bank account", username: true, password: true, website: true },
@@ -1851,6 +1857,10 @@ function extensionOrigin(website) {
   }
   catch { return null; }
 }
+function extensionWebsiteMatches(item, website, siteOrigin) {
+  return extensionOrigin(website) === siteOrigin || (item.body.customFields || []).some(field =>
+    typeof field.id === 'string' && field.id.startsWith('website-alias-') && field.type === 'url' && extensionOrigin(field.value) === siteOrigin);
+}
 function extensionRelatedLogins(item, siteOrigin) {
   const fields = Array.isArray(item.body.customFields) ? item.body.customFields : [];
   const output = [];
@@ -1954,8 +1964,8 @@ window.__vaultsExtensionActions = {
     for (const { row, index } of loadedItems) {
       if (!root || vault !== activeVault) return { locked: true, items: [] };
       const item = await fetchItem(row.itemId, index);
-      if (itemKind(item.body.customFields) === 'login' && extensionOrigin(index.website) === siteOrigin) {
-        items.push({ itemId: row.itemId, entryId: '', title: index.title || 'Untitled login', website: index.website, username: item.body.username || '' });
+      if (itemKind(item.body.customFields) === 'login' && extensionWebsiteMatches(item, index.website, siteOrigin)) {
+        items.push({ itemId: row.itemId, entryId: '', title: index.title || 'Untitled login', website: extensionOrigin(index.website) === siteOrigin ? index.website : siteOrigin, username: item.body.username || '' });
       }
       items.push(...extensionRelatedLogins(item, siteOrigin));
     }
@@ -1981,8 +1991,8 @@ window.__vaultsExtensionActions = {
       if (typeof password !== 'string') throw Error('RELATED_PASSWORD_NOT_FOUND');
       return { itemId, entryId, website: entry.website, username: entry.username, password };
     }
-    if (itemKind(item.body.customFields) !== 'login' || extensionOrigin(found.index.website) !== siteOrigin) throw Error('NOT_A_MATCHING_LOGIN');
-    return { itemId, entryId: '', website: found.index.website, username: item.body.username || '', password: item.body.password || '' };
+    if (itemKind(item.body.customFields) !== 'login' || !extensionWebsiteMatches(item, found.index.website, siteOrigin)) throw Error('NOT_A_MATCHING_LOGIN');
+    return { itemId, entryId: '', website: siteOrigin, username: item.body.username || '', password: item.body.password || '' };
   },
 };
 function openCreateVaultDialog() {

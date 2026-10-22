@@ -32,29 +32,24 @@ is available through an unlocked CLI agent:
 
 Use your actual vault name, ID or reference. Supported sources:
 
-- `1password`: unencrypted `.1pux`, login records only. In desktop, choose **Read
-  export**, select the source vaults, then preview and confirm. Vault selection
-  happens before destination capacity checks, so a small vault can be imported
-  from a larger account export. Tags and individual item selection are not yet
-  available.
+- `1password`: unencrypted `.1pux`. Choose **Read export**, select source vaults, then preview and confirm. Imports logins, cards, secure notes, identities, passwords, licenses, bank accounts, databases, memberships/rewards, passports, wireless credentials, server/SSH credentials, email accounts, API credentials and medical records. Unknown categories become Custom items with their source category recorded. Documents and archived items are excluded. Vault selection happens before destination capacity checks. Tags and individual item selection are not available.
 - `lastpass`: UTF-8 CSV with url, username, password, extra, name, grouping and fav columns. Quoted commas, quotes and multiline notes are supported.
 - `bitwarden`: unencrypted JSON, login records without passkeys or attachments.
 - `127vaults`: the native plaintext JSON export described below.
 
-Vendor imports populate the normal username, password and website fields. Notes
-and supported text/custom fields become readable individual fields; concealed
-vendor fields stay concealed. Raw source JSON is not added. Unsupported vendor
-metadata is not converted; retain the original export for omitted details.
-Legacy raw JSON fields are hidden in desktop without rewriting existing records.
-The 1Password importer skips unsupported types and login records without usable
-login fields. Attachment payloads are never opened or extracted; supported login
-credentials still import when the export contains attachments. The preview and
-completion summary report unsupported-item and attachment-file counts for the
-whole export, including unselected vaults. These counts exclude deliberately
-unselected supported logins. Keep the original export for excluded content.
-Bitwarden still rejects unsupported item types, passkeys and attachments before
-writing any records. LastPass secure-note data remains in
-the original-record field; attachments are not part of its CSV export.
+Vendor imports populate normal credentials, readable notes and individual custom fields. 1PUX v3 typed values retain labels, sections, concealment, address components, phone values, and additional websites. Matching template fields populate native fields; unmatched readable values remain in custom sections. Repeated top-level field labels receive a numbered suffix so imported items remain editable; section field labels remain intact. Numbers and dates retain their exported string representation; numeric date timestamps are retained as text rather than guessed dates. Guarded/concealed values remain concealed. Raw source JSON is never added. Legacy raw JSON fields remain hidden without rewriting old records.
+
+1Password TOTP setup strings populate the existing encrypted authenticator field without a storage migration. Supported configurations use Base32 secrets of at least 80 bits, SHA1/SHA256/SHA512, 6 or 8 digits, and periods of 15–120 seconds. Only one setup is activated per item. Extra or unsupported setup strings are retained as concealed custom fields and counted as fields without native behavior. HOTP is not activated. In edit mode the setup value stays masked; its Copy button copies the original setup secret or URI through the normal clipboard workflow. The read view continues to show the rotating code.
+
+SSH private and public key strings are preserved exactly, including whitespace and line endings, without conversion or key generation. Private keys are concealed; public keys remain text unless the source marks them guarded. This provides storage, not an SSH signing agent. Multiline values remain intact through desktop and web edits.
+
+Additional websites have explicit `website-alias-` field IDs and URL types. Desktop and web can add/edit/remove them. The extension matches their exact HTTPS origin, including port, and rechecks the match before releasing credentials. It does not match arbitrary URL custom fields, subdomains, suffixes, or HTTP downgrades. Passkey origin restrictions are unchanged.
+
+Files under `files/` are counted but never opened or extracted. The count includes documents, attachments and custom icons. To keep a document elsewhere, use Google Drive, iCloud, OneDrive or another preferred storage provider and manually save its link in a URL field. The importer does not upload files, create links or change external sharing permissions. Passport/identity items contain normal fields, not document attachments.
+
+Inspection/preview/completion return supported counts by destination item type, excluded-item counts, archived-item counts, file counts and fields omitted or retained without native behavior. Item/file exclusions cover the whole export, including unselected vaults. Field counts and type counts cover selected importable items. Unknown structured values are omitted and counted rather than exposed as raw JSON. Tags, favorites, archive restoration, timestamps, password history and item-reference relationships are deferred; archived items are excluded to avoid reactivating credentials. Passkeys cannot be recovered from ordinary desktop 1PUX exports.
+
+Bitwarden still rejects unsupported item types, passkeys and attachments before writing. LastPass remains CSV-based. Neither importer is broadened by the 1Password category mapping. Keep the original export for excluded data.
 
 Files are read locally; only newly encrypted vault records are synced. Files are
 limited to 32 MiB, including expanded 1PUX data, and individual normalized records

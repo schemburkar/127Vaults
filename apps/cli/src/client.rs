@@ -3139,8 +3139,7 @@ impl Session {
         }
         if report.rows.is_empty() {
             return Err(
-                "No supported login records match this import selection. No items were imported."
-                    .into(),
+                "No supported items match this import selection. No items were imported.".into(),
             );
         }
         let mut result = self.import_password_rows(vault, &report.rows, confirm, &mut active)?;

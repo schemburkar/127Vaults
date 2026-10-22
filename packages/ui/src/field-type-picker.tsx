@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-const labels: Record<string, string> = { text: "Text", password: "Secret", url: "URL", date: "Date", email: "Email", number: "Number", note: "Note" };
+const labels: Record<string, string> = { text: "Text", password: "Secret", url: "URL", date: "Date", email: "Email", number: "Number", note: "Note", phone: "Phone", address: "Address" };
 const kinds = Object.keys(labels);
 
 export function FieldTypePicker({ value, onChange, options = kinds }: { value: string; onChange: (value: string) => void; options?: string[] }) {

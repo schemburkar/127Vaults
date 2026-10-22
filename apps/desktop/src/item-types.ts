@@ -1,5 +1,12 @@
-export type ItemType = "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password" | "passkey";
+export type ItemType = "login" | "bank" | "card" | "wifi" | "router" | "ssh" | "password" | "passkey" | "note" | "identity" | "passport" | "license" | "membership" | "database" | "email" | "medical" | "api" | "custom";
 export type ItemField = { id: string; label: string; type: string; value: string };
+
+export function addWebsite(fields: ItemField[]): ItemField[] {
+  const labels = new Set(fields.map(field => field.label.trim().toLowerCase()));
+  let index = 1;
+  while (labels.has(`additional website ${index}`)) index++;
+  return [...fields, { id: `website-alias-${crypto.randomUUID()}`, label: `Additional website ${index}`, type: "url", value: "" }];
+}
 
 // Stored inside the encrypted item body alongside custom fields, so older clients
 // retain the classification even before they understand item types.
@@ -7,6 +14,53 @@ export const TYPE_FIELD_ID = "__127vaults_item_type";
 export const SECTION_PREFIX = "__127vaults_section:";
 export const SECTION_FIELD_PREFIX = "__127vaults_field:";
 export const ITEM_TYPES: Record<ItemType, { label: string; fields: Omit<ItemField, "value">[]; username?: boolean; password?: boolean; website?: boolean }> = {
+  note: { label: "Secure note", fields: [
+    { id: "notes", label: "Notes", type: "note" },
+  ] },
+  identity: { label: "Identity", fields: [
+    { id: "firstname", label: "First name", type: "text" },
+    { id: "lastname", label: "Last name", type: "text" },
+    { id: "birthdate", label: "Date of birth", type: "date" },
+    { id: "address", label: "Address", type: "address" },
+    { id: "phone", label: "Phone", type: "phone" },
+    { id: "email", label: "Email", type: "email" },
+    { id: "identity_number", label: "Identity number", type: "password" },
+  ] },
+  passport: { label: "Passport", fields: [
+    { id: "fullname", label: "Full name", type: "text" },
+    { id: "number", label: "Passport number", type: "password" },
+    { id: "country", label: "Issuing country", type: "text" },
+    { id: "issued", label: "Issue date", type: "date" },
+    { id: "expiry", label: "Expiry date", type: "date" },
+  ] },
+  license: { label: "License", fields: [
+    { id: "name", label: "Name", type: "text" },
+    { id: "number", label: "License number / key", type: "password" },
+    { id: "expiry", label: "Expiry date", type: "date" },
+  ] },
+  membership: { label: "Membership", fields: [
+    { id: "organization", label: "Organization", type: "text" },
+    { id: "member_name", label: "Member name", type: "text" },
+    { id: "member_id", label: "Member number", type: "password" },
+  ] },
+  database: { label: "Database", username: true, password: true, website: true, fields: [
+    { id: "host", label: "Host", type: "text" },
+    { id: "port", label: "Port", type: "number" },
+    { id: "database", label: "Database name", type: "text" },
+  ] },
+  email: { label: "Email account", username: true, password: true, website: true, fields: [
+    { id: "email", label: "Email address", type: "email" },
+    { id: "server", label: "Mail server", type: "text" },
+  ] },
+  medical: { label: "Medical record", fields: [
+    { id: "patient", label: "Patient name", type: "text" },
+    { id: "notes", label: "Notes", type: "note" },
+  ] },
+  api: { label: "API credential", username: true, password: true, website: true, fields: [
+    { id: "host", label: "Host", type: "text" },
+    { id: "credential", label: "Credential", type: "password" },
+  ] },
+  custom: { label: "Custom item", fields: [] },
   login: { label: "Login", username: true, password: true, website: true, fields: [] },
   passkey: { label: "Passkey", website: true, fields: [] },
   bank: { label: "Bank account", username: true, password: true, website: true, fields: [
@@ -37,7 +91,9 @@ export const ITEM_TYPES: Record<ItemType, { label: string; fields: Omit<ItemFiel
 };
 
 export const TYPE_GROUPS: { label: string; types: ItemType[] }[] = [
-  { label: "Basics", types: ["login", "password"] },
+  { label: "Basics", types: ["login", "password", "note", "custom"] },
+  { label: "Personal", types: ["identity", "passport", "license", "membership", "medical"] },
+  { label: "Accounts", types: ["database", "email", "api"] },
   { label: "Financials", types: ["bank", "card"] },
   { label: "Devices and networks", types: ["wifi", "router", "ssh"] },
 ];
@@ -52,6 +108,7 @@ export const SECTION_TYPES: Record<Exclude<SectionType, "custom">, { label: stri
 };
 export const CUSTOM_SECTION = { label: "Custom details", fields: [] as Omit<ItemField, "value">[] };
 export const RELATED_TYPES: Record<ItemType, { type: SectionType; label: string; description: string }[]> = {
+  note: [], identity: [], passport: [], license: [], membership: [], database: [], email: [], medical: [], api: [], custom: [],
   login: [
     { type: "security", label: "Recovery details", description: "Security question and answer" },
     { type: "backup", label: "Backup code", description: "A recovery code; use Authenticator above for TOTP setup" },
