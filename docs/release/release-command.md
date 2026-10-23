@@ -1,5 +1,45 @@
 # Local independent releases
 
+## Required process for every package publication
+
+A request to publish packages authorizes this complete workflow, including the
+push to the configured GitHub remote on `main`. Individual build commands remain
+useful for internal candidates; a published release is complete only after all
+steps below succeed.
+
+1. Select the next coordinated version. Prepare versioned release notes in
+   `docs/release/X.Y.Z.md` and on the public Downloads page, retaining earlier
+   site notes. Commit the intended release source on `main` before building.
+2. Run `release-set.ps1 build` for the full package set and Windows/Linux
+   standalone installers. Keep the built-in checks, embedded agreement checks,
+   and isolated upgrade/backup/restore gates. Include installers in every release
+   even if their functionality is unchanged; stamp and verify the coordinated
+   version and exact source commit rather than relabeling an older binary.
+3. Run `release-set.ps1 publish` once for the complete tested set. This deploys
+   the Cloudflare site/Worker, public release notes and private R2 catalogue, and
+   verifies remote hashes and protected delivery. Preserve existing credentials,
+   invitations, installations and rollback evidence.
+4. After deployment, run `pnpm check` and `pnpm test` as additional local
+   verification. Confirm that the versioned site notes are live. Resolve failures
+   before declaring completion; preserve receipts from unsuccessful attempts too.
+5. Commit the completed related changes on local `main` and push `main` to the
+   configured GitHub origin. Include all intended release source commits; never
+   force-push or sweep unrelated uncommitted work into a release.
+6. Use `scripts/release/github.mjs` with the release output root to create or
+   verify the GitHub `vX.Y.Z` release and tag at the exact package build commit,
+   publish its notes, and attach both standalone installer archives plus their
+   combined SHA-256 checksum file. Assets are required for every release even
+   when installer code has not changed. Verify the remote asset hashes and sizes.
+7. Push any final related commits on `main`, confirm the working tree and remote
+   state, and retain build, deployment, local-check and GitHub asset receipts.
+   Report the version and links to both sets of notes.
+
+The GitHub tag identifies the package source commit; subsequent release tooling
+or documentation fixes may place `main` ahead of that tag. This process does not
+change repository visibility or publish installer downloads on the public site.
+GitHub assets inherit the repository's visibility. Those public-distribution
+decisions remain separate from the release workflow.
+
 ## Complete installer set and Cloudflare publication
 
 From the Windows build host, use these two commands:
@@ -309,11 +349,12 @@ share the entire release root: only select finished product/version directories.
 ## GitHub release notes
 
 After deployment and local verification, push the committed release source to the
-configured private GitHub origin. Publish notes without uploading installer assets:
+configured private GitHub origin. For a standard package release, include the
+release output root so installers and checksums are attached as required:
 
 ```powershell
-node scripts/release/github.mjs v0.1.13 <full-build-commit> docs/release/0.1.13.md --plan
-node scripts/release/github.mjs v0.1.13 <full-build-commit> docs/release/0.1.13.md --publish
+node scripts/release/github.mjs v0.1.13 <full-build-commit> docs/release/0.1.13.md --plan C:/Projects/127Vaults-Releases
+node scripts/release/github.mjs v0.1.13 <full-build-commit> docs/release/0.1.13.md --publish C:/Projects/127Vaults-Releases
 ```
 
 The command uses the configured Git credential helper without printing its token,
@@ -324,8 +365,9 @@ commit that page before building so the combined deployment includes it.
 
 To attach the verified Windows/Linux standalone installers and a combined checksum
 file to the same release, append the existing release output root to either
-command (for example, `C:/Projects/127Vaults-Releases`). This is opt-in and
-does not upload the server, desktop, CLI or extension packages. Both installer
+command (for example, `C:/Projects/127Vaults-Releases`). The command supports
+notes-only operation without this argument, but that does not complete a standard
+package release. It does not upload the server, desktop, CLI or extension packages. Both installer
 manifests and archive hashes must match the release version and source commit.
 Existing assets must match GitHub's SHA-256 digest, size and uploaded state;
 differing assets are never deleted or overwritten. Upload responses are verified
