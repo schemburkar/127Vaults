@@ -35,11 +35,18 @@ Current work and release documents:
 ## Repository map
 
 ```text
-apps/       server, web, extension, desktop, CLI, and setup installer
-crates/     Rust cryptographic and protocol foundations
-packages/   shared TypeScript API, domain, and sync packages
-docs/       architecture, security, product, sync, and release decisions
+apps/            server, clients, setup installer, and public intake service
+crates/          Rust cryptographic and protocol foundations
+packages/        shared TypeScript/JavaScript domain, API, sync, lifecycle, and UI
+docs/            architecture, security, product, sync, and release decisions
+deploy/          installation, recovery, upgrade, and deployment templates
+scripts/         development, build, release, and operator commands
+tests/           opt-in internal acceptance suites and their shared fixtures
+public-website/  static marketing site and protected-access pages
 ```
+
+See the [repository layout guide](docs/architecture/repository-layout.md) for
+file placement, dependency boundaries, and recommended follow-up work.
 
 ## Development entry points
 

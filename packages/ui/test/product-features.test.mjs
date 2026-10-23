@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, totp, analyzePasswords } from './src/product-features.mjs';
+import { FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, totp, analyzePasswords } from '../src/product-features.mjs';
 
 const base32 = bytes => {
   let buffer = 0, bits = 0, result = '';

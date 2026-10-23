@@ -4,6 +4,7 @@ The repository license terms are
 [LICENSE.md](../LICENSE.md) and [COMMERCIAL-LICENSE.md](../COMMERCIAL-LICENSE.md).
 
 - [Architecture overview](architecture/overview.md), [API v1 contract](architecture/api-v1-contract.md), and [implementation map](architecture/implementation-interfaces.md).
+- [Repository layout and reorganisation recommendations](architecture/repository-layout.md).
 - [Architecture decisions](adr/README.md). Proposed decisions remain proposals; accepted decisions are not blanket implementation or security approval.
 - [Threat model](security/threat-model.md), [web trust boundary](security/web-client-boundary.md), and [experimental cryptographic format](security/experimental-crypto-format.md).
 - [Product backlogs](product/README.md), [installed PWA behavior](product/pwa.md), and [CLI guide](product/cli-mvp.md).
