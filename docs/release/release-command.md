@@ -305,3 +305,19 @@ On this Windows workstation, the default home cache path is a compatibility
 junction to `C:\Projects\127Vaults-Releases\cache`. Keep using the default
 logical cache path so existing saved records remain valid. Do not publish or
 share the entire release root: only select finished product/version directories.
+
+## GitHub release notes
+
+After deployment and local verification, push the committed release source to the
+configured private GitHub origin. Publish notes without uploading installer assets:
+
+```powershell
+node scripts/release/github.mjs v0.1.13 <full-build-commit> docs/release/0.1.13.md --plan
+node scripts/release/github.mjs v0.1.13 <full-build-commit> docs/release/0.1.13.md --publish
+```
+
+The command uses the configured Git credential helper without printing its token,
+requires a private repository and an existing remote source commit, and refuses
+to overwrite a differing release. Repeat it to verify an identical published
+release. Public notes live in the release-notes section of the Downloads page;
+commit that page before building so the combined deployment includes it.
