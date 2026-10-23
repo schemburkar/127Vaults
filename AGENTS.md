@@ -11,6 +11,13 @@ manual workaround. Run the scripted workflow and retain its verification receipt
 
 ## Standard package publication
 
+Use the established `release-set.ps1 build` and `release-set.ps1 publish`
+scripts to build installers/packages and upload/deploy to Cloudflare. Routine
+publication is an operational run of these scripts, not an R&D task: do not
+reinvent the build/deployment process or substitute manual commands. Investigate
+and repair scripts only when a concrete failure or missing required capability
+blocks the established workflow, and test any repair before continuing.
+
 Every package publication must complete the full release process in
 `docs/release/release-command.md`: build the coordinated packages and standalone
 Windows/Linux installers, pass the built-in release gates, publish the combined
@@ -18,6 +25,13 @@ Cloudflare site/Worker and private R2 catalogue, then run the additional local
 checks. Commit and push the completed release work on `main`, create the GitHub
 `vX.Y.Z` tag/release at the exact package source commit, and publish versioned
 release notes on both the public site and GitHub. Retain earlier site notes.
+
+Immediately before creating a GitHub tag/release, confirm that all intended
+release work is committed and pushed from local `main`. Fetch the configured
+remote and verify local `main` and remote `main` resolve to the same commit,
+with no unpushed commits; confirm the package source commit is reachable from
+remote `main`. Do not create the tag/release until these checks pass. This is
+a verification gate, not a request for another user approval.
 
 Attach that release's verified Windows/Linux standalone installer archives and
 SHA-256 checksum file to every GitHub release, even when installer functionality

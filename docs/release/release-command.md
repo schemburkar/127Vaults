@@ -7,6 +7,12 @@ push to the configured GitHub remote on `main`. Individual build commands remain
 useful for internal candidates; a published release is complete only after all
 steps below succeed.
 
+Use the existing `release-set.ps1 build` and `release-set.ps1 publish` scripts
+for installer/package builds and Cloudflare upload/deployment. Routine releases
+do not call for R&D, a new build pipeline, or manual deployment workarounds.
+Investigate or change those scripts only to resolve an observed failure or a
+missing required capability, and verify the fix before resuming.
+
 1. Select the next coordinated version. Prepare versioned release notes in
    `docs/release/X.Y.Z.md` and on the public Downloads page, retaining earlier
    site notes. Commit the intended release source on `main` before building.
@@ -24,7 +30,12 @@ steps below succeed.
    before declaring completion; preserve receipts from unsuccessful attempts too.
 5. Commit the completed related changes on local `main` and push `main` to the
    configured GitHub origin. Include all intended release source commits; never
-   force-push or sweep unrelated uncommitted work into a release.
+   force-push or sweep unrelated uncommitted work into a release. Immediately
+   before creating the GitHub tag/release, fetch remote `main`, confirm local
+   `main` and remote `main` have identical commit IDs and zero unpushed commits,
+   and confirm the exact package source commit is reachable from remote `main`.
+   Confirm no intended release changes remain uncommitted. Stop tag/release
+   creation until this verification passes; no additional user approval is needed.
 6. Use `scripts/release/github.mjs` with the release output root to create or
    verify the GitHub `vX.Y.Z` release and tag at the exact package build commit,
    publish its notes, and attach both standalone installer archives plus their
