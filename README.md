@@ -41,12 +41,12 @@ packages/        shared TypeScript/JavaScript domain, API, sync, lifecycle, and 
 docs/            architecture, security, product, sync, and release decisions
 deploy/          installation, recovery, upgrade, and deployment templates
 scripts/         development, build, release, and operator commands
-tests/           opt-in internal acceptance suites and their shared fixtures
+tests/           isolated acceptance, retained-fixture suites, and shared fixtures
 public-website/  static marketing site and protected-access pages
 ```
 
 See the [repository layout guide](docs/architecture/repository-layout.md) for
-file placement, dependency boundaries, and recommended follow-up work.
+file placement, dependency boundaries, and validation workflows.
 
 ## Development entry points
 

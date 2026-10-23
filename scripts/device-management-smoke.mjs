@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
-if (args.some(value => !['--docker', '--rust'].includes(value)) || new Set(args).size !== args.length) throw Error('Use node scripts/device-management-smoke.mjs [--docker] [--rust].');
+if (args.some(value => !['--docker', '--rust', '--all'].includes(value)) || new Set(args).size !== args.length) throw Error('Use node scripts/device-management-smoke.mjs [--docker] [--rust] [--all].');
 const engine = args.includes('--docker') ? 'docker' : 'podman';
 const name = `vaults-device-check-${randomUUID()}`;
 const root = resolve(import.meta.dirname, '..');
@@ -72,6 +72,23 @@ try {
   await run(process.execPath, ['--test', 'apps/server/test/device-management.pg.test.mjs'], {
     capture: false, env: { ...process.env, ...integration, VAULTS_DEVICE_TEST_DATABASE_URL: `postgresql://postgres:${fixturePassword}@127.0.0.1:${port}/postgres` }
   });
+  if (args.includes('--all')) {
+    // Each suite requires an empty database. Never reuse another suite's schema
+    // or point these destructive fixture setup paths at an existing installation.
+    const suites = [
+      ['admin_directory', 'VAULTS_ADMIN_TEST_DATABASE_URL', 'admin-directory.pg.test.mjs'],
+      ['admin_management', 'VAULTS_ADMIN_MANAGEMENT_DATABASE_URL', 'admin-management.pg.test.mjs'],
+      ['item_deletion', 'VAULTS_ITEM_DELETION_DATABASE_URL', 'private-vault.pg.test.mjs'],
+      ['vault_removal', 'VAULTS_TEST_DATABASE_URL', 'vault-removal.pg.test.mjs'],
+    ];
+    for (const [database, variable, file] of suites) {
+      await run(engine, ['exec', name, 'psql', '-U', 'postgres', '-c', `CREATE DATABASE ${database}`]);
+      await run(process.execPath, ['--test', `apps/server/test/${file}`], {
+        capture: false, env: { ...process.env, [variable]: `postgresql://postgres:${fixturePassword}@127.0.0.1:${port}/${database}` }
+      });
+    }
+    console.log('All opt-in PostgreSQL suites passed in independent empty fixture databases.');
+  }
   console.log('Device enrollment, approval, account isolation, revocation, sessions and audit acceptance passed.');
 } finally {
   try {

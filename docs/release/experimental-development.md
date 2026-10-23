@@ -134,3 +134,30 @@ Run `pnpm fixture:build`, then `pnpm fixture:serve`, and open
 The page stores one disposable ECF1 hierarchy and item envelope in browser storage;
 it has no account, server persistence, recovery, sharing, or stable format.
 Reproduction evidence is in [current documentation](../security/experimental-client-state.md).
+
+## Isolated development ports
+
+The launcher verifies an existing UI listener is a pinned-CA HTTPS Vite server.
+An installed server or other application occupying the UI port is preserved and
+reported as a conflict. A listening TCP port alone is not proof that development
+is running.
+
+To run a separate fixture alongside an installed server, create a private
+environment file outside the checkout with independent credentials and TLS
+identity, then set these values in that file:
+
+```text
+VAULTS_DEV_WEB_PORT=12961
+VAULTS_DEV_API_PORT=12962
+VAULTS_MVP_PROJECT=vaults-acceptance-isolated
+```
+
+Set `$env:VAULTS_MVP_ENV_FILE` to the absolute file path in the invoking
+PowerShell session, then run `.\dev.ps1 server`. The default ports remain 12780
+and 12781 when these options are absent. The server's internal port, strict
+Host/Origin checks, frontend proxy, and printed URLs use the selected UI port.
+Use the same environment file for `pnpm mvp:stop` so it stops only that fixture.
+The Compose backend subnet is shared by these development configurations; stop
+another development project using it first. Installed release projects are
+separate. Do not reuse an enrolled development identity/database under a changed
+origin to clear a port conflict; provision a new isolated fixture instead.

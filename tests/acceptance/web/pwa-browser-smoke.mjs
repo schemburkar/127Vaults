@@ -259,7 +259,9 @@ try {
   await context.setOffline(true);
   await row().click();await page.locator('#edit-item').click();await page.locator('#item-password').fill('synthetic-offline-update');await page.locator('#save').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('pending change'));
-  if(await page.locator('#close-item-detail').isVisible()) await page.locator('#close-item-detail').click(); await page.getByLabel('Toggle navigation').click();await page.locator('#lock-app').click();await page.locator('#master').waitFor({state:'visible'});
+  // Queue/recovery modes use the public action; navigation is covered by the workspace exercise.
+  await page.evaluate(() => window.__vaultsActions.runAction('lock'));
+  await page.locator('#master').waitFor({state:'visible'});
   if (cacheUpgrade) {
     await page.close();
     // No old controlled windows remain. Let the browser activate normally.
@@ -322,7 +324,7 @@ try {
   changeItem(firstVault,firstItem,{title:'Server fixture update',website:'https://example.invalid',favorite:false},{username:'synthetic-user',password:'synthetic-server-update',customFields:[]});
   addVault('Concurrent fixture');
   await context.setOffline(false);
-  if (!cacheUpgrade) await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'),{timeout:20000});
+  await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Sync needs attention'),{timeout:20000});
   await page.evaluate(()=>{ void window.__vaultsActions.runAction('reload'); });await page.locator('#conflict-dialog').waitFor({state:'visible'});
   await page.locator('#conflict-keep').click();
   await page.waitForFunction(()=>document.querySelector('#session-dates').textContent.includes('Up to date')&&!document.querySelector('#session-dates').textContent.includes('pending'),{timeout:20000});

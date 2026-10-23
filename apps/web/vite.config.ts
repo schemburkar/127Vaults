@@ -14,8 +14,10 @@ import { pwaBuild } from './pwa-build.mjs';
 export default defineConfig(({ command, mode }) => {
   const webRoot = fileURLToPath(new URL('.', import.meta.url));
   const env = loadEnv(mode, fileURLToPath(new URL('../..', import.meta.url)), '');
-  const backend = env.VAULTS_DEV_BACKEND || 'https://127.0.0.1:12781';
-  const publicOrigin = 'https://127.0.0.1:12780';
+  const webPort = Number(env.VAULTS_DEV_WEB_PORT || 12780), apiPort = Number(env.VAULTS_DEV_API_PORT || 12781);
+  if (![webPort, apiPort].every(port => Number.isInteger(port) && port > 1024 && port < 65536) || webPort === apiPort) throw Error('Invalid development UI/API ports.');
+  const backend = env.VAULTS_DEV_BACKEND || `https://127.0.0.1:${apiPort}`;
+  const publicOrigin = `https://127.0.0.1:${webPort}`;
   const tlsDirectory = env.VAULTS_TLS_DIR;
   const key = tlsDirectory && join(tlsDirectory, 'live', 'server.key');
   const cert = tlsDirectory && join(tlsDirectory, 'live', 'server.crt');
@@ -32,7 +34,7 @@ export default defineConfig(({ command, mode }) => {
         on: (event: 'proxyReq', handler: (request: { setHeader: (name: string, value: string) => void }) => void) => void;
       };
       events.on('proxyReq', request => {
-        request.setHeader('host', '127.0.0.1:12780');
+        request.setHeader('host', `127.0.0.1:${webPort}`);
         request.setHeader('origin', publicOrigin);
         request.setHeader('referer', `${publicOrigin}/`);
       });
@@ -74,7 +76,7 @@ export default defineConfig(({ command, mode }) => {
     }, react(), tailwindcss(), pwaBuild()],
     server: {
       host: '127.0.0.1',
-      port: 12780,
+      port: webPort,
       strictPort: true,
       https: hasTls ? { key: readFileSync(key), cert: readFileSync(cert) } : undefined,
       proxy: {

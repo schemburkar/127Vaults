@@ -39,6 +39,7 @@ services:
       dockerfile: apps/server/Dockerfile
     environment:
       VAULTS_EXPERIMENTAL: '1'
+      PORT: ${VAULTS_SERVER_PORT:-12780}
       VAULTS_ACCESS_MODE: ${VAULTS_ACCESS_MODE:-loopback}
       VAULTS_BIND: 172.28.127.2
       VAULTS_ENDPOINT_HOST: ${VAULTS_ENDPOINT_HOST:-127.0.0.1}
@@ -59,7 +60,7 @@ services:
       # Windows VM bind mounts cannot preserve host ACLs as POSIX mode bits.
       VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS: ${VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS:-0}
     ports:
-      - '${VAULTS_PUBLISH_ADDRESS:-127.0.0.1}:${VAULTS_PUBLISH_PORT:-12780}:12780'
+      - '${VAULTS_PUBLISH_ADDRESS:-127.0.0.1}:${VAULTS_PUBLISH_PORT:-12780}:${VAULTS_SERVER_PORT:-12780}'
     volumes:
       - type: bind
         source: '${VAULTS_TLS_DIR:?Set VAULTS_TLS_DIR to the private TLS directory}/live'

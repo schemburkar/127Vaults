@@ -11,6 +11,7 @@ const workflows = [
   ['web/item-workspace-browser-smoke.mjs', 'item-workspace-browser-smoke.mjs'],
   ['web/item-workspace-web-smoke.mjs', 'item-workspace-web-smoke.mjs'],
   ['desktop/item-workspace-desktop-smoke.mjs', 'item-workspace-desktop-smoke.mjs'],
+  ['extension/startup.mjs', null],
 ];
 const run = promisify(execFile);
 
@@ -21,7 +22,9 @@ test('isolated acceptance syntax and imports resolve without executing fixture c
     assert.ok(!current.endsWith('.test.mjs'));
     await run(process.execPath, ['--check', fileURLToPath(url)], { windowsHide: true });
     for (const match of source.matchAll(/(?:from\s+|import\s*(?:\(\s*)?|new URL\(\s*)['"](\.{1,2}\/[^'"`$]+)['"]/g)) await access(new URL(match[1], url));
-    const shim = await readFile(new URL(`scripts/${former}`, root), 'utf8');
-    assert.ok(shim.includes(`tests/acceptance/${current}`));
+    if (former) {
+      const shim = await readFile(new URL(`scripts/${former}`, root), 'utf8');
+      assert.ok(shim.includes(`tests/acceptance/${current}`));
+    }
   }
 });

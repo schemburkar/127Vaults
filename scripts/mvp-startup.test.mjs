@@ -4,7 +4,25 @@ import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ensureTlsReady } from './mvp-startup.mjs';
+import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi } from './mvp-startup.mjs';
+import { createServer } from 'node:http';
+
+test('development settings retain defaults and reject ambiguous ports or unsafe project names', () => {
+  assert.deepEqual(devConfiguration({}), { webPort: 12780, apiPort: 12781, project: 'vaults-acceptance', origin: 'https://127.0.0.1:12780' });
+  assert.equal(devConfiguration({ VAULTS_DEV_WEB_PORT: '12961', VAULTS_DEV_API_PORT: '12962', VAULTS_MVP_PROJECT: 'vaults-acceptance-isolated' }).origin, 'https://127.0.0.1:12961');
+  for (const value of ['0', '1024', '65536', '12780.5', 'invalid']) assert.throws(() => devConfiguration({ VAULTS_DEV_WEB_PORT: value }));
+  assert.throws(() => devConfiguration({ VAULTS_DEV_WEB_PORT: '12781' }));
+  assert.throws(() => devConfiguration({ VAULTS_MVP_PROJECT: 'existing-production' }));
+});
+
+test('a listening unrelated server is preserved and cannot be mistaken for Vite', async t => {
+  const { identity } = await fixture(t, required);
+  const server = createServer((_req, res) => res.end('unrelated listener'));
+  await new Promise(done => server.listen(0, '127.0.0.1', done));
+  t.after(() => new Promise(done => server.close(done)));
+  await assert.rejects(requireDevUi({ VAULTS_TLS_DIR: identity }, server.address().port), /occupied by a listener.*preserved/);
+  assert.equal(server.listening, true);
+});
 
 async function fixture(t, files = []) {
   const directory = await mkdtemp(join(tmpdir(), '127vaults-startup-'));
@@ -22,6 +40,23 @@ async function fixture(t, files = []) {
   return { directory, identity };
 }
 const required = ['live/server.crt', 'live/server.key', 'ca/ca.crt'];
+
+test('a new runtime gets both independent keys and an existing identity never rotates a missing or invalid key', async t => {
+  const { directory } = await fixture(t);
+  await ensureRuntimeKeys(directory);
+  const token = await readFile(join(directory, 'token.key'));
+  const checkpoint = await readFile(join(directory, 'checkpoint.key'));
+  assert.equal(token.length, 32); assert.equal(checkpoint.length, 32);
+  assert.notDeepEqual(token, checkpoint);
+  await ensureRuntimeKeys(directory);
+  assert.deepEqual(await readFile(join(directory, 'token.key')), token);
+  await rm(join(directory, 'checkpoint.key'));
+  await assert.rejects(ensureRuntimeKeys(directory), /missing a runtime key/);
+  assert.deepEqual(await readFile(join(directory, 'token.key')), token);
+  await writeFile(join(directory, 'checkpoint.key'), '');
+  await assert.rejects(ensureRuntimeKeys(directory), /checkpoint.key must contain exactly 32 bytes/);
+  assert.deepEqual(await readFile(join(directory, 'token.key')), token);
+});
 const missingMessage = (directory, action, files = required) => `TLS startup preflight failed for pnpm mvp:${action}. Unavailable files:\n${files.map(file => `- ${join(directory, file)} (ENOENT)`).join('\n')}\nCheck VAULTS_TLS_DIR and VAULTS_CA_CERT_FILE in .env and restore matching files from the existing identity backup. Do not initialize a replacement identity for an existing server. For a new installation only, follow docs/release/experimental-development.md.`;
 
 test('TLS preflight explains missing .env configuration', async () => {

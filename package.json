@@ -8,7 +8,7 @@
     "package:assemble": "node scripts/release/assemble.mjs",
     "release:help": "node scripts/release/release.mjs --help",
     "test:packaging": "node --test scripts/release/*.test.mjs deploy/install.test.mjs",
-    "test:mvp-startup": "node --test scripts/mvp-startup.test.mjs",
+    "test:mvp-startup": "node --test scripts/mvp-startup.test.mjs scripts/dev-launcher.test.mjs",
     "test:device-management": "node scripts/device-management-smoke.mjs",
     "server": "node server.mjs",
     "fixture:build": "node scripts/build-fixture.mjs",

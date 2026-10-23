@@ -30,7 +30,9 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
   const devices = new Map(), sessions = new Map(), tokens = new Map();
   const tokenKey = Buffer.alloc(32, 6), authStore = new PgAuthStore(pool, tokenKey, Buffer.alloc(32, 7));
   const operatorOwner = { username: 'localowner', role: 'owner' }, admin = { username: 'localadmin', role: 'admin' };
-  const service = new PgAdminManagement(pool, { tokenKey: Buffer.alloc(32, 6) });
+  const service = new PgAdminManagement(pool, { tokenKey: Buffer.alloc(32, 6),
+    // Explicit fixture entitlement; exercise the real seat query and guards.
+    loadEntitlement: async () => ({ mode: 'active', maxActiveUsers: 100 }) });
   const action = (name, fields = {}, actor = operatorOwner) => service.execute(actor, { action: name, requestId: randomUUID(), ...fields });
   const account = async id => (await pool.query('SELECT server_role,suspended_at FROM vaults.accounts WHERE tenant_id=$1 AND id=$2', [tenant, id])).rows[0];
   try {
