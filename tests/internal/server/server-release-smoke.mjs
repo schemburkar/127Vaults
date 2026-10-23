@@ -75,6 +75,20 @@ async function ready() {
 }
 const operator = (directory, args, env = environment) => run(['server.mjs', ...args], directory, env);
 const provider = ['--compose-provider', resolve(options['--compose-provider'])];
+async function fixtureInitPort(directory) {
+  // Fresh setup probes its fixed product port before writing .env. Redirect
+  // only this extracted fixture's probe to the same isolated port used below.
+  const name = 'lib/private-network.mjs', path = join(directory, name);
+  const original = await readFile(path, 'utf8');
+  const signature = "checkPublication(address = '127.0.0.1', port = 12780)";
+  assert.ok(original.includes(signature), 'Unknown packaged publication check');
+  const content = original.replace(signature, `checkPublication(address = '127.0.0.1', port = ${port})`);
+  await writeFile(path, content);
+  const manifestPath = join(directory, 'manifest.json'), manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.files[name] = createHash('sha256').update(content).digest('hex');
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  await verify(directory);
+}
 async function fixturePort(directory) {
   const path = join(directory, 'compose.test.yaml');
   const original = await readFile(path, 'utf8');
@@ -117,6 +131,7 @@ try {
   }
   const identity = join(work, 'identity');
   await check('fresh identity and packaged admin setup', async () => {
+    await fixtureInitPort(source);
     await operator(source, ['install', 'init', '--endpoint', '127.0.0.1', '--private-dir', identity]);
     await operator(source, ['admin', 'init', 'localowner', join(identity, 'runtime/admin-operators.json')], { ...environment, VAULTS_ADMIN_SETUP_PASSWORD: 'synthetic-internal-admin-password' });
     await fixturePort(source);
