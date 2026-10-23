@@ -321,3 +321,14 @@ requires a private repository and an existing remote source commit, and refuses
 to overwrite a differing release. Repeat it to verify an identical published
 release. Public notes live in the release-notes section of the Downloads page;
 commit that page before building so the combined deployment includes it.
+
+To attach the verified Windows/Linux standalone installers and a combined checksum
+file to the same release, append the existing release output root to either
+command (for example, `C:/Projects/127Vaults-Releases`). This is opt-in and
+does not upload the server, desktop, CLI or extension packages. Both installer
+manifests and archive hashes must match the release version and source commit.
+Existing assets must match GitHub's SHA-256 digest, size and uploaded state;
+differing assets are never deleted or overwritten. Upload responses are verified
+the same way. Repeating the command verifies and reuses matching attachments.
+The attachment command preserves existing notes except for correcting the old
+notes-only release sentence. Assets retain the private repository's visibility.
