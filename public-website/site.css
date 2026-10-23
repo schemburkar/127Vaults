@@ -18,6 +18,7 @@
 }
 
 html[data-theme='light'] {
+  --brand-gold: #e1d1c1;
   --page: var(--brand-gold);
   --surface: color-mix(in srgb, var(--brand-gold) 48%, white);
   --text: var(--brand-navy);

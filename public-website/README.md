@@ -33,4 +33,4 @@ The Get Access page accepts Personal and Commercial requests with email and a us
 
 The palette follows the desktop app's midnight navy (`#04071d`), burgundy (`#9D1F32`), and warm gold (`#E0BB95`).
 
-The small footer theme control switches between the system color preference and the opposite theme. With no manual override, the site follows `prefers-color-scheme`, including changes made in browser developer tools. In the light palette, the body remains warm gold and main sections at zero-based indices 0, 2, 4, and so on use a translucent white `#ffffff45` background. Midnight navy remains the highlight color and burgundy is used for actions.
+The small footer theme control switches between the system color preference and the opposite theme. With no manual override, the site follows `prefers-color-scheme`, including changes made in browser developer tools. The public site's light palette overrides warm gold with `#e1d1c1` for the body and derived surfaces; main sections at zero-based indices 0, 2, 4, and so on use a translucent white `#ffffff45` background. Dark mode retains `#e0bb95`. Midnight navy remains the highlight color and burgundy is used for actions.
