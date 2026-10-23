@@ -16,7 +16,8 @@
     "lucide-react": "^1.45.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@127vaults/domain": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

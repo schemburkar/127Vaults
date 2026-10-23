@@ -31,10 +31,10 @@ The three UI tests now follow the other tested shared packages in
 package command. Deployment and static-site tests can stay adjacent to the
 scripts/pages they verify.
 
-## Recommended follow-up work, in order
+## Review findings and implementation rationale
 
-1. **Give shared client logic a shared owner.** The web client imports
-   `apps/desktop/src/item-types.ts` and `item-browser.ts`; shared UI imports
+1. **Give shared client logic a shared owner.** At review time the web client imported
+   `apps/desktop/src/item-types.ts` and `item-browser.ts`; shared UI imported
    `apps/extension/src/passkeys.mjs`. These dependencies make an app directory
    part of another app's and a shared package's API. Extract item models and
    browsing helpers into an exported client-domain module (consider extending
@@ -93,6 +93,24 @@ Recheck source and instructions at the revision where implementation starts;
 paths here describe the reviewed layout and may have changed since review.
 Implement one phase at a time and commit each coherent, verified result to local
 `main`. A later agent can start with phase 1 without undertaking every phase.
+
+### Current implementation map
+
+| Phase | Result |
+| --- | --- |
+| 0 | Baseline checks/tests and source/dependency inventory captured before edits |
+| 1 | Item types, browsing helpers and their pure tests moved to `packages/domain`; web/desktop use subpath exports |
+| 2 | Pure metadata/encoding helpers live in `packages/domain/src/passkey-metadata.mjs`; extension assets are staged by `scripts/extension-assets.mjs`, and PWA/dev/server routes include all dependencies |
+| 3 | CLI `client/transport.rs` and `client/removal.rs`; desktop `components/item-type-pickers.tsx` and `hooks/use-item-layout.ts`; web `src/http-client.mjs` and `src/client-errors.mjs` |
+| 4 | Isolated scenarios live in `tests/acceptance/{web,desktop}`; original script paths are compatibility entry points; preview remains a dev tool |
+| 5 | `scripts/check-desktop-schemas.mjs` probes regeneration from a committed snapshot with schemas excluded; Windows/Linux probe and final schema policy are part of completion validation |
+
+Shared code never imports app source. Passkey signing stays in the extension;
+UI imports pure metadata only. Raw browser modules keep their existing public
+URLs, including the added explicit shared metadata dependency. Release source
+fingerprints include the new canonical sources; builder identity includes the
+asset-staging script. `dev.ps1` stages unpacked-extension assets and accepts
+`-Check` to exercise preflight without opening service windows.
 
 ### Scope and invariants
 

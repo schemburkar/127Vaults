@@ -40,12 +40,15 @@ export default defineConfig(({ command, mode }) => {
   };
   const localClientAssets = new Map([
     ['/app/mvp-client.mjs', join(webRoot, 'mvp-client.mjs')],
+    ['/app/http-client.mjs', join(webRoot, 'src', 'http-client.mjs')],
+    ['/app/client-errors.mjs', join(webRoot, 'src', 'client-errors.mjs')],
     ['/app/private-vault-client.mjs', join(webRoot, 'src', 'private-vault-client.mjs')],
     ['/app/pwa-replica.mjs', join(webRoot, 'src', 'pwa-replica.mjs')],
     ['/app/browser-enrollment.mjs', join(webRoot, 'src', 'browser-enrollment.mjs')],
     ['/app/vault-lifecycle.mjs', join(webRoot, 'src', 'vault-lifecycle.mjs')],
     ['/app/signed-sync.mjs', join(webRoot, 'src', 'signed-sync.mjs')],
     ['/app/passkeys.mjs', join(webRoot, '..', 'extension', 'src', 'passkeys.mjs')],
+    ['/app/shared/passkey-metadata.mjs', join(webRoot, '..', '..', 'packages', 'domain', 'src', 'passkey-metadata.mjs')],
     ['/wasm/vaults_browser_fixture.js', join(webRoot, 'wasm', 'vaults_browser_fixture.js')],
     ['/wasm/vaults_browser_fixture_bg.wasm', join(webRoot, 'wasm', 'vaults_browser_fixture_bg.wasm')],
   ]);

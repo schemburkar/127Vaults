@@ -24,6 +24,7 @@ async function fixture() {
     'LICENSE.md': 'Fixture source terms.\n',
     'COMMERCIAL-LICENSE.md': 'Fixture commercial terms.\n',
     'unrelated.txt': 'one\n',
+    'packages/domain/src/passkey-metadata.mjs': 'export const PASSKEY_META = "fixture";\n',
   };
   for (const [name, contents] of Object.entries(files)) {
     await mkdir(join(repository, name, '..'), { recursive: true });
@@ -122,6 +123,8 @@ test('shared dependency changes invalidate the products that consume them', asyn
       ['crates/crypto/src/lib.rs', ['desktop', 'cli', 'server']],
       ['apps/extension/src/passkeys.mjs', ['desktop', 'extension', 'server']],
       ['apps/extension/popup.html', ['extension']],
+      ['packages/domain/src/item-types.ts', ['desktop', 'server']],
+      ['packages/domain/src/passkey-metadata.mjs', ['desktop', 'extension', 'server']],
       ['apps/web/src/app.tsx', ['server']],
       ['LICENSE.md', products],
       ['COMMERCIAL-LICENSE.md', products],

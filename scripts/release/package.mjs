@@ -1,5 +1,6 @@
 // Native private-test packaging. Run once on each target OS; no registry or GitHub required.
 import { spawn } from 'node:child_process';
+import { prepareExtensionAssets } from '../extension-assets.mjs';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { chmod, copyFile, cp, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -59,6 +60,7 @@ export async function packageExtension(output, options = {}) {
     await cp(join(sourceRoot, 'apps/extension', name), join(directory, name), { recursive: true,
       filter: path => !/\.d\.(?:ts|mts)$/.test(path) });
   }
+  await prepareExtensionAssets(sourceRoot, directory);
   if (options.version) {
     const manifestPath = join(directory, 'manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));

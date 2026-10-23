@@ -1,5 +1,12 @@
 # 127Vaults browser extension (experimental)
 
+Run `pnpm install` before loading `apps/extension` unpacked. The workspace
+prepare hook stages canonical metadata helpers from `packages/domain` into
+the ignored `src/shared/` directory. After editing those shared helpers, run
+`pnpm --filter @127vaults/extension prepare` or `.\dev.ps1 extension` before
+clicking Reload. Extension checks/tests and package builds also stage these
+assets automatically. Credential creation and signing remain in extension code.
+
 ## Website passkeys
 
 Rebuild the desktop/CLI native host and reload this unpacked extension after

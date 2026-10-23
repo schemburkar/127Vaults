@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { pwaBuild, PWA_FILES } from '../pwa-build.mjs';
 
@@ -51,4 +52,21 @@ test('a worker registration cannot claim offline readiness when shell repair fai
   const w=await worker();let reply,work;w.cache.match=async()=>undefined;w.cache.addAll=async()=>{throw Error('offline')};
   w.events.message({data:{type:'127vaults-check-shell'},ports:[{postMessage:value=>reply=value}],waitUntil:promise=>work=promise});await work;
   assert.equal(reply.ready,false);
+});
+
+test('shared metadata is emitted transitively and changing it invalidates the offline shell', () => {
+  const build = changed => {
+    const emitted = [];
+    const plugin = pwaBuild({ read: (url, ...args) => {
+      const bytes = readFileSync(url, ...args);
+      return changed && url.pathname.endsWith('/passkey-metadata.mjs') ? Buffer.concat([Buffer.from(bytes), Buffer.from('\n// synthetic new revision\n')]) : bytes;
+    } });
+    plugin.generateBundle.call({ emitFile: asset => emitted.push(asset) }, {}, {});
+    return new Map(emitted.map(asset => [asset.fileName, asset.source]));
+  };
+  const initial = build(false), changed = build(true);
+  assert.match(String(initial.get('app/passkeys.mjs')), /\.\/shared\/passkey-metadata\.mjs/);
+  assert.ok(initial.has('app/shared/passkey-metadata.mjs'));
+  assert.match(String(initial.get('sw.js')), /app\/shared\/passkey-metadata\.mjs/);
+  assert.notEqual(initial.get('sw.js'), changed.get('sw.js'));
 });

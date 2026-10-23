@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, PanelsTopLeft, ExternalLink } from "lucide-react";
 import { Button, IconButton, PasskeyDetails, AuthenticatorCode, TOTP_ID } from "@127vaults/ui";
-import { visibleFields, type ItemField } from "../../desktop/src/item-types";
+import { visibleFields, type ItemField } from "@127vaults/domain/item-types";
 
 type Item = { itemId: string; vaultId: string; index: { title: string; website?: string }; body: { username?: string; password?: string; customFields: ItemField[] } };
 type Tab = Pick<Item, "itemId" | "vaultId" | "index">;

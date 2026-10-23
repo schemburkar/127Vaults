@@ -1,4 +1,13 @@
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
+mod removal;
+mod transport;
+use removal::{
+    ItemMoveMapping, VaultRemovalJournal, load_removal_journal, removal_journal_path,
+    save_removal_journal, settings_after_archive, settings_after_move,
+};
+pub use transport::fetch_license_status;
+use transport::{http_client, post, server_connection_error, transport_unavailable};
+
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::{fs, path::Path};
@@ -18,22 +27,6 @@ use vaults_crypto::{
     ecf1::{Core, KeyHandle},
     opaque::{self, Binding},
 };
-
-/// Receives an authenticated license response away from the desktop command thread.
-pub fn fetch_license_status(request: reqwest::blocking::RequestBuilder) -> Result<Value, String> {
-    let response = request
-        .send()
-        .map_err(|error| server_connection_error(&error))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "server rejected request ({})",
-            response.status().as_u16()
-        ));
-    }
-    response
-        .json()
-        .map_err(|_| "invalid server response".to_owned())
-}
 
 pub struct Session {
     client: Client,
@@ -155,140 +148,6 @@ fn persist_tenant_binding(config_dir: &Path, expected: &TenantBinding) -> Result
         }
         Err(_) => Err("could not persist tenant binding".to_owned()),
     }
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct VaultRemovalJournal {
-    source_vault_id: String,
-    choice: String,
-    #[serde(default)]
-    destination_vault_id: Option<String>,
-    #[serde(default)]
-    source_catalogue_revision: Option<String>,
-    #[serde(default)]
-    item_mappings: Vec<ItemMoveMapping>,
-    request: Value,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct ItemMoveMapping {
-    source_item_id: String,
-    destination_item_id: String,
-}
-
-fn removal_journal_path(config_dir: &Path) -> std::path::PathBuf {
-    config_dir.join("vault-removal.json")
-}
-
-fn save_removal_journal(config_dir: &Path, journal: &VaultRemovalJournal) -> Result<(), String> {
-    journal.validate()?;
-    let path = removal_journal_path(config_dir);
-    let bytes = serde_json::to_vec(journal).map_err(|_| "vault removal could not be prepared")?;
-    if bytes.len() > 32 * 1024 {
-        return Err("vault removal journal is too large".to_owned());
-    }
-    let mut file = atomic_write_file::AtomicWriteFile::open(path)
-        .map_err(|_| "vault removal journal is unavailable")?;
-    file.write_all(&bytes)
-        .map_err(|_| "vault removal journal could not be saved")?;
-    file.commit()
-        .map_err(|_| "vault removal journal could not be saved".to_owned())
-}
-
-fn load_removal_journal(config_dir: &Path) -> Result<Option<VaultRemovalJournal>, String> {
-    match fs::read(removal_journal_path(config_dir)) {
-        Ok(bytes) => {
-            if bytes.len() > 32 * 1024 {
-                return Err("vault removal journal is too large".to_owned());
-            }
-            let journal: VaultRemovalJournal = serde_json::from_slice(&bytes)
-                .map_err(|_| "vault removal journal is invalid".to_owned())?;
-            journal.validate()?;
-            Ok(Some(journal))
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(_) => Err("vault removal journal is unavailable".to_owned()),
-    }
-}
-
-impl VaultRemovalJournal {
-    fn validate(&self) -> Result<(), String> {
-        let invalid = || "vault removal journal is invalid".to_owned();
-        uuid::Uuid::parse_str(&self.source_vault_id).map_err(|_| invalid())?;
-        match self.choice.as_str() {
-            "archive" | "restore"
-                if self.destination_vault_id.is_none()
-                    && self.item_mappings.is_empty()
-                    && self.request.is_object() =>
-            {
-                Ok(())
-            }
-            "move" => {
-                let destination = self.destination_vault_id.as_deref().ok_or_else(invalid)?;
-                uuid::Uuid::parse_str(destination).map_err(|_| invalid())?;
-                if destination == self.source_vault_id
-                    || self
-                        .source_catalogue_revision
-                        .as_deref()
-                        .is_none_or(|revision| uuid::Uuid::parse_str(revision).is_err())
-                    || self.item_mappings.len() > 100
-                    || !(self.request.is_null() || self.request.is_object())
-                {
-                    return Err(invalid());
-                }
-                let mut sources = std::collections::HashSet::new();
-                let mut destinations = std::collections::HashSet::new();
-                for mapping in &self.item_mappings {
-                    uuid::Uuid::parse_str(&mapping.source_item_id).map_err(|_| invalid())?;
-                    uuid::Uuid::parse_str(&mapping.destination_item_id).map_err(|_| invalid())?;
-                    if !sources.insert(&mapping.source_item_id)
-                        || !destinations.insert(&mapping.destination_item_id)
-                    {
-                        return Err(invalid());
-                    }
-                }
-                Ok(())
-            }
-            _ => Err(invalid()),
-        }
-    }
-}
-
-fn settings_after_archive(mut settings: SettingsData, source: &str) -> SettingsData {
-    for collection in &mut settings.collections {
-        collection.vault_ids.retain(|id| id != source);
-    }
-    settings
-        .collections
-        .retain(|collection| !collection.vault_ids.is_empty());
-    if matches!(&settings.default_view, Some(vault_settings::View::Vault(id)) if id == source)
-        || matches!(&settings.default_view, Some(vault_settings::View::Collection(id)) if !settings.collections.iter().any(|collection| &collection.id == id))
-    {
-        settings.default_view = None;
-    }
-    settings
-}
-
-fn settings_after_move(
-    mut settings: SettingsData,
-    source: &str,
-    destination: &str,
-) -> SettingsData {
-    for collection in &mut settings.collections {
-        for id in &mut collection.vault_ids {
-            if id == source {
-                destination.clone_into(id);
-            }
-        }
-        collection.vault_ids.sort();
-        collection.vault_ids.dedup();
-    }
-    if matches!(&settings.default_view, Some(vault_settings::View::Vault(id)) if id == source) {
-        settings.default_view = Some(vault_settings::View::Vault(destination.to_owned()));
-    }
-    settings
 }
 
 fn offline_record_path(config_dir: &Path) -> std::path::PathBuf {
@@ -526,31 +385,6 @@ fn authentication_context_hash(raw: &[u8]) -> Result<[u8; 64], String> {
     Ok(Sha512::digest(input).into())
 }
 
-fn post(
-    client: &Client,
-    origin: &str,
-    path: &str,
-    csrf: &str,
-    cookie: &str,
-    body: &Value,
-) -> Result<reqwest::blocking::Response, String> {
-    let response = client
-        .post(format!("{origin}{path}"))
-        .header("Origin", origin)
-        .header("X-127V-CSRF", csrf)
-        .header("Cookie", cookie)
-        .json(body)
-        .send()
-        .map_err(|error| server_connection_error(&error))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "server rejected request ({})",
-            response.status().as_u16()
-        ));
-    }
-    Ok(response)
-}
-
 fn stored_signing_key(
     config_dir: &Path,
     server_id: &str,
@@ -580,54 +414,6 @@ fn stored_signing_key(
         let _ = (config_dir, server_id, device_id);
         Err("OS credential storage is unavailable".to_owned())
     }
-}
-
-fn http_client(config_dir: &Path) -> Result<(Client, String, String, String), String> {
-    let origin = profile(&config_dir.join("trust.conf"), "url")?
-        .trim_end_matches('/')
-        .to_owned();
-    let server_id = profile(&config_dir.join("trust.conf"), "server_id")?;
-    let device_id = profile(&config_dir.join("device.conf"), "device_id")?;
-    let ca = fs::read(config_dir.join("installation-ca.pem"))
-        .map_err(|_| "installation CA is missing".to_owned())?;
-    let cert =
-        reqwest::Certificate::from_pem(&ca).map_err(|_| "installation CA is invalid".to_owned())?;
-    let client = Client::builder()
-        .https_only(true)
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(cert)
-        .redirect(reqwest::redirect::Policy::none())
-        .pool_max_idle_per_host(0)
-        .connect_timeout(std::time::Duration::from_secs(3))
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|_| "could not initialize HTTPS client".to_owned())?;
-    Ok((client, origin, server_id, device_id))
-}
-
-fn server_connection_error(error: &reqwest::Error) -> String {
-    let mut source: Option<&dyn std::error::Error> = Some(&error);
-    while let Some(current) = source {
-        let detail = current.to_string().to_ascii_lowercase();
-        if detail.contains("certificate") || detail.contains("unknownissuer") {
-            return "server TLS certificate is not trusted by this device".to_owned();
-        }
-        source = current.source();
-    }
-    if error.is_timeout() {
-        "server request timed out".to_owned()
-    } else if error.is_connect() {
-        "server connection failed".to_owned()
-    } else {
-        "server request failed".to_owned()
-    }
-}
-
-fn transport_unavailable(error: &str) -> bool {
-    matches!(
-        error,
-        "server connection failed" | "server request timed out"
-    )
 }
 
 #[allow(clippy::too_many_lines)]

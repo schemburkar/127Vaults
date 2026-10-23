@@ -101,6 +101,9 @@ window, so a missing-file diagnostic is visible immediately. You can run that
 check alone with `node scripts/mvp-acceptance.mjs dev --check`; it does not start
 containers or generate identity files.
 
+Run `.\dev.ps1 -Check` to validate the launcher without opening service windows.
+This also prepares the shared assets needed to load the extension unpacked.
+
 Run `pnpm test:mvp-startup` to verify the startup diagnostics, partial-file
 failures, custom CA selection, and complete-file success. These tests use
 isolated synthetic files and do not need Podman or change your local identity.

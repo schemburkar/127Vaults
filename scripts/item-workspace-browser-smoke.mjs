@@ -1,2 +1,2 @@
-process.env.VAULTS_TEST_ITEM_WORKSPACE = '1';
-await import('./pwa-browser-smoke.mjs');
+// Compatibility entry point; the canonical isolated workflow lives with acceptance tests.
+await import('../tests/acceptance/web/item-workspace-browser-smoke.mjs');

@@ -27,8 +27,8 @@ import {
 } from "lucide-react";
 import { FieldValueEditor, FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
-import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addWebsite, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, type ItemType, type ItemField, type SectionType } from "../../desktop/src/item-types";
-import { browseColumnValue, browseGroups, type BrowseMode } from "../../desktop/src/item-browser";
+import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addWebsite, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, type ItemType, type ItemField, type SectionType } from "@127vaults/domain/item-types";
+import { browseColumnValue, browseGroups, type BrowseMode } from "@127vaults/domain/item-browser";
 
 import * as productFeatures from "../../../packages/ui/src/product-features.mjs";
 import { ItemWorkspace } from "./item-workspace";

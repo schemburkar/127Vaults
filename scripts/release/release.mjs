@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createPlan, git, hash } from './plan.mjs';
+import { prepareExtensionAssets } from '../extension-assets.mjs';
 import { execute, pnpm } from './process.mjs';
 import { copyLicenses, packageCli, packageDesktop, packageExtension, packageInstaller } from './package.mjs';
 import { runMakeBundle } from '../ops/make-server-bundle.mjs';
@@ -103,6 +104,7 @@ export async function gates(plan, source) {
     await record('locked workspace dependencies', () => pnpm(['install', '--frozen-lockfile', '--store-dir', join(plan.cacheRoot, 'pnpm-store')], { cwd: source }));
   }
   if (plan.product === 'extension') {
+    await prepareExtensionAssets(source);
     const directory = join(source, 'apps/extension/src');
     const scripts = (await readdir(directory)).filter(name => /\.(mjs|js)$/.test(name));
     await record('extension runtime syntax', async () => { for (const name of scripts) await execute(process.execPath, ['--check', join(directory, name)], { quiet: true }); });

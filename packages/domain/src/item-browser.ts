@@ -1,4 +1,4 @@
-import { ITEM_TYPES, type ItemType } from "./item-types";
+import { ITEM_TYPES, type ItemType } from "@127vaults/domain/item-types";
 
 export type BrowseMode = "all" | "updated" | "created" | "type";
 export type BrowseMeta = { itemType?: string | null; createdAt?: number | null; updatedAt?: number | null };

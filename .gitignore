@@ -165,3 +165,6 @@ Desktop.ini
 
 # Internal test-data policy archived outside the repository
 /docs/release/selected-real-data-pilot.md
+
+# Canonical shared metadata is staged by scripts/extension-assets.mjs
+/apps/extension/src/shared/

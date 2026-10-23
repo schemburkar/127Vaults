@@ -1,7 +1,7 @@
 import { PasskeyDetails, AuthenticatorCode, TOTP_ID, IconButton, cn } from "@127vaults/ui";
 import { Copy, Eye, EyeOff, GripVertical } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { ITEM_TYPES, itemType, primaryFields, ordinaryFields, sections } from "./item-types";
+import { ITEM_TYPES, itemType, primaryFields, ordinaryFields, sections } from "@127vaults/domain/item-types";
 type Item = { title: string; website: string; username: string; password: string; customFields: { id: string; label: string; type: string; value: string }[] };
 export function ReadonlyItem({ item, revealed, toggleReveal, copyValue, dragValue, endDrag, actions, openWebsite, copyField, requireRevealForDrag = false }: {
 item: Item; revealed: Set<string>; toggleReveal: (key: string) => void; copyValue: (value: string) => Promise<void>;

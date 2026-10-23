@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
-import { ordinaryFields } from '../src/item-types.ts';
+import { ordinaryFields } from '@127vaults/domain/item-types';
 const source=await readFile(new URL('../src/app.tsx',import.meta.url),'utf8');
 const save=source.slice(source.indexOf('  const save = async'),source.indexOf('  const synchronize = async'));
 function harness(failure){

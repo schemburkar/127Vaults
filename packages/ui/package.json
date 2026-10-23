@@ -3,13 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "peerDependencies": { "react": ">=19", "react-dom": ">=19" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "@127vaults/domain": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
@@ -18,5 +24,8 @@
     "react": "^19.3.0",
     "typescript": "5.9.3"
   },
-  "scripts": { "check": "tsc --noEmit", "test": "node --test" }
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --test"
+  }
 }

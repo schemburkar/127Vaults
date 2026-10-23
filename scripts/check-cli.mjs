@@ -37,6 +37,7 @@ run(binary, ['item', 'list', '--help'], 0, ['--search', '--favorites', '--type',
 run(binary, ['item', 'list', '--format', 'json', '--width', '40'], 2, ['--width requires --format table']);
 run(binary, ['item', 'list', '--format', 'table', '--width', '23'], 2, ['invalid value']);
 const files = ['Cargo.lock', 'apps/cli/Cargo.toml', 'apps/cli/src/lib.rs', 'apps/cli/src/client.rs',
+  'apps/cli/src/client/transport.rs', 'apps/cli/src/client/removal.rs',
   'apps/cli/src/list_output.rs', 'apps/cli/src/device_transport_tests.rs', 'scripts/check-cli.mjs'];
 const receipt = { version: 1, checkedAt: new Date().toISOString(), platform: process.platform, architecture: process.arch,
   sourceBaseRevision: revision, sourceFiles: Object.fromEntries(files.map(file => [file,

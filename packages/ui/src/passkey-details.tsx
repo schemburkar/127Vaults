@@ -1,4 +1,4 @@
-import { readMetadata } from '../../../apps/extension/src/passkeys.mjs';
+import { readMetadata } from '@127vaults/domain/passkey-metadata';
 
 export function PasskeyDetails({ fields, onRemove }: { fields: { id: string; type: string; value: string }[]; onRemove?: () => void }) {
   let metadata;
