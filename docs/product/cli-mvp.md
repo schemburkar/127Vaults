@@ -141,6 +141,46 @@ Docker as an unverified alternate engine until its host matrix is run.
 
 ## Vault and item workflow
 
+### Browse from a terminal
+
+JSON remains the default for scripts and redirected output. Select `--format table`
+for readable vault and item lists:
+
+```powershell
+127vaults vault list --format table
+127vaults item list --vault Personal --format table
+127vaults item list --all --search mail --format table
+127vaults item list --all --favorites --type login --format table
+127vaults item list --vault Personal --search router --type wifi --format json
+```
+
+`--search` matches title or website without case sensitivity; `--favorites` and
+`--type` combine with it. Filtering works with both formats and uses the verified
+local encrypted indexes, including offline and queued edits. It does not open item
+bodies or search usernames, passwords, notes or custom fields. Legacy items with no
+type marker count as logins. `--type passkey` finds dedicated passkey items; a login
+that also holds a passkey retains its login type. All-vault lists omit archived
+vaults, as before.
+
+Tables show complete selection codes. All-vault item tables also show each vault's
+V-code, so you can use `item get I-CODE --vault V-CODE` to disambiguate the source.
+Vault tables mark each vault Active or Archived. Long titles and sites use an
+ellipsis; use `item get` to read the complete item. A narrow table switches to
+labeled records and keeps the selection codes complete. For a known terminal width,
+use `--format table --width 40` (24–240 columns). Otherwise, tables use a valid
+`COLUMNS` environment variable on terminals, then the detected terminal width
+(bounded to 24–240), then 100 columns. Redirected tables also
+default to 100 columns unless `--width` is supplied. Tables suppress control and
+bidirectional formatting characters in names and sites and never print
+password-class fields. JSON retains the existing schema and escaping.
+
+Run `pnpm check:cli` for the repeatable Windows/Linux development gate, or
+`node scripts/check-cli.mjs --receipt target/cli-check.json` to retain a verification
+receipt. The gate runs formatting, linting, CLI tests, a local executable build and
+command-line argument checks; it does not publish packages.
+
+### Select a vault
+
 A successful login remembers its profile path, so later commands can omit
 `--config-dir`. Supplying a non-default path still selects that profile explicitly.
 If the account has exactly one vault, item commands can omit `--vault`; accounts

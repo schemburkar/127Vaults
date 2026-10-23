@@ -14,6 +14,90 @@ const TARGET: &str = "cd222222-2222-4222-8222-222222222222";
 const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 
 #[test]
+fn cli_browsing_reads_encrypted_offline_indexes_without_opening_item_bodies() {
+    use crate::list_output::{ListFormat, ListOutputArgs, items, vaults};
+    let (mut session, vault, item) = session_with_editable_item("http://127.0.0.1:1");
+    session.online = false;
+    let fields = vec![
+        json!({"id":"__127vaults_favorite", "label":"Favorite", "type":"metadata", "value":"true"}),
+        json!({"id":"__127vaults_item_type", "label":"Item type", "type":"metadata", "value":"wifi"}),
+    ];
+    session
+        .item_upsert(
+            &vault,
+            Some(&item),
+            "Travel network",
+            "https://router.example",
+            "PRIVATE-USERNAME",
+            "PRIVATE-PASSWORD",
+            &fields,
+        )
+        .unwrap();
+    let before = session.replica_store.load(&vault).unwrap().unwrap();
+    assert_eq!(before.pending.len(), 1);
+    let mut no_body = before.clone();
+    no_body.items[0].body = URL_SAFE_NO_PAD.encode(b"deliberately unavailable body");
+    session.replica_store.commit(&no_body).unwrap();
+    session.vault_handles.clear();
+    // These paths reopen the actual encrypted replica from disk with networking disabled.
+    let listed = session.item_list_all().unwrap();
+    assert_eq!(listed[0]["favorite"], true);
+    assert_eq!(listed[0]["itemType"], "wifi");
+    let code = Session::reference("I", &item);
+    let vault_code = Session::reference("V", &vault);
+    for width in [24, 80, 100] {
+        let output = ListOutputArgs {
+            format: ListFormat::Table,
+            width: Some(width),
+        };
+        let result = items(
+            &listed,
+            &output,
+            true,
+            Some("ROUTER.EXAMPLE"),
+            true,
+            Some("wifi"),
+        )
+        .unwrap();
+        assert!(result.contains(&code));
+        assert!(result.contains(&vault_code));
+        assert!(!result.contains("PRIVATE-USERNAME"));
+        assert!(!result.contains("PRIVATE-PASSWORD"));
+        assert!(!result.contains("fixture-password"));
+        assert!(
+            vaults(&session.vault_list().unwrap(), &output)
+                .unwrap()
+                .contains(&vault_code)
+        );
+    }
+    assert_eq!(session.resolve_vault_id(&vault_code).unwrap(), vault);
+    assert_eq!(
+        session.replica_store.load(&vault).unwrap().unwrap(),
+        no_body,
+        "browsing must not mutate the offline replica or pending queue"
+    );
+    session.replica_store.commit(&before).unwrap();
+    assert_eq!(
+        session.item_get(&vault, &code, Some("password")).unwrap(),
+        "PRIVATE-PASSWORD"
+    );
+    let mut retired = before;
+    retired.retired = true;
+    session.replica_store.commit(&retired).unwrap();
+    assert_eq!(session.item_list_all().unwrap(), json!([]));
+    let output = ListOutputArgs {
+        format: ListFormat::Table,
+        width: Some(100),
+    };
+    assert!(
+        vaults(&session.vault_list().unwrap(), &output)
+            .unwrap()
+            .contains("Archived")
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}
+
+#[test]
 fn onepassword_native_item_and_authenticator_survive_encrypted_import() {
     let (mut session, vault, _) = session_with_editable_item("http://127.0.0.1:1");
     session.online = false;

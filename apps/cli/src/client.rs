@@ -2657,7 +2657,7 @@ impl Session {
         Ok(verified)
     }
 
-    fn reference(prefix: &str, id: &str) -> String {
+    pub(crate) fn reference(prefix: &str, id: &str) -> String {
         let digest = Sha256::digest(id.as_bytes());
         format!("{prefix}-{}", hex::encode(&digest[..5]).to_uppercase())
     }

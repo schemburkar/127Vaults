@@ -24,4 +24,5 @@ whether the product may ship.
 Behavior references include the [API contract](../architecture/api-v1-contract.md),
 [ADRs](../adr/README.md), [PWA behavior](pwa.md), and [CLI guide](cli-mvp.md).
 Narrow fixture or installed-client checks do not close wider acceptance gates.
-The CLI walkthrough uses JSON output; the optional table view remains backlog work.
+The CLI walkthrough uses the default JSON output; an opt-in table view and index
+filters are documented in the [CLI guide](cli-mvp.md#browse-from-a-terminal).

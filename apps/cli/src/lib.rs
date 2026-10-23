@@ -6,6 +6,8 @@ mod devices;
 pub use desktop_profile::desktop_profile_directory;
 pub use devices::DeviceCommand;
 mod generator;
+mod list_output;
+pub use list_output::{ListFormat, ListOutputArgs};
 pub mod native_passkeys;
 mod passkeys;
 use generator::generate_command;
@@ -417,6 +419,8 @@ pub struct TrustArgs {
 #[derive(Debug, Subcommand)]
 pub enum VaultCommand {
     List {
+        #[command(flatten)]
+        output: ListOutputArgs,
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
     },
@@ -546,6 +550,17 @@ pub enum ItemCommand {
         config_dir: PathBuf,
     },
     List {
+        #[command(flatten)]
+        output: ListOutputArgs,
+        /// Match title or website (case-insensitive; searches local encrypted indexes).
+        #[arg(long)]
+        search: Option<String>,
+        /// Show only favorites.
+        #[arg(long)]
+        favorites: bool,
+        /// Restrict results to a first-party item type.
+        #[arg(long = "type", value_parser = ["login", "bank", "card", "wifi", "router", "ssh", "password", "note", "identity", "passport", "license", "membership", "database", "email", "medical", "api", "custom", "passkey"])]
+        item_type: Option<String>,
         #[arg(long)]
         vault: Option<String>,
         #[arg(long, conflicts_with = "vault")]
@@ -1723,6 +1738,15 @@ fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(),
 /// Returns a safe diagnostic when validation fails or a command is not implemented.
 #[allow(clippy::too_many_lines)]
 pub fn run(cli: Cli) -> Result<String, String> {
+    match &cli.command {
+        Command::Vault {
+            command: VaultCommand::List { output, .. },
+        }
+        | Command::Item {
+            command: ItemCommand::List { output, .. },
+        } => output.validate()?,
+        _ => {}
+    }
     match cli.command {
         Command::Generate { command } => generate_command(command),
         Command::License {
@@ -1848,13 +1872,15 @@ pub fn run(cli: Cli) -> Result<String, String> {
             Ok("unlock verified; keys discarded at process exit".to_owned())
         }
         Command::Vault {
-            command: VaultCommand::List { config_dir },
-        } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
-            "vault.list",
-            serde_json::json!({}),
-        )?)
-        .map_err(|_| "could not encode vault list".to_owned()),
+            command: VaultCommand::List { config_dir, output },
+        } => list_output::vaults(
+            &agent::call(
+                &effective_config_dir(&config_dir),
+                "vault.list",
+                serde_json::json!({}),
+            )?,
+            &output,
+        ),
         Command::Sync { config_dir } => serde_json::to_string_pretty(&agent::call(
             &effective_config_dir(&config_dir),
             "sync",
@@ -2142,13 +2168,23 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     vault,
                     all,
                     config_dir,
+                    output,
+                    search,
+                    favorites,
+                    item_type,
                 },
-        } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
-            if all { "item.list.all" } else { "item.list" },
-            serde_json::json!({"vault":vault}),
-        )?)
-        .map_err(|_| "could not encode item list".to_owned()),
+        } => list_output::items(
+            &agent::call(
+                &effective_config_dir(&config_dir),
+                if all { "item.list.all" } else { "item.list" },
+                serde_json::json!({"vault":vault}),
+            )?,
+            &output,
+            all,
+            search.as_deref(),
+            favorites,
+            item_type.as_deref(),
+        ),
         Command::Item {
             command:
                 ItemCommand::Get {
