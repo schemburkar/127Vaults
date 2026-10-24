@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, ChevronDown, CreditCard, Globe2, KeyRound, Landmark, Router, Terminal, Wifi } from "lucide-react";
-import { Input, cn } from "@127vaults/ui";
+import { Input, cn, useBoundedPopover } from "@127vaults/ui";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, type ItemType, type SectionType } from "@127vaults/domain/item-types";
 
 const TYPE_ICONS = { note: Terminal, identity: Globe2, passport: Globe2, license: Globe2, membership: Globe2, database: Globe2, email: Globe2, medical: Globe2, api: Globe2, custom: Globe2, login: Globe2, bank: Landmark, card: CreditCard, wifi: Wifi, router: Router, ssh: Terminal, password: KeyRound, passkey: KeyRound };
@@ -27,13 +27,14 @@ const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
 
 export function TypePicker({ value, onSelect }: { value: ItemType; onSelect: (type: ItemType) => void }) {
   const Icon = TYPE_ICONS[value];
-  return <details className="group relative w-full">
+  const popover = useBoundedPopover();
+  return <details ref={popover.trigger} className="group relative w-full">
     <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-xl border border-white/15 bg-[#11162b] px-2 py-1.5 text-sm text-slate-100 hover:border-[#E0BB95]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E0BB95] [&::-webkit-details-marker]:hidden">
       <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><Icon size={17} /></span>
       <span className="min-w-0 flex-1 truncate font-semibold">{ITEM_TYPES[value].label}</span>
       <ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
     </summary>
-    <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-3rem))] rounded-xl border border-white/15 bg-[#11162b] p-2 shadow-2xl">
+    <div ref={popover.menu} popover="auto" className="ui-type-popover rounded-xl border border-white/15 bg-[#11162b] p-2 shadow-2xl">
       <p className="px-3 py-2 text-xs text-slate-400">Choose the main item type</p>
       {TYPE_GROUPS.map((group) => <div key={group.label} className="mb-2 last:mb-0">
         <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{group.label}</p>

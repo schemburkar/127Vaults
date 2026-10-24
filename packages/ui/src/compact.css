@@ -1,0 +1,77 @@
+:root{
+  --desktop-text:.8125rem;
+  --desktop-label:.75rem;
+  --desktop-control:2.25rem;
+  --text-sm:var(--desktop-text);
+  --text-sm--line-height:1.5;
+  --text-base:.875rem;
+  --text-base--line-height:1.5;
+  --text-lg:1rem;
+  --text-xl:1.125rem;
+  --text-2xl:1.25rem;
+  --text-3xl:1.25rem;
+  --ui-space-field:.75rem;
+  --ui-space-section:1.25rem;
+  --ui-surface-padding:1.5rem;
+  --ui-surface-radius:.75rem;
+  font-size:16px;
+}
+body{font-size:var(--desktop-text);line-height:1.5}
+.ui-button{min-height:var(--desktop-control);height:var(--desktop-control);padding-inline:.75rem;gap:.5rem;border-radius:.625rem;font-size:var(--desktop-text);font-weight:500;line-height:1.4}
+.ui-button[class~="size-11"]{width:var(--desktop-control);padding:0}
+input:not([type=checkbox]):not([type=radio]):not([type=range]),select{min-height:var(--desktop-control);font-size:var(--desktop-text);border-radius:.625rem}
+textarea{font-size:var(--desktop-text);line-height:1.5;border-radius:.625rem}
+
+.desktop-vault-marker{display:block;flex:0 0 1rem;width:1rem;height:1rem;margin-inline:.03125rem;border-radius:.3rem;box-shadow:inset 0 0 0 1px #ffffff1a}
+.marker-0{background:#c8b6e8}.marker-1{background:#9dcbbb}.marker-2{background:#e5bc99}.marker-3{background:#9dbde5}.marker-4{background:#ddaac1}.marker-5{background:#c9cd9d}.marker-6{background:#a5cdd4}.marker-7{background:#d4b1a4}.marker-8{background:#b0b6dd}.marker-9{background:#b8cba9}.marker-10{background:#e0c686}.marker-11{background:#c7b8cd}
+.sidebar-collapsed .desktop-nav-content button>.desktop-vault-marker{visibility:visible}
+.item-tabs-bar{position:relative;display:flex;align-items:center;min-width:0;gap:.25rem;margin-bottom:1rem;padding-bottom:.625rem;border-bottom:1px solid #ffffff12}
+.item-tabs{display:flex;flex:1;min-width:0;gap:.25rem;margin:0;padding:0;border:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior:contain}
+.item-tabs::-webkit-scrollbar{display:none;width:0;height:0}
+.item-tab{display:flex;align-items:center;overflow:hidden;border:1px solid #ffffff12;flex:0 0 auto;max-width:min(15rem,80%);height:2.25rem;border-color:#ffffff12;border-radius:.5rem;background:#ffffff03}
+.item-tab:has([aria-selected=true]){background:#e0bb9514;border-color:#e0bb9538}
+.item-tab [role=tab]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;max-width:12rem;padding:.375rem .625rem;font-size:.8125rem;text-align:left}
+.item-tab [aria-selected=true]{background:transparent;color:#e0bb95}
+.item-tab .item-tab-close{flex:none;display:grid;place-items:center;width:1.75rem;height:1.75rem;padding:0;margin-right:.125rem;border-radius:.375rem;color:#94a3b8}
+.item-tabs-control,.item-tabs-menu summary{display:flex;align-items:center;justify-content:center;flex:none;min-width:1.75rem;height:2.25rem;padding:.25rem;border-radius:.5rem;color:#94a3b8;cursor:pointer}
+.item-tabs-control:hover,.item-tabs-menu summary:hover{background:#ffffff0a;color:#f1f5f9}
+.item-tabs-menu{flex:none}
+.item-tabs-menu summary{gap:.25rem;list-style:none;font-size:.75rem;font-variant-numeric:tabular-nums}
+.item-tabs-menu summary::-webkit-details-marker{display:none}
+.item-tabs-menu>div{position:absolute;z-index:35;right:0;top:calc(100% - .25rem);width:min(20rem,100%);max-height:18rem;overflow:auto;padding:.375rem;border:1px solid #ffffff1a;border-radius:.625rem;background:#11162b;box-shadow:0 12px 32px #0008}
+.item-tabs-menu>div button{display:block;width:100%;padding:.5rem .625rem;border-radius:.375rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;font-size:.8125rem}
+.item-tabs-menu>div button:hover,.item-tabs-menu>div button[aria-current=page]{background:#ffffff0a;color:#e0bb95}
+.item-tabs-bar button:focus-visible,.item-tabs-menu summary:focus-visible{outline:2px solid #e0bb95;outline-offset:-2px}
+
+/* Low contrast, thin tracks; tab strips keep their own hidden scrollbar. */
+*{scrollbar-width:thin;scrollbar-color:#526079 transparent}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:#526079;border-radius:999px}
+::-webkit-scrollbar-thumb:hover{background:#728099}
+::-webkit-scrollbar-button{display:none}
+
+.item-tabs{scrollbar-width:none}
+
+.item-tab button{cursor:pointer}.item-tab button:hover{background:#ffffff12}
+/* Stop edge elasticity only on scrolling surfaces; descendants retain native defaults. */
+html,body{overscroll-behavior:none}
+.desktop-shell,#vault{overscroll-behavior:none}
+.desktop-shell .desktop-items,.desktop-detail,.desktop-nav-content,
+#vault #items,#vault .item-detail,#vault .sidebar-links,
+.desktop-settings-body,.desktop-settings-nav,.web-settings-body,.web-settings-nav,
+.ui-dialog,.item-tabs,.item-tabs-menu>div{overscroll-behavior:none}
+
+/* Chromium's standard scrollbar properties override its custom scrollbar rules.
+   Opt into the custom track there so Windows does not add native arrow buttons. */
+@supports selector(::-webkit-scrollbar){
+  *{scrollbar-width:auto;scrollbar-color:auto}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#526079;border-radius:999px}
+  ::-webkit-scrollbar-thumb:hover{background:#728099}
+  ::-webkit-scrollbar-button,::-webkit-scrollbar-button:single-button{display:none;width:0;height:0}
+  .item-tabs{scrollbar-width:none}
+}
+/* Top-layer menus do not contribute to the surrounding detail pane's overflow. */
+.ui-type-popover{position:fixed;inset:auto;margin:0;box-sizing:border-box;overflow:auto;overscroll-behavior:none;color:#f1f5f9}

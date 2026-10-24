@@ -1,3 +1,4 @@
+import { ItemTabs, tabKey, markerClass } from "@127vaults/ui";
 import { TypePicker, RelatedPicker } from "./components/item-type-pickers";
 import { useItemLayout } from "./hooks/use-item-layout";
 import { ReadonlyItem } from "./readonly-item";
@@ -1599,26 +1600,26 @@ export function App() {
 
         </div>
         <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
-        <div className="desktop-nav-row"><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "all" && !favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults()}>
+        <div className="desktop-nav-row"><Button variant="ghost" aria-current={viewMode === "all" && !favoritesOnly ? "page" : undefined} className={cn("min-w-0 flex-1 justify-start", viewMode === "all" && !favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults()}>
           <LayoutList size={17} />
           <span>All items</span>
-          <span className="ml-auto">{items.length}</span>
+          <span className="desktop-nav-count ml-auto">{items.length}</span>
         </Button></div>
-        <Button variant="ghost" className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
+        <Button variant="ghost" aria-current={favoritesOnly ? "page" : undefined} className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
         <Button variant="ghost" className="justify-start" onClick={() => setHealthOpen(true)}><ShieldCheck size={17} /><span>Password health</span></Button>
-        <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-600">VAULTS</p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
-        {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
-          <Vault size={17} />
+        <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p>Vaults <span className="desktop-section-count">{activeVaults.length}</span></p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
+        {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" aria-current={viewMode === "single" && vault.vaultId === vaultId ? "page" : undefined} className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
+          <span aria-hidden="true" className={markerClass(vault.vaultId)} />
           <span className="truncate">{vault.name}</span>
         </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${vault.name}`} title={`Actions for ${vault.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setVaultActionId(vault.vaultId); setVaultNameDraft(vault.name); setVaultDialog("rename"); }}>Rename vault</button><button onClick={() => openRemoval(vault.vaultId)}>Remove vault…</button></div></details></div>)}
-        <p className="mb-2 mt-6 px-3 text-[10px] font-bold tracking-[.16em] text-slate-600">COLLECTIONS</p>
-        {collections.map((collection) => <div className="desktop-nav-row" key={collection.id}><Button variant="ghost" className={cn("min-w-0 flex-1 justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
-          <LayoutList size={17} /><span className="truncate">{collection.name}</span>
+        <div className="desktop-nav-heading"><p>Collections <span className="desktop-section-count">{collections.length}</span></p></div>
+        {collections.map((collection) => <div className="desktop-nav-row" key={collection.id}><Button variant="ghost" aria-current={viewMode === "collection" && selectedCollectionId === collection.id ? "page" : undefined} className={cn("min-w-0 flex-1 justify-start", viewMode === "collection" && selectedCollectionId === collection.id && "bg-white/10")} onClick={() => void selectCollection(collection.id)}>
+          <span aria-hidden="true" className={markerClass(collection.id)} /><span className="truncate">{collection.name}</span>
         </Button><details className="desktop-row-menu"><summary aria-label={`Actions for ${collection.name}`} title={`Actions for ${collection.name}`}><MoreHorizontal size={17} /></summary><div><button onClick={() => { setSelectedCollectionId(collection.id); setCollectionNameDraft(collection.name); setCollectionVaultDraft(collection.vault_ids); setCollectionDialog("edit"); }}>Edit collection</button><button onClick={() => void removeCollection(collection.id)}>Remove collection</button></div></details></div>)}
         <Button variant="ghost" className="justify-start text-xs" onClick={() => { setCollectionNameDraft(""); setCollectionVaultDraft([]); setCollectionDialog("create"); }}><Plus size={17} /><span>Add collection</span></Button>
         {settingsConflict && <Button variant="ghost" className="justify-start text-xs text-amber-300" onClick={() => void invoke<{local: unknown; server: unknown}>("vault_settings_review").then(setSettingsReview).catch((error) => notify("error", "Could not review settings", friendlyError(error)))}>Review vault settings conflict</Button>}
         {removalPlan?.pending && <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/8 p-3 text-xs text-amber-100" role="status"><strong>Vault operation needs attention</strong><p className="mt-1">{removalPlan.choice === "move" ? "Move" : removalPlan.choice === "restore" ? "Restore" : "Archive"} · {removalPlan.stage === "copying" ? "copying items" : "finalizing request"} · {removalPlan.itemMappings?.length ?? 0} mapped item(s)</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" disabled={!online || removalBusy} onClick={resumeRemoval}>Resume</Button>{removalPlan.choice === "move" && removalPlan.stage === "copying" && <Button size="sm" variant="ghost" disabled={removalBusy} onClick={() => void abortMove()}>Keep copies and clear plan</Button>}</div></div>}
-        <div className="mt-auto grid gap-1">
+        <div className="desktop-nav-utilities mt-auto grid gap-1">
           <Button variant="ghost" className="justify-start" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></Button>
           <Button
             variant="ghost"
@@ -1724,7 +1725,16 @@ export function App() {
         </div>
       </section>
       <main className={cn("desktop-detail overflow-auto p-7", (selected || itemTabs.length > 0) && "detail-selected")}>
-        {itemTabs.length > 0 && <div className="item-tabs" role="tablist" aria-label="Open items">{itemTabs.map(tab => <div key={`${tab.vaultId}:${tab.itemId}`} className="item-tab"><button role="tab" aria-selected={selected?.itemId === tab.itemId && itemVaultId === tab.vaultId} onClick={() => void openItem(tab)}>{tab.title || "Untitled"}</button><button aria-label={`Close tab ${tab.title}`} onClick={() => { if (!confirmDiscard()) return; setItemTabs(current => current.filter(row => row !== tab)); if (selected?.itemId === tab.itemId && itemVaultId === tab.vaultId) { setSelected(null); setEditing(false); } }}><X size={14} /></button></div>)}</div>}
+        {itemTabs.length > 0 && <ItemTabs tabs={itemTabs} activeKey={selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => void openItem(tab)} onClose={tab => {
+          if (!confirmDiscard()) return;
+          const remaining = itemTabs.filter(row => tabKey(row) !== tabKey(tab));
+          setItemTabs(remaining);
+          if (selected?.itemId === tab.itemId && itemVaultId === tab.vaultId) {
+            const neighbor = remaining[Math.min(itemTabs.indexOf(tab), remaining.length - 1)];
+            if (neighbor) void openItem(neighbor);
+            else { setSelected(null); setEditing(false); }
+          }
+        }} />}
         {healthOpen && <PasswordHealth scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
         {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {selected ? (
@@ -1938,7 +1948,7 @@ export function App() {
             )}
           </div>
         ) : (
-          <div className="grid h-full place-content-center gap-2 text-center"><KeyRound className="mx-auto mb-2 text-[#E0BB95]" size={28} aria-hidden="true" /><h2 className="text-xl font-semibold">Select an item</h2><p className="text-sm text-slate-400">Choose an item from the list to see its details.</p></div>
+          <div className="desktop-detail-empty grid place-content-center gap-2 text-center"><KeyRound className="mx-auto mb-2 text-[#E0BB95]" size={28} aria-hidden="true" /><h2 className="text-xl font-semibold">Select an item</h2><p className="text-sm text-slate-400">Choose an item from the list to see its details.</p></div>
         )}
       </main>
       <footer
@@ -2060,7 +2070,7 @@ export function App() {
         <section className="desktop-settings">
           <aside className="desktop-settings-nav">
             <h2 id="desktop-settings-title">Settings</h2>
-            <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} aria-current={settingsTab === tab ? "page" : undefined} aria-controls="desktop-settings-panel" variant="ghost" className={cn("desktop-settings-tab", settingsTab === tab && "desktop-settings-tab-active")} onClick={() => { setSettingsTab(tab); if (tab === "devices") void loadDevices(); }}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</nav>
+            <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} aria-current={settingsTab === tab ? "page" : undefined} aria-controls="desktop-settings-panel" variant="ghost" className={cn("desktop-settings-tab", settingsTab === tab && "desktop-settings-tab-active")} onClick={() => { setSettingsTab(tab); if (tab === "devices") void loadDevices(); }}>{tab === "profile" ? <KeyRound size={17} aria-hidden="true" /> : tab === "devices" ? <PanelsTopLeft size={17} aria-hidden="true" /> : tab === "vaults" ? <Vault size={17} aria-hidden="true" /> : <Settings size={17} aria-hidden="true" />}<span>{tab[0].toUpperCase() + tab.slice(1)}</span></Button>)}</nav>
           </aside>
           <div className="desktop-settings-main">
             <header className="desktop-settings-header">

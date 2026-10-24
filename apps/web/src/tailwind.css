@@ -132,7 +132,6 @@
 @media (max-width: 800px){#vault .vault-edit-header{background:#11162b}#vault .vault-nav-heading{justify-content:center;padding-inline:0}}
 @media (max-width: 560px){#vault .vault-edit-header{top:-1.25rem}#vault .vault-nav-heading{justify-content:space-between;padding-inline:.75rem}#vault .vault-nav-heading p{display:block}}
 
-.web-item-tabs{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.65rem;margin-bottom:1rem;border-bottom:1px solid #ffffff18}.web-item-tab{display:flex;flex:none;align-items:center;border:1px solid #ffffff20;border-radius:.5rem;overflow:hidden}.web-item-tab button{padding:.5rem .65rem;font-size:.8rem}.web-item-tab [role=tab]{max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.web-item-tab [aria-selected=true]{background:#e0bb9525;color:#e0bb95}.web-item-tab button:hover{background:#ffffff12}
 @media(min-width:801px){
 #vault.sidebar-collapsed{grid-template-columns:4.5rem minmax(0,1fr)}
 
@@ -146,7 +145,7 @@
 .sidebar-collapsed .vault-nav-heading>button{position:absolute;left:0}
 
 }
-@media(max-width:800px){.web-collapse-toggle{display:none!important}#vault .item-detail{position:fixed;inset:0;max-height:100dvh;width:100%;border-radius:0;background:#11162b;z-index:40;overflow:auto;padding-top:max(1rem,env(safe-area-inset-top))}#vault .item-detail:has(#item-empty:not([hidden])):not(:has(.web-item-tabs)){display:none}}
+@media(max-width:800px){.web-collapse-toggle{display:none!important}#vault .item-detail{position:fixed;inset:0;max-height:100dvh;width:100%;border-radius:0;background:#11162b;z-index:40;overflow:auto;padding-top:max(1rem,env(safe-area-inset-top))}#vault .item-detail:has(#item-empty:not([hidden])):not(:has(.item-tabs-bar)){display:none}}
 
 @media(max-width:560px){#vault .vault-detail-heading{flex-direction:column;gap:1rem}#vault .vault-detail-heading>div{width:100%;min-width:0}#vault .vault-detail-heading>div:last-child{justify-content:flex-end}}
 
@@ -195,3 +194,92 @@
 
 @import "../../../packages/ui/src/layout.css";
 .web-settings-panel > .grid{grid-template-columns:minmax(0,1fr)}
+@import "../../../packages/ui/src/compact.css";
+
+/* Web uses the same compact rhythm as the desktop preview. */
+#vault{grid-template-rows:minmax(0,1fr) 2rem}
+#vault>main{min-height:0;grid-template-rows:3.75rem minmax(0,1fr)}
+#vault .vault-content{min-height:0}
+#vault .vault-search{height:2.25rem;border-radius:.625rem}
+#vault .vault-search input{min-height:0;height:100%}
+#vault .vault-browser{min-height:0;padding:1rem;border-radius:.75rem}
+#vault .vault-browser-heading{gap:.75rem;padding:0 .25rem .875rem}
+#vault .vault-browser-heading h1{font-size:1.125rem;font-weight:550;letter-spacing:-.015em}
+#vault #items{min-height:0;overflow:auto}
+#vault .vault-item-row{gap:.625rem;border-radius:.625rem;font-size:.8125rem}
+#vault:not(.vault-grid) .vault-item-row{padding:.625rem .75rem}
+#vault:not(.vault-grid) .vault-item-row>span:first-child{width:2rem;height:2rem;border-radius:.5rem}
+#vault .vault-item-row strong{font-size:.8125rem;font-weight:550}
+#vault .vault-item-row small{font-size:.75rem;line-height:1.5}
+#vault .item-detail{padding:1rem 1.5rem;min-height:0;border-radius:.75rem}
+#vault .item-detail:has(#item-empty:not([hidden])){display:flex;flex-direction:column}
+#vault #item-empty{flex:1;min-height:0;height:auto;padding-block:1rem}
+#vault .item-detail>.item-tabs-bar{flex:none}
+#vault #item-empty h2{font-size:1.125rem;font-weight:550}
+#vault #item-empty>div{width:2.25rem;height:2.25rem;border-radius:.625rem}
+#vault #view-title,#vault .vault-edit-header h2{font-size:1.25rem;font-weight:550;line-height:1.35;letter-spacing:-.015em}
+#vault .vault-detail-heading{gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
+#vault .vault-detail-field{min-height:3.5rem;gap:.125rem .75rem;padding:.625rem .875rem}
+#vault .vault-detail-field>strong{font-size:.8125rem;font-weight:500}
+#vault .ui-page-section,#vault #item-form>section{margin-top:1.25rem}
+#vault .ui-page-section>h3{font-size:.75rem;font-weight:550;letter-spacing:.025em;margin-bottom:.75rem}
+#vault .vault-edit-header{gap:.75rem;top:-1rem;padding-block:.75rem;margin-bottom:1.25rem}
+#vault #item-form .grid.gap-4,.web-settings-body .grid.gap-4,.ui-dialog .grid.gap-4{gap:.75rem}
+#vault #item-form label.grid,.web-settings-body label.grid,.ui-dialog label.grid{gap:.375rem}
+#vault #view-custom-fields h4{padding:.75rem;font-size:.75rem;letter-spacing:.025em}
+.ui-dialog h2,.ui-page-header h2{font-size:1.125rem;font-weight:550;letter-spacing:-.015em}
+.ui-dialog .ui-button{min-height:2.25rem;padding-block:.375rem;font-size:.8125rem}
+.ui-dialog p{line-height:1.5}
+.ui-dialog-actions{gap:.5rem;padding-top:.75rem}
+.ui-access-shell>.ui-access-card{padding:1.75rem}
+.ui-access-card h1{font-size:1.25rem;font-weight:550}
+.ui-access-card p{font-size:.8125rem;line-height:1.5}
+.web-settings-header{padding:1.25rem 1.5rem}
+.web-settings-header h3{font-size:1.125rem;font-weight:550}
+.web-settings-header p{font-size:.8125rem;margin-top:.25rem}
+.web-settings-body{padding:1.25rem 1.5rem}
+.web-settings-body .ui-button{height:auto;padding-block:.375rem}
+#vault .sidebar-links{gap:2px}
+#vault .sidebar-links .ui-button{height:2.25rem;min-height:2.25rem!important;gap:.625rem;padding:.375rem .75rem!important;border:1px solid transparent!important;border-radius:.625rem;font-size:.8125rem;font-weight:450;color:#b9c1d2}
+#vault .sidebar-links .ui-button>svg{flex:none;color:#8794ae;stroke-width:1.65}
+#vault .sidebar-links .ui-button:hover{background:#ffffff08!important;color:#f1f5f9!important}
+#vault .sidebar-links .ui-button.active{background:#ffffff0e!important;border-color:#ffffff0c!important;color:#f5f3ef!important;box-shadow:0 1px 3px #0002}
+#vault .sidebar-links .ui-button.active>svg{color:#e0bb95}
+#vault #nav-favorites>svg{color:#cfb77e}#vault #password-health>svg{color:#86aaa0}
+#vault #nav-count{font-size:.75rem;font-weight:400;background:transparent;padding:0;color:#727e96;font-variant-numeric:tabular-nums}
+#vault .vault-nav-heading{display:flex;align-items:center;justify-content:space-between;height:1.75rem;min-height:1.75rem;margin:1.25rem 0 .25rem;padding:0 .75rem;gap:.5rem}
+#vault .vault-nav-heading>p{display:flex;align-items:baseline;gap:.5rem;font-size:.75rem;font-weight:550;letter-spacing:0;color:#8f99ad}
+.desktop-section-count{font-variant-numeric:tabular-nums;font-size:.75rem;font-weight:400;color:#727e96}
+#vault .vault-nav-heading>.ui-button{width:1.5rem!important;height:1.5rem!important;min-height:1.5rem!important;padding:0!important;border:0!important}
+#vault .sidebar-links>div:last-child{padding-top:.875rem;border-top:1px solid #ffffff08}
+.web-settings-nav{background:#ffffff03;padding:1.5rem .75rem}
+.web-settings-nav h2{padding:0 .75rem;margin-bottom:1.25rem;color:#8f99ad;font-size:.8125rem;font-weight:550}
+.web-settings-nav nav{gap:2px}
+.web-settings-nav .settings-tab{height:2.25rem;min-height:2.25rem;gap:.625rem;border:1px solid transparent;border-radius:.625rem;padding:.375rem .75rem!important;color:#b9c1d2;font-size:.8125rem;font-weight:450}
+.web-settings-nav .settings-tab>svg{flex:none;color:#8794ae;stroke-width:1.65}
+.web-settings-nav .settings-tab.active{background:#ffffff0e!important;border-color:#ffffff0c;color:#f5f3ef!important;box-shadow:0 1px 3px #0002}
+.web-settings-nav .settings-tab.active>svg{color:#e0bb95}
+@media(min-width:801px){
+#vault .sidebar>.brand{margin-bottom:1rem}
+#vault.sidebar-collapsed .sidebar-links button>.desktop-vault-marker{visibility:visible}
+#vault.sidebar-collapsed .vault-nav-heading>button{left:.75rem}
+}
+@media(min-width:1440px){
+#vault.vault-grid .vault-browser{padding:1rem}
+#vault.vault-grid .vault-item-row{min-height:3rem;padding:.5rem .75rem}
+#vault.vault-grid .vault-grid-head{font-size:.75rem;font-weight:500;letter-spacing:0;text-transform:none}
+#vault.vault-grid .item-detail:has(#item-empty:not([hidden])):not(:has(.item-tabs-bar)){display:none}
+#vault.vault-grid .item-detail:has(.item-tabs-bar){display:block}
+#vault.vault-grid .item-detail:has(#item-empty:not([hidden])):has(.item-tabs-bar){display:flex}
+#vault.vault-grid main:has(.item-tabs-bar)>header,#vault.vault-grid main:has(.item-tabs-bar)>.vault-content{margin-right:min(36rem,calc(100% - 20rem))}
+}
+@media(max-width:800px){
+#vault{grid-template-rows:3.75rem minmax(0,1fr)}
+#vault .item-detail{padding:1rem}
+#vault .item-detail:has(#item-empty:not([hidden])):not(:has(.item-tabs-bar)){display:none}
+#vault .item-detail:has(.item-tabs-bar){display:block}
+#vault .item-detail:has(#item-empty:not([hidden])):has(.item-tabs-bar){display:flex}
+}
+@media(max-width:620px){.web-settings-header,.web-settings-body{padding:1rem}.ui-access-shell>.ui-access-card{padding:1.25rem}}
+
+#vault .sidebar-links>.mt-4{margin-top:0}

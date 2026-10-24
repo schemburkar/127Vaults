@@ -12,3 +12,8 @@ export { PasskeyDetails } from "./passkey-details";
 export { FieldTypePicker } from "./field-type-picker";
 
 export { FieldValueEditor } from "./field-value-editor";
+
+export { ItemTabs, tabKey } from "./item-tabs";
+export { markerClass } from "./vault-marker";
+
+export { useBoundedPopover } from "./use-bounded-popover";

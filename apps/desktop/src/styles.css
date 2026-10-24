@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @source "../../../packages/ui/src";
 
-:root{font-family:Inter,ui-sans-serif,system-ui,"Segoe UI",sans-serif;color:#f1f5f9;background:#04071d;font-synthesis:none}*{box-sizing:border-box}html,body,#root{margin:0;min-width:0;min-height:100%;overscroll-behavior:none}html,body{height:100%;overflow:hidden}#root{height:100%;overflow:auto}*{overscroll-behavior:none}button,[draggable=true]{-webkit-user-select:none;user-select:none}.dragging{opacity:.55}
+:root{font-family:Inter,ui-sans-serif,system-ui,"Segoe UI",sans-serif;color:#f1f5f9;background:#04071d;font-synthesis:none}*{box-sizing:border-box}html,body,#root{margin:0;min-width:0;min-height:100%}html,body{height:100%;overflow:hidden}#root{height:100%;overflow:auto}button,[draggable=true]{-webkit-user-select:none;user-select:none}.dragging{opacity:.55}
 .ui-button{display:inline-flex!important;flex-direction:row!important;align-items:center!important;flex-wrap:nowrap!important;white-space:nowrap!important}.ui-button>svg{display:block!important;flex:0 0 auto!important}
 .desktop-sidebar{min-width:0}.desktop-menu-toggle,.desktop-back-row{display:none!important}.desktop-nav-content{min-width:0}.desktop-nav-row{display:flex;align-items:center;position:relative;gap:.125rem;min-width:0}.desktop-row-menu{position:relative;flex:none}.desktop-row-menu summary{display:grid;place-items:center;width:2rem;height:2rem;cursor:pointer;list-style:none;border-radius:.5rem;color:#94a3b8}.desktop-row-menu summary::-webkit-details-marker{display:none}.desktop-row-menu summary:hover,.desktop-row-menu[open] summary{background:#ffffff14;color:#fff}.desktop-row-menu>div{position:absolute;z-index:45;top:100%;right:0;min-width:10rem;padding:.25rem;border:1px solid #ffffff1a;border-radius:.65rem;background:#171c32;box-shadow:0 12px 32px #0008}.desktop-row-menu button{display:block;width:100%;padding:.55rem .75rem;text-align:left;border-radius:.4rem;font-size:.8rem}.desktop-row-menu button:hover{background:#ffffff14}.desktop-settings{max-height:calc(100dvh - 2rem)}.desktop-settings-select{width:100%;border:1px solid #ffffff24;border-radius:.6rem;background:#0a0e21;color:#f1f5f9;padding:.7rem}.desktop-settings-select:focus{outline:2px solid #e0bb95;outline-offset:1px}
 .desktop-layout-toggle{display:none}
@@ -112,7 +112,6 @@
 @media(max-width:850px){.desktop-edit-header{top:-1.25rem}}
 @media(max-width:620px){.desktop-edit-header{top:-1rem}}
 
-.item-tabs{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.65rem;margin-bottom:1rem;border-bottom:1px solid #ffffff18}.item-tab{display:flex;flex:none;align-items:center;border:1px solid #ffffff20;border-radius:.5rem;overflow:hidden}.item-tab button{padding:.5rem .65rem;font-size:.8rem}.item-tab [role=tab]{max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item-tab [aria-selected=true]{background:#e0bb9525;color:#e0bb95}.item-tab button:hover{background:#ffffff12}
 
 .sidebar-brand-toggle{cursor:pointer;white-space:nowrap;text-align:left}.sidebar-brand-toggle:focus-visible{outline:2px solid #e0bb95;outline-offset:4px}
 @media(min-width:851px){
@@ -172,3 +171,102 @@
 
 /* Keep keyboard focus consistent with the desktop gold accent. */
 .ui-button:focus-visible{--tw-ring-color:#e0bb9580}
+
+/* Desktop sidebar preview: consistent label, count and action alignment. */
+.desktop-nav-content{gap:2px}
+.desktop-nav-content .ui-button{height:2.25rem;min-height:2.25rem;gap:.625rem;padding:.375rem .75rem;border:1px solid transparent;border-radius:.625rem;font-size:.8125rem;font-weight:450;color:#b9c1d2}
+.desktop-nav-content .ui-button>svg{flex:none;color:#8794ae;stroke-width:1.65}
+.desktop-nav-content .ui-button:hover{background:#ffffff08;color:#f1f5f9}
+.desktop-nav-content .ui-button[aria-current=page]{background:#ffffff0e;border-color:#ffffff0c;color:#f5f3ef;box-shadow:0 1px 3px #0002}
+.desktop-nav-content .ui-button[aria-current=page]>svg{color:#e0bb95}
+.desktop-nav-content>.ui-button:has(.lucide-star)>svg{color:#cfb77e}
+.desktop-nav-content>.ui-button:has(.lucide-shield-check)>svg{color:#86aaa0}
+.desktop-nav-row{gap:0;border:1px solid transparent;border-radius:.625rem}
+.desktop-nav-row:has([aria-current=page]){background:#ffffff0e;border-color:#ffffff0c;box-shadow:0 1px 3px #0002}
+.desktop-nav-row .ui-button[aria-current=page]{background:transparent;border-color:transparent;box-shadow:none}
+.desktop-nav-heading{display:flex;align-items:center;justify-content:space-between;height:1.75rem;min-height:1.75rem;margin:1.25rem 0 .25rem;padding:0 .75rem;gap:.5rem}
+.desktop-nav-heading>p{display:flex;align-items:baseline;gap:.5rem;min-width:0;font-size:.75rem;line-height:1.25rem;font-weight:550;letter-spacing:0;color:#8f99ad}
+.desktop-section-count,.desktop-nav-count{font-variant-numeric:tabular-nums;font-size:.75rem;font-weight:400;color:#727e96}
+.desktop-nav-count{min-width:1.5rem;text-align:right}
+.desktop-nav-heading>.ui-button{width:1.5rem!important;height:1.5rem!important;min-height:1.5rem!important;padding:0;border:0;color:#8794ae}
+.desktop-row-menu{margin-right:.25rem}
+.desktop-row-menu summary{width:1.5rem;height:1.75rem;color:#76829a}
+.desktop-row-menu summary:hover{color:#e0bb95}
+.desktop-nav-utilities{padding-top:.875rem;margin-top:auto;border-top:1px solid #ffffff08}
+.desktop-settings-nav{background:#ffffff03;padding:1.5rem .75rem}
+.desktop-settings-nav h2{padding:0 .75rem;margin-bottom:1.25rem;color:#8f99ad;font-size:.8125rem;font-weight:550}
+.desktop-settings-nav nav{gap:2px}
+.desktop-settings-nav .desktop-settings-tab{height:2.25rem;min-height:2.25rem;gap:.625rem;border:1px solid transparent;border-radius:.625rem;padding:.375rem .75rem!important;color:#b9c1d2;font-size:.8125rem;font-weight:450}
+.desktop-settings-tab>svg{flex:none;color:#8794ae;stroke-width:1.65}
+.desktop-settings-nav .desktop-settings-tab-active{background:#ffffff0e!important;border-color:#ffffff0c;color:#f5f3ef!important;box-shadow:0 1px 3px #0002}
+.desktop-settings-tab-active>svg{color:#e0bb95}
+@media(min-width:851px){.desktop-brand{margin-bottom:1rem}.sidebar-collapsed .desktop-nav-heading>p{visibility:hidden}.sidebar-collapsed .desktop-nav-heading>button{left:.75rem}.sidebar-collapsed .desktop-row-menu{display:none}}
+/* Desktop density follows the sidebar's 13px labels and 36px controls. */
+.desktop-detail select,.desktop-settings-select,.ui-dialog select{padding:.5rem .75rem}
+.desktop-list>header{padding:1rem}
+.desktop-list>header input{height:var(--desktop-control);min-height:var(--desktop-control);border-radius:.625rem}
+.desktop-list>header .relative>svg{top:.625rem}
+.desktop-list-heading{gap:.75rem;padding:1rem 1.25rem .875rem}
+.desktop-list-heading h1{font-size:1.125rem;font-weight:550;letter-spacing:-.015em}
+.desktop-shell .desktop-items{padding:0 1rem 1rem}
+.desktop-item-row{border-radius:.625rem}
+.desktop-shell:not(.desktop-grid) .desktop-item-row{grid-template-columns:2rem minmax(0,1fr);gap:.625rem;padding:.625rem .75rem}
+.desktop-shell:not(.desktop-grid) .desktop-item-row>span:first-child{width:2rem;height:2rem;border-radius:.5rem}
+.desktop-item-row strong{font-size:var(--desktop-text);font-weight:550}
+.desktop-item-row small{font-size:var(--desktop-label);line-height:1.5}
+.desktop-shell .desktop-detail{padding:1rem 1.5rem}
+.desktop-detail-heading{margin-bottom:1.25rem}
+.desktop-detail-heading h2,.desktop-edit-header h2{font-size:1.25rem;line-height:1.35;font-weight:550;letter-spacing:-.015em}
+.desktop-detail h3{font-size:var(--desktop-label);font-weight:550;letter-spacing:.025em}
+.desktop-detail>div>section{margin-top:1.25rem}
+.desktop-detail .ui-page-section{margin-top:1.25rem;padding-top:1.25rem}
+.desktop-field-row{min-height:3.5rem;gap:.125rem .75rem;padding:.625rem .875rem}
+.desktop-field-row>strong{font-size:var(--desktop-text);font-weight:500}
+.desktop-field-row>span:first-child{font-size:var(--desktop-label)}
+.desktop-detail .rounded-2xl{border-radius:.75rem}
+.desktop-edit-header{gap:.75rem;margin-bottom:1.25rem;padding-block:.75rem}
+.desktop-title-fields,.desktop-detail .grid.gap-4,.desktop-settings-body .grid.gap-4,.ui-dialog .grid.gap-4{gap:.75rem}
+.desktop-detail label.grid,.desktop-settings-body label.grid,.ui-dialog label.grid{gap:.375rem}
+.desktop-settings-header{padding:1.25rem 1.5rem}
+.desktop-settings-header h3{font-size:1.125rem;font-weight:550}
+.desktop-settings-header p{font-size:var(--desktop-text);margin-top:.25rem}
+.desktop-settings-body{padding:1.25rem 1.5rem}
+.desktop-settings-body>.grid.gap-5{gap:1rem}
+.desktop-settings-body section{padding:.875rem;border-radius:.625rem}
+.desktop-settings-body .desktop-settings-message{padding:.875rem;line-height:1.5}
+.desktop-settings-body .ui-button{height:auto;padding-block:.375rem}
+.ui-dialog h2,.ui-page-header h2{font-size:1.125rem;font-weight:550;letter-spacing:-.015em}
+.ui-dialog .ui-button{min-height:var(--desktop-control);padding-block:.375rem;font-size:var(--desktop-text)}
+.ui-dialog p{line-height:1.5}
+.ui-dialog-actions{gap:.5rem;padding-top:.75rem}
+.ui-access-shell>.ui-access-card{padding:1.75rem}
+.ui-access-card h1{font-size:1.25rem;font-weight:550}
+.ui-access-card p{font-size:var(--desktop-text);line-height:1.5}
+.ui-item-window{padding:1.5rem}
+.desktop-empty-state{padding:1.5rem 1rem}
+.desktop-empty-state h2{font-size:.875rem;font-weight:550}
+@media(min-width:1440px){
+  .desktop-grid .desktop-grid-head{font-size:var(--desktop-label);font-weight:500;letter-spacing:0;text-transform:none}
+  .desktop-grid .desktop-item-row{min-height:3rem;padding:.5rem .75rem}
+  .desktop-grid .desktop-group-heading{font-weight:500;padding:.375rem .75rem}
+}
+@media(max-width:850px){.desktop-shell .desktop-detail{padding:1rem}}
+@media(max-width:620px){
+  .desktop-list-heading{padding:1rem}
+  .desktop-settings-header,.desktop-settings-body{padding:1rem}
+  .desktop-settings-body section{padding:.75rem}
+  .ui-access-shell>.ui-access-card{padding:1.25rem}
+}
+
+.desktop-title-fields summary{min-height:var(--desktop-control);padding:.25rem .5rem;border-radius:.625rem}
+.desktop-title-fields summary>span:first-child{width:1.625rem;height:1.625rem;border-radius:.375rem}
+/* Keep the item viewport bounded independently of item count and detail content. */
+.desktop-shell{grid-template-rows:minmax(0,1fr) 2rem}
+.desktop-shell .desktop-list{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);min-height:0;overflow:hidden}
+.desktop-shell .desktop-items{height:100%;min-height:0;min-width:0;overflow:auto}
+@media(max-width:850px){.desktop-shell{grid-template-rows:3.75rem minmax(0,1fr) 2rem}}
+
+@import "../../../packages/ui/src/compact.css";
+.desktop-detail:has(.desktop-detail-empty){display:flex;flex-direction:column;min-height:0}
+.desktop-detail-empty{flex:1;min-height:0}
+.desktop-detail:has(.desktop-detail-empty)>.item-tabs-bar{flex:none}

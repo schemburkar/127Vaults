@@ -1,3 +1,4 @@
+import { markerClass, useBoundedPopover } from "@127vaults/ui";
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import {
   Star,
@@ -13,6 +14,7 @@ import {
   Landmark,
   LayoutList,
   LayoutGrid,
+  PanelsTopLeft,
   LockKeyhole,
   Plus,
   RefreshCw,
@@ -119,6 +121,7 @@ const TYPE_DESCRIPTIONS: Record<ItemType, string> = {
 };
 
 function ItemTypePicker() {
+  const popover = useBoundedPopover();
   const [type, setType] = useState<ItemType>("login");
   const [hasPasskey, setHasPasskey] = useState(false);
   useEffect(() => {
@@ -139,7 +142,7 @@ function ItemTypePicker() {
     window.dispatchEvent(new CustomEvent("vaults:select-item-type", { detail: next }));
   };
   const Icon = TYPE_ICONS[type];
-  return <div className={fieldLabel}><span>Type</span><details className="group relative min-w-0"><summary id="item-type" className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-[#11162b] px-2 py-1.5 text-sm text-white hover:border-[#E0BB95]/50 [&::-webkit-details-marker]:hidden"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><Icon size={17} /></span><span className="min-w-0 flex-1 truncate">{ITEM_TYPES[type].label}</span><ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" /></summary><div className="absolute right-0 top-full z-40 mt-2 max-h-[min(32rem,calc(100dvh-8rem))] w-[min(22rem,calc(100vw-2.5rem))] overflow-auto rounded-xl border border-white/15 bg-[#11162b] p-2 shadow-2xl"><p className="px-3 py-2 text-xs text-slate-400">Choose the main item type</p>{TYPE_GROUPS.map((group) => <div key={group.label}><p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{group.label}</p>{group.types.map((option) => { const OptionIcon = TYPE_ICONS[option]; return <button key={option} type="button" className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 ${option === type ? "bg-[#E0BB95]/10" : ""}`} onClick={(event) => select(option, event.currentTarget)}><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/7 text-[#E0BB95]"><OptionIcon size={17} /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-white">{ITEM_TYPES[option].label}</strong><small className="block text-xs text-slate-400">{TYPE_DESCRIPTIONS[option]}</small></span>{option === type && <Check size={16} className="shrink-0 text-[#E0BB95]" />}</button>; })}</div>)}</div></details></div>;
+  return <div className={fieldLabel}><span>Type</span><details ref={popover.trigger} className="group relative min-w-0"><summary id="item-type" className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-[#11162b] px-2 py-1.5 text-sm text-white hover:border-[#E0BB95]/50 [&::-webkit-details-marker]:hidden"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><Icon size={17} /></span><span className="min-w-0 flex-1 truncate">{ITEM_TYPES[type].label}</span><ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" /></summary><div ref={popover.menu} popover="auto" className="ui-type-popover rounded-xl border border-white/15 bg-[#11162b] p-2 shadow-2xl"><p className="px-3 py-2 text-xs text-slate-400">Choose the main item type</p>{TYPE_GROUPS.map((group) => <div key={group.label}><p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{group.label}</p>{group.types.map((option) => { const OptionIcon = TYPE_ICONS[option]; return <button key={option} type="button" className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 ${option === type ? "bg-[#E0BB95]/10" : ""}`} onClick={(event) => select(option, event.currentTarget)}><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/7 text-[#E0BB95]"><OptionIcon size={17} /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-white">{ITEM_TYPES[option].label}</strong><small className="block text-xs text-slate-400">{TYPE_DESCRIPTIONS[option]}</small></span>{option === type && <Check size={16} className="shrink-0 text-[#E0BB95]" />}</button>; })}</div>)}</div></details></div>;
 }
 
 function RelatedPicker({ type, onSelect }: { type: ItemType; onSelect: (type: SectionType, label: string) => void }) {
@@ -693,19 +696,19 @@ function Sidebar({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: ()
   }, []);
   const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
   useEffect(() => { const update = (event: Event) => setVaults((event as CustomEvent<WebVaultSummary[]>).detail); window.addEventListener("vaults:vaults", update); if ((window as any).__vaultsSnapshot) setVaults((window as any).__vaultsSnapshot); return () => window.removeEventListener("vaults:vaults", update); }, []);
-  const nav = "nav !min-h-11 w-full justify-start !border-0 !bg-transparent !px-3 text-slate-400 shadow-none hover:!bg-[#E0BB95]/10 hover:!text-[#E0BB95] max-[560px]:h-14 max-[560px]:min-w-0 max-[560px]:flex-1 max-[560px]:gap-1.5 max-[560px]:!px-2 max-[560px]:text-[10px] [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:shrink [&>span]:truncate [&>span]:text-left [&>b]:ml-auto [&>b]:rounded-full [&>b]:bg-white/10 [&>b]:px-2 [&>b]:py-0.5 [&>b]:text-[10px] max-[560px]:[&>b]:hidden";
+  const nav = "nav w-full justify-start text-slate-400 shadow-none [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left [&>b]:ml-auto";
   return (
     <aside className={`sidebar row-span-2 flex flex-col p-3 text-white ${menuOpen ? "menu-open" : ""}`}>
       <Brand collapsed={collapsed} compact={compact} menuOpen={menuOpen} onCollapse={compact ? () => setMenuOpen(open => !open) : onCollapse} />
       <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="sidebar-links flex min-h-0 flex-1 flex-col" aria-label="Main navigation" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setMenuOpen(false); }}>
-      <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly && browseView?.kind === 'all'} className={`${nav} ${!favoritesOnly && browseView?.kind === 'all' ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}>
+      <Button id="nav-all-items" variant="ghost" aria-pressed={!favoritesOnly && browseView?.kind === 'all'} className={`${nav} ${!favoritesOnly && browseView?.kind === 'all' ? "active" : ""}`}>
         <LayoutList aria-hidden="true" /> <span>All items</span>
         <b id="nav-count">0</b>
       </Button>
-      <Button id="nav-favorites" variant="ghost" aria-pressed={favoritesOnly} className={`${nav} ${favoritesOnly ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`}><Star aria-hidden="true" /><span>Favorites</span></Button>
+      <Button id="nav-favorites" variant="ghost" aria-pressed={favoritesOnly} className={`${nav} ${favoritesOnly ? "active" : ""}`}><Star aria-hidden="true" /><span>Favorites</span></Button>
       <Button id="password-health" variant="ghost" className={nav}><ShieldCheck aria-hidden="true" /><span>Password health</span></Button>
-      <div className="vault-nav-heading mt-6 mb-2 flex items-center justify-between gap-2 px-3"><p className="text-[10px] font-bold tracking-[.16em] text-slate-500 max-[800px]:hidden">VAULTS</p><IconButton id="create-vault" label="Add vault" className="!size-9 !min-h-9"><Plus size={16} aria-hidden="true" /></IconButton></div>
-      {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={`${nav} ${vault.selected ? "active !bg-[#E0BB95]/12 !text-[#E0BB95]" : ""}`} onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><VaultIcon aria-hidden="true" /><span>{vault.name}</span></Button>)}
+      <div className="vault-nav-heading mt-6 mb-2 flex items-center justify-between gap-2 px-3"><p>Vaults <span className="desktop-section-count">{vaults.length}</span></p><IconButton id="create-vault" label="Add vault" className="!size-9 !min-h-9"><Plus size={16} aria-hidden="true" /></IconButton></div>
+      {vaults.map((vault) => <Button key={vault.vaultId} variant="ghost" className={`${nav} ${vault.selected ? "active" : ""}`} onClick={() => (window as any).__vaultsActions.selectVault(vault.vaultId)}><span aria-hidden="true" className={markerClass(vault.vaultId)} /><span>{vault.name}</span></Button>)}
       <CollectionLinks className={nav} />
       <div className="mt-auto space-y-1 max-[560px]:contents">
         <Button id="reload" variant="ghost" className={`${nav} max-[560px]:hidden`} title="Sync now"><RefreshCw aria-hidden="true" /><span>Sync</span></Button>
@@ -935,7 +938,7 @@ function Settings() {
       <div className="web-settings">
         <aside className="web-settings-nav">
           <h2 id="web-settings-title">Settings</h2>
-          <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} variant="ghost" className={`${settingsTab} ${activeTab === tab ? "active" : ""}`} aria-current={activeTab === tab ? "page" : undefined} aria-controls={`settings-${tab}`} data-settings-view={tab}>{tab[0].toUpperCase() + tab.slice(1)}</Button>)}</nav>
+          <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} variant="ghost" className={`${settingsTab} ${activeTab === tab ? "active" : ""}`} aria-current={activeTab === tab ? "page" : undefined} aria-controls={`settings-${tab}`} data-settings-view={tab}>{tab === "profile" ? <KeyRound size={17} aria-hidden="true" /> : tab === "devices" ? <PanelsTopLeft size={17} aria-hidden="true" /> : tab === "vaults" ? <VaultIcon size={17} aria-hidden="true" /> : <SettingsIcon size={17} aria-hidden="true" />}<span>{tab[0].toUpperCase() + tab.slice(1)}</span></Button>)}</nav>
         </aside>
         <div className="web-settings-main">
           <header className="web-settings-header">

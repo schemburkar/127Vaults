@@ -90,7 +90,8 @@ try {
       unregisterCallback(id) { callbacks.delete(id); },
       async invoke(cmd) {
         if (cmd === 'desktop_info') return { configured: true, cachedUsername: 'fixture', hasCachedSecret: true };
-        if (cmd === 'unlock') return { online: true, vaultId: 'fixture-0', vaults, items: [], settings: { collections: [], defaultView: null, conflict: true }, viewKind: 'single', secretRemembered: true };
+        if (cmd === 'unlock') return { sessionEpoch: 1, online: true, vaultId: 'fixture-0', vaults, items: [], settings: { collections: [], defaultView: null, conflict: true }, viewKind: 'single', secretRemembered: true };
+        if (cmd === 'license_status' || cmd === 'license_access_status') return { mode: 'active', plan: 'synthetic', expiresAt: new Date(Date.now() + 86400000).toISOString(), enforcement: 'active' };
         if (cmd === 'replica_status') return { pending: 0, conflicts: 0 };
         if (cmd === 'item_list' || cmd === 'plugin:window|get_all_windows') return [];
         if (cmd === 'vault_settings_review') return { local: { names: vaults }, server: { names: vaults } };
@@ -105,7 +106,7 @@ try {
   await desktop.locator('.ui-access-card').waitFor();
   const desktopAccess = await checkSurface(desktop.locator('.ui-access-card'));
   assert.equal(desktopAccess.width, webAccess.width);
-  assert.equal(desktopAccess.padding, webAccess.padding);
+  assert.equal(desktopAccess.padding, '28px', 'Desktop access card uses the compact desktop spacing');
   await snapshot(desktop, 'desktop-access');
   await desktop.getByLabel('Master password', { exact: true }).fill('synthetic-password-long-enough');
   await desktop.getByRole('button', { name: 'Unlock encrypted replica' }).click();

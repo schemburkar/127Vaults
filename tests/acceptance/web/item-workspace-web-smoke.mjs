@@ -16,6 +16,17 @@ export async function exerciseItemWorkspace(page, { firstItem, firstVault, secon
   await page.locator('[data-item-id]').first().click();
   await page.getByRole('button', { name: 'Keep in tab' }).click();
   assert.equal(await page.getByRole('tab').count(), 2);
+  assert.equal(await page.getByRole('tablist').evaluate(node => getComputedStyle(node).display), 'flex');
+  const tabRows = await page.getByRole('tab').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
+  assert(Math.abs(tabRows[0] - tabRows[1]) < 1, 'Tabs must share a single horizontal row');
+  await page.evaluate(() => window.__vaultsActions.closeWorkspaceItem());
+  await page.locator('#item-empty').waitFor({ state: 'visible' });
+  assert(await page.locator('.item-detail').evaluate(node => node.scrollHeight <= node.clientHeight + 1), 'Empty detail plus tabs must fit without a vertical scrollbar');
+  assert(await page.locator('#items').evaluate(node => getComputedStyle(node, '::-webkit-scrollbar').width === '6px' || getComputedStyle(node).scrollbarWidth === 'thin'));
+  assert.equal(await page.getByRole('tablist').evaluate(node => getComputedStyle(node).scrollbarWidth), 'none');
+  assert.equal(await page.locator('#items').evaluate(node => getComputedStyle(node).overscrollBehavior), 'none');
+  assert.equal(await page.locator('.item-detail').evaluate(node => getComputedStyle(node).overscrollBehavior), 'none');
+  assert(await page.locator('#items').evaluate(node => node.offsetWidth - node.clientWidth <= 8), 'Scrollbar gutter must stay compact');
   await page.getByRole('tab', { name: 'Offline fixture login', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#view-title').textContent === 'Offline fixture login');
   await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
@@ -26,6 +37,26 @@ export async function exerciseItemWorkspace(page, { firstItem, firstVault, secon
   assert.equal(await page.locator('.sidebar').evaluate(node => Math.round(node.getBoundingClientRect().width)), 72);
   await page.getByRole('button', { name: 'List view', exact: true }).click();
   await page.locator('#edit-item').click();
+  for (const size of [{width:1180,height:760},{width:800,height:560}]) {
+    await page.setViewportSize(size);
+    const pane = page.locator('.item-detail');
+    await page.locator('#item-type').scrollIntoViewIfNeeded();
+    const before = await pane.evaluate(node => ({height:node.scrollHeight,top:node.scrollTop}));
+    await page.locator('#item-type').click();
+    const menu = page.locator('.ui-type-popover:popover-open');
+    await menu.waitFor();
+    const bounds = await menu.boundingBox();
+    assert(bounds.y >= 16 && bounds.y + bounds.height <= size.height - 15, 'Type menu stays inside viewport');
+    assert(await menu.evaluate(node => node.scrollHeight > node.clientHeight), 'Type menu has its own scroll area');
+    assert.equal(await pane.evaluate(node => node.scrollHeight), before.height, 'Type menu must not enlarge detail scroll area');
+    await menu.hover(); await page.mouse.wheel(0, 400);
+    await page.waitForFunction(() => document.querySelector('.ui-type-popover:popover-open').scrollTop > 0);
+    assert.equal(await pane.evaluate(node => node.scrollTop), before.top, 'Scrolling type options must not scroll details');
+    await page.keyboard.press('Escape');
+    await menu.waitFor({state:'hidden'});
+  }
+  await page.setViewportSize({width:1600,height:950});
+
   await page.locator('#title').fill('Unsaved workspace fixture');
   page.once('dialog', dialog => dialog.dismiss());
   await page.getByRole('tab', { name: 'Second vault fixture', exact: true }).click();
@@ -41,6 +72,11 @@ export async function exerciseItemWorkspace(page, { firstItem, firstVault, secon
   await page.evaluate(() => { Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async value => { window.__workspaceCopied = value; } }); });
   await child.getByRole('button', { name: 'Copy', exact: true }).nth(2).click();
   await page.waitForFunction(() => window.__workspaceCopied === 'synthetic-original-password');
+  await page.bringToFront();
+  await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click();
+  await page.waitForFunction(() => Math.round(document.querySelector('.sidebar').getBoundingClientRect().width) === 208);
+  assert.equal(await page.locator('#nav-all-items').evaluate(node => node.getBoundingClientRect().height), 36);
+  assert.equal(await page.locator('#nav-all-items').evaluate(node => getComputedStyle(node).fontSize), '13px');
   await page.screenshot({ path: resolve(output, 'updated-desktop-fixture.png') });
   await child.screenshot({ path: resolve(output, 'updated-popout-fixture.png') });
   const closing = child.waitForEvent('close');

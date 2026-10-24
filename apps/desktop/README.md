@@ -6,7 +6,7 @@ hydrate a replica, later unlocks can authenticate and decrypt it offline, edits
 are encrypted and durably queued before delivery, and explicit sync retries the
 queue. The React renderer receives only the currently requested plaintext item.
 
-The sidebar can collapse to a 72-pixel icon rail independently of the item list/grid preference. Hover an icon to see its navigation label. Use **Keep in tab** on an item to retain it in the detail pane, then switch among retained items; tabs keep their source vault and respect unsaved-edit confirmation. Tabs last for the unlocked session.
+The sidebar can collapse to a 72-pixel icon rail independently of the item list/grid preference. Hover an icon to see its navigation label. Use **Keep in tab** on an item to retain it in the detail pane, then switch among retained items; tabs keep their source vault and respect unsaved-edit confirmation. Tabs last for the unlocked session. Tabs keep readable widths and scroll horizontally with a mouse wheel or touchpad; the active tab is brought into view. Scroll arrows and the open-tabs menu make overflow accessible without a visible horizontal scrollbar. There is no ten-tab cap or automatic eviction. Closing the active tab selects a neighboring tab. Sidebar vault and collection markers use stable pastel colors derived from their IDs, so renaming or reordering does not change the marker.
 
 **Open in window** opens a separate native detail window with reveal/copy controls. Reopening the same item focuses its existing window. Edit items in the main window; separate windows refresh from the replica and clear when the vault locks or the main window closes.
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, PanelsTopLeft, ExternalLink } from "lucide-react";
-import { Button, IconButton, PasskeyDetails, AuthenticatorCode, TOTP_ID } from "@127vaults/ui";
+import { PanelsTopLeft, ExternalLink } from "lucide-react";
+import { Button, IconButton, ItemTabs, PasskeyDetails, AuthenticatorCode, TOTP_ID } from "@127vaults/ui";
 import { visibleFields, type ItemField } from "@127vaults/domain/item-types";
 
 type Item = { itemId: string; vaultId: string; index: { title: string; website?: string }; body: { username?: string; password?: string; customFields: ItemField[] } };
@@ -76,7 +76,13 @@ export function ItemWorkspace() {
     setPopouts(windows.current);
   };
   return <>
-    {tabs.length > 0 && <div className="web-item-tabs" role="tablist" aria-label="Open items">{tabs.map(tab => <div className="web-item-tab" key={keyOf(tab)}><button role="tab" aria-selected={selected ? keyOf(tab) === keyOf(selected) : false} onClick={() => void open(tab)}>{tab.index.title || "Untitled"}</button><button aria-label={`Close tab ${tab.index.title}`} onClick={() => { if (selected && keyOf(tab) === keyOf(selected) && !actions().closeWorkspaceItem()) return; setTabs(current => current.filter(row => keyOf(row) !== keyOf(tab))); }}><X size={14} /></button></div>)}</div>}
+    {tabs.length > 0 && <ItemTabs tabs={tabs.map(tab => ({...tab, title: tab.index.title}))} activeKey={selected ? keyOf(selected) : null} onSelect={tab => void open(tab)} onClose={tab => {
+      const active = selected && keyOf(tab) === keyOf(selected);
+      if (active && !actions().closeWorkspaceItem()) return;
+      const remaining = tabs.filter(row => keyOf(row) !== keyOf(tab));
+      setTabs(remaining);
+      if (active && remaining.length) void open(remaining[Math.min(tabs.findIndex(row => keyOf(row) === keyOf(tab)), remaining.length - 1)]);
+    }} />}
     {selected && actionHost && createPortal(<><IconButton label="Keep in tab" onClick={() => { const tab = { itemId: selected.itemId, vaultId: selected.vaultId, index: selected.index }; setTabs(current => current.some(row => keyOf(row) === keyOf(tab)) ? current : [...current, tab]); }}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={popOut}><ExternalLink size={17} aria-hidden="true" /></IconButton></>, actionHost)}
     {popouts.filter(popout => !popout.window.closed).map(popout => createPortal(<WindowDetail key={popout.key} item={popout.item} />, popout.window.document.body, popout.key))}
   </>;
