@@ -270,3 +270,22 @@
 .desktop-detail:has(.desktop-detail-empty){display:flex;flex-direction:column;min-height:0}
 .desktop-detail-empty{flex:1;min-height:0}
 .desktop-detail:has(.desktop-detail-empty)>.item-tabs-bar{flex:none}
+
+/* Detail split sizing applies equally to item details and Password Health. */
+.desktop-shell{position:relative;--desktop-sidebar-width:13rem}
+.desktop-shell.sidebar-collapsed{--desktop-sidebar-width:4.5rem}
+.desktop-pane-divider{position:absolute;bottom:2rem;width:10px;z-index:25;cursor:col-resize;touch-action:none;outline:none}
+.desktop-pane-divider>span{position:absolute;inset:0 4px;background:#ffffff12;transition:background 120ms}
+.desktop-pane-divider:hover>span,.desktop-pane-divider:focus-visible>span,.desktop-pane-resizing .desktop-pane-divider>span{background:#e0bb95}
+.desktop-pane-divider:focus-visible{box-shadow:inset 0 0 0 1px #e0bb95;border-radius:4px}
+.desktop-shell.desktop-pane-resizing{cursor:col-resize;user-select:none;transition:none}
+.desktop-shell.desktop-pane-sized{transition:none}
+@media(min-width:851px){.desktop-shell.desktop-pane-sized:not(.desktop-grid){grid-template-columns:var(--desktop-sidebar-width) minmax(0,1fr) var(--desktop-detail-width)}}
+@media(min-width:1440px){
+  .desktop-shell.desktop-pane-sized.desktop-grid:has(.detail-selected) .desktop-list{margin-right:var(--desktop-detail-width)}
+  .desktop-shell.desktop-pane-sized.desktop-grid .desktop-detail{width:var(--desktop-detail-width)}
+  .desktop-grid:not(:has(.detail-selected))>.desktop-pane-divider{display:none}
+}
+@media(min-width:851px) and (max-width:1439px){.desktop-shell.desktop-pane-sized.desktop-grid{grid-template-columns:var(--desktop-sidebar-width) minmax(0,1fr) var(--desktop-detail-width)}}
+@media(min-width:621px) and (max-width:850px){.desktop-shell.desktop-pane-sized{grid-template-columns:minmax(0,1fr) var(--desktop-detail-width)}}
+@media(max-width:620px){.desktop-pane-divider{display:none}}

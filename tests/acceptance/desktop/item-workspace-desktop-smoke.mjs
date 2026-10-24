@@ -198,6 +198,50 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   }
   await page.setViewportSize({ width: 1600, height: 900 });
+  const divider = page.getByRole('separator', { name: 'Resize detail pane', exact: true });
+  const detailWidth = () => page.locator('.desktop-detail').evaluate(node => node.getBoundingClientRect().width);
+  for (const mode of ['List view', 'Grid view']) {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    await divider.waitFor();
+    const before = await detailWidth(), handle = await divider.boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(handle.x - 120, handle.y + 100, { steps: 8 });
+    await page.mouse.up();
+    assert(await detailWidth() > before + 100, `${mode}: dragging left enlarges details`);
+    assert(await page.locator('.desktop-list').evaluate(node => node.getBoundingClientRect().width >= 279));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await divider.focus();
+    const dragged = await detailWidth();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(width => document.querySelector('.desktop-detail').getBoundingClientRect().width < width - 10, dragged);
+    await page.keyboard.press('Home');
+    await page.waitForFunction(() => Math.abs(document.querySelector('.desktop-detail').getBoundingClientRect().width - 320) < 1);
+    await page.keyboard.press('End');
+    assert(await page.locator('.desktop-list').evaluate(node => node.getBoundingClientRect().width >= 279));
+    await divider.dblclick();
+    await page.waitForFunction(() => localStorage.getItem('127vaults:desktop-detail-width') === null);
+    await page.waitForFunction(width => Math.abs(document.querySelector('.desktop-detail').getBoundingClientRect().width - width) < 2, before);
+  }
+  await divider.focus();
+  await page.keyboard.press('ArrowLeft');
+  const savedWidth = await detailWidth();
+  assert.equal(Number(await page.evaluate(() => localStorage.getItem('127vaults:desktop-detail-width'))), Math.round(savedWidth));
+  await page.reload();
+  await page.getByLabel('Master password', { exact: true }).fill('fixture-password-long-enough');
+  await page.getByRole('button', { name: 'Unlock encrypted replica' }).click();
+  await page.locator('[data-desktop-item]').first().click();
+  await page.waitForFunction(width => Math.abs(document.querySelector('.desktop-detail').getBoundingClientRect().width - width) < 2, savedWidth);
+  await page.getByRole('button', { name: 'Password health', exact: true }).click();
+  await page.locator('.password-health table').waitFor();
+  assert(Math.abs(await detailWidth() - savedWidth) < 2, 'Password Health uses the same preferred width');
+  for (const width of [1180, 800, 390, 1600]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `No horizontal overflow at ${width}px`);
+    if (width <= 620) assert.equal(await divider.isVisible(), false);
+  }
+  await page.waitForFunction(width => Math.abs(document.querySelector('.desktop-detail').getBoundingClientRect().width - width) < 2, savedWidth);
+  console.log('Detail pane resize passed: pointer, keyboard, bounds, reset, persistence, Password Health, responsive window sizing.');
   await page.getByRole('button', { name: 'Lock', exact: true }).click();
   await page.getByRole('heading', { name: 'Unlock 127Vaults' }).waitFor();
   assert.equal(await page.getByRole('tab').count(), 0);

@@ -1,5 +1,6 @@
 import { ItemTabs, tabKey, markerClass } from "@127vaults/ui";
 import { TypePicker, RelatedPicker } from "./components/item-type-pickers";
+import { useDetailPaneSize } from "./hooks/use-detail-pane-size";
 import { useItemLayout } from "./hooks/use-item-layout";
 import { ReadonlyItem } from "./readonly-item";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -174,6 +175,7 @@ export function App() {
   const [compactSidebar, setCompactSidebar] = useState(() => window.matchMedia("(max-width: 850px)").matches);
   useEffect(() => { const query = window.matchMedia("(max-width: 850px)"); const update = () => setCompactSidebar(query.matches); query.addEventListener("change", update); return () => query.removeEventListener("change", update); }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem("127vaults:sidebar-collapsed") === "true"; } catch { return false; } });
+  const detailPane = useDetailPaneSize(unlocked, `${sidebarCollapsed}:${itemLayout}:${wide}`);
   const [itemTabs, setItemTabs] = useState<Summary[]>([]);
   const openRequest = useRef(0);
   const pinItem = () => {
@@ -1590,7 +1592,7 @@ export function App() {
       </main>
     );
   return (
-    <div className={cn("desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
+    <div ref={detailPane.rootRef} style={detailPane.rootStyle} className={cn(detailPane.sized && "desktop-pane-sized", detailPane.dragging && "desktop-pane-resizing", "desktop-shell grid h-screen grid-cols-[15rem_minmax(18rem,22rem)_1fr] grid-rows-[1fr_2rem] overflow-hidden bg-[#04071d]", sidebarCollapsed && "sidebar-collapsed", itemLayout === "grid" && "desktop-grid", viewMode !== "single" && "desktop-multi-vault")}>
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
           <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}>{sidebarCollapsed && !compactSidebar && <img src="/brand-mark.svg" alt="127 Vaults" className="size-9 shrink-0" />}<strong><img src="/wordmark-red.svg" alt="127 Vaults" width="127" height="40" /></strong></button>
@@ -1728,7 +1730,8 @@ export function App() {
           </div>)}
         </div>
       </section>
-      <main className={cn("desktop-detail overflow-auto p-7", (healthOpen || selected || itemTabs.length > 0) && "detail-selected")}>
+      <div className="desktop-pane-divider" {...detailPane.separatorProps}><span aria-hidden="true" /></div>
+      <main id="desktop-item-details" className={cn("desktop-detail overflow-auto p-7", (healthOpen || selected || itemTabs.length > 0) && "detail-selected")}>
         {(healthTabOpen || itemTabs.length > 0) && <ItemTabs tabs={healthTabOpen ? [{ itemId: "__password-health", vaultId: "__workspace", title: "Password health", website: "", code: "" }, ...itemTabs] : itemTabs} activeKey={healthOpen ? "__workspace:__password-health" : selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => { if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { if (confirmDiscard()) setHealthOpen(true); } else void openItem(tab); }} onClose={tab => {
           if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { setHealthTabOpen(false); setHealthOpen(false); return; }
           if (!confirmDiscard()) return;
