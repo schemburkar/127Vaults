@@ -14,7 +14,7 @@ for(const handler of ['beginEditing','beginNewItem','duplicateItem'])test(`late 
   confirmDiscard:()=>true,completeRelatedFields:fields=>fields,setItemType:fields=>fields,setFavorite:fields=>fields,
   loadItem:()=>new Promise(resolve=>{finish=resolve;}),setStatus:()=>{},
  });
- for(const name of ['setSelected','setEditing','setVaultId','setItemVaultId','setRevealed','setEditOriginal','setExpandedRelatedId'])context[name]=value=>{context[name.slice(3,4).toLowerCase()+name.slice(4)]=value;};
+ for(const name of ['setHealthOpen','setSelected','setEditing','setVaultId','setItemVaultId','setRevealed','setEditOriginal','setExpandedRelatedId'])context[name]=value=>{context[name.slice(3,4).toLowerCase()+name.slice(4)]=value;};
  const compiled=ts.transpileModule(open+begin+edit+duplicate+`\nglobalThis.open=openItem;globalThis.begin=${handler};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  vm.runInContext(compiled,context);
  const pending=context.open({itemId:'fixture-item',vaultId:'fixture-vault'});context.begin();

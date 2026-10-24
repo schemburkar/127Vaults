@@ -58,7 +58,7 @@ export function passwordIssues(password) {
   if (/^(.)\1+$/u.test(password) || /^(?:password|qwerty|letmein|welcome|admin|123456|abcdef)/i.test(password)) issues.push('Common or predictable pattern');
   return issues;
 }
-export function analyzePasswords(items) {
+export function analyzePasswords(items, breached = new Set()) {
   const credentials = items.flatMap(item => [
     ...(item.password ? [{ item, label: 'Password', value: item.password }] : []),
     ...(item.customFields || []).filter(f => f.type === 'password' && f.id !== TOTP_ID && /password/i.test(f.label) && f.value).map(f => ({ item, label: f.label, value: f.value }))
@@ -69,8 +69,38 @@ export function analyzePasswords(items) {
   }
   return credentials.flatMap(({ item, label, value }) => {
     const issues = passwordIssues(value);
+    if (breached.has(value)) issues.push('Found in known breaches');
     const count = counts.get(value).size;
     if (count > 1) issues.push(`Reused across ${count} items`);
-    return issues.length ? [{ itemId: item.itemId, vaultId: item.vaultId, title: item.title || 'Untitled', label, issues }] : [];
+    return issues.length ? [{ itemId: item.itemId, vaultId: item.vaultId, title: item.title || 'Untitled', website: item.website, label, issues }] : [];
   });
+}
+
+export function changePasswordUrl(website) {
+  try {
+    if (typeof website !== 'string' || !website.trim()) return null;
+    const value = website.trim();
+    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(value) ? value : 'https://' + value);
+    if (!url.hostname.includes('.') && url.hostname !== 'localhost') return null;
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return null;
+    return url.origin + '/.well-known/change-password';
+  } catch { return null; }
+}
+export async function breachedPasswords(items, { signal, request = fetch } = {}) {
+  const passwords = [...new Set(items.flatMap(item => [item.password, ...(item.customFields || []).filter(f => f.type === 'password' && f.id !== TOTP_ID && /password/i.test(f.label)).map(f => f.value)]).filter(Boolean))];
+  const found = new Set(), ranges = new Map();
+  for (const password of passwords) {
+    signal?.throwIfAborted();
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(password))), b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    const prefix = hash.slice(0, 5);
+    if (!ranges.has(prefix)) {
+      const response = await request('https://api.pwnedpasswords.com/range/' + prefix, { signal, headers: { 'Add-Padding': 'true' }, credentials: 'omit', referrerPolicy: 'no-referrer' });
+      if (!response.ok) throw Error('Breach check unavailable');
+      const lines = (await response.text()).trim().split(/\r?\n/);
+      if (!lines.length || lines.some(line => !/^[A-F0-9]{35}:\d+$/i.test(line))) throw Error('Invalid breach response');
+      ranges.set(prefix, new Set(lines.filter(line => Number(line.split(':')[1]) > 0).map(line => line.split(':')[0].toUpperCase())));
+    }
+    if (ranges.get(prefix).has(hash.slice(5))) found.add(password);
+  }
+  return found;
 }

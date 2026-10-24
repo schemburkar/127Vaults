@@ -395,6 +395,7 @@ export function App() {
   };
   const openItem = async (summary: Summary, vault = vaultId) => {
     if (!confirmDiscard()) return;
+    setHealthOpen(false);
     try {
       const ownerVault = summary.vaultId ?? vault;
       const request = ++openRequest.current;
@@ -1606,7 +1607,7 @@ export function App() {
           <span className="desktop-nav-count ml-auto">{items.length}</span>
         </Button></div>
         <Button variant="ghost" aria-current={favoritesOnly ? "page" : undefined} className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
-        <Button variant="ghost" className="justify-start" onClick={() => setHealthOpen(true)}><ShieldCheck size={17} /><span>Password health</span></Button>
+        <Button variant="ghost" className="justify-start" onClick={() => { if (confirmDiscard()) setHealthOpen(true); }}><ShieldCheck size={17} /><span>Password health</span></Button>
         <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p>Vaults <span className="desktop-section-count">{activeVaults.length}</span></p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
         {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" aria-current={viewMode === "single" && vault.vaultId === vaultId ? "page" : undefined} className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <span aria-hidden="true" className={markerClass(vault.vaultId)} />
@@ -1724,8 +1725,8 @@ export function App() {
           </div>)}
         </div>
       </section>
-      <main className={cn("desktop-detail overflow-auto p-7", (selected || itemTabs.length > 0) && "detail-selected")}>
-        {itemTabs.length > 0 && <ItemTabs tabs={itemTabs} activeKey={selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => void openItem(tab)} onClose={tab => {
+      <main className={cn("desktop-detail overflow-auto p-7", (healthOpen || selected || itemTabs.length > 0) && "detail-selected")}>
+        {!healthOpen && itemTabs.length > 0 && <ItemTabs tabs={itemTabs} activeKey={selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => void openItem(tab)} onClose={tab => {
           if (!confirmDiscard()) return;
           const remaining = itemTabs.filter(row => tabKey(row) !== tabKey(tab));
           setItemTabs(remaining);
@@ -1735,9 +1736,9 @@ export function App() {
             else { setSelected(null); setEditing(false); }
           }
         }} />}
-        {healthOpen && <PasswordHealth scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
-        {selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
-        {selected ? (
+        {healthOpen && <PasswordHealth visit={url => void openUrl(url)} scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
+        {!healthOpen && selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
+        {!healthOpen && (selected ? (
           <div className="mx-auto max-w-3xl">
             {editing ? (
               <>
@@ -1949,7 +1950,7 @@ export function App() {
           </div>
         ) : (
           <div className="desktop-detail-empty grid place-content-center gap-2 text-center"><KeyRound className="mx-auto mb-2 text-[#E0BB95]" size={28} aria-hidden="true" /><h2 className="text-xl font-semibold">Select an item</h2><p className="text-sm text-slate-400">Choose an item from the list to see its details.</p></div>
-        )}
+        ))}
       </main>
       <footer
         className="relative col-span-2 flex items-center gap-2 border-t border-white/7 bg-[#080c1d] px-4 text-[11px] text-slate-500"

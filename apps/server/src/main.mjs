@@ -164,7 +164,7 @@ const server = createServer(tls, async (req, res) => {
     try{const bytes=await readFile(new URL(asset[0],import.meta.url));res.writeHead(200,{
       'Content-Type':asset[1],
       'Cache-Control':'no-store',
-      'Content-Security-Policy':"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; manifest-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+      'Content-Security-Policy':"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; manifest-src 'self'; style-src 'self'; connect-src 'self' https://api.pwnedpasswords.com; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
       'Referrer-Policy':'no-referrer','Permissions-Policy':'camera=(), microphone=(), geolocation=()'
     });res.end(req.method==='HEAD'?undefined:bytes)}catch{reply(503,{error:'web_assets_unavailable'})}return;
   }

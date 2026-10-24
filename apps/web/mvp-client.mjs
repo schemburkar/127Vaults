@@ -2538,7 +2538,7 @@ window.__vaultsActions = {
         const got = await call(`/api/v1/vaults/${row.vaultId}/items/${summary.itemId}?catalogueRevision=${revision}`);
         if (root !== sessionRoot) throw Error('LOCKED');
         const body = JSON.parse(td.decode(core.decrypt_private_part(healthVault, healthCatalogue, id(summary.itemId), un(got.envelope), 3)));
-        result.push({ itemId: summary.itemId, vaultId: row.vaultId, title: index.title, password: body.password, customFields: body.customFields || [] });
+        result.push({ itemId: summary.itemId, vaultId: row.vaultId, title: index.title, website: body.website || index.website, password: body.password, customFields: body.customFields || [] });
       }
       } finally { if (root === sessionRoot) core.release_vault(healthVault); healthVault.free?.(); }
     }
@@ -2589,7 +2589,7 @@ $("favorite-item").onclick = async () => {
   await new Promise(resolve => requestAnimationFrame(resolve));
   await save({ preventDefault() {} });
 };
-$("password-health").onclick = () => { if (root) window.dispatchEvent(new Event('vaults:health')); };
+$("password-health").onclick = () => { if (root && confirmDiscard()) window.dispatchEvent(new Event('vaults:health')); };
 $("nav-favorites").onclick = async () => {
   if (busy || !confirmDiscard()) return;
   setBusy(true);

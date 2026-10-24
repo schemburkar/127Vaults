@@ -172,9 +172,10 @@ function WebPasswordHealth() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const show = () => setOpen(true), hide = () => setOpen(false);
-    window.addEventListener("vaults:health", show); window.addEventListener("vaults:locked", hide);
-    return () => { window.removeEventListener("vaults:health", show); window.removeEventListener("vaults:locked", hide); };
+    window.addEventListener("vaults:health", show); window.addEventListener("vaults:locked", hide); window.addEventListener("vaults:detail-item", hide);
+    return () => { window.removeEventListener("vaults:health", show); window.removeEventListener("vaults:locked", hide); window.removeEventListener("vaults:detail-item", hide); };
   }, []);
+  useEffect(() => { document.querySelector(".item-detail")?.classList.toggle("health-active", open); return () => document.querySelector(".item-detail")?.classList.remove("health-active"); }, [open]);
   return open ? <PasswordHealth scope="All active vaults" load={(window as any).__vaultsActions.healthItems} close={() => setOpen(false)} open={finding => { setOpen(false); (window as any).__vaultsActions.openHealthItem(finding.itemId, finding.vaultId); }} /> : null;
 }
 
@@ -731,6 +732,7 @@ function ItemDetail() {
   return (
     <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:left-0 max-[560px]:max-h-[84dvh] max-[560px]:px-4 max-[560px]:py-5`}>
       <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex" aria-label="Close item details"><X size={17} aria-hidden="true" /> Close</Button>
+      <WebPasswordHealth />
       <ItemWorkspace />
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">

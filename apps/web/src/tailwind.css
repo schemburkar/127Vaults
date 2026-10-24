@@ -283,3 +283,6 @@
 @media(max-width:620px){.web-settings-header,.web-settings-body{padding:1rem}.ui-access-shell>.ui-access-card{padding:1.25rem}}
 
 #vault .sidebar-links>.mt-4{margin-top:0}
+
+#vault .item-detail.health-active{display:block!important;overflow:auto}
+#vault .item-detail.health-active>:not(.password-health){display:none!important}
