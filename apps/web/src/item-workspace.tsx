@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PanelsTopLeft, ExternalLink } from "lucide-react";
-import { Button, IconButton, ItemTabs, PasskeyDetails, AuthenticatorCode, TOTP_ID } from "@127vaults/ui";
+import { Button, IconButton, ItemTabs, PasswordHealth, PasskeyDetails, AuthenticatorCode, TOTP_ID } from "@127vaults/ui";
 import { visibleFields, type ItemField } from "@127vaults/domain/item-types";
 
 type Item = { itemId: string; vaultId: string; index: { title: string; website?: string }; body: { username?: string; password?: string; customFields: ItemField[] } };
@@ -29,6 +29,8 @@ export function ItemWorkspace() {
   const [actionHost, setActionHost] = useState<HTMLElement | null>(null);
   const [selected, setSelected] = useState<Item | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [healthTabOpen, setHealthTabOpen] = useState(false);
   const [popouts, setPopouts] = useState<Popout[]>([]);
   const windows = useRef<Popout[]>([]);
   useEffect(() => { windows.current = popouts; }, [popouts]);
@@ -37,13 +39,14 @@ export function ItemWorkspace() {
     const update = (event: Event) => {
       const item = (event as CustomEvent<Item | null>).detail;
       setSelected(item);
+      setHealthOpen(false);
       if (item) {
         setTabs(current => current.map(tab => keyOf(tab) === keyOf(item) ? { itemId: item.itemId, vaultId: item.vaultId, index: item.index } : tab));
         setPopouts(current => current.map(popout => popout.key === keyOf(item) ? { ...popout, item } : popout));
       }
     };
     const closeWindows = () => { for (const popout of windows.current) { popout.window.close(); } windows.current = []; };
-    const locked = () => { closeWindows(); setPopouts([]); setSelected(null); setTabs([]); };
+    const locked = () => { closeWindows(); setPopouts([]); setSelected(null); setTabs([]); setHealthOpen(false); setHealthTabOpen(false); };
     const deleted = (event: Event) => {
       const key = keyOf((event as CustomEvent<Tab>).detail);
       setTabs(current => current.filter(tab => keyOf(tab) !== key));
@@ -52,13 +55,22 @@ export function ItemWorkspace() {
       setPopouts(current => current.filter(popout => popout.key !== key));
       setSelected(current => current && keyOf(current) === key ? null : current);
     };
+    const showHealth = () => { setHealthOpen(true); setHealthTabOpen(true); };
+    window.addEventListener("vaults:health", showHealth);
     window.addEventListener("vaults:detail-item", update);
     window.addEventListener("vaults:locked", locked);
     window.addEventListener("vaults:item-deleted", deleted);
     window.addEventListener("beforeunload", closeWindows);
     const timer = setInterval(() => setPopouts(current => current.filter(popout => !popout.window.closed)), 1000);
-    return () => { clearInterval(timer); closeWindows(); window.removeEventListener("vaults:detail-item", update); window.removeEventListener("vaults:locked", locked); window.removeEventListener("vaults:item-deleted", deleted); window.removeEventListener("beforeunload", closeWindows); };
+    return () => { window.removeEventListener("vaults:health", showHealth); clearInterval(timer); closeWindows(); window.removeEventListener("vaults:detail-item", update); window.removeEventListener("vaults:locked", locked); window.removeEventListener("vaults:item-deleted", deleted); window.removeEventListener("beforeunload", closeWindows); };
   }, []);
+  useEffect(() => {
+    const pane = document.querySelector(".item-detail");
+    pane?.classList.toggle("health-active", healthOpen);
+    document.getElementById("password-health")?.setAttribute("aria-current", healthOpen ? "page" : "false");
+    return () => { pane?.classList.remove("health-active"); document.getElementById("password-health")?.removeAttribute("aria-current"); };
+  }, [healthOpen]);
+  const healthTab = { itemId: "__password-health", vaultId: "__workspace", index: { title: "Password health" }, title: "Password health" };
   const open = async (tab: Tab) => { try { await actions().openWorkspaceItem(tab); } catch { toast("Item could not be opened. Try syncing and select it again."); } };
   const popOut = () => {
     if (!selected) return;
@@ -76,13 +88,15 @@ export function ItemWorkspace() {
     setPopouts(windows.current);
   };
   return <>
-    {tabs.length > 0 && <ItemTabs tabs={tabs.map(tab => ({...tab, title: tab.index.title}))} activeKey={selected ? keyOf(selected) : null} onSelect={tab => void open(tab)} onClose={tab => {
-      const active = selected && keyOf(tab) === keyOf(selected);
+    {(healthTabOpen || tabs.length > 0) && <ItemTabs tabs={[...(healthTabOpen ? [healthTab] : []), ...tabs.map(tab => ({...tab, title: tab.index.title}))]} activeKey={healthOpen ? keyOf(healthTab) : selected ? keyOf(selected) : null} onSelect={tab => { if (keyOf(tab) === keyOf(healthTab)) actions().openPasswordHealth(); else void open(tab); }} onClose={tab => {
+      if (keyOf(tab) === keyOf(healthTab)) { setHealthTabOpen(false); setHealthOpen(false); return; }
+      const active = !healthOpen && selected && keyOf(tab) === keyOf(selected);
       if (active && !actions().closeWorkspaceItem()) return;
       const remaining = tabs.filter(row => keyOf(row) !== keyOf(tab));
       setTabs(remaining);
       if (active && remaining.length) void open(remaining[Math.min(tabs.findIndex(row => keyOf(row) === keyOf(tab)), remaining.length - 1)]);
     }} />}
+    {healthOpen && <PasswordHealth scope="All active vaults" load={actions().healthItems} close={() => { setHealthOpen(false); setHealthTabOpen(false); }} open={finding => { void actions().openHealthItem(finding.itemId, finding.vaultId).catch(() => toast("Item could not be opened. Try syncing and select it again.")); }} />}
     {selected && actionHost && createPortal(<><IconButton label="Keep in tab" onClick={() => { const tab = { itemId: selected.itemId, vaultId: selected.vaultId, index: selected.index }; setTabs(current => current.some(row => keyOf(row) === keyOf(tab)) ? current : [...current, tab]); }}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={popOut}><ExternalLink size={17} aria-hidden="true" /></IconButton></>, actionHost)}
     {popouts.filter(popout => !popout.window.closed).map(popout => createPortal(<WindowDetail key={popout.key} item={popout.item} />, popout.window.document.body, popout.key))}
   </>;

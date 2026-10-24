@@ -27,7 +27,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { FieldValueEditor, FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, PasswordHealth, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
+import { FieldValueEditor, FieldTypePicker, PasskeyDetails, KeyboardHelp, AuthenticatorEditor, AuthenticatorCode, FAVORITE_ID, TOTP_ID, isFavorite, setFavorite, setAuthenticator, parseTotp, Button, IconButton, Input, SecretGenerator, type GeneratorOptions } from "@127vaults/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { ITEM_TYPES, TYPE_GROUPS, RELATED_TYPES, SECTION_TYPES, CUSTOM_SECTION, addWebsite, TYPE_FIELD_ID, SECTION_PREFIX, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, type ItemType, type ItemField, type SectionType } from "@127vaults/domain/item-types";
 import { browseColumnValue, browseGroups, type BrowseMode } from "@127vaults/domain/item-browser";
@@ -168,16 +168,6 @@ function ToastRegion() {
   return <div className="pointer-events-none fixed right-5 top-5 z-[70] grid w-[min(22rem,calc(100vw-2rem))] gap-2" aria-live="polite" aria-label="Notifications">{notices.map((notice) => <div key={notice.id} className={`pointer-events-auto rounded-xl border p-4 shadow-2xl ${notice.kind === "error" ? "border-red-400/25 bg-[#2a1118]" : notice.kind === "success" ? "border-emerald-400/25 bg-[#10251f]" : "border-white/10 bg-[#11162b]"}`}><strong className="block text-sm">{notice.title}</strong>{notice.detail && <p className="mt-1 text-xs leading-5 text-slate-400">{notice.detail}</p>}</div>)}</div>;
 }
 
-function WebPasswordHealth() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const show = () => setOpen(true), hide = () => setOpen(false);
-    window.addEventListener("vaults:health", show); window.addEventListener("vaults:locked", hide); window.addEventListener("vaults:detail-item", hide);
-    return () => { window.removeEventListener("vaults:health", show); window.removeEventListener("vaults:locked", hide); window.removeEventListener("vaults:detail-item", hide); };
-  }, []);
-  useEffect(() => { document.querySelector(".item-detail")?.classList.toggle("health-active", open); return () => document.querySelector(".item-detail")?.classList.remove("health-active"); }, [open]);
-  return open ? <PasswordHealth scope="All active vaults" load={(window as any).__vaultsActions.healthItems} close={() => setOpen(false)} open={finding => { setOpen(false); (window as any).__vaultsActions.openHealthItem(finding.itemId, finding.vaultId); }} /> : null;
-}
 
 function CustomFieldsEditor() {
   const [fields, setFields] = useState<ItemField[]>([]);
@@ -732,7 +722,6 @@ function ItemDetail() {
   return (
     <section className={`item-detail ${panel} px-[clamp(1.5rem,4vw,4rem)] py-8 max-[800px]:fixed max-[800px]:bottom-0 max-[800px]:left-[4.5rem] max-[800px]:right-0 max-[800px]:z-10 max-[800px]:max-h-[82dvh] max-[800px]:rounded-b-none max-[800px]:bg-[#11162b]/95 max-[800px]:shadow-2xl max-[560px]:left-0 max-[560px]:max-h-[84dvh] max-[560px]:px-4 max-[560px]:py-5`}>
       <Button id="close-item-detail" variant="ghost" className="mb-3 hidden max-[800px]:inline-flex" aria-label="Close item details"><X size={17} aria-hidden="true" /> Close</Button>
-      <WebPasswordHealth />
       <ItemWorkspace />
       <div id="item-empty" className="grid h-full place-content-center px-6 text-center text-slate-500 [&>h2]:mb-1 [&>h2]:mt-4 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-white">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#E0BB95]/12 text-2xl text-[#E0BB95] [&>svg]:size-6">
@@ -1029,7 +1018,6 @@ export function App() {
       <PwaLifecycle />
       <Authentication />
       <Vault />
-      <WebPasswordHealth />
       <Settings />
       <ToastRegion />
       <CollectionDialog />

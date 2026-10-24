@@ -93,6 +93,7 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [healthTabOpen, setHealthTabOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importVaultId, setImportVaultId] = useState("");
   const [importFormat, setImportFormat] = useState("bitwarden");
@@ -306,6 +307,7 @@ export function App() {
     setBusy(true);
     void emit("vaults-locked").catch(() => {});
     setHealthOpen(false);
+    setHealthTabOpen(false);
     importGeneration.current++; setImportOpen(false); setImportFile(null); setImportAvailableVaults([]); setImportSelectedVaults(null); setImportSkipped(null); setImportCount(null); setImportSourceVaults([]); setImportBusy(false);
     setPendingChanges(null);
     setSyncConflicts(0);
@@ -1052,6 +1054,7 @@ export function App() {
     </div>
   </label>;
   const beginDraft = () => {
+    setHealthOpen(false);
     // A late read must not replace an editor the user has started meanwhile.
     openRequest.current++;
     setEditing(true);
@@ -1607,7 +1610,7 @@ export function App() {
           <span className="desktop-nav-count ml-auto">{items.length}</span>
         </Button></div>
         <Button variant="ghost" aria-current={favoritesOnly ? "page" : undefined} className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
-        <Button variant="ghost" className="justify-start" onClick={() => { if (confirmDiscard()) setHealthOpen(true); }}><ShieldCheck size={17} /><span>Password health</span></Button>
+        <Button variant="ghost" className="justify-start" aria-current={healthOpen ? "page" : undefined} onClick={() => { if (confirmDiscard()) { setHealthTabOpen(true); setHealthOpen(true); } }}><ShieldCheck size={17} /><span>Password health</span></Button>
         <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p>Vaults <span className="desktop-section-count">{activeVaults.length}</span></p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
         {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" aria-current={viewMode === "single" && vault.vaultId === vaultId ? "page" : undefined} className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <span aria-hidden="true" className={markerClass(vault.vaultId)} />
@@ -1726,7 +1729,8 @@ export function App() {
         </div>
       </section>
       <main className={cn("desktop-detail overflow-auto p-7", (healthOpen || selected || itemTabs.length > 0) && "detail-selected")}>
-        {!healthOpen && itemTabs.length > 0 && <ItemTabs tabs={itemTabs} activeKey={selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => void openItem(tab)} onClose={tab => {
+        {(healthTabOpen || itemTabs.length > 0) && <ItemTabs tabs={healthTabOpen ? [{ itemId: "__password-health", vaultId: "__workspace", title: "Password health", website: "", code: "" }, ...itemTabs] : itemTabs} activeKey={healthOpen ? "__workspace:__password-health" : selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => { if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { if (confirmDiscard()) setHealthOpen(true); } else void openItem(tab); }} onClose={tab => {
+          if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { setHealthTabOpen(false); setHealthOpen(false); return; }
           if (!confirmDiscard()) return;
           const remaining = itemTabs.filter(row => tabKey(row) !== tabKey(tab));
           setItemTabs(remaining);
@@ -1736,7 +1740,7 @@ export function App() {
             else { setSelected(null); setEditing(false); }
           }
         }} />}
-        {healthOpen && <PasswordHealth visit={url => void openUrl(url)} scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { setHealthOpen(false); void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
+        {healthOpen && <PasswordHealth visit={url => void openUrl(url)} scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
         {!healthOpen && selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {!healthOpen && (selected ? (
           <div className="mx-auto max-w-3xl">

@@ -2520,6 +2520,7 @@ window.__vaultsActions = {
   revokeDevice,
   selectBrowseView, openCollectionDialog, removeCollection, setDefaultView,
   manageVault, cancelVaultRemoval,
+  openPasswordHealth: () => { if (root && confirmDiscard()) window.dispatchEvent(new Event('vaults:health')); },
   healthItems: async () => {
     const sessionRoot = root;
     const data = await call('/api/v1/vaults');
@@ -2589,7 +2590,7 @@ $("favorite-item").onclick = async () => {
   await new Promise(resolve => requestAnimationFrame(resolve));
   await save({ preventDefault() {} });
 };
-$("password-health").onclick = () => { if (root && confirmDiscard()) window.dispatchEvent(new Event('vaults:health')); };
+$("password-health").onclick = () => window.__vaultsActions.openPasswordHealth();
 $("nav-favorites").onclick = async () => {
   if (busy || !confirmDiscard()) return;
   setBusy(true);

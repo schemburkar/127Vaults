@@ -285,4 +285,4 @@
 #vault .sidebar-links>.mt-4{margin-top:0}
 
 #vault .item-detail.health-active{display:block!important;overflow:auto}
-#vault .item-detail.health-active>:not(.password-health){display:none!important}
+#vault .item-detail.health-active>:not(.password-health):not(.item-tabs-bar){display:none!important}
