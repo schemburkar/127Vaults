@@ -1,3 +1,4 @@
+import { ConfirmationProvider, useConfirmation } from "./components/confirmation-dialog";
 import { ItemTabs, tabKey, markerClass } from "@127vaults/ui";
 import { TypePicker, RelatedPicker } from "./components/item-type-pickers";
 import { useDetailPaneSize } from "./hooks/use-detail-pane-size";
@@ -85,7 +86,10 @@ const generateSecret = (options: GeneratorOptions) => invoke<string>("generate_s
 function DesktopSecretGenerator(props: Parameters<typeof SecretGenerator>[0]) {
   return <SecretGenerator {...props} autoGenerate triggerIcon={<RefreshCw size={16} aria-hidden="true" />} />;
 }
-export function App() {
+export function App() { return <ConfirmationProvider><DesktopApp /></ConfirmationProvider>; }
+
+function DesktopApp() {
+  const { ask: confirmAction, cancel: cancelConfirmation } = useConfirmation();
   const sessionRevocation = useRef(createSessionRevocation());
   const [unlocked, setUnlocked] = useState(false),
     [online, setOnline] = useState(false),
@@ -265,7 +269,7 @@ export function App() {
     finally { devicesRequestRef.current = false; setDevicesLoading(false); }
   };
   const revokeDevice = async (deviceId: string) => {
-    if (!window.confirm(`Revoke device ${deviceId.slice(0, 8)}? It will need enrollment before signing in again.`)) return;
+    if (!await confirmAction(`Revoke device ${deviceId.slice(0, 8)}? It will need enrollment before signing in again.`)) return;
     try { await invoke("device_revoke", { deviceId }); await loadDevices(); notify("success", "Device revoked"); }
     catch (error) { notify("error", "Could not revoke device", friendlyError(error)); }
   };
@@ -300,6 +304,7 @@ export function App() {
   };
 
   const lock = async (reason = "Locked") => {
+    cancelConfirmation();
     sessionRevocation.current.lock();
     syncReviewGeneration.current += 1;
     setSaving(false);
@@ -398,7 +403,7 @@ export function App() {
     return { ...item, password, customFields: hydrated };
   };
   const openItem = async (summary: Summary, vault = vaultId) => {
-    if (!confirmDiscard()) return;
+    if (!(await confirmDiscard())) return;
     setHealthOpen(false);
     try {
       const ownerVault = summary.vaultId ?? vault;
@@ -528,7 +533,7 @@ export function App() {
     }
   };
   const selectVault = async (nextVaultId: string) => {
-    if (!confirmDiscard()) return;
+    if (!(await confirmDiscard())) return;
     setFavoritesOnly(false);
     if (nextVaultId === vaultId && viewMode === "single") return;
     try {
@@ -563,7 +568,7 @@ export function App() {
     return listAllItems(sourceVaults);
   };
   const selectAllVaults = async (favorites = false) => {
-    if (!confirmDiscard()) return;
+    if (!(await confirmDiscard())) return;
     try {
       const allItems = await listAllItems();
       setFavoritesOnly(favorites);
@@ -579,7 +584,7 @@ export function App() {
     }
   };
   const selectCollection = async (collectionId: string) => {
-    if (!confirmDiscard()) return;
+    if (!(await confirmDiscard())) return;
     setFavoritesOnly(false);
     try {
       const result = await invoke<{ items: Summary[]; unavailableVaultIds: string[] }>("collection_items", { collectionId });
@@ -623,7 +628,7 @@ export function App() {
     } catch (error) { notify("error", "Could not save default view", friendlyError(error)); }
   };
   const resolveVaultSettings = async (keep: "local" | "server") => {
-    if (!confirmDiscard()) return;
+    if (!(await confirmDiscard())) return;
     let resolved = false;
     try {
       const result = await invoke<VaultSettings>("vault_settings_resolve", { keep });
@@ -765,7 +770,7 @@ export function App() {
     if (removalPlan.choice === "archive") void removeVault(removalPlan.sourceVaultId, "archive");
   };
   const abortMove = async () => {
-    if (!window.confirm("Keep any destination copies and clear this unfinished move plan? Review the listed copies before trying another move.")) return;
+    if (!await confirmAction("Keep any destination copies and clear this unfinished move plan? Review the listed copies before trying another move.")) return;
     try {
       await invoke("vault_abort_move");
       setRemovalPlan(null);
@@ -866,7 +871,7 @@ export function App() {
   };
   const deleteItem = async (draft = selected, destination = itemVaultId, operationId: string | null = null) => {
     if (!draft?.itemId || !destination || saving || busy) return;
-    if (!window.confirm(`Permanently delete “${draft.title || "Untitled item"}”? This also removes its passwords and passkeys. Offline deletion will sync when connected.`)) return;
+    if (!await confirmAction(`Permanently delete “${draft.title || "Untitled item"}”? This also removes its passwords and passkeys. Offline deletion will sync when connected.`)) return;
     const generation = syncReviewGeneration.current;
     setSaving(true);
     try {
@@ -894,7 +899,7 @@ export function App() {
   };
   const synchronize = async () => {
     if (syncInFlight.current) return;
-    if (!confirmDiscard()) return;
+    if (!(await confirmDiscard())) return;
     if (!online) {
       setSettingsTab("profile");
       setSettingsOpen(true);
@@ -1041,10 +1046,10 @@ export function App() {
     setSelected({ ...selected, customFields: fields });
     setExpandedRelatedId(added?.id ?? null);
   };
-  const changePrimaryType = (type: ItemType) => {
+  const changePrimaryType = async (type: ItemType) => {
     if (!selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || type === itemType(selected.customFields)) return;
     const hasValues = !!(selected.website || selected.username || selected.password || primaryFields(selected.customFields).some((field) => field.value) || sections(selected.customFields).length);
-    if (hasValues && !window.confirm("Change the main type? Its current type fields and related details will be removed. Save a copy first if you need them.")) return;
+    if (hasValues && !await confirmAction("Change the main type? Its current type fields and related details will be removed. Save a copy first if you need them.")) return;
     setSelected({ ...selected, website: "", username: "", password: "", customFields: replaceItemType(selected.customFields, type) });
     setExpandedRelatedId(null);
   };
@@ -1069,16 +1074,16 @@ export function App() {
     setExpandedRelatedId(null);
     beginDraft();
   };
-  const beginNewItem = () => {
-    if (saving || !activeVaults.length || !confirmDiscard()) return;
+  const beginNewItem = async () => {
+    if (saving || !activeVaults.length || !(await confirmDiscard())) return;
     setSelected({ itemId: "", title: "", website: "", username: "", password: "", customFields: setItemType([], "login") });
     setEditOriginal(null);
     setItemVaultId(viewMode === "single" ? vaultId : "");
     setRevealed(new Set());
     beginDraft();
   };
-  const cancelEditing = () => {
-    if (!confirmDiscard()) return;
+  const cancelEditing = async () => {
+    if (!(await confirmDiscard())) return;
     setSelected(editOriginal);
     setEditOriginal(null);
     setEditing(false);
@@ -1086,23 +1091,22 @@ export function App() {
   useEffect(() => { if (editing) document.querySelector<HTMLInputElement>("[data-editor-title]")?.focus(); }, [editing]);
   const dirty = editing && !!selected && JSON.stringify(selected) !== JSON.stringify(editOriginal ?? { itemId: "", title: "", website: "", username: "", password: "", customFields: setItemType([], "login") });
   dirtyRef.current = dirty;
-  const confirmDiscard = () => {
+  const confirmDiscard = async () => {
     if (!dirtyRef.current) return true;
-    if (!window.confirm("Discard your unsaved changes?")) return false;
+    if (!await confirmAction("Discard your unsaved changes?")) return false;
     dirtyRef.current = false;
     setEditing(false);
     setSelected(editOriginal);
     return true;
   };
   useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => { if (dirtyRef.current) { event.preventDefault(); event.returnValue = ""; } };
-    window.addEventListener("beforeunload", beforeUnload);
     let disposed = false, removeClose: (() => void) | undefined;
-    void getCurrentWindow().onCloseRequested(event => {
-      if (dirtyRef.current && !window.confirm("Discard your unsaved changes and close 127Vaults?")) event.preventDefault();
-      else { event.preventDefault(); dirtyRef.current = false; void emit("vaults-locked").catch(() => {}).then(() => invoke("lock")).catch(() => {}).finally(() => getCurrentWindow().destroy()); }
+    void getCurrentWindow().onCloseRequested(async event => {
+      event.preventDefault();
+      if (dirtyRef.current && !(await confirmAction("Discard your unsaved changes and close 127Vaults?"))) return;
+      { dirtyRef.current = false; void emit("vaults-locked").catch(() => {}).then(() => invoke("lock")).catch(() => {}).finally(() => getCurrentWindow().destroy()); }
     }).then(unlisten => { if (disposed) unlisten(); else removeClose = unlisten; }).catch(() => {});
-    return () => { disposed = true; removeClose?.(); window.removeEventListener("beforeunload", beforeUnload); };
+    return () => { disposed = true; removeClose?.(); };
   }, []);
   const refreshSyncStatus = async () => {
     const generation = syncReviewGeneration.current;
@@ -1123,7 +1127,7 @@ export function App() {
     catch { if (generation === syncReviewGeneration.current) setPendingChanges(null); }
   };
   const reviewQueuedItem = async (row: SyncReviewItem) => {
-    if (!row.conflict || !confirmDiscard()) return;
+    if (!row.conflict || !(await confirmDiscard())) return;
     const generation = syncReviewGeneration.current;
     try {
       const draft = await invoke<Item>("conflict_draft", { vaultId: row.vaultId, itemId: row.itemId, operationId: row.operationId });
@@ -1204,14 +1208,14 @@ export function App() {
     for (const summary of summaries) { const item = await loadItem(summary, summary.vaultId); result.push({ ...item, vaultId: summary.vaultId }); }
     return result;
   }, [vaults]);
-  const duplicateItem = () => {
-    if (saving || !selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || !confirmDiscard()) return;
+  const duplicateItem = async () => {
+    if (saving || !selected || selected.customFields.some(field => field.id === "__127vaults_passkey") || !(await confirmDiscard())) return;
     setSelected({ ...structuredClone(selected), itemId: "", title: `${selected.title} (copy)`, customFields: setFavorite(selected.customFields, false) });
     setEditOriginal(null); setItemVaultId(vaultId); setRevealed(new Set()); beginDraft();
   };
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (!unlocked || healthOpen || settingsOpen || conflict || vaultDialog || collectionDialog || removalDialog || document.querySelector("[role=dialog]")) return;
+      if (!unlocked || healthOpen || settingsOpen || conflict || vaultDialog || collectionDialog || removalDialog || document.querySelector("[role=dialog]:not(dialog), dialog[open]")) return;
       const modifier = event.ctrlKey || event.metaKey;
       if (modifier && ["k", "f", "n", "s"].includes(event.key.toLowerCase())) {
         event.preventDefault();
@@ -1333,7 +1337,7 @@ export function App() {
         .includes(needle),
     );
   }, [query, selected]);
-  const runOmniAction = (id: string) => {
+  const runOmniAction = async (id: string) => {
     setQuery("");
     if (id === "create-item") {
       setItemVaultId(viewMode === "single" ? vaultId : "");
@@ -1350,7 +1354,7 @@ export function App() {
     }
     if (id === "edit-item" && selected) beginEditing();
     if (id === "sync") void synchronize();
-    if (id === "lock" && confirmDiscard()) void lock();
+    if (id === "lock" && (await confirmDiscard())) void lock();
   };
 
   if (!unlocked && registrationOpen)
@@ -1612,7 +1616,7 @@ export function App() {
           <span className="desktop-nav-count ml-auto">{items.length}</span>
         </Button></div>
         <Button variant="ghost" aria-current={favoritesOnly ? "page" : undefined} className={cn("justify-start", favoritesOnly && "bg-white/7")} onClick={() => void selectAllVaults(true)}><Star size={17} /><span>Favorites</span></Button>
-        <Button variant="ghost" className="justify-start" aria-current={healthOpen ? "page" : undefined} onClick={() => { if (confirmDiscard()) { setHealthTabOpen(true); setHealthOpen(true); } }}><ShieldCheck size={17} /><span>Password health</span></Button>
+        <Button variant="ghost" className="justify-start" aria-current={healthOpen ? "page" : undefined} onClick={async () => { if ((await confirmDiscard())) { setHealthTabOpen(true); setHealthOpen(true); } }}><ShieldCheck size={17} /><span>Password health</span></Button>
         <div className="desktop-nav-heading mb-2 mt-6 flex items-center justify-between gap-2 px-3"><p>Vaults <span className="desktop-section-count">{activeVaults.length}</span></p><IconButton label="Add vault" className="!size-9 !min-h-9" onClick={() => { if (!online) { setSettingsTab("profile"); setSettingsOpen(true); return; } setVaultNameDraft(""); setVaultDialog("create"); }}><Plus size={16} aria-hidden="true" /></IconButton></div>
         {activeVaults.map((vault) => <div className="desktop-nav-row" key={vault.vaultId}><Button variant="ghost" aria-current={viewMode === "single" && vault.vaultId === vaultId ? "page" : undefined} className={cn("min-w-0 flex-1 justify-start", viewMode === "single" && vault.vaultId === vaultId && "bg-white/10")} onClick={() => void selectVault(vault.vaultId)}>
           <span aria-hidden="true" className={markerClass(vault.vaultId)} />
@@ -1637,7 +1641,7 @@ export function App() {
           <Button
             variant="ghost"
             className="justify-start"
-            onClick={() => { if (confirmDiscard()) void lock(); }}
+            onClick={async () => { if ((await confirmDiscard())) void lock(); }}
           >
             <LockKeyhole size={17} />
             <span>Lock</span>
@@ -1732,9 +1736,9 @@ export function App() {
       </section>
       <div className="desktop-pane-divider" {...detailPane.separatorProps}><span aria-hidden="true" /></div>
       <main id="desktop-item-details" className={cn("desktop-detail overflow-auto p-7", (healthOpen || selected || itemTabs.length > 0) && "detail-selected")}>
-        {(healthTabOpen || itemTabs.length > 0) && <ItemTabs tabs={healthTabOpen ? [{ itemId: "__password-health", vaultId: "__workspace", title: "Password health", website: "", code: "" }, ...itemTabs] : itemTabs} activeKey={healthOpen ? "__workspace:__password-health" : selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={tab => { if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { if (confirmDiscard()) setHealthOpen(true); } else void openItem(tab); }} onClose={tab => {
+        {(healthTabOpen || itemTabs.length > 0) && <ItemTabs tabs={healthTabOpen ? [{ itemId: "__password-health", vaultId: "__workspace", title: "Password health", website: "", code: "" }, ...itemTabs] : itemTabs} activeKey={healthOpen ? "__workspace:__password-health" : selected ? tabKey({ vaultId: itemVaultId, itemId: selected.itemId }) : null} onSelect={async tab => { if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { if ((await confirmDiscard())) setHealthOpen(true); } else void openItem(tab); }} onClose={async tab => {
           if (tab.itemId === "__password-health" && tab.vaultId === "__workspace") { setHealthTabOpen(false); setHealthOpen(false); return; }
-          if (!confirmDiscard()) return;
+          if (!(await confirmDiscard())) return;
           const remaining = itemTabs.filter(row => tabKey(row) !== tabKey(tab));
           setItemTabs(remaining);
           if (selected?.itemId === tab.itemId && itemVaultId === tab.vaultId) {
@@ -1760,7 +1764,7 @@ export function App() {
                       Cancel
                     </Button>
                     <Button data-save-item disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
-                    <IconButton label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /></IconButton>
+                    <IconButton label="Close item details" onClick={async () => { if ((await confirmDiscard())) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /></IconButton>
                   </div>
                 </div>
                 {!selected.itemId && viewMode !== "single" && <label className="mb-6 block text-sm text-slate-300">Destination vault
@@ -1948,7 +1952,7 @@ export function App() {
               <>
 <ReadonlyItem item={selected} revealed={revealed} toggleReveal={toggleReveal} copyValue={copyValue} dragValue={dragValue} endDrag={() => dragSession.end()} openWebsite={url => void openUrl(url)} actions={<>
                       <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" disabled={saving} onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" disabled={saving} onClick={beginEditing}>Edit</Button><IconButton label="Delete item" disabled={saving || busy} onClick={() => void deleteItem()}><Trash2 size={17} /></IconButton><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
-                      <Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></>} />
+                      <Button variant="ghost" aria-label="Close item details" onClick={async () => { if ((await confirmDiscard())) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></>} />
               </>
             )}
           </div>
@@ -2222,10 +2226,10 @@ export function App() {
               <Button
                 variant="secondary"
                 disabled={conflictBusy}
-                onClick={() => {
+                onClick={async () => {
                   const itemId = conflict.draft.itemId;
                   if (itemId && conflict.operationId) {
-                    if (["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && !window.confirm(conflict.kind === "unsynced-create" ? "Discard this queued creation? It has no server copy. This removes the selected queued creation from this device." : "Discard this queued edit? The item is absent on the server. Other queued changes will remain.")) return;
+                    if (["delete-edit-divergence", "unsynced-create"].includes(conflict.kind ?? "") && !await confirmAction(conflict.kind === "unsynced-create" ? "Discard this queued creation? It has no server copy. This removes the selected queued creation from this device." : "Discard this queued edit? The item is absent on the server. Other queued changes will remain.")) return;
                     void useServerVersion(itemId, conflict.operationId, conflict.vaultId ?? vaultId);
                   } else {
                     void prepareMerge();

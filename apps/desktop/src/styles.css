@@ -300,3 +300,5 @@
 .desktop-item-editor .desktop-edit-actions{gap:.25rem}
 .desktop-item-editor .desktop-edit-actions>.ui-button{padding-inline:.5rem}
 }
+
+.desktop-confirmation{width:min(28rem,calc(100vw - 2rem));margin:auto;max-height:calc(100dvh - 2rem);overflow:auto}
