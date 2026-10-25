@@ -50,7 +50,7 @@ export function RelatedPicker({ type, onSelect }: { type: ItemType; onSelect: (t
   const options = [...RELATED_TYPES[type], { type: "custom" as const, label: "Custom details", description: "A named group of your own fields" }]
     .filter((option) => `${option.label} ${option.description}`.toLowerCase().includes(query.toLowerCase()));
   return <div className="mt-4">
-    <button type="button" className="w-full rounded-xl border border-dashed border-[#E0BB95]/50 bg-[#E0BB95]/8 px-4 py-3 text-left text-sm font-semibold text-[#E0BB95] hover:bg-[#E0BB95]/12" aria-expanded={open} onClick={() => setOpen((current) => !current)}>＋ Add related detail</button>
+    <button type="button" className="w-full rounded-xl border border-dashed border-[#E0BB95]/50 bg-[#E0BB95]/8 px-4 py-3 text-left text-sm font-semibold text-[#E0BB95] hover:bg-[#E0BB95]/12" aria-expanded={open} onClick={() => setOpen((current) => !current)}><span>＋ Add related detail</span><span className="ml-3 text-xs font-normal text-slate-400">Keep cards, logins, and other details together</span></button>
     {open && <div className="mt-2 rounded-xl border border-white/12 bg-[#11162b] p-3">
       <label className="grid gap-2 text-xs text-slate-400">Find a related detail<Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search options…" /></label>
       <p className="my-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested for {ITEM_TYPES[type].label}</p>
