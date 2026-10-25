@@ -36,6 +36,16 @@ both direct and extract-and-run modes. It does not enroll accounts or verify
 offline sync or browser connection end to end. Profiles stay in unique guest
 directories; logs and source/package provenance stay in the evidence directory.
 
+The same runner supports Ubuntu 24.04 WSLg with an explicit distro, profile and
+user (it installs Ubuntu runtime packages through apt instead of pacman):
+
+```powershell
+node tests/internal/desktop/linux-wsl-package-smoke.mjs C:/path/desktop/linux C:/path/cli/linux C:/path/installer/linux C:/path/new-ubuntu-evidence Ubuntu-24.04 ubuntu vaults-dev
+```
+
+Replace `vaults-dev` with the existing Ubuntu user. The Omarchy command remains
+available as a wrapper around this shared runner.
+
 The old CLI 2.11 AppImage bundler can include an older Wayland client library
 that prevents newer Arch Mesa drivers from loading (`wl_fixes_interface` is
 missing; WebKit reports `EGL_BAD_PARAMETER`). It also exposes GStreamer plugin
@@ -85,6 +95,27 @@ published. Current builds still emit WSL graphics fallback and missing GStreamer
 `appsink` warnings; media playback was not tested. Account enrollment, offline
 sync, live browser connection, native Hyprland and login keyring unlocking remain
 outside this smoke's acceptance scope.
+
+## Ubuntu regression: 2026-10-25
+
+The exact same internal desktop 0.1.17 AppImage was verified and run on
+Ubuntu 24.04.5 LTS / WSLg. SHA-256:
+`059fd73ddbaab38c4c58ea080d42172495793e14cec1a7714e571711fb88524c`.
+No Ubuntu-specific rebuild or library override was used.
+
+Normal AppImage launch and extract-and-run both rendered the unlock screen,
+responded to the setup action and displayed the private-server form with an
+empty URL. Standalone released CLI/installer 0.1.16 startup, native-host framed
+empty-source discovery and disposable Secret Service store/read/delete also
+passed. Evidence is retained at
+`C:/Users/shubh/.127vaults-omarchy-wsl/ubuntu-smoke-01/evidence.json` with the
+environment, dependency installation, UI transcripts and process logs.
+
+This closes the Ubuntu WSLg startup regression for the shared AppImage tested
+on Omarchy WSL. It does not establish clean native Ubuntu, Debian package
+lifecycle, real account/vault unlocking, offline sync or browser integration
+acceptance. Graphics fallback and missing `appsink` warnings remain in the logs;
+media playback is outside this check. No packages were published or pushed.
 
 References:
 - https://omarchy.org/manual/getting-started/
