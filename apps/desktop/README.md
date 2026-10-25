@@ -178,3 +178,8 @@ versions, Hyprland/Wayland, GPU and Secret Service provider; repeat the Linux
 acceptance steps above, including locked/missing keyring, native-host connection,
 offline restart/replay and installer update/retry. Windows unit tests or Ubuntu
 WSL results do not establish native Omarchy acceptance.
+
+For a separate Arch/Omarchy WSLg package fixture, follow the
+[Omarchy WSL runbook](../../docs/release/omarchy-wsl.md). The headless adaptation
+can verify app startup and OS services while native Hyprland acceptance remains
+separate.

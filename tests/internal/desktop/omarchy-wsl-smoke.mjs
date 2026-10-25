@@ -29,7 +29,7 @@ const linuxPath = async path => (await wsl('root', ['wslpath', '-a', resolve(pat
 const environment = await wsl('omarchy', ['bash', '-c', 'set -eu; cat /etc/os-release; cat /etc/omarchy.conf; git -c safe.directory=/usr/share/omarchy -C /usr/share/omarchy rev-parse HEAD; uname -r; test -S /mnt/wslg/runtime-dir/wayland-0']);
 assert.match(environment.stdout, /OMARCHY_WSL2="true"/);
 await writeFile(join(work, 'environment.log'), environment.stdout + environment.stderr);
-// Mesa supplies the WSLg D3D12 graphics driver absent from the headless profile.
+// Ensure the headless fixture has the Mesa driver used by WSLg.
 const packages = await wsl('root', ['pacman', '-Syu', '--needed', '--noconfirm', 'webkit2gtk-4.1', 'libsecret', 'fuse2', 'xdg-utils', 'gnome-keyring', 'python', 'mesa'], 600000);
 await writeFile(join(work, 'runtime-packages.log'), packages.stdout + packages.stderr);
 const fixture = `/home/omarchy/vaults-smoke-${randomUUID()}`;
@@ -85,9 +85,10 @@ export WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:12941
 export WAYLAND_DISPLAY=wayland-0
 export XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
 if [[ $mode == extract ]]; then export APPIMAGE_EXTRACT_AND_RUN=1; fi
-"$fixture/desktop.AppImage" &
+setsid "$fixture/desktop.AppImage" &
 app_pid=$!
-trap 'kill "$app_pid" 2>/dev/null || true; wait "$app_pid" 2>/dev/null || true' EXIT TERM INT
+echo "$app_pid" >"$fixture/app.pgid"
+trap 'kill -- -"$app_pid" 2>/dev/null || true; wait "$app_pid" 2>/dev/null || true' EXIT TERM INT
 wait "$app_pid"
 `;
 await writeFile(join(work, 'guest.sh'), script);
@@ -127,8 +128,15 @@ for (const mode of ['direct', 'extract']) {
       await inspector.evaluate("window.__TAURI_INTERNALS__.invoke('plugin:window|close')").catch(() => {});
       await inspector.close();
     }
-    // Kill only the test AppImage at this run's unique fixture path.
-    await wsl('omarchy', ['pkill', '-f', `^${fixture}/desktop.AppImage$`]).catch(() => {});
+    // Only terminate a still-live test process group with this run's profile.
+    await wsl('omarchy', ['python', '-c', `import os,pathlib,signal,sys
+fixture=pathlib.Path(sys.argv[1]); pid=int((fixture/'app.pgid').read_text())
+try: env=pathlib.Path('/proc',str(pid),'environ').read_bytes().split(b'\\0')
+except FileNotFoundError: sys.exit(0)
+assert ('VAULTS_CONFIG_DIR='+str(fixture)+'/home/profile').encode() in env
+try: os.killpg(pid,signal.SIGTERM)
+except ProcessLookupError: pass
+`, fixture]);
     child.kill();
     await writeFile(join(work, `${mode}.log`), output);
   }
