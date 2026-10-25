@@ -165,3 +165,16 @@ compare this Tauri path with a small Electron fixture and a native Win32
 `IDataObject`/`IDropSource` fixture. Prefer the least complex option that passes
 revocation, cleanup, accessibility, signing, and cross-platform gates; binary size
 alone is not a sufficient reason to keep Tauri.
+
+## Omarchy acceptance
+
+The installer includes pacman paths for Arch/Omarchy container engines, Compose
+repair and Desktop runtime dependencies. Linux x64 AppImage and CLI packages are
+the distribution formats; no separate Debian conversion is required. See
+[client setup](../../docs/release/client-install.md#omarchy--arch-linux-x64).
+
+Native Omarchy GUI acceptance is still required: record Omarchy/Arch package
+versions, Hyprland/Wayland, GPU and Secret Service provider; repeat the Linux
+acceptance steps above, including locked/missing keyring, native-host connection,
+offline restart/replay and installer update/retry. Windows unit tests or Ubuntu
+WSL results do not establish native Omarchy acceptance.

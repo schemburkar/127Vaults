@@ -145,6 +145,53 @@ pub fn choose_engine(requested: Option<&str>) -> String {
     )
 }
 
+// Never refresh the Arch package database without upgrading installed packages:
+// partial upgrades are unsupported on Arch and Omarchy.
+fn arch_install(packages: &[&str]) -> Command {
+    let mut command = Command::new("sudo");
+    command.args(["pacman", "-Syu", "--needed"]).args(packages);
+    command
+}
+
+fn arch_engine_install(name: &str) -> Command {
+    arch_install(if name == "docker" {
+        &["docker", "docker-compose"]
+    } else {
+        &["podman", "podman-compose"]
+    })
+}
+
+pub fn desktop(allow_install: bool) -> Result<()> {
+    if !cfg!(target_os = "linux") || !probe(Command::new("pacman").arg("--version")) {
+        return Ok(());
+    }
+    arch_desktop(allow_install, probe, |command| {
+        cliclack::log::step(
+            "Installing Arch/Omarchy Desktop runtime packages (system upgrade may be required)",
+        )?;
+        run(command)
+    })
+}
+
+fn arch_desktop(
+    allow_install: bool,
+    mut check: impl FnMut(&mut Command) -> bool,
+    mut install: impl FnMut(&mut Command) -> Result<()>,
+) -> Result<()> {
+    let packages = ["webkit2gtk-4.1", "libsecret", "fuse2", "xdg-utils"];
+    if check(Command::new("pacman").arg("-T").args(packages)) {
+        return Ok(());
+    }
+    if !allow_install {
+        return Err("Desktop runtime packages are missing. Run sudo pacman -Syu --needed webkit2gtk-4.1 libsecret fuse2 xdg-utils, then rerun. A running, unlocked Secret Service is also required".into());
+    }
+    install(&mut arch_install(&packages))?;
+    if !check(Command::new("pacman").arg("-T").args(packages)) {
+        return Err("Desktop runtime package verification failed".into());
+    }
+    Ok(())
+}
+
 pub fn engine(
     name: &str,
     provider: &mut Option<PathBuf>,
@@ -196,6 +243,8 @@ pub fn engine(
             && name == "podman"
         {
             run(Command::new("sudo").args(["dnf", "install", "-y", "podman", "podman-compose"]))?;
+        } else if cfg!(target_os = "linux") && probe(Command::new("pacman").arg("--version")) {
+            run(&mut arch_engine_install(name))?;
         } else {
             return Err("No supported package manager for automatic container setup. Install Docker/Podman with Compose, then rerun".into());
         }
@@ -217,8 +266,20 @@ pub fn engine(
             && probe(Command::new("apt-get").arg("--version"))
         {
             run(Command::new("sudo").args(["apt-get", "install", "-y", "docker-compose-v2"]))?;
+        } else if allow_install
+            && cfg!(target_os = "linux")
+            && name == "docker"
+            && probe(Command::new("pacman").arg("--version"))
+        {
+            run(&mut arch_install(&["docker-compose"]))?;
         } else {
             return Err("Compose is missing. Set up native Compose in Docker/Podman Desktop, or pass --compose-provider PATH, then rerun".into());
+        }
+        if let Some(path) = provider.as_ref() {
+            compose.env("PODMAN_COMPOSE_PROVIDER", path);
+        }
+        if !probe(&mut compose) {
+            return Err("Compose is still unavailable after prerequisite installation. Finish engine setup and rerun".into());
         }
     }
     Ok(())
@@ -278,4 +339,85 @@ fn install_compose(root: &Path) -> Result<PathBuf> {
         return Err("Downloaded Compose provider could not run".into());
     }
     Ok(destination)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arch_engine_packages_keep_compose_and_require_full_upgrade() {
+        for (engine, packages) in [
+            ("docker", ["docker", "docker-compose"]),
+            ("podman", ["podman", "podman-compose"]),
+        ] {
+            let command = arch_engine_install(engine);
+            let args: Vec<_> = command
+                .get_args()
+                .map(|arg| arg.to_str().unwrap())
+                .collect();
+            assert_eq!(command.get_program(), "sudo");
+            assert_eq!(
+                args,
+                ["pacman", "-Syu", "--needed", packages[0], packages[1]]
+            );
+        }
+    }
+
+    #[test]
+    fn arch_desktop_preserves_no_install_and_existing_packages() {
+        arch_desktop(false, |_| true, |_| panic!("must not install")).unwrap();
+        let error = arch_desktop(false, |_| false, |_| panic!("must not install")).unwrap_err();
+        assert!(error.to_string().contains("sudo pacman -Syu --needed"));
+    }
+
+    #[test]
+    fn arch_desktop_installs_missing_runtime_and_verifies_it() {
+        let mut checks = 0;
+        let mut installs = 0;
+        arch_desktop(
+            true,
+            |command| {
+                assert_eq!(command.get_program(), "pacman");
+                assert_eq!(command.get_args().next().unwrap(), "-T");
+                checks += 1;
+                checks == 2
+            },
+            |command| {
+                installs += 1;
+                assert_eq!(command.get_program(), "sudo");
+                let args: Vec<_> = command
+                    .get_args()
+                    .map(|arg| arg.to_str().unwrap())
+                    .collect();
+                assert_eq!(
+                    args,
+                    [
+                        "pacman",
+                        "-Syu",
+                        "--needed",
+                        "webkit2gtk-4.1",
+                        "libsecret",
+                        "fuse2",
+                        "xdg-utils"
+                    ]
+                );
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!((checks, installs), (2, 1));
+        assert!(
+            arch_desktop(true, |_| false, |_| Ok(()))
+                .unwrap_err()
+                .to_string()
+                .contains("verification failed")
+        );
+        assert!(
+            arch_desktop(true, |_| false, |_| Err("package manager failed".into()))
+                .unwrap_err()
+                .to_string()
+                .contains("package manager failed")
+        );
+    }
 }

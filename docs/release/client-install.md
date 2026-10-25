@@ -73,3 +73,53 @@ To disconnect on Windows remove the current-user
 keys. On Linux delete only `com.127vaults.connector.json` under the browser's
 `~/.config/<browser>/NativeMessagingHosts` directory. Removing clients does not
 delete enrolled profiles or server data. Preserve any data before manual cleanup.
+
+## Omarchy / Arch Linux x64
+
+Use the Linux x64 AppImage, CLI TAR.GZ and standalone Linux installer. The Debian
+package is for Ubuntu/Debian; do not convert it or install it with pacman.
+Omarchy uses the Arch package repositories:
+https://omarchy.org/manual/other-packages/.
+
+The standalone installer checks Desktop runtime packages and offers the normal
+sudo package-manager prompt when they are missing:
+
+```sh
+sudo pacman -Syu --needed webkit2gtk-4.1 libsecret fuse2 xdg-utils
+```
+
+This performs a system upgrade as required by Arch's rolling release model;
+review pacman's transaction before accepting. `--no-install-prerequisites`
+checks these packages and reports the command without installing them.
+For a directly downloaded AppImage, run the same prerequisite command, verify
+the supplied checksum, then:
+
+```sh
+chmod +x ./127vaults-desktop-<version>-linux-x64.AppImage
+./127vaults-desktop-<version>-linux-x64.AppImage
+```
+
+Substitute the actual filename. If FUSE cannot mount in your environment, use
+`APPIMAGE_EXTRACT_AND_RUN=1` before the executable. CLI-only use needs libsecret
+and an unlocked Secret Service; it does not need WebKitGTK or FUSE.
+
+Desktop and CLI need a running, unlocked `org.freedesktop.secrets` service in the
+user's desktop D-Bus session (for example GNOME Keyring). Installing `libsecret`
+alone does not provide this service. Use your existing provider, or configure
+GNOME Keyring's secrets component and login unlocking for your Omarchy session.
+Do not start the app with sudo or run a second competing Secret Service.
+A missing/locked keyring must be corrected before enrollment or unlock; there
+is no plaintext key-storage fallback. Run from your normal Hyprland session.
+Keep Wayland enabled; report launch failures with the WebKitGTK version and GPU
+rather than globally disabling WebKit's sandbox or forcing rendering overrides.
+
+For a local server, the installer can install Docker plus `docker-compose`, or
+Podman plus `podman-compose`, using pacman. Existing Docker installations also
+get Compose repair when needed. Start the intended engine and configure access
+for your user before rerunning if the installer reports it unreachable. Container
+setup is unnecessary when connecting clients to an existing server.
+
+For the browser connector, follow the AppImage instructions above: use the
+separate CLI package's native host at a permanent path. Install `python` from
+pacman if needed by `install-native-host.sh`. Use an unsandboxed supported
+Chromium/Chrome/Edge browser; sandboxed browsers need separate integration.

@@ -158,3 +158,18 @@ does not upload packages, provision resources or deploy the Worker again.
 The authenticated `GET /api/trials/:id/installer` endpoint returns protocol 1, installation binding, entitled artifacts and `minimumInstallerVersion`. It does not expose R2 keys or bearer credentials. Installer requests include `X-127Vaults-Installer-Version` and use the existing bearer header. Configure `minimumInstallerVersion` in the Cloudflare deployment config (default `0.1.0`) to retire old installers. An authenticated installer below that floor receives HTTP 426 on plan, download and activation requests. Missing/invalid versions on the installer endpoint are also rejected. Browser flows remain available; this is a compatibility floor, not a replacement authentication boundary. Invalid operator policy fails closed.
 
 The prompt design draws on [cliclack / Clack](https://docs.rs/cliclack/0.5.6/cliclack/) and argument parsing uses [clap](https://docs.rs/clap/4.6.1/clap/).
+
+### Arch / Omarchy prerequisites
+
+On Arch-based systems, including Omarchy, automatic engine setup uses
+`sudo pacman -Syu --needed docker docker-compose` or the corresponding
+`podman podman-compose` packages. An existing Docker engine with missing Compose
+can install `docker-compose` alone through the same full-upgrade transaction.
+Pacman retains its interactive transaction confirmation. Engine startup and
+operator access remain explicit local steps.
+
+Desktop installation checks `webkit2gtk-4.1`, `libsecret`, `fuse2` and `xdg-utils`
+with `pacman -T` and installs missing prerequisites through the same transaction.
+`--no-install-prerequisites` refuses missing dependencies with setup instructions.
+An unlocked desktop Secret Service must be configured separately; the installer
+does not replace the user's keyring provider. See [Omarchy client setup](client-install.md#omarchy--arch-linux-x64).

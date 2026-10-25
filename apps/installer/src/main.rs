@@ -696,6 +696,7 @@ fn execute(mut args: Args) -> Result<()> {
                 server_directory = Some(directory.clone());
             }
             Product::Desktop => {
+                prerequisites::desktop(!args.no_install_prerequisites)?;
                 let package = directory.join(&asset.filename);
                 if transport::file_hash(&package)? != asset.sha256 {
                     return Err(
