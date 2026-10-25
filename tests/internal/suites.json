@@ -2,6 +2,12 @@
   "description": "Opt-in retained-fixture acceptance workflows; never run all mutations as unit tests.",
   "entries": [
     {
+      "id": "omarchy-wsl-smoke",
+      "suite": "desktop",
+      "previousPath": "scripts/internal-omarchy-wsl-smoke.mjs",
+      "path": "tests/internal/desktop/omarchy-wsl-smoke.mjs"
+    },
+    {
       "id": "desktop-fixture-inspector",
       "suite": "support",
       "previousPath": "scripts/desktop-fixture-inspector.mjs",
