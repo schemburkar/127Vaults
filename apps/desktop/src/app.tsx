@@ -1048,8 +1048,8 @@ export function App() {
     setSelected({ ...selected, website: "", username: "", password: "", customFields: replaceItemType(selected.customFields, type) });
     setExpandedRelatedId(null);
   };
-  const knownFieldEditor = (field: CustomField) => <label key={field.id} className="desktop-editor-field grid gap-2 text-sm text-slate-400">
-    <span>{field.label}</span>
+  const knownFieldEditor = (field: CustomField) => <label key={field.id} className="grid gap-2 text-sm text-slate-400">
+    {field.label}
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
       <FieldValueEditor kind={field.type} revealed={revealed.has(field.id)} value={field.value} aria-label={field.label || "Field value"} onValueChange={(value) => updateCustom(field.id, { value })} />
       {field.type === "password" && <div className="flex gap-2"><IconButton label={`${revealed.has(field.id) ? "Hide" : "Reveal"} ${field.label || "secret"}`} variant="secondary" aria-pressed={revealed.has(field.id)} onClick={() => toggleReveal(field.id)}>{revealed.has(field.id) ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</IconButton><DesktopSecretGenerator generate={generateSecret} label={field.label || "secret"} initialMode={/pin/i.test(field.label) ? "pin" : "password"} onUse={(value) => updateCustom(field.id, { value })} /></div>}
@@ -1744,23 +1744,25 @@ export function App() {
           }
         }} />}
         {healthOpen && <PasswordHealth visit={url => void openUrl(url)} scope="All active vaults" load={loadHealthItems} close={() => setHealthOpen(false)} open={finding => { void openItem({ itemId: finding.itemId, vaultId: finding.vaultId, title: finding.title, website: "", code: "" }); }} />}
+        {!healthOpen && selected && editing && <div className="desktop-back-row"><Button variant="ghost" aria-label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></div>}
         {!healthOpen && (selected ? (
-          <div className={cn("mx-auto max-w-3xl", editing && "desktop-item-editor")}>
+          <div className="mx-auto max-w-3xl">
             {editing ? (
               <>
                 <div className="ui-page-header desktop-edit-header mb-7 flex items-start justify-between gap-4">
                   <div>
+                    <p className="text-[10px] font-bold tracking-[.16em] text-slate-500">
+                      {selected.itemId ? "EDIT ITEM" : "NEW ITEM"}
+                    </p>
                     <h2 className="mt-1 text-3xl font-bold">
                       {selected.itemId ? "Edit item" : "Create item"}
                     </h2>
                   </div>
-                  <div className="desktop-edit-actions flex items-center gap-2">
-                    <IconButton label="Favorite" aria-pressed={isFavorite(selected.customFields)} onClick={() => setSelected({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} className={isFavorite(selected.customFields) ? "fill-current text-[#E0BB95]" : ""} /></IconButton>
+                  <div className="flex gap-2">
                     <Button variant="secondary" onClick={cancelEditing}>
                       Cancel
                     </Button>
                     <Button data-save-item disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
-                    <IconButton label="Close item details" onClick={() => { if (confirmDiscard()) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /></IconButton>
                   </div>
                 </div>
                 {!selected.itemId && viewMode !== "single" && <label className="mb-6 block text-sm text-slate-300">Destination vault
@@ -1769,14 +1771,15 @@ export function App() {
                     {activeVaults.filter((vault) => viewMode !== "collection" || collections.find((row) => row.id === selectedCollectionId)?.vault_ids.includes(vault.vaultId)).map((vault) => <option key={vault.vaultId} value={vault.vaultId}>{vault.name} · {vault.code}</option>)}
                   </select>
                 </label>}
+                <label className="mb-4 flex items-center gap-2 text-sm text-slate-400"><input type="checkbox" checked={isFavorite(selected.customFields)} onChange={e => setSelected({ ...selected, customFields: setFavorite(selected.customFields, e.target.checked) })} />Favorite</label>
                 <section>
                   <h3 className="mb-3 text-xs font-bold tracking-[.1em] text-slate-500">
                     BASICS
                   </h3>
                   <div className="grid gap-4">
                     <div className="desktop-title-fields grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
-                      <label className="desktop-editor-field grid gap-2 text-sm text-slate-400">
-                        <span>Title</span>
+                      <label className="grid gap-2 text-sm text-slate-400">
+                        Title
                         <Input
                           data-editor-title
                           value={selected.title}
@@ -1786,19 +1789,19 @@ export function App() {
                         />
                         {errors.title && <span className="text-xs text-red-300">{errors.title}</span>}
                       </label>
-                      <div className="desktop-editor-field grid gap-2 text-sm text-slate-400"><span>Type</span><TypePicker value={itemType(selected.customFields)} onSelect={changePrimaryType} /></div>
+                      <div className="grid gap-2 text-sm text-slate-400"><span>Type</span><TypePicker value={itemType(selected.customFields)} onSelect={changePrimaryType} /></div>
                     </div>
-                    {ITEM_TYPES[itemType(selected.customFields)].website && <label className="desktop-editor-field grid gap-2 text-sm text-slate-400">
-                      <span>Website</span>
-                      <div className="flex min-w-0 gap-2"><Input
+                    {ITEM_TYPES[itemType(selected.customFields)].website && <label className="grid gap-2 text-sm text-slate-400">
+                      Website
+                      <Input
                         readOnly={selected.customFields.some(field => field.id === "__127vaults_passkey")}
                         value={selected.website}
                         onChange={(e) =>
                           setSelected({ ...selected, website: e.target.value })
                         }
                       />
-                      {itemType(selected.customFields) === "login" && <IconButton label="Add another website" variant="secondary" onClick={() => setSelected({ ...selected, customFields: addWebsite(selected.customFields) })}><Plus size={17} aria-hidden="true" /></IconButton>}</div>
                     </label>}
+                    {itemType(selected.customFields) === "login" && <Button variant="secondary" onClick={() => setSelected({ ...selected, customFields: addWebsite(selected.customFields) })}>Add another website</Button>}
                   </div>
                 </section>
                 <section className="ui-page-section mt-8">
@@ -1806,8 +1809,8 @@ export function App() {
                     {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}
                   </h3>
                   <div className="grid gap-4">
-                    {ITEM_TYPES[itemType(selected.customFields)].username && <label className="desktop-editor-field grid gap-2 text-sm text-slate-400">
-                      <span>Username</span>
+                    {ITEM_TYPES[itemType(selected.customFields)].username && <label className="grid gap-2 text-sm text-slate-400">
+                      Username
                       <Input
                         readOnly={itemType(selected.customFields) === "passkey"}
                         value={selected.username}
@@ -1816,8 +1819,8 @@ export function App() {
                         }
                       />
                     </label>}
-                    {ITEM_TYPES[itemType(selected.customFields)].password && <label className="desktop-editor-field grid gap-2 text-sm text-slate-400">
-                      <span>Password</span>
+                    {ITEM_TYPES[itemType(selected.customFields)].password && <label className="grid gap-2 text-sm text-slate-400">
+                      Password
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                         <Input
                           type={revealed.has("password") ? "text" : "password"}
@@ -1851,7 +1854,7 @@ export function App() {
                 <PasskeyDetails fields={selected.customFields} onRemove={() => setSelected({ ...selected, customFields: [...setItemType(selected.customFields.filter(f => f.id !== "__127vaults_passkey" && f.id !== "__127vaults_passkey_key"), itemType(selected.customFields) === "passkey" ? "login" : itemType(selected.customFields)), { id: "__127vaults_remove_passkey", label: "Remove passkey", type: "metadata", value: "true" }] })} />
                 {(itemType(selected.customFields) !== "passkey" || selected.customFields.some(f => f.id === TOTP_ID && f.value)) && <AuthenticatorEditor copy={copyValue} value={selected.customFields.find(f => f.id === TOTP_ID)?.value || ""} onChange={value => setSelected({ ...selected, customFields: setAuthenticator(selected.customFields, value) })} />}
                 <section className="ui-page-section mt-8 border-t border-white/10 pt-7">
-                  <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
+                  <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xs font-bold tracking-[.1em] text-slate-500">RELATED TO THIS {ITEM_TYPES[itemType(selected.customFields)].label.toUpperCase()}</h3><p className="mt-2 text-sm text-slate-400">Keep cards, logins, and other details together with this item. Name each one so it is easy to find.</p></div><span className="shrink-0 text-xs text-slate-500">{sections(selected.customFields).length} added</span></div>
                   <div className="grid gap-3">{sections(selected.customFields).map((section) => <div key={section.id} className="overflow-hidden rounded-xl border border-white/12 bg-white/3">
                     <div className="flex flex-wrap items-center gap-3 p-4">
                       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#E0BB95]/12 text-[#E0BB95]"><KeyRound size={17} /></span>

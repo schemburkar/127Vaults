@@ -289,22 +289,3 @@
 @media(min-width:851px) and (max-width:1439px){.desktop-shell.desktop-pane-sized.desktop-grid{grid-template-columns:var(--desktop-sidebar-width) minmax(0,1fr) var(--desktop-detail-width)}}
 @media(min-width:621px) and (max-width:850px){.desktop-shell.desktop-pane-sized{grid-template-columns:minmax(0,1fr) var(--desktop-detail-width)}}
 @media(max-width:620px){.desktop-pane-divider{display:none}}
-
-/* Keep editing aligned with the compact read view. */
-.desktop-item-editor .desktop-edit-header{flex-wrap:nowrap;align-items:center;top:-1rem;padding-block:.5rem}
-.desktop-item-editor .desktop-edit-header h2{margin:0}
-.desktop-item-editor .desktop-edit-header>div:last-child{width:auto;flex-wrap:nowrap;margin-left:auto}
-.desktop-item-editor .desktop-title-fields{grid-template-columns:minmax(0,1fr)}
-.desktop-item-editor .desktop-editor-field,.desktop-item-editor .authenticator-editor-field{grid-template-columns:10rem minmax(0,1fr);align-items:center;column-gap:1rem}
-.desktop-item-editor .desktop-editor-field>span:not(:first-child){grid-column:2}
-.desktop-item-editor input{min-width:0}
-@media(max-width:620px){
-.desktop-item-editor .desktop-editor-field,.desktop-item-editor .authenticator-editor-field{grid-template-columns:minmax(0,1fr)}
-.desktop-item-editor .desktop-editor-field>span:not(:first-child){grid-column:1}
-.desktop-item-editor .desktop-edit-header{gap:.375rem}
-.desktop-item-editor .desktop-edit-actions{gap:.25rem}
-.desktop-item-editor .desktop-edit-actions>.ui-button{padding-inline:.5rem}
-}
-
-.desktop-item-editor .desktop-edit-actions{flex:none}
-.desktop-item-editor .desktop-editor-field .ui-button,.desktop-item-editor .authenticator-editor-field .ui-button{flex-shrink:0}
