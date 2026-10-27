@@ -2546,6 +2546,24 @@ impl Session {
         )
     }
 
+    /// Run a foreground connector read against the authenticated local license.
+    /// Restore normal refresh policy even when the read fails.
+    pub(crate) fn with_cached_license<T>(
+        &mut self,
+        work: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.require_cached_license(false)?;
+        let background = self.background_license_refresh;
+        self.background_license_refresh = true;
+        let result = work(self);
+        self.background_license_refresh = background;
+        result
+    }
+
+    pub(crate) fn connector_status(&mut self) -> Result<Value, String> {
+        self.with_cached_license(|session| Ok(json!({"unlocked":true,"online":session.is_online(),"sync":session.replica_status()?,"license":session.entitlement_status()?})))
+    }
+
     /// Desktop refreshes authenticated license state in a background worker.
     pub fn use_background_license_refresh(&mut self) {
         self.background_license_refresh = true;
@@ -3282,9 +3300,18 @@ impl Session {
             }
             .to_owned());
         }
-        let item_id = matches[0]["itemId"]
+        self.item_get_known(vault_selector, matches[0], password_field)
+    }
+
+    pub(crate) fn item_get_known(
+        &mut self,
+        vault_selector: &str,
+        summary: &Value,
+        password_field: Option<&str>,
+    ) -> Result<Value, String> {
+        let item_id = summary["itemId"]
             .as_str()
-            .ok_or("invalid item list")?
+            .ok_or("invalid item identity")?
             .to_owned();
         let (vault_id, vault, catalogue) = self.open_vault(vault_selector)?;
         let replica = self
@@ -3343,7 +3370,7 @@ impl Session {
                 .map(|value| Value::String(value.to_owned()))
                 .ok_or_else(|| "password field is not textual".to_owned());
         }
-        let summary = matches[0];
+
         let custom_fields = body["customFields"]
             .as_array()
             .map(|fields| {

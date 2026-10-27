@@ -274,7 +274,7 @@ fn login_entries(summary: &Value, vault_id: &str, site: &str) -> Vec<Value> {
     entries
 }
 
-fn list_entries(
+pub(crate) fn list_entries(
     rows: &Value,
     site: &str,
     mut get: impl FnMut(&str, &str) -> Result<Value, String>,
@@ -287,6 +287,47 @@ fn list_entries(
         entries.extend(login_entries(&summary, vault, site));
     }
     Ok(Value::Array(entries))
+}
+
+fn legacy_agent(error: &str) -> bool {
+    matches!(
+        error,
+        "unsupported agent command" | "read-only agent command denied"
+    )
+}
+
+pub(crate) fn session_entries(
+    session: &mut crate::client::Session,
+    site: &str,
+) -> Result<Value, String> {
+    let site = site_origin(site)?;
+    let rows = session.item_list_all()?;
+    let mut entries = Vec::new();
+    for row in rows.as_array().ok_or("Invalid local item list")? {
+        let vault = row["vaultId"].as_str().ok_or("Invalid vault identity")?;
+        let summary = session.item_get_known(vault, row, None)?;
+        entries.extend(login_entries(&summary, vault, &site));
+    }
+    Ok(Value::Array(entries))
+}
+
+pub(crate) fn session_credential(
+    session: &mut crate::client::Session,
+    vault: &str,
+    item: &str,
+    entry: &str,
+    site: &str,
+) -> Result<Value, String> {
+    let site = site_origin(site)?;
+    if !valid_id(vault) || !valid_id(item) {
+        return Err("Invalid item identity".to_owned());
+    }
+    let summary = session.item_get(vault, item, None)?;
+    let (username, password_field) = entry_fields(&summary, entry, &site)?;
+    let password = session.item_get_known(vault, &summary, Some(&password_field))?;
+    Ok(
+        json!({"itemId":item,"entryId":entry,"website":site,"username":username,"password":password}),
+    )
 }
 
 impl Host {
@@ -316,15 +357,11 @@ impl Host {
             let sources = ["desktop", "cli"].iter().map(|source| {
                 let path = profile(source).ok();
                 let configured = path.as_deref().is_some_and(configured);
-                let status = path.as_deref().and_then(|path| agent::call(path, "status", json!({})).ok());
+                let status = path.as_deref().and_then(|path| agent::call(path, "extension.status", json!({})).or_else(|error| if legacy_agent(&error) { agent::call(path, "status", json!({})) } else { Err(error) }).ok());
                 let active = status.is_some();
                 let online = status.as_ref().and_then(|value| value["online"].as_bool());
-                let sync = if active {
-                    path.as_deref().and_then(|path| agent::call(path, "replica.status", json!({})).ok())
-                } else { None };
-                let license = if active && online == Some(true) {
-                    path.as_deref().and_then(|path| agent::call(path, "license.status", json!({})).ok())
-                } else { None };
+                let sync = status.as_ref().map(|value| value["sync"].clone());
+                let license = status.as_ref().map(|value| value["license"].clone());
                 json!({"id":source,"configured":configured,"active":active,"online":online,"localUnlocked":false,"sync":sync,"license":license})
             }).collect::<Vec<_>>();
             return Ok(json!({"version":1,"sources":sources}));
@@ -386,26 +423,30 @@ impl Host {
             return Self::passkey_request(request, &path, &site);
         }
         if request.action == "list" {
-            list_entries(
-                &agent::call(&path, "item.list.all", json!({}))?,
-                &site,
-                |vault, item| agent::call(&path, "item.get", json!({"vault":vault,"item":item})),
-            )
+            agent::call(&path, "extension.logins", json!({"website":site})).or_else(|error| {
+                if !legacy_agent(&error) {
+                    return Err(error);
+                }
+                list_entries(
+                    &agent::call(&path, "item.list.all", json!({}))?,
+                    &site,
+                    |vault, item| {
+                        agent::call(&path, "item.get", json!({"vault":vault,"item":item}))
+                    },
+                )
+            })
         } else {
-            let summary = agent::call(
+            agent::call(
                 &path,
-                "item.get",
-                json!({"vault":request.vault_id,"item":request.item_id}),
-            )?;
-            let (username, password_field) = entry_fields(&summary, &request.entry_id, &site)?;
-            let password = agent::call(
-                &path,
-                "item.get",
-                json!({"vault":request.vault_id,"item":request.item_id,"password_field":password_field}),
-            )?;
-            Ok(
-                json!({"itemId":request.item_id,"entryId":request.entry_id,"website":site,"username":username,"password":password}),
-            )
+                "extension.get",
+                json!({"vault":request.vault_id,"item":request.item_id,"entry_id":request.entry_id,"website":site}),
+            ).or_else(|error| {
+                if !legacy_agent(&error) { return Err(error); }
+                let summary = agent::call(&path, "item.get", json!({"vault":request.vault_id,"item":request.item_id}))?;
+                let (username, password_field) = entry_fields(&summary, &request.entry_id, &site)?;
+                let password = agent::call(&path, "item.get", json!({"vault":request.vault_id,"item":request.item_id,"password_field":password_field}))?;
+                Ok(json!({"itemId":request.item_id,"entryId":request.entry_id,"website":site,"username":username,"password":password}))
+            })
         }
     }
 

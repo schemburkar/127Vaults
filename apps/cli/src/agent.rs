@@ -105,6 +105,8 @@ struct Request {
     #[serde(default)]
     item: Option<String>,
     #[serde(default)]
+    entry_id: Option<String>,
+    #[serde(default)]
     operation_id: Option<String>,
     #[serde(default)]
     keep: Option<String>,
@@ -220,6 +222,9 @@ fn dispatch(
         && !matches!(
             request.action.as_str(),
             "status"
+                | "extension.status"
+                | "extension.logins"
+                | "extension.get"
                 | "logout"
                 | "vault.list"
                 | "replica.status"
@@ -242,6 +247,25 @@ fn dispatch(
         }
         return Err("read-only agent command denied".to_owned());
     }
+    if request.action == "extension.status" {
+        return session.connector_status();
+    }
+    if request.action == "extension.logins" {
+        let site = request.website.as_deref().ok_or("Site required")?;
+        return session
+            .with_cached_license(|session| crate::extension_host::session_entries(session, site));
+    }
+    if request.action == "extension.get" {
+        return session.with_cached_license(|session| {
+            crate::extension_host::session_credential(
+                session,
+                request.vault.as_deref().ok_or("Vault required")?,
+                request.item.as_deref().ok_or("Item required")?,
+                request.entry_id.as_deref().unwrap_or(""),
+                request.website.as_deref().ok_or("Site required")?,
+            )
+        });
+    }
     if matches!(request.action.as_str(), "status" | "replica.status") {
         session.require_cached_license(false)?;
     } else if !matches!(request.action.as_str(), "license.status" | "logout") {
@@ -249,7 +273,7 @@ fn dispatch(
     }
     let result = match request.action.as_str() {
         "status" => Ok(
-            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"offlineReason":session.offline_reason(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":4,"desktopConnectorProtocol":1,"passkeyVerificationSession":passkey_session()}),
+            json!({"authenticated":session.is_online(),"unlocked":true,"online":session.is_online(),"offlineReason":session.offline_reason(),"idleTimeoutSeconds":IDLE_TTL.as_secs(),"nativePasskeyProtocol":4,"desktopConnectorProtocol":1,"extensionReadProtocol":1,"passkeyVerificationSession":passkey_session()}),
         ),
         "logout" => Ok(json!({"loggedOut":true})),
         "migration.import" => {
@@ -639,6 +663,7 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
     while last.elapsed() < IDLE_TTL {
         match listener.accept() {
             Ok((mut stream, _)) => {
+                let _ = stream.set_nodelay(true);
                 let Ok(mut request) = read_agent_request(&stream) else {
                     continue;
                 };
@@ -670,7 +695,7 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(Duration::from_millis(5));
             }
             Err(_) => break,
         }
@@ -817,6 +842,9 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
         Duration::from_secs(2),
     )
     .map_err(|_| "unlock session expired; run login again".to_owned())?;
+    stream
+        .set_nodelay(true)
+        .map_err(|_| "local agent unavailable")?;
     let timeout = if matches!(action, "status" | "logout") {
         2
     } else {
@@ -829,8 +857,12 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
         .set_write_timeout(Some(Duration::from_secs(5)))
         .map_err(|_| "local agent unavailable")?;
     let mut outbound = Value::Object(value);
-    serde_json::to_writer(&mut stream, &outbound).map_err(|_| "local agent unavailable")?;
-    writeln!(stream).map_err(|_| "local agent unavailable")?;
+    let mut encoded =
+        Zeroizing::new(serde_json::to_vec(&outbound).map_err(|_| "local agent unavailable")?);
+    encoded.push(b'\n');
+    stream
+        .write_all(&encoded)
+        .map_err(|_| "local agent unavailable")?;
     if let Some(object) = outbound.as_object_mut() {
         for name in ["capability", "password"] {
             if let Some(Value::String(secret)) = object.get_mut(name) {

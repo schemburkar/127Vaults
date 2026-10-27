@@ -20,6 +20,7 @@ try {
   window.fixtureUnlocked=false;
   window.fixtureSourcesReady=new Promise(done=>{window.releaseFixtureSources=done;});
   window.chrome={storage:{local:{async get(){return {passkeysAllSites:true};}}},permissions:{async contains(){return true;}},tabs:{async query(){return [{id:1,url:window.fixturePageUrl || 'https://example.test/login'}];}},scripting:{async getRegisteredContentScripts(){return [{id:'passkey-bridge-all',world:'ISOLATED',matches:['https://*/*']},{id:'passkey-page-all',world:'MAIN',matches:['https://*/*']}];}},runtime:{async sendMessage(message){
+   if(message.kind==='passkey.pending')await window.fixturePasskeyReady;
    if(message.kind==='passkey.pending')return {requests:[]};
    if(message.kind==='connector.request'){
     const request=message.request;window.lastConnectorAction=request.action;
@@ -27,6 +28,7 @@ try {
     if(request.action==='sources')return {ok:true,value:{sources:[{id:'desktop',configured:true,active:window.fixtureUnlocked,online:true,sync:{lastVerifiedSyncAt:1793090000}}]}};
     if(request.action==='open.desktop')return {ok:true,value:{opened:true}};
     if(request.action==='list')return window.fixtureUnlocked?{ok:true,value:window.fixtureNoItems?[]:[{itemId:'fixture',title:'Example login',username:'alice',website:window.fixtureWebsite || 'https://example.test'}]}:{ok:false,error:'locked'};
+    if(request.action==='passkey.list')await window.fixturePasskeyReady;
     if(request.action==='passkey.list')return {ok:true,value:[]};
    }
    throw Error('Unexpected popup request');
@@ -51,7 +53,7 @@ try {
  assert.equal(await page.evaluate(()=>window.lastConnectorAction),'open.desktop');
  await page.locator('#change-source').click();
  assert.equal(await page.locator('#source-select').isVisible(),true);
- await page.evaluate(()=>{window.fixtureUnlocked=true;window.fixtureSourcesReady=new Promise(done=>{window.releaseFixtureSources=done;});});
+ await page.evaluate(()=>{window.fixtureUnlocked=true;window.fixturePasskeyReady=new Promise(done=>{window.releaseFixturePasskeys=done;});window.fixtureSourcesReady=new Promise(done=>{window.releaseFixtureSources=done;});});
  await page.locator('#refresh-sources').click();
  await page.locator('#loading-view').waitFor({state:'visible'});
  for(const id of ['locked-view','results','status','source-controls','source-badge','lock-vault','extension-settings']) assert.equal(await page.locator('#'+id).isVisible(),false,id+' must disappear while checking');
@@ -66,6 +68,8 @@ try {
  const lock=await page.locator('#lock-vault').boundingBox(),source=await page.locator('#change-source').boundingBox();
  assert.equal(lock.y,source.y); assert(source.x>lock.x); assert.equal(lock.x,lockedSource.x); assert.equal(source.x,lock.x+lock.width+6);
  assert.equal(await page.locator('#loading-view').isVisible(),false);
+ // Ancillary passkey work is still pending: sign-ins must already be usable.
+ await page.evaluate(()=>window.releaseFixturePasskeys());
  await page.screenshot({path:join(output,'unlocked.png')});
  await page.locator('#extension-settings>summary').click();
  assert.equal(await page.locator('#disable-passkeys').isVisible(),true);

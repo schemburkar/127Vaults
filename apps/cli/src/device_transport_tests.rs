@@ -2521,3 +2521,125 @@ fn live_tls_postgres_device_lifecycle() {
     session.online = false;
     println!("DEVICE_FIXTURE_RESULT={}", json!({"deviceId":proposed}));
 }
+
+#[test]
+fn extension_batch_reads_are_local_secret_free_and_preserve_fill_checks() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let (mut session, vault_id, item_id) =
+        session_with_editable_item(&format!("http://{}", listener.local_addr().unwrap()));
+    let (vault, key, mut catalogue) = session.open_vault(&vault_id).unwrap();
+    let mut replica = session.replica_store.load(&vault).unwrap().unwrap();
+    for i in 0..39 {
+        let index = serde_json::to_vec(&json!({"title":format!("Fixture {i}"),"website":"https://fixture.invalid","favorite":false})).unwrap();
+        let item = session
+            .core
+            .upsert_private_item(
+                key,
+                &catalogue,
+                None,
+                &index,
+                br#"{"username":"fixture-user","password":"fixture-password","customFields":[]}"#,
+            )
+            .unwrap();
+        let id = uuid::Uuid::from_bytes(item.item).to_string();
+        catalogue = item.catalogue.clone();
+        replica.items.push(crate::replica::ReplicaItem {
+            item_id: id,
+            index: URL_SAFE_NO_PAD.encode(&item.index),
+            body: URL_SAFE_NO_PAD.encode(&item.body),
+            created_at: None,
+            updated_at: None,
+        });
+    }
+    replica.catalogue = URL_SAFE_NO_PAD.encode(&catalogue);
+    session.replica_store.commit(&replica).unwrap();
+    // A stale-but-authorized local observation must not trigger foreground HTTP.
+    let mut cached = session.cached_entitlement().unwrap();
+    cached["observedAt"] = json!(cached["observedAt"].as_u64().unwrap() - 60);
+    let encrypted = session
+        .core
+        .encrypt_account_settings(session.root, &serde_json::to_vec(&cached).unwrap())
+        .unwrap();
+    std::fs::write(
+        session.profile_dir.join("license-entitlement.enc"),
+        encrypted,
+    )
+    .unwrap();
+    let started = Instant::now();
+    let baseline = session
+        .with_cached_license(|session| {
+            let rows = session.item_list_all()?;
+            crate::extension_host::list_entries(&rows, "https://fixture.invalid", |vault, item| {
+                session.item_get(vault, item, None)
+            })
+        })
+        .unwrap();
+    let baseline_time = started.elapsed();
+    let started = Instant::now();
+    let batched = session
+        .with_cached_license(|session| {
+            crate::extension_host::session_entries(session, "https://fixture.invalid")
+        })
+        .unwrap();
+    let batch_time = started.elapsed();
+    assert_eq!(batched, baseline);
+    assert_eq!(batched.as_array().unwrap().len(), 40);
+    assert!(!batched.to_string().contains("fixture-password"));
+    assert!(
+        !session.background_license_refresh,
+        "normal refresh policy restored"
+    );
+    let started = Instant::now();
+    let credential = session
+        .with_cached_license(|session| {
+            crate::extension_host::session_credential(
+                session,
+                &vault_id,
+                &item_id,
+                "",
+                "https://fixture.invalid",
+            )
+        })
+        .unwrap();
+    let fill_time = started.elapsed();
+    assert_eq!(credential["password"], "fixture-password");
+    assert!(
+        session
+            .with_cached_license(|session| crate::extension_host::session_credential(
+                session,
+                &vault_id,
+                &item_id,
+                "",
+                "https://other.invalid"
+            ))
+            .is_err()
+    );
+    assert!(
+        !session.background_license_refresh,
+        "failed reads restore refresh policy too"
+    );
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    eprintln!(
+        "40-item local read: previous {:?}, batch {:?}; selected credential {:?}; IPC listing 41 -> 1, fill 2 -> 1",
+        baseline_time, batch_time, fill_time
+    );
+    std::fs::write(
+        session.profile_dir.join("license-entitlement.enc"),
+        b"tampered",
+    )
+    .unwrap();
+    assert!(session.connector_status().is_err());
+    assert!(
+        session
+            .with_cached_license(|session| crate::extension_host::session_entries(
+                session,
+                "https://fixture.invalid"
+            ))
+            .is_err()
+    );
+    std::fs::remove_dir_all(&session.profile_dir).unwrap();
+}

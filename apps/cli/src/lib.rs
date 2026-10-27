@@ -57,7 +57,9 @@ fn desktop_connector_command(args: &[std::ffi::OsString]) -> Option<Result<Comma
 #[must_use]
 pub fn connector_agent_desktop_compatible(config_dir: &std::path::Path) -> bool {
     agent::call(config_dir, "status", serde_json::json!({})).is_ok_and(|status| {
-        status["desktopConnectorProtocol"] == 1 && status["nativePasskeyProtocol"] == 4
+        status["desktopConnectorProtocol"] == 1
+            && status["nativePasskeyProtocol"] == 4
+            && status["extensionReadProtocol"] == 1
     })
 }
 

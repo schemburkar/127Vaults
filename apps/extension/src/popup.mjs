@@ -138,7 +138,7 @@ async function loadSelectedSource() {
       $('results').hidden = false;
       $('lock-vault').hidden = false;
       renderItems();
-      await passkeys.refreshSaved();
+      void passkeys.refreshSaved().catch(error => status(errorMessage(error), true));
     } catch (error) {
       if (!current()) return;
       if (source?.active || source?.localUnlocked) {
@@ -177,7 +177,7 @@ async function loadSelectedSource() {
   $('results').hidden = false;
   $('lock-vault').hidden = false;
   renderItems();
-  await passkeys.refreshSaved();
+  void passkeys.refreshSaved().catch(error => status(errorMessage(error), true));
   } catch (error) { if (current()) throw error; }
 }
 async function refresh() {
@@ -234,7 +234,7 @@ async function refresh() {
   $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
     : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
-  } finally { await passkeys.refresh().catch(error => status(errorMessage(error), true)); updatePopupView(); setLoading(false); refreshInProgress = false; }
+  } finally { updatePopupView(); setLoading(false); refreshInProgress = false; void passkeys.refresh().catch(error => status(errorMessage(error), true)); }
 }
 async function choose(item) {
   if (pending) return;
@@ -254,7 +254,7 @@ async function choose(item) {
     const fill = async frameId => {
       const latest = await chrome.tabs.get(targetTab.id);
       if (!matchingLogin(item.website, latest.url)) throw Error('The page changed before fill.');
-      status('Decrypting the selected login…');
+      status('Filling sign-in…');
       const credential = selectedSource === 'web'
         ? (await script(vaultTab.id, async (id, selectedVault, entryId, site) => window.__vaultsExtensionActions?.credential(id, selectedVault, entryId, site), [item.itemId, vaultId, item.entryId || '', origin], {}, 'MAIN'))[0]?.result
         : await native({ action: 'get', source: selectedSource, vaultId: item.vaultId, itemId: item.itemId, entryId: item.entryId || '', siteOrigin: origin });
@@ -352,12 +352,12 @@ setInterval(async () => {
   if (document.hidden || document.body.dataset.loading === 'true' || pending || refreshInProgress || pollingSources || !$('frames').hidden) return;
   pollingSources = true;
   try {
-    await passkeys.refresh();
-    await passkeys.refreshSaved();
     const sources = (await native({ action: 'sources' })).sources || [];
     const next = JSON.stringify(sources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
     if (next !== sourceSignature) await refresh();
     else await refreshLocalItems();
+    void passkeys.refresh().catch(() => {});
+    void passkeys.refreshSaved().catch(() => {});
   } catch { /* Manual refresh reports connector errors without interrupting the current form. */ }
   finally { pollingSources = false; }
 }, 3000);

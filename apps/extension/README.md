@@ -138,3 +138,30 @@ The extension saves and uses website passkeys on Windows, including platform att
 Passkey sign-in can reuse the Desktop agent's verified unlock session after an explicit Use passkey click. The native host obtains the session identifier from the authenticated local agent; the page cannot supply it. The agent validates it when retrieving the selected key, and the worker checks it again before replying. Desktop lock, exit, agent expiry and Windows lock invalidate access. Unlocking again creates a different session, so pending requests from the old session fail. No master password is cached in the extension. Registration also uses this bound Desktop session. Passkey ceremonies require the Desktop source. Older or unavailable agents block approval and ask you to unlock or restart the updated Desktop; there is no credential-entry fallback. An unlocked offline Desktop can save and use passkeys, with encrypted writes queued until server connectivity returns.
 
 Registration can save a new item or attach a passkey to an existing matching login without replacing its password. Each item holds one passkey; multiple accounts appear as separate selectable rows. Remove a saved credential in the desktop/web item editor and Save to commit the removal.
+
+## Local popup performance
+
+Updated Desktop connectors expose batched local status, login listing and selected
+credential reads. Listing uses one authenticated agent request, decrypts each
+item index once, and returns only matching login metadata. Fill fetches only the
+selected credential after checking the site and entry identity. Passwords are not
+cached in the popup or extension service worker. Foreground reads validate the
+protected local entitlement; Desktop's existing background refresh maintains
+that entitlement. Passkey setup checks do not delay showing sign-ins.
+
+An older running agent uses the compatible legacy path until Desktop is updated
+and unlocked again. The Desktop compatibility check prevents silently reusing an
+old connector after updating. A local 40-item encrypted fixture measured listing
+work at 925 ms before and 154 ms after batching, with a selected credential read
+at 22 ms. These are local fixture measurements, excluding browser rendering,
+native-host startup and page injection. Listing IPC drops from 41 requests to 1;
+selected credential retrieval drops from 2 requests to 1.
+
+Re-run the encrypted fixture with:
+
+```powershell
+cargo test --locked -p vaults-cli --lib extension_batch_reads -- --nocapture
+```
+
+The fixture also verifies equivalent results, no passwords in listing output,
+wrong-site rejection, tampered-license rejection and no foreground HTTP traffic.
