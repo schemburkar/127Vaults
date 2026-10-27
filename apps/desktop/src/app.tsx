@@ -2128,7 +2128,7 @@ function DesktopApp() {
             <Input autoFocus className="mt-2" maxLength={80} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} />
           </label>
           <p className="mt-5 text-sm text-slate-300">Include vaults</p>
-          <div className="mt-2 grid gap-2">{activeVaults.map((vault) => <label key={vault.vaultId} className="flex items-center gap-3 rounded-lg border border-white/10 p-2 text-sm">
+          <div className="mt-2 grid gap-2">{activeVaults.map((vault) => <label key={vault.vaultId} className="desktop-vault-check-row flex items-center gap-3 rounded-lg border border-white/10 p-2 text-sm">
             <input type="checkbox" checked={collectionVaultDraft.includes(vault.vaultId)} onChange={(event) => setCollectionVaultDraft((current) => event.target.checked ? [...current, vault.vaultId] : current.filter((id) => id !== vault.vaultId))} />
             {vault.name} <small className="ml-auto text-slate-500">{vault.code}</small>
           </label>)}</div>

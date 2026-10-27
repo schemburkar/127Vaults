@@ -302,3 +302,36 @@
 }
 
 .desktop-confirmation{width:min(28rem,calc(100vw - 2rem));margin:auto;max-height:calc(100dvh - 2rem);overflow:auto}
+/* Match picker and single-line field heights to the desktop control size. */
+.ui-field-type-trigger,
+.desktop-custom-field > input,
+.desktop-custom-field > div > input:not([type=hidden]) {
+  height: var(--desktop-control);
+  min-height: var(--desktop-control);
+  padding-block: 0;
+}
+.desktop-vault-check-row { min-height: 2.75rem; cursor: pointer; }
+.desktop-vault-check-row:has(:checked) { border-color: #e0bb9555; background: #e0bb950a; }
+input[type=checkbox] {
+  appearance: none;
+  display: inline-block;
+  flex: 0 0 1.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  border: 1px solid #ffffff40;
+  border-radius: .375rem;
+  background: #ffffff08;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s;
+}
+input[type=checkbox]:checked {
+  border-color: #e0bb95;
+  background: #e0bb95 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m5 10 3.5 3.5L15 7' fill='none' stroke='%2311162b' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 1rem no-repeat;
+}
+input[type=checkbox]:focus-visible { outline: 2px solid #e0bb95; outline-offset: 3px; }
+input[type=checkbox]:disabled { cursor: default; opacity: .45; }
+@media (forced-colors: active) {
+  input[type=checkbox] { appearance: auto; }
+}
