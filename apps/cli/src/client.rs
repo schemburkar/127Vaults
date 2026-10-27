@@ -643,7 +643,15 @@ pub fn unlock_with_offline_fallback(
                 session.offline_reason = Some(online_error.clone());
                 session
             })
-            .map_err(|offline_error| format!("{online_error}; {offline_error}")),
+            .map_err(|offline_error| combine_unlock_errors(&online_error, &offline_error)),
+    }
+}
+
+fn combine_unlock_errors(online: &str, offline: &str) -> String {
+    if online == offline {
+        online.to_owned()
+    } else {
+        format!("{online}; {offline}")
     }
 }
 
@@ -3913,6 +3921,18 @@ pub(crate) mod device_transport_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unlock_errors_report_identical_failures_once_and_preserve_distinct_causes() {
+        assert_eq!(
+            combine_unlock_errors("license locked", "license locked"),
+            "license locked"
+        );
+        assert_eq!(
+            combine_unlock_errors("server unavailable", "cached license expired"),
+            "server unavailable; cached license expired"
+        );
+    }
 
     #[test]
     fn removal_journal_preserves_exact_retry_request() {

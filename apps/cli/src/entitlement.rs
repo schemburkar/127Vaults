@@ -12,7 +12,10 @@ pub fn authorize(status: &Value, observed: i64, now: i64, write: bool) -> Result
             .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
             .map_or(0, |value| value.timestamp())
     };
-    if now < observed || !matches!(mode, "active" | "read-only") {
+    if now < observed || status["clockState"] == "rollback_detected" {
+        return Err("License access is paused because the system clock moved backward. Ask the operator to verify the server and device clocks; existing encrypted data is preserved".into());
+    }
+    if !matches!(mode, "active" | "read-only") {
         return Err("A valid signed license is required. Ask the operator to install a license; existing encrypted data is preserved".into());
     }
     let allowed = if write {
@@ -35,6 +38,18 @@ pub fn authorize(status: &Value, observed: i64, now: i64, write: bool) -> Result
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn clock_rollback_explains_the_actual_access_failure() {
+        let status = json!({"mode":"locked","clockState":"rollback_detected"});
+        let error = authorize(&status, 100, 101, false).unwrap_err();
+        assert!(error.contains("system clock moved backward"));
+        assert!(!error.contains("install a license"));
+        assert!(
+            authorize(&json!({"mode":"active"}), 102, 101, false)
+                .unwrap_err()
+                .contains("system clock moved backward")
+        );
+    }
     #[test]
     fn access_and_export_require_a_license_within_grace_and_writes_require_active() {
         let status = json!({"mode":"active","expiresAt":"2030-01-01T00:00:00Z","readOnlyUntil":"2030-01-31T00:00:00Z"});

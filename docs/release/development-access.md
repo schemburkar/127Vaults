@@ -43,3 +43,15 @@ the newly created request and leaves the original installation's invitation alon
 If matching development access already exists, it reuses it instead of creating a
 duplicate. Normal intake notifications may run; no invitation email is sent.
 Do not bypass the service by editing D1 records or changing signed license dates.
+
+For a development server locked after an accidental clock change, first verify
+Windows, the container and an independent UTC reference agree. A normal restart
+preserves the clock checkpoint and cannot repair a checkpoint ahead of real time.
+Use `scripts/ops/recover-development-clock.mjs --container <name> --identity
+<absolute-identity-directory> --receipt <new-private-directory> --reference-time
+<verified-UTC-ISO-time>` for a confirmed rollback under one day. The command
+requires an active signed development license, verifies the container's identity
+mounts and clocks, stops only that server, backs up the original checkpoint,
+updates its clock observation and restarts it. It preserves the signed license
+and encrypted data. Keep the receipt and verify `/api/v1/setup` returns
+`licenseMode: active` and `licenseClockState: trusted` before retrying unlock.
