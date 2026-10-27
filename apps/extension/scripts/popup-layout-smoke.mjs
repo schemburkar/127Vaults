@@ -19,14 +19,14 @@ try {
  await page.addInitScript(()=>{
   window.fixtureUnlocked=false;
   window.fixtureSourcesReady=new Promise(done=>{window.releaseFixtureSources=done;});
-  window.chrome={storage:{local:{async get(){return {passkeysAllSites:true};}}},permissions:{async contains(){return true;}},tabs:{async query(){return [{id:1,url:'https://example.test/login'}];}},scripting:{async getRegisteredContentScripts(){return [{id:'passkey-bridge-all',world:'ISOLATED',matches:['https://*/*']},{id:'passkey-page-all',world:'MAIN',matches:['https://*/*']}];}},runtime:{async sendMessage(message){
+  window.chrome={storage:{local:{async get(){return {passkeysAllSites:true};}}},permissions:{async contains(){return true;}},tabs:{async query(){return [{id:1,url:window.fixturePageUrl || 'https://example.test/login'}];}},scripting:{async getRegisteredContentScripts(){return [{id:'passkey-bridge-all',world:'ISOLATED',matches:['https://*/*']},{id:'passkey-page-all',world:'MAIN',matches:['https://*/*']}];}},runtime:{async sendMessage(message){
    if(message.kind==='passkey.pending')return {requests:[]};
    if(message.kind==='connector.request'){
     const request=message.request;window.lastConnectorAction=request.action;
     if(request.action==='sources')await window.fixtureSourcesReady;
     if(request.action==='sources')return {ok:true,value:{sources:[{id:'desktop',configured:true,active:window.fixtureUnlocked,online:true,sync:{lastVerifiedSyncAt:1793090000}}]}};
     if(request.action==='open.desktop')return {ok:true,value:{opened:true}};
-    if(request.action==='list')return window.fixtureUnlocked?{ok:true,value:window.fixtureNoItems?[]:[{itemId:'fixture',title:'Example login',username:'alice',website:'https://example.test'}]}:{ok:false,error:'locked'};
+    if(request.action==='list')return window.fixtureUnlocked?{ok:true,value:window.fixtureNoItems?[]:[{itemId:'fixture',title:'Example login',username:'alice',website:window.fixtureWebsite || 'https://example.test'}]}:{ok:false,error:'locked'};
     if(request.action==='passkey.list')return {ok:true,value:[]};
    }
    throw Error('Unexpected popup request');
@@ -51,8 +51,12 @@ try {
  assert.equal(await page.evaluate(()=>window.lastConnectorAction),'open.desktop');
  await page.locator('#change-source').click();
  assert.equal(await page.locator('#source-select').isVisible(),true);
- await page.evaluate(()=>{window.fixtureUnlocked=true;});
+ await page.evaluate(()=>{window.fixtureUnlocked=true;window.fixtureSourcesReady=new Promise(done=>{window.releaseFixtureSources=done;});});
  await page.locator('#refresh-sources').click();
+ await page.locator('#loading-view').waitFor({state:'visible'});
+ for(const id of ['locked-view','results','status','source-controls','source-badge','lock-vault','extension-settings']) assert.equal(await page.locator('#'+id).isVisible(),false,id+' must disappear while checking');
+ await page.screenshot({path:join(output,'refresh-loading.png')});
+ await page.evaluate(()=>window.releaseFixtureSources());
  await page.locator('#items .item').waitFor({state:'visible'});
  await page.locator('#change-source').click();
  assert.equal(await page.locator('#source-badge').innerText(),'Desktop');
@@ -71,6 +75,11 @@ try {
  await page.locator('#refresh-sources').click();
  await page.waitForFunction(()=>document.querySelector('#status').textContent==='No sign-ins saved for this site.');
  assert.equal((await page.locator('#change-source').boundingBox()).x,source.x);
+ await page.evaluate(()=>{window.fixtureNoItems=false;window.fixturePageUrl='https://www.twilio.com/login';window.fixtureWebsite='twilio.com';});
+ await page.locator('#refresh-sources').click();
+ await page.locator('#items .item').waitFor({state:'visible'});
+ assert.equal(await page.locator('#site').innerText(),'www.twilio.com');
+ assert.equal(await page.locator('#status').innerText(),'');
  assert.deepEqual(errors,[]);
  console.log('Popup smoke passed: locked CTA, native open action, source disclosure, unlocked results, secondary passkey settings. Screenshots: '+output);
 } finally {await browser.close();}

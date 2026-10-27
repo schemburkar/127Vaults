@@ -14,7 +14,7 @@ $receipt = [IO.Path]::GetFullPath($ReceiptDirectory)
 if (Test-Path -LiteralPath $receipt) { throw 'Choose a new receipt directory.' }
 # Only popup files change. Preserve native registrations, extension identity,
 # permissions, storage and all other installed package files.
-$files = @('popup.html', 'src/popup.css', 'src/popup.mjs')
+$files = @('popup.html', 'src/popup.css', 'src/popup.mjs', 'src/match.mjs')
 foreach ($file in $files) {
   if (!(Test-Path -LiteralPath (Join-Path $source $file)) -or !(Test-Path -LiteralPath (Join-Path $installed $file))) { throw "Required popup file missing: $file" }
 }

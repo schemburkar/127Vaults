@@ -119,12 +119,54 @@ fn website_value_matches(website: &str, site: &str) -> bool {
             url::Url::parse(&normalized).ok()
         })
         .is_some_and(|url| {
+            let Ok(page) = url::Url::parse(site) else {
+                return false;
+            };
+            let hosts_match = match (url.host_str(), page.host_str()) {
+                (Some(saved), Some(current)) => {
+                    saved == current
+                        || (url.domain().is_some()
+                            && page.domain().is_some()
+                            && (saved.strip_prefix("www.") == Some(current)
+                                || current.strip_prefix("www.") == Some(saved)))
+                }
+                _ => false,
+            };
             url.scheme() == "https"
+                && page.scheme() == "https"
                 && url.username().is_empty()
                 && url.password().is_none()
+                && page.username().is_empty()
+                && page.password().is_none()
                 && url.host_str().is_some_and(|host| !host.contains('*'))
-                && url.origin().ascii_serialization() == site
+                && url.port_or_known_default() == page.port_or_known_default()
+                && hosts_match
         })
+}
+
+#[test]
+fn www_login_matching_includes_explicit_additional_websites() {
+    let row = json!({"itemType":"login","itemId":"fixture","website":"console.twilio.com","customFields":[
+        {"id":"website-alias-one","type":"url","value":"twilio.com"}
+    ]});
+    for site in [
+        "https://twilio.com",
+        "https://www.twilio.com",
+        "https://console.twilio.com",
+    ] {
+        assert!(website_matches(&row, site));
+        assert_eq!(login_entries(&row, "vault", site).len(), 1);
+        assert!(entry_fields(&row, "", site).is_ok());
+    }
+    for site in [
+        "https://evil.twilio.com",
+        "https://twilio.com.evil.test",
+        "http://www.twilio.com",
+        "https://www.twilio.com:444",
+    ] {
+        assert!(!website_matches(&row, site));
+        assert!(entry_fields(&row, "", site).is_err());
+    }
 }
 
 #[test]

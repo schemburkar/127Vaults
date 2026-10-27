@@ -92,3 +92,6 @@ footer{display:flex;flex-wrap:wrap;gap:6px;align-items:start}
 .loading-spinner{width:16px;height:16px;border:2px solid #ffffff20;border-top-color:#e0bb95;border-radius:50%;animation:popup-spin .8s linear infinite}
 @keyframes popup-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.loading-spinner{animation:none}}
+
+/* Loading replaces the prior view, including stale messages and actions. */
+body[data-loading=true] :is(#status,#locked-view,#results,#source-controls,#passkey-request,#saved-passkeys,#source-badge,#lock-vault,#extension-settings){display:none!important}

@@ -47,4 +47,4 @@ records or change signed license dates.
 For an unpacked extension installed outside the checkout, refresh just its popup
 using `scripts/ops/refresh-local-extension.ps1 -InstalledDirectory <extension-root>
 -ReceiptDirectory <new-private-directory>`. This retains its manifest and browser
-identity, backs up the three changed popup files and verifies their hashes.
+identity, backs up the popup files and login-matching module and verifies their hashes.

@@ -9,8 +9,14 @@ export function originOf(value) {
 export function matchingLogin(website, pageUrl) {
   const saved = savedWebsiteOrigin(website);
   const page = originOf(pageUrl);
-  // Port is significant. No eTLD/suffix matching or HTTP downgrade.
-  return Boolean(saved && page && saved === page);
+  if (!saved || !page) return false;
+  const a = new URL(saved), b = new URL(page);
+  const isIp = host => host.startsWith('[') || /^\d+\.\d+\.\d+\.\d+$/.test(host);
+  // Only the conventional www/apex pair is equivalent. Other subdomains,
+  // ports, permission origins and passkey RP matching remain separate.
+  return a.port === b.port && (a.hostname === b.hostname
+    || (!isIp(a.hostname) && !isIp(b.hostname)
+      && (a.hostname === `www.${b.hostname}` || b.hostname === `www.${a.hostname}`)));
 }
 
 export function savedWebsiteOrigin(website) {

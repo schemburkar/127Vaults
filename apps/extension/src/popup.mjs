@@ -27,6 +27,10 @@ function status(message, error = false) {
   $('status').textContent = message;
   $('status').classList.toggle('error', error);
 }
+function setLoading(loading) {
+  document.body.dataset.loading = String(loading);
+  $('loading-view').hidden = !loading;
+}
 function showSourceControls(open) {
   $('source-controls').hidden = !open;
   $('change-source').setAttribute('aria-expanded', String(open));
@@ -179,7 +183,8 @@ async function loadSelectedSource() {
 async function refresh() {
   if (refreshInProgress || pending) return;
   refreshInProgress = true;
-  $('loading-view').hidden = false;
+  setLoading(true);
+  status('');
   sourceLoadRevision++;
   const previousSource = $('source-select').value;
   try {
@@ -229,7 +234,7 @@ async function refresh() {
   $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
     : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
-  } finally { $('loading-view').hidden = true; refreshInProgress = false; await passkeys.refresh().catch(error => status(errorMessage(error), true)); updatePopupView(); }
+  } finally { await passkeys.refresh().catch(error => status(errorMessage(error), true)); updatePopupView(); setLoading(false); refreshInProgress = false; }
 }
 async function choose(item) {
   if (pending) return;
@@ -295,7 +300,7 @@ $('connect').onclick = async () => {
     await refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
-$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => { if (!$('results').hidden) showSourceControls(false); return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(updatePopupView); };
+$('source-select').onchange = () => { setLoading(true); status(''); userSelectedSource = true; loadSelectedSource().then(() => { if (!$('results').hidden) showSourceControls(false); return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(() => { updatePopupView(); setLoading(false); }); };
 $('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('unlock-desktop').onclick = async () => {
@@ -344,7 +349,7 @@ $('search').oninput = renderItems;
 refresh().catch(error => status(errorMessage(error), true));
 let pollingSources = false;
 setInterval(async () => {
-  if (document.hidden || pending || refreshInProgress || pollingSources || !$('frames').hidden) return;
+  if (document.hidden || document.body.dataset.loading === 'true' || pending || refreshInProgress || pollingSources || !$('frames').hidden) return;
   pollingSources = true;
   try {
     await passkeys.refresh();
