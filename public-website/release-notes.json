@@ -9,6 +9,7 @@
       "Matched saved login websites across www and non-www addresses, including additional saved websites.",
       "Improved Desktop keyboard unlock, dismissible search suggestions, action icons, rounded checkboxes and consistent field heights.",
       "Fixed false license clock rollback warnings caused by virtual-machine timer drift.",
+      "Fixed restoring current-schema encrypted backups into a new installation while preserving installation identity checks.",
       "Protected enrolled server addresses from development-stack takeovers and added verified local server restart tooling.",
       "Made the public website dark by default for new visitors while retaining saved theme choices.",
       "Kept the two latest release notes on Downloads and moved earlier notes to a dedicated history page."

@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { databaseContainerArgs, nextSetupStep, waitForReadiness } from './test-install.mjs';
+import { databaseContainerArgs, nextSetupStep, waitForReadiness, restoreBackupSchema } from './test-install.mjs';
+
+test('restore accepts current schema backups only for the matching installation and database', () => {
+  const metadata = { serverId:'fixture-original', database:'vaults_experimental', requiredVersion:'schema-10' };
+  assert.equal(restoreBackupSchema(metadata,'fixture-original'),10);
+  assert.equal(restoreBackupSchema({...metadata,requiredVersion:'schema-9'},'fixture-original'),9);
+  assert.throws(()=>restoreBackupSchema(metadata,'other-installation'));
+  assert.throws(()=>restoreBackupSchema({...metadata,database:'other'},'fixture-original'));
+  for (const requiredVersion of ['schema-8','schema-11','schema-10\n','schema-010',undefined]) {
+    assert.throws(()=>restoreBackupSchema({...metadata,requiredVersion},'fixture-original'));
+  }
+});
 
 test('restore container selection is scoped by both Compose labels and refuses an invalid project', () => {
   const args = databaseContainerArgs('vaults-test-123456789abc');

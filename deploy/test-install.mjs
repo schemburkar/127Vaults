@@ -10,6 +10,14 @@ import { resolve, join } from 'node:path';
 import { installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
 import { discoverTailscale, discoverTailscaleIdentity, enableTailnetForward, tailscaleIPv4, validServerHostname, verifyHostnameAddress, checkPublication } from './private-network.mjs';
 
+export function restoreBackupSchema(metadata, installationId) {
+  if (metadata?.serverId !== installationId || metadata.database !== 'vaults_experimental'
+    || !/^schema-(9|10)$/.test(metadata.requiredVersion)) {
+    throw Error('Database backup does not match this restore identity or supported schema.');
+  }
+  return Number(metadata.requiredVersion.slice(7));
+}
+
 function readinessProbe({ origin, ca, token }) {
   return new Promise(resolveProbe => {
     const req = request(new URL('/health/ready', origin), {
@@ -193,9 +201,7 @@ async function restoreDatabase() {
   try {
     await chmod(temporary, 0o700).catch(() => {});
     const metadata = JSON.parse(await run(process.execPath, ['server.mjs', 'envelope', 'open', '--input', input, '--output', dump, '--key-file', key], { quiet: true }));
-    if (metadata.serverId !== restoreId || metadata.database !== 'vaults_experimental' || metadata.requiredVersion !== 'schema-9') {
-      throw Error('Database backup does not match this restore identity or supported schema.');
-    }
+    const restoreSchema = restoreBackupSchema(metadata, restoreId);
     await run(engine, ['load', '-i', 'postgres-image.tar']);
     await runCompose(['up', '-d', 'database']);
     databaseStarted = true;
@@ -217,7 +223,7 @@ async function restoreDatabase() {
       await runCompose(['exec', '-T', 'database', 'rm', '-f', '/tmp/database.dump']).catch(() => {});
     }
     const state = await runCompose(['exec', '-T', 'database', 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', "SELECT i.id::text || ' ' || s.version::text FROM vaults.installation i CROSS JOIN vaults.schema_version s"], { quiet: true });
-    if (state !== `${restoreId} 9`) throw Error('Restored database installation or schema differs from the backup metadata.');
+    if (state !== `${restoreId} ${restoreSchema}`) throw Error('Restored database installation or schema differs from the backup metadata.');
     console.log('Database restored into the new project and matched to the restored identity. Run install start, then verify an existing client login and item read.');
   } finally {
     await rm(temporary, { recursive: true, force: true });
