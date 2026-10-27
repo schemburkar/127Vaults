@@ -52,7 +52,8 @@
     "cloudflare:check": "node scripts/cloudflare/check.mjs",
     "cloudflare:test": "node --test apps/public-intake/test/cloudflare-worker.test.mjs scripts/cloudflare/*.test.mjs",
     "cloudflare:audit": "node scripts/cloudflare/deploy.mjs audit",
-    "test:acceptance:check": "node --test tests/acceptance/structure.test.mjs"
+    "test:acceptance:check": "node --test tests/acceptance/structure.test.mjs",
+    "website:release-notes": "node public-website/build-release-notes.mjs"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1152.0",

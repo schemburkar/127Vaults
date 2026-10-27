@@ -1,0 +1,49 @@
+[
+  {
+    "version": "0.1.17",
+    "date": "2026-10-27",
+    "summary": "Coordinated packages and Windows/Linux standalone installers.",
+    "changes": [
+      "Made extension sign-in listing and filling faster by batching local reads and removing repeated vault scans.",
+      "Simplified the extension popup with a clear Unlock desktop action, consistent footer icons and a dedicated loading view.",
+      "Matched saved login websites across www and non-www addresses, including additional saved websites.",
+      "Improved Desktop keyboard unlock, dismissible search suggestions, action icons, rounded checkboxes and consistent field heights.",
+      "Fixed false license clock rollback warnings caused by virtual-machine timer drift.",
+      "Protected enrolled server addresses from development-stack takeovers and added verified local server restart tooling.",
+      "Made the public website dark by default for new visitors while retaining saved theme choices.",
+      "Kept the two latest release notes on Downloads and moved earlier notes to a dedicated history page."
+    ]
+  },
+  {
+    "version": "0.1.16",
+    "date": "2026-10-24",
+    "summary": "Coordinated packages and Windows/Linux standalone installers.",
+    "changes": [
+      "Made Password Health a persistent web and desktop detail tab with issue filters, guidance and website change-password links.",
+      "Added an optional Have I Been Pwned password check using hash prefixes; passwords and complete hashes stay on the device.",
+      "Added desktop detail-pane resizing with remembered width, keyboard controls and double-click reset."
+    ]
+  },
+  {
+    "version": "0.1.15",
+    "date": "2026-10-23",
+    "summary": "Coordinated packages and Windows/Linux standalone installers.",
+    "changes": [
+      "Prevented overscroll past desktop window edges.",
+      "Changed desktop button focus rings to gold.",
+      "Reduced the top spacing in desktop item details."
+    ]
+  },
+  {
+    "version": "0.1.13",
+    "date": "2026-10-23",
+    "summary": "Desktop, CLI, browser extension, self-hosted server and combined installers.",
+    "changes": [
+      "Expanded 1Password imports and improved preservation of authenticator setup across imported items.",
+      "Improved device approval and request validation, with stronger handling of concurrent trial operations.",
+      "Prevented stale web saves from completing after a vault is locked.",
+      "Added per-person trial extensions in the access request desk.",
+      "Improved recovery of interrupted local release builds."
+    ]
+  }
+]
