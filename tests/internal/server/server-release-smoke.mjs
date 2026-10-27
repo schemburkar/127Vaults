@@ -10,6 +10,7 @@ import { connect } from 'node:net';
 import { existsSync } from 'node:fs';
 import { verify } from '../../../deploy/install.mjs';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
+import { legacyRegistrationBaseline } from '../../../scripts/release/registration-fixture.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
 const options = {};
@@ -158,7 +159,7 @@ try {
     const token = /127V-B1-[A-Za-z0-9_-]{43}/.exec(bootstrap)?.[0]; assert.ok(token);
     await writeFile(bootstrapPath, token, { mode: 0o600, flag: 'wx' });
     const result = JSON.parse(await run(['scripts/live-mvp-acceptance.mjs', origin, caPath, bootstrapPath], root,
-      { ...trusted, VAULTS_BASELINE_SERIAL_REPLAY: options['--upgrade-from'] ? '1' : '0' }));
+      { ...trusted, VAULTS_BASELINE_SERIAL_REPLAY: options['--upgrade-from'] ? '1' : '0', VAULTS_BASELINE_REGISTRATION: legacyRegistrationBaseline(options['--upgrade-from']) ? '1' : '0' }));
     assert.equal(result.ok, true);
     await run(['scripts/live-transport-acceptance.mjs', origin, caPath], root, trusted);
   });

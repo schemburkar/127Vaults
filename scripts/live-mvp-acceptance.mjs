@@ -5,6 +5,7 @@ import wasm from '../apps/server/wasm-auth/vaults_browser_fixture.cjs';
 import { registrationActivationBytes, authenticationContextHash } from '../apps/server/src/opaque-adapter.mjs';
 import { deviceProofBytes } from '../apps/server/src/auth-policy.mjs';
 import { createSignedOperation } from '../packages/sync/src/index.mjs';
+import { registrationFixtureRequest } from './release/registration-fixture.mjs';
 
 const endpoint=process.argv[2],caPath=process.argv[3],bootstrapPath=process.argv[4];
 if(!endpoint||!caPath||!bootstrapPath)throw Error('Usage: node scripts/live-mvp-acceptance.mjs <https-url> <ca.crt> <bootstrap.txt>');
@@ -24,7 +25,7 @@ function rootTemplate(tenant,account){let x=new Uint8Array(77);x[0]=1;x.set(id(t
 function activation(candidate,record,privateKey){return b64(sign(null,registrationActivationBytes({...candidate,opaqueRecord:b64(record)},record),privateKey));}
 async function registerCandidate({accountId,deviceId,username,email,password,secret,privateKey,publicRaw,core,tenant,token}){
  const start=wasm.ExperimentalOpaqueBridge.client_registration_start(secret,password),request=start.message();
- const server=await call('/api/v1/onboarding/register',{method:'POST',body:{accountId,deviceId,request:b64(request),token,email}});
+ const server=await call('/api/v1/onboarding/register',{method:'POST',body:registrationFixtureRequest({accountId,deviceId,request:b64(request),token,email},process.env.VAULTS_BASELINE_REGISTRATION==='1')});
  const upload=wasm.ExperimentalOpaqueBridge.client_registration_finish(start.state(),secret,password,un(server.value.response),un(server.value.binding));
  const root=core.create_root(rootTemplate(tenant,accountId),password,secret),directory=core.create_empty_directory(root);
  let candidate={accountId,deviceId,username,displayName:username,email,signingPublicKey:b64(publicRaw),opaqueUpload:b64(upload),wrappedRootDescriptor:b64(root.context()),wrappedRootEnvelope:b64(root.envelope()),privateDirectory:b64(directory),registrationArtifact:server.value.registrationArtifact};
@@ -36,7 +37,7 @@ const accountId='11111111-1111-4111-8111-111111111111',deviceId='22222222-2222-4
 const privateKey=createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),Buffer.alloc(32,9)]),format:'der',type:'pkcs8'}),publicKey=createPublicKey(privateKey),keys={privateKey,publicKey},publicRaw=publicKey.export({format:'der',type:'spki'}).subarray(-32),core=new wasm.ExperimentalEcf1Core();
 // Registration binding reveals only public installation/account/device context.
 const initial=wasm.ExperimentalOpaqueBridge.client_registration_start(secret,password);
-const rs=await call('/api/v1/onboarding/register',{method:'POST',body:{accountId,deviceId,request:b64(initial.message()),token:bootstrap,email:null}});
+const rs=await call('/api/v1/onboarding/register',{method:'POST',body:registrationFixtureRequest({accountId,deviceId,request:b64(initial.message()),token:bootstrap,email:null},process.env.VAULTS_BASELINE_REGISTRATION==='1')});
 const binding=un(rs.value.binding),originLength=binding.readUInt16BE(),tenant=[binding.subarray(2+originLength,18+originLength)].map(x=>[x.subarray(0,4),x.subarray(4,6),x.subarray(6,8),x.subarray(8,10),x.subarray(10)].map(y=>y.toString('hex')).join('-'))[0];
 const upload=wasm.ExperimentalOpaqueBridge.client_registration_finish(initial.state(),secret,password,un(rs.value.response),binding);
 const root=core.create_root(rootTemplate(tenant,accountId),password,secret),directory=core.create_empty_directory(root);
