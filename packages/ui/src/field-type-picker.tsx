@@ -45,7 +45,7 @@ export function FieldTypePicker({ value, onChange, options = kinds }: { value: s
   }}>
     <input type="hidden" className="field-type-value" value={value} readOnly />
     <button ref={trigger} type="button" aria-label={`Field type: ${labels[value] || value}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="ui-field-type-trigger flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/15 bg-[#11162b] px-3 py-2 text-sm text-slate-100 transition hover:border-[#E0BB95]/60 focus-visible:outline-2 focus-visible:outline-[#E0BB95]">
-      {labels[value] || value}<span aria-hidden="true" className="text-slate-400">⌄</span>
+      {labels[value] || value}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
     </button>
     {open && <div ref={popup} popover="manual" id={id} role="listbox" aria-label="Field type" className="fixed m-0 z-50 grid max-h-64 overflow-auto rounded-xl border border-white/15 bg-[#11162b] p-1 shadow-xl">
       {options.map(kind => <button key={kind} type="button" role="option" aria-selected={kind === value} onClick={() => { onChange(kind); setOpen(false); trigger.current?.focus(); }} className={`flex min-h-10 items-center justify-between gap-4 rounded-lg px-3 text-left text-sm text-slate-100 hover:bg-white/10 focus:bg-white/10 focus:outline-none ${kind === value ? "bg-white/10 text-[#E0BB95]" : ""}`}>
