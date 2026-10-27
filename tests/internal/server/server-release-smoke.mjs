@@ -97,7 +97,9 @@ async function fixturePort(directory) {
   // The shipped relay fixes both listen and target port at 12780. For this
   // isolated fixture only, invoke its same exported forwarding functions on
   // the selected free port; preserve all installed listeners and product code.
-  const relay = `import{relayConfig,createPrivateRelay}from'./apps/server/src/private-relay.mjs';const c={...relayConfig(process.env),port:${port},targetPort:${port}};for(const bind of[c.bind,c.backendBind])await createPrivateRelay({...c,bind}).start();`;
+  // Preserve the current relay's source metadata handshake. Older baseline
+  // relays ignore this option; current servers require it from their trusted peer.
+  const relay = `import{relayConfig,createPrivateRelay}from'./apps/server/src/private-relay.mjs';const c={...relayConfig(process.env),port:${port},targetPort:${port},sourceMetadata:true};for(const bind of[c.bind,c.backendBind])await createPrivateRelay({...c,bind}).start();`;
   const content = original.replaceAll(':12780', `:${port}`)
     .replace("      VAULTS_EXPERIMENTAL: '1'", `      PORT: '${port}'\n      VAULTS_EXPERIMENTAL: '1'`)
     .replace('    command: [node, apps/server/src/entry.mjs, relay]', '    command: '+JSON.stringify(['node','--input-type=module','-e',relay]))
