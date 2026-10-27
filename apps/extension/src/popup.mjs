@@ -27,6 +27,10 @@ function status(message, error = false) {
   $('status').textContent = message;
   $('status').classList.toggle('error', error);
 }
+function showSourceControls(open) {
+  $('source-controls').hidden = !open;
+  $('change-source').setAttribute('aria-expanded', String(open));
+}
 function updatePopupView() {
   const locked = $('results').hidden && ['desktop', 'cli'].includes(selectedSource);
   $('locked-view').hidden = !locked;
@@ -175,6 +179,7 @@ async function loadSelectedSource() {
 async function refresh() {
   if (refreshInProgress || pending) return;
   refreshInProgress = true;
+  $('loading-view').hidden = false;
   sourceLoadRevision++;
   const previousSource = $('source-select').value;
   try {
@@ -210,6 +215,8 @@ async function refresh() {
     $('source-select').append(element);
   }
   if (!options.length) {
+    selectedSource = null;
+    showSourceControls(true);
     $('setup').hidden = false;
     status(connectorError
       ? 'Local connector unavailable. Check native-host registration, or connect an unlocked web tab.'
@@ -222,7 +229,7 @@ async function refresh() {
   $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
     : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
-  } finally { refreshInProgress = false; await passkeys.refresh().catch(error => status(errorMessage(error), true)); updatePopupView(); }
+  } finally { $('loading-view').hidden = true; refreshInProgress = false; await passkeys.refresh().catch(error => status(errorMessage(error), true)); updatePopupView(); }
 }
 async function choose(item) {
   if (pending) return;
@@ -288,15 +295,16 @@ $('connect').onclick = async () => {
     await refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
-$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => { if (!$('results').hidden) $('source-controls').open = false; return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(updatePopupView); };
+$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => { if (!$('results').hidden) showSourceControls(false); return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(updatePopupView); };
 $('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('unlock-desktop').onclick = async () => {
   try { await native({ action: 'open.desktop', source: 'desktop' }); status('Finish unlocking in Desktop. This popup reconnects automatically.'); }
   catch { status('Open 127Vaults Desktop and unlock it. If it does not open, update the local connector.', true); }
 };
+$('change-source').onclick = () => showSourceControls($('source-controls').hidden);
 $('settings').onclick = () => {
-  $('source-controls').open = true;
+  showSourceControls(true);
   $('extension-settings').open = false;
   $('setup').hidden = false;
   $('vault-url').value = vaultOrigin || '';
