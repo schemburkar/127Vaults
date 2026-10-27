@@ -1,3 +1,4 @@
+import { requestSource } from './relay-ingress.mjs';
 import { randomBytes } from 'node:crypto';
 import { AUTH_COOKIE, AuthError, clearSessionCookie, requireUnsafeRequest, sessionCookie, strictJson } from './auth-policy.mjs';
 import { readRequestBody, writeError, writeJson } from './http-boundary.mjs';
@@ -37,7 +38,7 @@ export function createAuthHandler(service, configuredOrigin) {
         if (req.headers.origin !== configuredOrigin) throw new AuthError(403);
         const value = strictJson(req, await readRequestBody(req), ['username', 'deviceId', 'request']);
         const csrf = randomBytes(32).toString('base64url');
-        const result = await service.start({ ...value, origin: configuredOrigin, source: req.socket.remoteAddress ?? 'unknown' });
+        const result = await service.start({ ...value, origin: configuredOrigin, source: requestSource(req) });
         reply(200, { ...result, csrf }, { 'Set-Cookie': ceremonyCookie(csrf) }); return true;
       }
       if (passwordMatch) {

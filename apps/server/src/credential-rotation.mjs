@@ -14,6 +14,16 @@ const binary = (value,max) => {
   return bytes;
 };
 
+export function credentialPreparationBytes({auth,origin,kind,request,deviceId,nonce,issuedAt}) {
+  decodeField(request,32);decodeField(nonce,32);
+  if(!['password','account-secret'].includes(kind)||!uuid(deviceId)||!Number.isSafeInteger(issuedAt)||typeof auth.csrf!=='string')throw new AuthError(400);
+  return Buffer.concat([Buffer.from('127Vaults/credential-preparation/1\0'),canonicalBytes({
+    origin,kind,tenantId:auth.tenantId,accountId:auth.accountId,deviceId:auth.deviceId,
+    credentialEpoch:auth.credentialEpoch,sessionBinding:sha(Buffer.from(auth.csrf)),
+    newDeviceId:deviceId,request,nonce,issuedAt
+  })]);
+}
+
 // The current device authorizes the entire replacement, independently of the
 // new device's activation/possession proof. This is not a bearer-session reset.
 export function credentialRotationBytes({ auth, kind, epoch, candidate, artifact, settings=null }) {
@@ -59,15 +69,28 @@ export class PgCredentialRotationStore {
       JOIN vaults.sessions s ON(s.tenant_id=a.tenant_id AND s.account_id=a.id AND s.device_id=d.id AND s.session_id=$4)
       WHERE a.tenant_id=$1 AND a.id=$2 AND a.enrollment_state='active' AND a.suspended_at IS NULL
         AND d.lifecycle_status='active' AND d.credential_epoch=c.credential_epoch
-        AND s.revoked_at IS NULL AND s.expires_at>now() AND s.created_at>now()-interval '5 minutes'
+        AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND s.created_at>clock_timestamp()-interval '5 minutes'
         AND s.credential_epoch=c.credential_epoch AND s.session_epoch=a.session_epoch AND s.device_auth_epoch=d.auth_epoch
       FOR UPDATE OF a,c,d,s`,[auth.tenantId,auth.accountId,auth.deviceId,auth.sessionId])).rows[0];
     if (!row || Number(row.credential_epoch)!==auth.credentialEpoch) throw new AuthError(403);
     return row;
   }
-  prepare(auth) { return this.transaction(async client => {
+  prepare(auth,input) { return this.transaction(async client => {
     const row=await this.context(client,auth),epoch=Number(row.credential_epoch)+1;
     if (!Number.isSafeInteger(epoch)) throw new AuthError(400);
+    if(!input||Math.abs(Date.now()-input.issuedAt)>120000)throw new AuthError(403);
+    const message=credentialPreparationBytes({...input,auth});
+    const key=createPublicKey({key:Buffer.concat([Buffer.from('302a300506032b6570032100','hex'),row.signing_public_key]),format:'der',type:'spki'});
+    if(!verify(null,message,key,decodeField(input.authorizationSignature,64)))throw new AuthError(403);
+    if(input.kind==='password'&&input.deviceId!==auth.deviceId)throw new AuthError(403);
+    const prefix=`rotation:${auth.accountId}:`,marker=prefix+sha(decodeField(input.nonce,32));
+    // The account row locked by context serializes admission. Keep consumed
+    // nonces longer than the complete signed timestamp/skew window.
+    await client.query("DELETE FROM vaults.security_request_limits WHERE tenant_id=$1 AND purpose='registration' AND left(source,length($2))=$2 AND created_at<clock_timestamp()-interval '5 minutes'",[auth.tenantId,prefix]);
+    const rate=(await client.query("SELECT count(*) FILTER(WHERE created_at>clock_timestamp()-interval '1 minute')::int n,count(*) FILTER(WHERE source=$3)::int used FROM vaults.security_request_limits WHERE tenant_id=$1 AND purpose='registration' AND left(source,length($2))=$2",[auth.tenantId,prefix,marker])).rows[0];
+    if(rate.used>0)throw new AuthError(403);
+    if(rate.n>=5)throw new AuthError(429,60);
+    await client.query("INSERT INTO vaults.security_request_limits(tenant_id,purpose,source,created_at) VALUES($1,'registration',$2,clock_timestamp())",[auth.tenantId,marker]);
     return epoch;
   }); }
   commit(auth,{kind,candidate,artifact,authorizationSignature,settings=null}) {
@@ -127,10 +150,10 @@ export function createCredentialRotationHandler({store,authenticate,origin,regis
       const auth=await authenticate(cookies[0].slice(AUTH_COOKIE.length+1));
       requireUnsafeRequest(req,origin,req.headers['x-127v-csrf'],auth.csrf);
       const kind=match[1],purpose=kind==='password'?'password-rotation':'secret-rotation';
-      const value=parseJsonObject(req,await readRequestBody(req,64*1024),match[2]?['request','deviceId']:['candidate','authorizationSignature','settings']);
+      const value=parseJsonObject(req,await readRequestBody(req,64*1024),match[2]?['request','deviceId','nonce','issuedAt','authorizationSignature']:['candidate','authorizationSignature','settings']);
       if (match[2]) {
         if(!uuid(value.deviceId) || kind==='password'&&value.deviceId!==auth.deviceId)throw new AuthError(400);
-        const epoch=await store.prepare(auth);
+        const epoch=await store.prepare(auth,{...value,kind,origin});
         writeJson(res,200,await registration.startRotation({accountId:auth.accountId,deviceId:value.deviceId,request:value.request},
           {purpose,credentialEpoch:epoch,sessionId:auth.sessionId,approverDeviceId:auth.deviceId}));
       } else {
@@ -141,7 +164,7 @@ export function createCredentialRotationHandler({store,authenticate,origin,regis
       }
     } catch(error) {
       const status=error instanceof AuthError || error instanceof HttpBoundaryError?error.status:503;
-      writeError(res,status,status===401?'authentication_required':status===403?'fresh_device_auth_required':status===503?'unavailable':'invalid_request');
+      writeError(res,status,status===401?'authentication_required':status===403?'fresh_device_auth_required':status===429?'rate_limited':status===503?'unavailable':'invalid_request',error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});
     }
     return true;
   };

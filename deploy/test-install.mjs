@@ -164,6 +164,7 @@ async function initialize() {
     `VAULTS_BACKEND_SUBNET=172.28.${chosenOctet}.0/24`,
     `VAULTS_SERVER_IP=172.28.${chosenOctet}.2`,
     `VAULTS_DATABASE_IP=172.28.${chosenOctet}.3`,
+    `VAULTS_RELAY_IP=172.28.${chosenOctet}.4`,
     `VAULTS_TLS_DIR=${privateDir.replaceAll('\\', '/')}`,
     `VAULTS_ACCESS_MODE=${useTailscale ? 'tailscale' : networkAddress === '127.0.0.1' || networkAddress === 'localhost' ? 'loopback' : 'private-lan'}`,
     `VAULTS_ENDPOINT_HOST=${endpoint}`,

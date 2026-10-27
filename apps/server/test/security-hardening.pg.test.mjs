@@ -14,9 +14,9 @@ import { OnboardingService, newInviteToken, decodeToken, tokenDigest } from '../
 import { PgDeviceLifecycleStore } from '../src/device-lifecycle-pg.mjs';
 import { PgPrivateVaultStore } from '../src/private-vault-pg.mjs';
 import { PgSignedSyncStore } from '../src/sync-pg.mjs';
-import { PgCredentialRotationStore, credentialRotationBytes } from '../src/credential-rotation.mjs';
+import { PgCredentialRotationStore, credentialRotationBytes, credentialPreparationBytes, createCredentialRotationHandler } from '../src/credential-rotation.mjs';
 import { registrationActivationBytes } from '../src/opaque-adapter.mjs';
-import { PgVaultSettingsStore } from '../src/vault-settings-handler.mjs';
+import { PgVaultSettingsStore, createVaultSettingsHandler } from '../src/vault-settings-handler.mjs';
 
 const url=process.env.VAULTS_SECURITY_DATABASE_URL;
 const b64=value=>Buffer.from(value).toString('base64url');
@@ -78,6 +78,10 @@ test('offline PostgreSQL and real OPAQUE security regressions',{skip:!url,timeou
         return {...await authService.authenticate(session.token),token:session.token};
       } finally {finish.free()}
     } finally {start.free()}
+  }
+  function preparation(auth,user,kind,request,deviceId=user.deviceId) {
+    const value={kind,origin,request,deviceId,nonce:b64(randomBytes(32)),issuedAt:Date.now()};
+    return {...value,authorizationSignature:b64(sign(null,credentialPreparationBytes({auth,...value}),user.key.privateKey))};
   }
   let aliceAuth,bobAuth;
   await t.test('real sign-in binds each session to its own account and device',async()=>{
@@ -145,8 +149,9 @@ test('offline PostgreSQL and real OPAQUE security regressions',{skip:!url,timeou
     await assert.rejects(store.items(bobAuth,vault),{code:'NOT_FOUND'});
   });
   await t.test('signed rotation replaces OPAQUE material, rejects cross-account authorization and revokes old sessions',async()=>{
-    const store=new PgCredentialRotationStore(pool),epoch=await store.prepare(aliceAuth),password=Buffer.from('replacement-password-only');
+    const store=new PgCredentialRotationStore(pool),password=Buffer.from('replacement-password-only');
     const step=bridge.client_registration_start(alice.secret,password);
+    const epoch=await store.prepare(aliceAuth,preparation(aliceAuth,alice,'password',b64(step.message())));
     const prepared=await registration.startRotation({accountId:alice.accountId,deviceId:alice.deviceId,request:b64(step.message())},
       {purpose:'password-rotation',credentialEpoch:epoch,sessionId:aliceAuth.sessionId,approverDeviceId:alice.deviceId});
     const record=Buffer.from(bridge.client_registration_finish(step.state(),alice.secret,password,bytes(prepared.response),bytes(prepared.binding)));
@@ -173,10 +178,11 @@ test('offline PostgreSQL and real OPAQUE security regressions',{skip:!url,timeou
   await t.test('account-secret rotation requires both devices proofs and retires all prior devices',async()=>{
     const store=new PgCredentialRotationStore(pool);
     await pool.query("UPDATE vaults.sessions SET created_at=now()-interval '10 minutes',expires_at=now()+interval '1 hour' WHERE session_id=$1",[aliceAuth.sessionId]);
-    await assert.rejects(store.prepare(aliceAuth),{status:403});
+    await assert.rejects(store.prepare(aliceAuth,{}),{status:403});
     await pool.query('UPDATE vaults.sessions SET created_at=now() WHERE session_id=$1',[aliceAuth.sessionId]);
-    const epoch=await store.prepare(aliceAuth),secret=randomBytes(32),replacement=generateKeyPairSync('ed25519'),deviceId=randomUUID();
+    const secret=randomBytes(32),replacement=generateKeyPairSync('ed25519'),deviceId=randomUUID();
     const step=bridge.client_registration_start(secret,alice.password);
+    const epoch=await store.prepare(aliceAuth,preparation(aliceAuth,alice,'account-secret',b64(step.message()),deviceId));
     const prepared=await registration.startRotation({accountId:alice.accountId,deviceId,request:b64(step.message())},
       {purpose:'secret-rotation',credentialEpoch:epoch,sessionId:aliceAuth.sessionId,approverDeviceId:aliceAuth.deviceId});
     const record=Buffer.from(bridge.client_registration_finish(step.state(),secret,alice.password,bytes(prepared.response),bytes(prepared.binding)));
@@ -203,5 +209,48 @@ test('offline PostgreSQL and real OPAQUE security regressions',{skip:!url,timeou
     const stored=(await pool.query('SELECT envelope FROM vaults.private_account_settings WHERE account_id=$1',[alice.accountId])).rows[0].envelope;
     assert.equal(Buffer.from(core.decrypt_account_settings(root,stored)).toString(),'{"version":1}');
     step.free();
+  });
+  await t.test('rotation preparation rejects missing device proof, replay, altered requests and excess evaluations',async()=>{
+    const user=await fixture('security_rotation','user'),auth=await login(user),store=new PgCredentialRotationStore(pool);
+    const step=bridge.client_registration_start(user.secret,user.password);
+    try {
+      const request=b64(step.message()),proof=preparation(auth,user,'password',request);
+      await assert.rejects(store.prepare(auth,{...proof,authorizationSignature:undefined}));
+      await assert.rejects(store.prepare(auth,{...proof,request:b64(randomBytes(32))}));
+      await assert.rejects(store.prepare(auth,{...proof,origin:'https://other.invalid'}));
+      await assert.rejects(store.prepare(auth,{...proof,issuedAt:Date.now()-180000}));
+      const another=await login(user);
+      await assert.rejects(store.prepare(another,proof));
+      assert.equal(await store.prepare(auth,proof),2);
+      await assert.rejects(store.prepare(auth,proof),{status:403});
+      for(let i=0;i<4;i++)assert.equal(await store.prepare(auth,preparation(auth,user,'password',request)),2);
+      await assert.rejects(store.prepare(auth,preparation(auth,user,'password',request)),{status:429});
+    } finally {step.free()}
+  });
+  await t.test('a previously authenticated principal cannot write after logout, suspension or device revocation',async()=>{
+    const user=await fixture('security_revocation','user'),store=new PgVaultSettingsStore(pool);
+    for(const invalidate of [
+      auth=>authService.logout(auth.token),
+      ()=>pool.query('UPDATE vaults.accounts SET suspended_at=now(),session_epoch=session_epoch+1 WHERE id=$1',[user.accountId]),
+      ()=>pool.query("UPDATE vaults.devices SET lifecycle_status='revoked',auth_epoch=auth_epoch+1,revoked_at=now() WHERE id=$1",[user.deviceId])
+    ]) {
+      const auth=await login(user);
+      // Pause the HTTP body after authentication, exactly at the original race.
+      let release,entered;
+      const gate=new Promise(done=>release=done),waiting=new Promise(done=>entered=done);
+      const envelope=Buffer.from(core.encrypt_account_settings(user.root,Buffer.from('{"version":1}')));
+      const body=Buffer.from(JSON.stringify({baseRevision:null,revision:uuid(envelope.subarray(76,92)),envelope:b64(envelope)}));
+      const req={url:'/api/v1/vault-settings',method:'PUT',headers:{origin,'content-type':'application/json',cookie:`__Host-127v-session=${auth.token}`,'x-127v-csrf':auth.csrf},
+        async *[Symbol.asyncIterator](){entered();await gate;yield body;}};
+      const res={writeHead(status){this.status=status;},end(){}};
+      const pending=createVaultSettingsHandler(store,token=>authService.authenticate(token),origin)(req,res);
+      await waiting;
+      await invalidate(auth);
+      await assert.rejects(authService.authenticate(auth.token));
+      release();await pending;assert.equal(res.status,401);
+      await assert.rejects(store.put(auth,{baseRevision:null,revision:randomUUID(),envelope:Buffer.alloc(174)}),{status:401});
+      assert.equal((await pool.query('SELECT count(*)::int n FROM vaults.private_account_settings WHERE account_id=$1',[user.accountId])).rows[0].n,0);
+      await pool.query('UPDATE vaults.accounts SET suspended_at=NULL WHERE id=$1',[user.accountId]);
+    }
   });
 });

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPrivateKey, createPublicKey, randomUUID, sign, verify } from 'node:crypto';
 import pg from 'pg';
+import { seedPrincipalSession } from './principal-fixture.mjs';
 import { createServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -37,6 +38,7 @@ test('PostgreSQL owner can approve, enroll and revoke a second device without ch
     for (const [account, device, keys] of [[owner, current, currentKeys], [otherAccount, otherDevice, otherKeys]]) {
       await pool.query('INSERT INTO vaults.devices(tenant_id,account_id,id,signing_public_key,credential_epoch,credential_epoch_seen) VALUES($1,$2,$3,$4,1,1)', [tenant, account, device, keys.raw]);
     }
+    await seedPrincipalSession(pool,auth);await seedPrincipalSession(pool,otherAuth);
     const store = new PgDeviceLifecycleStore(pool);
     const request = { deviceId: proposed, publicKey: proposedKeys.raw.toString('base64url'), purpose: 'enrollment-request', username: 'DeviceOwner' };
     const started = await store.requestEnrollment({ username: request.username, newDeviceId: proposed, newDevicePublicKey: request.publicKey, requestSignature: signature(request, proposedKeys) });
@@ -85,7 +87,7 @@ test('PostgreSQL owner can approve, enroll and revoke a second device without ch
     const audit = (await pool.query("SELECT actor_device_id,subject_device_id,action,outcome FROM vaults.device_lifecycle_audit WHERE action='device.revoke'")).rows;
     assert.deepEqual(audit, [{ actor_device_id: current, subject_device_id: proposed, action: 'device.revoke', outcome: 'accepted' }]);
     await assert.rejects(store.revoke(auth, { deviceId: proposed }), { code: 'AUTH_REQUIRED' });
-    await assert.rejects(store.approveEnrollmentRequest({ ...auth, deviceId: proposed }, { enrollmentId: randomUUID(), approvalSignature: signature(binding, proposedKeys) }), { code: 'AUTH_REQUIRED' });
+    await assert.rejects(store.approveEnrollmentRequest({ ...auth, deviceId: proposed }, { enrollmentId: randomUUID(), approvalSignature: signature(binding, proposedKeys) }), { status:401 });
     assert.equal(Number((await pool.query('SELECT count(*) AS n FROM vaults.private_items')).rows[0].n), 0);
     if (process.env.VAULTS_DEVICE_TEST_BINARY) {
       await rustCeremony(pool, store, auth);

@@ -71,7 +71,7 @@ test('rotation HTTP requires current CSRF and uses the authenticated account, no
   assert.equal((await exchange({request:'opaque',deviceId},'wrong')).status,403);
   assert.equal((await exchange({request:'opaque',deviceId,accountId:'victim'})).status,400);
   assert.equal(calls.length,0);
-  assert.equal((await exchange({request:'opaque',deviceId})).status,200);
+  assert.equal((await exchange({request:'opaque',deviceId,nonce:'nonce',issuedAt:1,authorizationSignature:'signed'})).status,200);
   assert.equal(calls[0].input.accountId,accountId);assert.equal(calls[0].scope.purpose,'password-rotation');
   assert.equal(calls[0].scope.credentialEpoch,2);
 });

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import pg from 'pg';
+import { seedPrincipalSession } from './principal-fixture.mjs';
 import { schemaSql, schemaV8MigrationSql, schemaV9MigrationSql, schemaV10MigrationSql, schemaV7Checksum, requireSchema } from '../src/schema.mjs';
 import { migrateSchema7To8, migrateSchema8To9, migrateSchema9To10 } from '../src/schema-migration.mjs';
 import { PgPrivateVaultStore } from '../src/private-vault-pg.mjs';
@@ -42,6 +43,8 @@ test('real Core/HTTP/PostgreSQL deletion migrates safely, is atomic, replays rec
   await pool.query('INSERT INTO vaults.installation(id) VALUES($1)',[tenant]);
   await pool.query("INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state) VALUES($1,$2,'DeleteFixture','Delete Fixture','delete@example.invalid','owner','active')",[tenant,account]);
   await pool.query('INSERT INTO vaults.devices(tenant_id,account_id,id,signing_public_key,credential_epoch,credential_epoch_seen) VALUES($1,$2,$3,$4,1,1)',[tenant,account,device,key.publicKey.export({format:'der',type:'spki'}).subarray(-32)]);
+  await pool.query('INSERT INTO vaults.authentication_credentials(tenant_id,account_id,opaque_record,wrapped_root_descriptor,wrapped_root_envelope) VALUES($1,$2,$3,$4,$4)',[tenant,account,Buffer.alloc(192),Buffer.alloc(93)]);
+  await seedPrincipalSession(pool,auth);
   await pool.query('INSERT INTO vaults.private_directories(tenant_id,account_id,revision,directory) VALUES($1,$2,$3,$4)',[tenant,account,uuid(empty.slice(36,52)),Buffer.from(empty)]);
   await store.mutate({auth,method:'POST',path:'/api/v1/vaults',raw:Buffer.from('synthetic-vault-create'),requestId:randomUUID(),baseDirectoryRevision:uuid(empty.slice(36,52)),directoryBytes:Buffer.from(made.directory()),vaultEnvelope:Buffer.from(vault.envelope()),catalogueBytes:Buffer.from(made.catalogue()),action:'vault.create'});
   const before=(await pool.query('SELECT catalogue,vault_envelope FROM vaults.private_vaults')).rows;

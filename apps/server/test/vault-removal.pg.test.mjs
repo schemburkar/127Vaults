@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { seedPrincipalSession } from './principal-fixture.mjs';
 import { schemaSql } from '../src/schema.mjs';
 import { PgVaultRemovalStore, parseRemoval, parseRestore } from '../src/vault-removal-handler.mjs';
 
@@ -34,7 +35,8 @@ test('PostgreSQL archive, restore, and complete move retain all encrypted item r
     }
     for (const [vault, item] of [[source, sourceItem], [destination, destinationItem]]) await pool.query('INSERT INTO vaults.private_items(tenant_id,vault_id,item_id,logical_revision,index_revision,body_revision,index_envelope,body_envelope) VALUES($1,$2,$3,$4,$4,$4,$5,$5)', [tenant, vault, item, randomUUID(), Buffer.alloc(174)]);
     await pool.query("INSERT INTO vaults.sync_operations(tenant_id,vault_id,cursor,protocol_version,operation_id,device_id,epoch,causal_base,kind,item_id,payload_hash,signature) VALUES($1,$2,1,1,$3,$4,1,0,'item.create',$5,$6,$7)", [tenant, destination, zero32, device, destinationItem, zero32, Buffer.alloc(64)]);
-    const auth = { tenantId: tenant, accountId: account, credentialEpoch:1 };
+    const auth = { tenantId: tenant, accountId: account, deviceId:device, credentialEpoch:1 };
+    await seedPrincipalSession(pool,auth);
     const store = new PgVaultRemovalStore(pool);
     const settings = () => ({ baseRevision: null, revision: randomUUID(), envelope: Buffer.alloc(174).toString('base64url') });
     const incomplete = parseRemoval({ requestId: randomUUID(), choice: 'move', destinationVaultId: destination, sourceCatalogueRevision: sourceRevision, destinationCatalogueRevision: destinationRevision, itemMappings: [], settings: settings() });

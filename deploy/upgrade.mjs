@@ -16,6 +16,10 @@ export async function upgradeInstallation({ directory, from, backupDirectory, ke
   const state = await inspect(from, { args: [] });
   if (state.status !== 'pass') throw Error('Existing installation identity is incomplete; upgrade refused.');
   const original = await readFile(join(from, '.env'), 'utf8');
+  // Keep the old bundle's configuration byte-for-byte. The new bundle needs a
+  // fixed relay backend identity; reserve the installer network's .4 address.
+  const backend=/^VAULTS_SERVER_IP=(\d+\.\d+\.\d+)\.2\r?$/m.exec(original)?.[1];
+  const configuration=/^VAULTS_RELAY_IP=/m.test(original)?original:backend?`${original.replace(/\s*$/,'')}\nVAULTS_RELAY_IP=${backend}.4\n`:original;
   const project = /^VAULTS_PROJECT=(vaults-test-[a-f0-9]{12})\r?$/m.exec(original)?.[1];
   const privateDir = /^VAULTS_TLS_DIR=(.+)\r?$/m.exec(original)?.[1]?.trim();
   if (!project || !privateDir || within(resolve(privateDir), backupDirectory)) throw Error('Invalid installation or backup location.');
@@ -48,7 +52,8 @@ export async function upgradeInstallation({ directory, from, backupDirectory, ke
     await command(process.execPath, [operator, 'identity', 'backup', '--private-dir', privateDir, '--server-id', before.installationId,
       '--output', join(backupDirectory, 'identity.vaultbak'), '--key-file', keyFile]);
     if (await readFile(join(from, '.env'), 'utf8') !== original) throw Error('Existing configuration changed during backup; upgrade refused.');
-    await writeFile(join(directory, '.env'), original, { flag: 'wx', mode: 0o600 });
+    if(!/^VAULTS_RELAY_IP=/m.test(configuration))throw Error('Existing backend network has no fixed relay address.');
+    await writeFile(join(directory, '.env'), configuration, { flag: 'wx', mode: 0o600 });
     await command(engine, ['load', '-i', join(directory, 'server-image.tar')]);
     const compose = ['compose', '-p', project, '-f', 'compose.test.yaml',
       ...(/^SMTP_HOST=(.+)$/m.test(original) ? ['-f', 'compose.smtp.yaml'] : [])];

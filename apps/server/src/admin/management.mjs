@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { normalizeEmail, tokenDigest } from '../onboarding.mjs';
 import { requireLicenseSeats } from '../license-seats.mjs';
+import { lockWritePrincipal } from '../write-principal.mjs';
 
 export class AdminManagementError extends Error {
   constructor(code = 'invalid_action', status = 400) { super(code); this.code = code; this.status = status; }
@@ -165,6 +166,7 @@ export class PgAdminManagement {
     const input = { action: 'ownership.accept', requestId, targetId: grantId };
     try { return await this.transaction(async (client, tenantId) => {
       if (tenantId !== auth.tenantId) fail('forbidden', 403);
+      await lockWritePrincipal(client,auth);
       const active = (await client.query(`SELECT a.id FROM vaults.accounts a JOIN vaults.sessions s ON s.tenant_id=a.tenant_id AND s.account_id=a.id
         JOIN vaults.devices d ON d.tenant_id=s.tenant_id AND d.id=s.device_id
         WHERE a.tenant_id=$1 AND a.id=$2 AND a.enrollment_state='active' AND a.suspended_at IS NULL

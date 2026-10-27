@@ -1,3 +1,4 @@
+import { requestSource } from '../relay-ingress.mjs';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -50,7 +51,7 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
     if (operators.length === 0) { json(res, 503, { error: 'admin_not_configured' }); return true; }
     if (path === '/api/admin/session' && req.method === 'POST') {
       if (req.headers.origin !== origin || req.headers['content-type']?.split(';')[0] !== 'application/json') { json(res, 403, { error: 'forbidden' }); return true; }
-      const source = req.socket.remoteAddress;
+      const source = requestSource(req);
       const record = attempts.get(source) ?? { count: 0, until: 0 };
       if (record.until > now()) { json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(Math.ceil((record.until - now()) / 1000)) }); return true; }
       let input;
@@ -92,7 +93,7 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
         const a = Buffer.from(String(req.headers['x-127v-admin-csrf'] ?? '')), b = Buffer.from(active.csrf);
         if (req.headers.origin !== origin || a.length !== b.length || !timingSafeEqual(a, b)) throw new AdminManagementError('forbidden', 403);
         value = parseJsonObject(req, await readRequestBody(req, 8192));
-        const source = req.socket.remoteAddress, record = attempts.get(source) ?? { count: 0, until: 0 };
+        const source = requestSource(req), record = attempts.get(source) ?? { count: 0, until: 0 };
         if (record.until > now()) throw new AdminManagementError('rate_limited', 429);
         if (!verifyPassword(operator, value.password)) {
           record.count++; record.until = now() + Math.min(60000, record.count * 5000); attempts.set(source, record);

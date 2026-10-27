@@ -37,6 +37,7 @@ import { LicenseClock } from './license-clock.mjs';
 import { createSetupHandler } from './setup-handler.mjs';
 import { PgCredentialRotationStore, createCredentialRotationHandler } from './credential-rotation.mjs';
 import { containRequestErrors } from './http-boundary.mjs';
+import { createRelayIngress, requestSource } from './relay-ingress.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
 const env = process.env;
@@ -146,6 +147,7 @@ const webFiles=new Map([
 ]);
 let stopping = false;
 const server = createServer(tls, containRequestErrors(async (req, res) => {
+  requestSource(req);
   const began = Date.now();
   res.once('finish', () => telemetry.request(req.method, res.statusCode, Date.now() - began, !req.url?.startsWith('/health/')));
   res.setHeader('Cache-Control', 'no-store');
@@ -201,11 +203,17 @@ server.keepAliveTimeout = 1000;
 server.maxHeadersCount = 32;
 server.on('upgrade', (_req, socket) => socket.destroy());
 server.on('error', () => { telemetry.event('listener_error'); process.exit(1); });
-server.listen(port, host, () => telemetry.event('server_started'));
+let ingress;
+server.listen(0,'127.0.0.1',()=>{
+  ingress=createRelayIngress({targetPort:server.address().port,trustedRelayPeer:env.VAULTS_RELAY_PEER??null});
+  ingress.on('error',()=>{telemetry.event('listener_error');process.exit(1)});
+  ingress.listen(port,host,()=>telemetry.event('server_started'));
+});
 async function shutdown() {
   if (stopping) return;
   stopping = true;
   telemetry.event('server_stopping');
+  ingress?.close();
   const deadline = setTimeout(() => process.exit(1), 8000);
   deadline.unref();
   server.close(async () => {

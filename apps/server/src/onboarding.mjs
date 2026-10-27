@@ -74,12 +74,12 @@ export class OnboardingService {
     const bootstrapDigest = tokenDigest(this.key, 'bootstrap', decodeToken(token, '127V-B1-'));
     return this.store.bootstrapOwner({ bootstrapDigest, candidate: validateCandidate(candidate), now: this.now() });
   }
-  async createInvitation({ ownerAccountId, emails, expiresInHours }) {
+  async createInvitation({ ownerAccountId, emails, expiresInHours, auth }) {
     if (![24, 48].includes(expiresInHours) || !Array.isArray(emails) || emails.length < 1 || emails.length > 10) throw new OnboardingError();
     const normalized = emails.map(normalizeEmail);
     if (new Set(normalized).size !== normalized.length) throw new OnboardingError();
     const tokenBytes = randomBytes(32); const token = canonicalToken('127V-I1-', tokenBytes);
-    const result = await this.store.createInvitation({ ownerAccountId, emails: normalized, expiresInHours, tokenDigest: tokenDigest(this.key, 'invite', tokenBytes), now: this.now(), invitationId: randomUUID() });
+    const result = await this.store.createInvitation({ ownerAccountId, emails: normalized, expiresInHours, tokenDigest: tokenDigest(this.key, 'invite', tokenBytes), now: this.now(), invitationId: randomUUID(), auth });
     return { ...result, token };
   }
   async beginInvitation({ token, email, candidate, source }) {

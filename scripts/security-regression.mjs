@@ -50,10 +50,14 @@ try {
   }
   if(!ready)throw Error(`Disposable PostgreSQL did not become ready.\n${await run(['logs',name])}`);
   await run(['exec',name,'env','-i',...safeEnv,'createdb','-h','127.0.0.1','-U','postgres','vaults_security']);
+  for(const database of ['vaults_devices','vaults_removal','vaults_deletion'])await run(['exec',name,'env','-i',...safeEnv,'createdb','-h','127.0.0.1','-U','postgres',database]);
   const mounts=['apps/server','apps/web','packages','scripts','deploy','docs'].flatMap(path=>['--volume',`${resolve(root,path)}:/app/${path}:ro`]);
   const args=['run','--rm','--name',`${name}-tests`,'--network',`container:${name}`,...bounds,...mounts,'--workdir=/app','--entrypoint=/usr/bin/timeout',
     'localhost/127vaults-server:test','600','env','-i',...safeEnv,
     'VAULTS_SECURITY_DATABASE_URL=postgres://postgres:security-test-only@127.0.0.1:5432/vaults_security',
+    'VAULTS_DEVICE_TEST_DATABASE_URL=postgres://postgres:security-test-only@127.0.0.1:5432/vaults_devices',
+    'VAULTS_TEST_DATABASE_URL=postgres://postgres:security-test-only@127.0.0.1:5432/vaults_removal',
+    'VAULTS_ITEM_DELETION_DATABASE_URL=postgres://postgres:security-test-only@127.0.0.1:5432/vaults_deletion',
     'sh','-c',"node --test apps/server/test/*.test.mjs apps/web/test/mvp-client.test.mjs apps/web/test/http-client.test.mjs packages/sync/test/*.test.mjs deploy/upgrade.test.mjs scripts/ops/server-data.test.mjs && node --check apps/server/src/main.mjs && node --check apps/web/mvp-client.mjs && node --check scripts/live-mvp-acceptance.mjs && node --check scripts/live-invite-acceptance.mjs"];
   const output=await run(args,660000);
   if(await sourceDigest()!==before)throw Error('Source changed during verification; repeat the check.');

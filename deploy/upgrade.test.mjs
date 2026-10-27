@@ -11,7 +11,7 @@ async function fixture(t, failAt, initialVersion = 8) {
   t.after(()=>rm(root,{recursive:true,force:true}));
   const directory=join(root,'new'),from=join(root,'old'),privateDir=join(root,'private'),keyFile=join(root,'backup-key');
   await Promise.all([mkdir(directory),mkdir(from),mkdir(privateDir)]);await writeFile(keyFile,Buffer.alloc(32,1));
-  const env=`VAULTS_PROJECT=vaults-test-123456789abc\nVAULTS_TLS_DIR=${privateDir}\nVAULTS_ENDPOINT_HOST=127.0.0.1\nVAULTS_LICENSE_FILE=preserved\n`;
+  const env=`VAULTS_PROJECT=vaults-test-123456789abc\nVAULTS_TLS_DIR=${privateDir}\nVAULTS_ENDPOINT_HOST=127.0.0.1\nVAULTS_SERVER_IP=172.28.42.2\nVAULTS_RELAY_IP=172.28.42.4\nVAULTS_LICENSE_FILE=preserved\n`;
   await writeFile(join(from,'.env'),env);const calls=[];let schemaVersion=initialVersion;
   const options={directory,from,keyFile,backupDirectory:join(root,'backups'),verify:async()=>{},inspect:async()=>({status:'pass'}),
     run:async(program,args)=>{calls.push({program,args});if(failAt&&args.includes(failAt))throw Error('simulated failure');
@@ -38,6 +38,14 @@ test('failed backup restarts the old server and never creates the new configurat
   assert(!existsSync(join(f.directory,'.env')));
   assert.deepEqual(f.calls.at(-1).args,['start','server-id']);
   assert(!f.calls.some(c=>c.args.includes('init')));
+});
+
+test('upgrade assigns a fixed relay address to older installations and preserves their original configuration',async t=>{
+  const f=await fixture(t,undefined,10),old=f.env.replace('VAULTS_RELAY_IP=172.28.42.4\n','');
+  await writeFile(join(f.from,'.env'),old);
+  await upgradeInstallation(f.options);
+  assert.equal(await readFile(join(f.from,'.env'),'utf8'),old);
+  assert.match(await readFile(join(f.directory,'.env'),'utf8'),/^VAULTS_RELAY_IP=172\.28\.42\.4$/m);
 });
 test('upgrade refuses an existing target or wrong key before any engine mutation',async t=>{
   const f=await fixture(t);await writeFile(join(f.directory,'.env'),'existing');

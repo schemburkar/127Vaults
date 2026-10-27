@@ -1,5 +1,6 @@
 import { createServer, connect, isIP } from 'node:net';
 import { networkInterfaces } from 'node:os';
+import { relayPreface } from './relay-ingress.mjs';
 
 function privateV4(value) {
   if (isIP(value) !== 4) return false;
@@ -21,12 +22,12 @@ export function relayConfig(env, interfaces = networkInterfaces()) {
 
 // TLS is passed through unchanged. This relay has no private keys, account
 // credentials, database access credentials, or visitor-selected destination.
-export function createPrivateRelay({ bind, target, port = 12780, targetPort = 12780 }) {
+export function createPrivateRelay({ bind, target, port = 12780, targetPort = 12780, backendBind, sourceMetadata = false }) {
   const sockets = new Set();
   const server = createServer({ pauseOnConnect: true }, incoming => {
     if (sockets.size >= 128) { incoming.destroy(); return; }
     sockets.add(incoming);
-    const outgoing = connect({ host: target, port: targetPort });
+    const outgoing = connect({ host: target, port: targetPort, ...(backendBind?{localAddress:backendBind}:{}) });
     const deadline = setTimeout(() => outgoing.destroy(), 3000);
     deadline.unref();
     const close = () => { clearTimeout(deadline); incoming.destroy(); outgoing.destroy(); sockets.delete(incoming); };
@@ -36,6 +37,7 @@ export function createPrivateRelay({ bind, target, port = 12780, targetPort = 12
     incoming.setTimeout(120000, close); outgoing.setTimeout(120000, close);
     outgoing.once('connect', () => {
       clearTimeout(deadline);
+      if(sourceMetadata){try{outgoing.write(relayPreface(incoming,target,targetPort));}catch{close();return;}}
       incoming.pipe(outgoing); outgoing.pipe(incoming); incoming.resume();
     });
   });
@@ -49,7 +51,7 @@ export async function runPrivateRelay() {
   const config = relayConfig(process.env);
   // Rootless providers may forward to the first attached interface. Listen on
   // both exact container addresses; never use an all-interface listener.
-  const relays = [config.bind, config.backendBind].map(bind => createPrivateRelay({ ...config, bind }));
+  const relays = [config.bind, config.backendBind].map(bind => createPrivateRelay({ ...config, bind, sourceMetadata:true }));
   await Promise.all(relays.map(relay => relay.start()));
   const stop = () => { for (const relay of relays) void relay.stop(); };
   process.once('SIGTERM', stop); process.once('SIGINT', stop);

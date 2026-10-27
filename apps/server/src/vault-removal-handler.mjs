@@ -92,7 +92,7 @@ export class PgVaultRemovalStore {
       await client.query('COMMIT'); return response;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
-      if (error instanceof VaultError) throw error;
+      if (error instanceof VaultError || error instanceof AuthError) throw error;
       throw new VaultError(503, 'UNAVAILABLE');
     } finally { client.release(); }
   }
@@ -102,6 +102,7 @@ export class PgVaultRemovalStore {
       await client.query('BEGIN');
       await client.query("SET LOCAL statement_timeout='5s'");
       await client.query("SET LOCAL lock_timeout='5s'");
+      await lockSettingsCredentialEpoch(client,auth);
       const fp = receiptFingerprint(path, raw);
       const previous = (await client.query('SELECT fingerprint,response FROM vaults.private_vault_removal_receipts WHERE tenant_id=$1 AND account_id=$2 AND request_id=$3 FOR UPDATE', [auth.tenantId, auth.accountId, request.requestId])).rows[0];
       if (previous) {
@@ -118,7 +119,7 @@ export class PgVaultRemovalStore {
       await client.query('COMMIT'); return response;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
-      if (error instanceof VaultError) throw error;
+      if (error instanceof VaultError || error instanceof AuthError) throw error;
       throw new VaultError(503, 'UNAVAILABLE');
     } finally { client.release(); }
   }

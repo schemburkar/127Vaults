@@ -1,5 +1,6 @@
+import { requestSource } from './relay-ingress.mjs';
 import { OnboardingError } from './onboarding.mjs';
-import { AUTH_COOKIE, requireUnsafeRequest, strictJson } from './auth-policy.mjs';
+import { AUTH_COOKIE, AuthError, requireUnsafeRequest, strictJson } from './auth-policy.mjs';
 import { HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJson } from './http-boundary.mjs';
 
 const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -26,7 +27,7 @@ export function createOnboardingHandler(service, completeRegistration, configure
         requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], auth.csrf);
         if (auth.role !== 'owner') throw new OnboardingError('forbidden', 403);
         const value = strictJson(req, bytes, ['emails', 'expiresInHours']);
-        writeJson(res, 200, await service.createInvitation({ ownerAccountId: auth.accountId, ...value })); return true;
+        writeJson(res, 200, await service.createInvitation({ ownerAccountId: auth.accountId, ...value, auth })); return true;
       }
       requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], ceremony);
       if (v1Register) {
@@ -41,7 +42,7 @@ export function createOnboardingHandler(service, completeRegistration, configure
       }
       if (v1Invitation) {
         const value = strictJson(req, bytes, ['token', 'email', 'candidate']);
-        writeJson(res, 200, await service.beginInvitation({ ...value, candidate: await completeRegistration(value.candidate), source: req.socket.remoteAddress ?? 'unknown' })); return true;
+        writeJson(res, 200, await service.beginInvitation({ ...value, candidate: await completeRegistration(value.candidate), source: requestSource(req) })); return true;
       }
       if (emailMatch || completeMatch) {
         const attemptId = (emailMatch ?? completeMatch)[1];
@@ -51,9 +52,9 @@ export function createOnboardingHandler(service, completeRegistration, configure
         writeJson(res, 200, result); return true;
       }
     } catch (error) {
-      const status = error instanceof OnboardingError || error instanceof HttpBoundaryError ? error.status : 400;
+      const status = error instanceof AuthError || error instanceof OnboardingError || error instanceof HttpBoundaryError ? error.status : 400;
       const code = error instanceof OnboardingError && ['seat_limit_reached', 'license_inactive', 'license_unavailable'].includes(error.code)
-        ? error.code : status === 429 ? 'rate_limited' : status === 503 ? 'email_unavailable' : 'onboarding_failed';
+        ? error.code : status === 401 ? 'authentication_required' : status === 429 ? 'rate_limited' : status === 503 ? 'email_unavailable' : 'onboarding_failed';
       writeError(res, status, code); return true;
     }
   };

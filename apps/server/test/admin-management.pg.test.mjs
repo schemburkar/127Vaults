@@ -94,9 +94,9 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
     assert.ok((await pool.query('SELECT revoked_at FROM vaults.invitation_records WHERE id=$1', [invite.invitationId])).rows[0].revoked_at);
     const grant = await action('ownership.request', { targetId: alice });
     assert.equal((await account(alice)).server_role, 'user');
-    const auth = { tenantId: tenant, accountId: alice, sessionId: sessions.get(alice) };
+    const auth = { tenantId: tenant, accountId: alice, deviceId:devices.get(alice), credentialEpoch:1, sessionId: sessions.get(alice) };
     assert.equal((await service.grants(auth)).grants[0].grantId, grant.grantId);
-    await assert.rejects(service.accept(auth, { grantId: grant.grantId, requestId: randomUUID() }), { code: 'fresh_auth_required' });
+    await assert.rejects(service.accept(auth, { grantId: grant.grantId, requestId: randomUUID() }), { status:401 });
     // A fresh independently authenticated session is required after reactivation.
     const newSession = randomUUID();
     await pool.query("INSERT INTO vaults.sessions(tenant_id,session_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at) VALUES($1,$2,$3,$4,$5,1,$6,$7,now()+interval '1 hour')", [tenant, newSession, Buffer.alloc(32, 12), alice, devices.get(alice), Buffer.alloc(32), Buffer.alloc(60)]);

@@ -1,5 +1,26 @@
 # Server hardening, 27 October 2026
 
+Follow-up fixes also close three reproduced gaps:
+
+- Protected write transactions revalidate and lock the account, credential,
+  device and session rows before resource locks or receipt replay. Logout,
+  suspension, expired sessions and epoch changes invalidate previously read
+  authentication snapshots. The locks serialize revocation with commit.
+- Rotation preparation requires the current device's signature before OPAQUE,
+  binding the request, target device, origin, session, nonce and timestamp.
+  Durable nonce consumption and a five-per-minute account budget prevent
+  replay and repeated evaluations using only a stolen bearer session.
+- The TLS relay adds bounded PROXY v1 connection metadata. The server accepts
+  it only from the relay's fixed backend IP, then forwards unchanged TLS into
+  its normal HTTPS listener. Admission budgets use that source, never HTTP
+  forwarding headers. This trusts the private container network and host;
+  upstream NAT can still merge addresses before they reach the relay.
+
+The server and relay must be upgraded together using the installer workflow.
+New installations reserve backend `.4` for the relay; upgrades derive it from
+the existing server address while retaining the old bundle's configuration.
+Direct connections use their actual socket address. No deployment is included.
+
 This change addresses the seven items from the focused server review. It is a
 source remediation and regression record, not an independent cryptographic
 audit or a deployment/publication receipt.

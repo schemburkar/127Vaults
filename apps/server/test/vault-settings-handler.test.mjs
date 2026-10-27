@@ -36,6 +36,7 @@ test('settings CAS preserves the old record on stale base and accepts identical 
   const client = {
     async query(sql) {
       queries.push(sql);
+      if(sql.includes('write_principal'))return {rows:[{}],rowCount:1};
       if (sql.startsWith('SELECT revision,envelope')) return { rows: [stored] };
       return { rowCount: 1 };
     },

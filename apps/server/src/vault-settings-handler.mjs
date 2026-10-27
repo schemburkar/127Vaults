@@ -1,6 +1,7 @@
 import { AuthError, AUTH_COOKIE, requireUnsafeRequest } from './auth-policy.mjs';
 import { HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJson } from './http-boundary.mjs';
 import { VaultError, bytes, uuid } from './private-vault.mjs';
+import { lockWritePrincipal } from './write-principal.mjs';
 
 const id = b => [b.subarray(0,4),b.subarray(4,6),b.subarray(6,8),b.subarray(8,10),b.subarray(10,16)].map(x => x.toString('hex')).join('-');
 const cookie = req => {
@@ -8,12 +9,9 @@ const cookie = req => {
   return /^[A-Za-z0-9_-]{43}$/.test(token ?? '') ? token : null;
 };
 
-// Lock before the settings row (including its absence). Rotation locks this
-// credential row exclusively, so an already-authenticated old request cannot
-// install a previous-epoch settings envelope after rotation commits.
+// Shared with removal, which also publishes account settings.
 export async function lockSettingsCredentialEpoch(client,auth) {
-  const valid=await client.query('SELECT 1 FROM vaults.authentication_credentials WHERE tenant_id=$1 AND account_id=$2 AND credential_epoch=$3 FOR SHARE',[auth.tenantId,auth.accountId,auth.credentialEpoch]);
-  if(valid.rowCount!==1)throw new VaultError(401,'AUTHENTICATION_REQUIRED');
+  await lockWritePrincipal(client,auth);
 }
 
 export function validateSettingsEnvelope(envelope, auth, revision) {

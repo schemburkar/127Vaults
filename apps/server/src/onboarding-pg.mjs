@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { OnboardingError } from './onboarding.mjs';
 import { requireLicenseSeats } from './license-seats.mjs';
 import { reserveSecurityRequest } from './security-limits.mjs';
+import { lockWritePrincipal } from './write-principal.mjs';
+import { AuthError } from './auth-policy.mjs';
 
 export class PgOnboardingStore {
   constructor(pool, { tenantId = null, loadEntitlement = null } = {}) { this.pool = pool; this.tenantId = tenantId; this.loadEntitlement = loadEntitlement; }
@@ -22,7 +24,7 @@ export class PgOnboardingStore {
       return { purpose:'enrollment' };
     });
   }
-  async #tx(fn) { const c = await this.pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e instanceof OnboardingError ? e : new OnboardingError(); } finally { c.release(); } }
+  async #tx(fn) { const c = await this.pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e instanceof OnboardingError || e instanceof AuthError ? e : new OnboardingError(); } finally { c.release(); } }
   async bootstrapOwner(input) { return this.#tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(127,6)');
     const row=(await c.query(`SELECT b.tenant_id FROM vaults.bootstrap_tokens b WHERE b.token_digest=$1 AND b.consumed_at IS NULL AND b.expires_at>$2 FOR UPDATE`,[input.bootstrapDigest,input.now])).rows[0];
@@ -38,6 +40,8 @@ export class PgOnboardingStore {
   }); }
   async createInvitation(input) { return this.#tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(127,7)');
+    const principal=await lockWritePrincipal(c,input.auth);
+    if(principal.server_role!=='owner'||input.auth.accountId!==input.ownerAccountId)throw new OnboardingError('forbidden',403);
     const owner=(await c.query(`SELECT tenant_id FROM vaults.accounts WHERE id=$1 AND server_role='owner' AND enrollment_state='active' FOR KEY SHARE`,[input.ownerAccountId])).rows[0];
     if (!owner) throw new OnboardingError('forbidden',403);
     const duplicate=await c.query('SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND email=ANY($2::text[]) LIMIT 1',[owner.tenant_id,input.emails]);

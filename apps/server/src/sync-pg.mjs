@@ -1,5 +1,7 @@
 import { createPublicKey } from 'node:crypto';
 import { GENESIS_HASH, SyncProtocolError, checkpointHash, createSignedCheckpoint, nextOperationHead, verifySignedOperation } from '../../../packages/sync/src/index.mjs';
+import { AuthError } from './auth-policy.mjs';
+import { lockWritePrincipal } from './write-principal.mjs';
 
 const hex = value => Buffer.from(value, 'hex');
 const rawEd25519 = value => createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(value)]), format: 'der', type: 'spki' });
@@ -8,8 +10,9 @@ const iso = value => value == null ? undefined : new Date(value).toISOString();
 
 export class PgSignedSyncStore {
   constructor(pool, checkpointPrivateKey) { if(!pool||!checkpointPrivateKey)throw new Error('PostgreSQL pool and checkpoint signing key are required.');this.pool=pool;this.checkpointPrivateKey=checkpointPrivateKey; }
-  async #tx(fn){const c=await this.pool.connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='5s'");await c.query("SET LOCAL lock_timeout='5s'");const out=await fn(c);await c.query('COMMIT');return out}catch(error){await c.query('ROLLBACK').catch(()=>{});if(error instanceof SyncProtocolError)throw error;throw new SyncProtocolError('unavailable')}finally{c.release();}}
+  async #tx(fn){const c=await this.pool.connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='5s'");await c.query("SET LOCAL lock_timeout='5s'");const out=await fn(c);await c.query('COMMIT');return out}catch(error){await c.query('ROLLBACK').catch(()=>{});if(error instanceof AuthError||error instanceof SyncProtocolError)throw error;throw new SyncProtocolError('unavailable')}finally{c.release();}}
   async #authorized(c,auth,vaultId,lock=false){
+    if(lock)await lockWritePrincipal(c,auth);
     const row=(await c.query(`SELECT s.epoch,s.next_cursor,s.operation_head_hash,s.latest_checkpoint_sequence,s.latest_checkpoint_hash,s.state,v.retired_at,d.signing_public_key,d.credential_epoch
       FROM vaults.sync_vault_state s JOIN vaults.private_vaults v ON(v.tenant_id=s.tenant_id AND v.id=s.vault_id)
       JOIN vaults.devices d ON(d.tenant_id=v.tenant_id AND d.account_id=v.account_id AND d.id=$4)

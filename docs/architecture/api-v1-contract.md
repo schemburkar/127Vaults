@@ -87,9 +87,19 @@ per source and minute, independently of login and device enrollment budgets.
 
 Credential rotation requires a session created within five minutes, same-origin
 CSRF, and a signature from its current device. Both `/start` routes accept exactly
-`request` and `deviceId`; password rotation uses the current device ID, while
+`request`, `deviceId`, `nonce`, `issuedAt`, and `authorizationSignature`;
+password rotation uses the current device ID, while
 account-secret rotation uses a new device ID. The response has `response`,
 `binding`, and a purpose-specific, two-minute `registrationArtifact`.
+
+Before any replacement OPAQUE evaluation, the current device signs
+`credentialPreparationBytes` from `apps/server/src/credential-rotation.mjs`.
+The domain-separated canonical encoding binds origin, rotation kind, tenant,
+account, current device and epoch, SHA-256 of the session's CSRF value, new
+device ID, OPAQUE request, nonce, and timestamp. `nonce` is 32 random bytes in
+canonical base64url; `issuedAt` is an integer Unix time in milliseconds within
+two minutes of the server clock. Consumed nonces are retained for five minutes;
+replays fail and each account may prepare at most five rotations per minute.
 
 Both completion routes accept exactly `candidate`, `authorizationSignature`,
 and `settings`. The candidate contains `accountId`, `deviceId`,
