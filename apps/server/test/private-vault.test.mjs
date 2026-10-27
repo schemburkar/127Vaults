@@ -23,15 +23,15 @@ test('mutation serializes a scoped request before looking up an absent replay re
  const receipt=f.calls.findIndex(c=>c.sql.startsWith('SELECT fingerprint,response'));
  const write=f.calls.findIndex(c=>c.sql.startsWith('DELETE FROM'));
  assert.ok(lock>=0&&lock<receipt&&receipt<write);
- assert.deepEqual(f.calls[lock].params,[`127vaults:private-receipt:${f.proposal.auth.tenantId}:${f.proposal.auth.accountId}:${f.proposal.requestId}`]);
+ assert.deepEqual(f.calls[lock].params,[`127vaults:private-account:${f.proposal.auth.tenantId}:${f.proposal.auth.accountId}`]);
  assert.ok(f.calls.findIndex(c=>c.sql==='BEGIN')<lock);
  assert.ok(f.calls.findIndex(c=>c.sql==='COMMIT')>write);
 });
 
 test('item deletion commits the scoped ciphertext removal, catalogue, signed history, receipt and audit together',async()=>{
  const f=deletionFixture();const result=await f.store.mutate(f.proposal);assert.equal(result.catalogueRevision,f.revision);
- const sql=f.calls.map(c=>c.sql);assert.equal(sql.at(-1),'COMMIT');assert.equal(sql.filter(s=>s.startsWith('DELETE FROM')).length,1);
- assert.match(sql.find(s=>s.startsWith('DELETE FROM')),/tenant_id=\$1 AND vault_id=\$2 AND item_id=\$3/);
+ const sql=f.calls.map(c=>c.sql);assert.equal(sql.at(-1),'COMMIT');assert.equal(sql.filter(s=>s.startsWith('DELETE FROM vaults.private_items')).length,1);
+ assert.match(sql.find(s=>s.startsWith('DELETE FROM vaults.private_items')),/tenant_id=\$1 AND vault_id=\$2 AND item_id=\$3/);
  assert.ok(sql.includes('SIGNED_HISTORY'));assert.ok(sql.some(s=>s.startsWith('UPDATE vaults.private_vaults SET catalogue_revision')));
  assert.ok(sql.some(s=>s.startsWith('INSERT INTO vaults.private_receipts')));assert.equal(f.calls.find(c=>c.sql.startsWith('INSERT INTO vaults.private_audit')).params[6],'item.delete');
 });
@@ -50,10 +50,10 @@ test('exact deletion replay returns its receipt without deleting again, while ch
  replay.proposal.raw=Buffer.from('changed');await assert.rejects(replay.store.mutate(replay.proposal),{code:'REQUEST_ID_REUSED'});
 });
 
-test('the receipt ceiling still refuses a new mutation',async()=>{
+test('the account rate budget refuses a new mutation without removing item data',async()=>{
  const f=deletionFixture({receiptCount:10000});
- await assert.rejects(f.store.mutate(f.proposal),{code:'EXPERIMENTAL_LIMIT'});
- assert.equal(f.calls.some(c=>c.sql.startsWith('DELETE FROM')),false);
+ await assert.rejects(f.store.mutate(f.proposal),{code:'RATE_LIMITED'});
+ assert.equal(f.calls.some(c=>c.sql.startsWith('DELETE FROM vaults.private_items')),false);
 });
 test('strict base64url and record bounds',()=>{assert.deepEqual(bytes(Buffer.from('x').toString('base64url'),2),Buffer.from('x'));assert.throws(()=>bytes('eA==',2),VaultError);let d=Buffer.alloc(102);d.write('PVD1');d[10]=0x40;d[12]=0x80;d[26]=0x40;d[28]=0x80;d[42]=0x40;d[44]=0x80;assert.equal(directory(d).entries.length,0);let m=Buffer.alloc(110);m.write('PVM1');m[10]=0x40;m[12]=0x80;m[26]=0x40;m[28]=0x80;m.writeBigUInt64BE(1n,36);m[50]=0x40;m[52]=0x80;assert.equal(catalogue(m).entries.length,0)});
 

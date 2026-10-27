@@ -487,7 +487,7 @@ async function setup() {
       ),
       server = await call("/api/v1/onboarding/register", {
         method: "POST",
-        body: { accountId, deviceId, request: b64(start.message()) },
+        body: { accountId, deviceId, request: b64(start.message()), token, email },
       }),
       binding = un(server.binding),
       parts = bindingParts(binding),

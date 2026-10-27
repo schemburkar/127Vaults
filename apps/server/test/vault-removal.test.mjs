@@ -20,6 +20,7 @@ function database(x, sourceItems = []) {
   const destination = { id: x.destination, catalogue: catalogue(x.destination, x.destinationRevision, [x.destinationItem]), catalogue_revision: x.destinationRevision, retired_at: null };
   const connection = { async query(sql, params) {
     calls.push({ sql, params });
+    if (sql.startsWith('SELECT 1 FROM vaults.authentication_credentials')) return {rowCount:1};
     if (sql.startsWith('SELECT fingerprint,response')) return { rows: [] };
     if (sql.startsWith('SELECT id,catalogue')) return { rows: params[2].length === 2 ? [source, destination] : [source] };
     if (sql.startsWith('SELECT item_id FROM vaults.sync_operations')) return { rows: [{ item_id: x.destinationItem }] };

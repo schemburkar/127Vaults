@@ -7,6 +7,13 @@ production cryptographic approval.
 
 ## Protocol gate
 
+The October 2026 server hardening reserves failures before releasing a real
+OPAQUE challenge, so abandoning the finalization cannot avoid the escalating
+policy. A complete password and device authentication resets the counter.
+Unknown or inactive devices use fake credential records and deterministic keyed
+synthetic account IDs. Registration authority and signed credential replacement
+are defined in [the current API contract](../architecture/api-v1-contract.md).
+
 Use RFC 9807 OPAQUE through the Rust core: `opaque-ke 4.0.1`,
 Ristretto255 OPRF, TripleDH/Ristretto255/SHA-512, client Argon2id stretching.
 Do not copy the library's example Identity stretching into authentication.

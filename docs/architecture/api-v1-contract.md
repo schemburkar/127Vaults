@@ -60,6 +60,8 @@ aliases were removed after browser, acceptance, and CLI consumers migrated.
 | `POST` | `/api/v1/devices/revoke` | Revoke a trusted device. |
 | `POST` | `/api/v1/devices/rotate-password` | Rotate password credentials. |
 | `POST` | `/api/v1/devices/rotate-account-secret` | Rotate the account secret. |
+| `POST` | `/api/v1/devices/rotate-password/start` | Begin authenticated replacement OPAQUE registration for the current device. |
+| `POST` | `/api/v1/devices/rotate-account-secret/start` | Begin authenticated replacement OPAQUE registration for a replacement device. |
 
 ## Ceremony request boundaries
 
@@ -71,10 +73,54 @@ Invitation onboarding is separated as follows:
 
 | Route | Exact request properties |
 | --- | --- |
+| `POST /api/v1/onboarding/register` (prepare) | `accountId`, `deviceId`, `request`, `token`, `email` |
+| `POST /api/v1/onboarding/register` (bootstrap completion) | `token`, `candidate` |
 | `POST /api/v1/invitations` | `emails`, `expiresInHours` |
 | `POST /api/v1/onboarding/invitation` | `token`, `email`, `candidate` |
 | `POST /api/v1/onboarding/invitation/{id}/email` | `capability` |
 | `POST /api/v1/onboarding/invitation/{id}/complete` | `capability`, `code` |
+
+Registration preparation requires an unexpired bootstrap token (`email: null`)
+or an unredeemed invitation token and its recipient email. Existing account IDs
+are rejected before OPAQUE evaluation. Preparation is limited to ten requests
+per source and minute, independently of login and device enrollment budgets.
+
+Credential rotation requires a session created within five minutes, same-origin
+CSRF, and a signature from its current device. Both `/start` routes accept exactly
+`request` and `deviceId`; password rotation uses the current device ID, while
+account-secret rotation uses a new device ID. The response has `response`,
+`binding`, and a purpose-specific, two-minute `registrationArtifact`.
+
+Both completion routes accept exactly `candidate`, `authorizationSignature`,
+and `settings`. The candidate contains `accountId`, `deviceId`,
+`signingPublicKey`, `opaqueUpload`, `wrappedRootDescriptor`,
+`wrappedRootEnvelope`, `registrationArtifact`, and `activationSignature`.
+Its activation proof follows the first-device activation encoding. The old
+device additionally signs `credentialRotationBytes` from
+`apps/server/src/credential-rotation.mjs`, which binds the purpose, installation,
+account, session, old/new devices, next epoch, OPAQUE record, root material,
+settings replacement, and registration attempt. An enrollment artifact cannot
+authorize rotation, and a rotation artifact cannot authorize initial enrollment.
+
+Clients must **rewrap the existing root key**, preserving the vault hierarchy,
+with the new credentials and next epoch. Creating a fresh root would strand
+existing vaults. `settings` is `null` only when no settings exist; otherwise it
+contains exactly `baseRevision`, `revision`, and the settings `envelope`,
+reencrypted at the next epoch. Replacement uses compare-and-swap inside the
+same transaction as credential changes. No password or account secret is sent
+to the server. Completion returns `credentialEpoch`, `deviceId`, and
+`signInRequired: true`. Old sessions and pending authentication/enrollment
+ceremonies are invalidated. Account-secret rotation replaces every old device.
+
+Device-enrollment admission has a per-source budget of ten requests per minute,
+with no victim-account slot ceiling. Unknown/inactive usernames receive the
+same pending response shape and cannot be approved. Invalid, expired, and
+unknown poll tokens report `pending`; clients must honor the returned expiry.
+
+Vault mutation budgets are per account (100 new requests per minute), not per
+tenant or lifetime. Exact retries can still return existing receipts during
+cooldowns. Receipts are retained for at least seven days; after that window,
+clients must reconcile the current catalogue/directory revision before retrying.
 
 Device enrollment is separated as follows:
 

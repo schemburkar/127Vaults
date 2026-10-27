@@ -214,7 +214,7 @@ try {
   const invitedKeys = generateKeyPairSync('ed25519');
   const invitedAccountId = randomUUID(), invitedDeviceId = randomUUID();
   const inviteRegistration = await apiCall(bob, '/api/v1/onboarding/register', {
-    accountId: invitedAccountId, deviceId: invitedDeviceId, request: Buffer.alloc(32).toString('base64url')
+    accountId: invitedAccountId, deviceId: invitedDeviceId, request: Buffer.alloc(32).toString('base64url'),token:invited.body.token,email:'new@example.com'
   }, inviteCeremony.body.csrf);
   assert.equal(inviteRegistration.status, 200);
   const invitedCandidate = { accountId: invitedAccountId, deviceId: invitedDeviceId, username: 'newuser1',
@@ -270,7 +270,7 @@ try {
   const publicBytes = publicKey.export({ format: 'der', type: 'spki' }).subarray(-32);
   const accountId = randomUUID(), deviceId = randomUUID();
   const registrationStarted = await enrollmentCall(carol, '/api/v1/onboarding/register', {
-    accountId, deviceId, request: Buffer.alloc(32).toString('base64url')
+    accountId, deviceId, request: Buffer.alloc(32).toString('base64url'),token:carolToken.token,email:null
   }, carolCeremony.body.csrf);
   assert.equal(registrationStarted.status, 200);
   const candidate = { accountId, deviceId, username: 'carol1', displayName: 'Carol', email: 'carol@example.com',

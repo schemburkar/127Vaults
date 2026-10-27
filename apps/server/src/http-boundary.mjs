@@ -1,6 +1,19 @@
 export const JSON_CONTENT_TYPE = 'application/json';
 export const DEFAULT_BODY_LIMIT = 16 * 1024;
 
+// EventEmitter does not await an async request listener. Always terminate its
+// promise here, including failures before a route's own error handler begins.
+export function containRequestErrors(handler, onError = () => {}) {
+  return (req, res) => {
+    Promise.resolve().then(() => handler(req, res)).catch(error => {
+      try { onError(error); } catch {}
+      if (res.destroyed || res.writableEnded) return;
+      if (req.destroyed || res.headersSent) { res.destroy(); return; }
+      try { writeError(res, 503, 'unavailable'); } catch { res.destroy(); }
+    });
+  };
+}
+
 export class HttpBoundaryError extends Error {
   constructor(status = 400, code = 'invalid_request') {
     super(code);

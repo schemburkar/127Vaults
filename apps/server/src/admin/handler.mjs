@@ -53,10 +53,12 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       const source = req.socket.remoteAddress;
       const record = attempts.get(source) ?? { count: 0, until: 0 };
       if (record.until > now()) { json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(Math.ceil((record.until - now()) / 1000)) }); return true; }
-      let body = '';
-      for await (const chunk of req) { body += chunk; if (body.length > 2048) { json(res, 413, { error: 'too_large' }); return true; } }
       let input;
-      try { input = JSON.parse(body); } catch { json(res, 400, { error: 'invalid_request' }); return true; }
+      try { input = parseJsonObject(req, await readRequestBody(req, 2048)); }
+      catch (error) {
+        if (!req.destroyed && !res.destroyed) json(res, error instanceof HttpBoundaryError ? error.status : 400, { error: 'invalid_request' });
+        return true;
+      }
       const operator = byName.get(input?.username);
       if (!verifyPassword(operator, input?.password)) {
         record.count += 1;

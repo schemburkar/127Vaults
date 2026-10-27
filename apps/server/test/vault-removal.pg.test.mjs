@@ -26,6 +26,7 @@ test('PostgreSQL archive, restore, and complete move retain all encrypted item r
     await pool.query('INSERT INTO vaults.installation(id) VALUES($1)', [tenant]);
     await pool.query("INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state) VALUES($1,$2,'FixtureOwner','Fixture Owner','fixture@example.invalid','owner','active')", [tenant, account]);
     await pool.query('INSERT INTO vaults.devices(tenant_id,account_id,id,signing_public_key,credential_epoch,credential_epoch_seen) VALUES($1,$2,$3,$4,1,1)', [tenant, account, device, zero32]);
+    await pool.query('INSERT INTO vaults.authentication_credentials(tenant_id,account_id,opaque_record,wrapped_root_descriptor,wrapped_root_envelope) VALUES($1,$2,$3,$4,$4)',[tenant,account,Buffer.alloc(192),Buffer.alloc(93)]);
     for (const [vault, revision, items] of [[source, sourceRevision, [sourceItem]], [destination, destinationRevision, [destinationItem]]]) {
       await pool.query('INSERT INTO vaults.private_vaults(tenant_id,id,account_id,epoch,vault_envelope_revision,vault_envelope,catalogue_revision,catalogue) VALUES($1,$2,$3,1,$4,$5,$6,$7)', [tenant, vault, account, randomUUID(), Buffer.alloc(205), revision, catalogue(vault, revision, items)]);
       await pool.query('INSERT INTO vaults.sync_vault_state(tenant_id,vault_id,epoch,operation_head_hash,latest_checkpoint_hash,latest_checkpoint_sequence,next_cursor) VALUES($1,$2,1,$3,$3,1,$4)', [tenant, vault, zero32, vault === destination ? 2 : 1]);
@@ -33,7 +34,7 @@ test('PostgreSQL archive, restore, and complete move retain all encrypted item r
     }
     for (const [vault, item] of [[source, sourceItem], [destination, destinationItem]]) await pool.query('INSERT INTO vaults.private_items(tenant_id,vault_id,item_id,logical_revision,index_revision,body_revision,index_envelope,body_envelope) VALUES($1,$2,$3,$4,$4,$4,$5,$5)', [tenant, vault, item, randomUUID(), Buffer.alloc(174)]);
     await pool.query("INSERT INTO vaults.sync_operations(tenant_id,vault_id,cursor,protocol_version,operation_id,device_id,epoch,causal_base,kind,item_id,payload_hash,signature) VALUES($1,$2,1,1,$3,$4,1,0,'item.create',$5,$6,$7)", [tenant, destination, zero32, device, destinationItem, zero32, Buffer.alloc(64)]);
-    const auth = { tenantId: tenant, accountId: account };
+    const auth = { tenantId: tenant, accountId: account, credentialEpoch:1 };
     const store = new PgVaultRemovalStore(pool);
     const settings = () => ({ baseRevision: null, revision: randomUUID(), envelope: Buffer.alloc(174).toString('base64url') });
     const incomplete = parseRemoval({ requestId: randomUUID(), choice: 'move', destinationVaultId: destination, sourceCatalogueRevision: sourceRevision, destinationCatalogueRevision: destinationRevision, itemMappings: [], settings: settings() });

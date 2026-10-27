@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV6Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, schemaV7MigrationSql, schemaV7Checksum, schemaV8MigrationSql, schemaV8Checksum, schemaV9MigrationSql, requireSchema
+  schemaChecksum, schemaV1Checksum, schemaV2Checksum, schemaV3Checksum, schemaV4Checksum, schemaV5Checksum, schemaV6Checksum, schemaV2MigrationSql, schemaV3MigrationSql, schemaV4MigrationSql, schemaV5MigrationSql, schemaV6MigrationSql, schemaV7MigrationSql, schemaV7Checksum, schemaV8MigrationSql, schemaV8Checksum, schemaV9MigrationSql, schemaV9Checksum, schemaV10MigrationSql, requireSchema
 } from '../src/schema.mjs';
-import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, migrateSchema6To7, migrateSchema7To8, migrateSchema8To9, schemaStatus } from '../src/schema-migration.mjs';
+import { MANIFEST_ERROR, migrateSchema1To2, migrateSchema2To3, migrateSchema3To4, migrateSchema4To5, migrateSchema5To6, migrateSchema6To7, migrateSchema7To8, migrateSchema8To9, migrateSchema9To10, schemaStatus } from '../src/schema-migration.mjs';
 
 const counts = { accounts: '2', devices: '2', sessions: '1', vaults: '1', items: '3' };
 class MigrationClient {
@@ -61,10 +61,10 @@ test('schema status and runtime requirement distinguish known manifests', async 
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 3, checksum: schemaV3Checksum })), { state: 'migration-required', version: 3 });
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 4, checksum: schemaV4Checksum })), { state: 'migration-required', version: 4 });
   assert.deepEqual(await schemaStatus(new MigrationClient({ version: 5, checksum: schemaV5Checksum })), { state: 'migration-required', version: 5 });
-  const current = new MigrationClient({ version: 9, checksum: schemaChecksum });
-  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 9 });
+  const current = new MigrationClient({ version: 10, checksum: schemaChecksum });
+  assert.deepEqual(await schemaStatus(current), { state: 'current', version: 10 });
   await requireSchema(current);
-  await assert.rejects(requireSchema(new MigrationClient({ version: 9, checksum: schemaChecksum, cloud: true })), /Cloud database cannot be served/);
+  await assert.rejects(requireSchema(new MigrationClient({ version: 10, checksum: schemaChecksum, cloud: true })), /Cloud database cannot be served/);
   await assert.rejects(requireSchema(new MigrationClient()), /automatic upgrades are disabled/);
 });
 
@@ -143,10 +143,12 @@ test('schema 9 expands capacity transactionally without rewriting encrypted reco
     const client=new MigrationClient({version:8,checksum:schemaV8Checksum});
     assert.deepEqual(await migrateSchema8To9(client,{dryRun}),{from:8,to:9,dryRun});
     assert.ok(client.calls.some(call=>call.sql===schemaV9MigrationSql));
-    assert.equal(client.calls.at(-2).parameters[0],schemaChecksum);
+    assert.equal(client.calls.at(-2).parameters[0],schemaV9Checksum);
     assert.equal(client.calls.at(-1).sql,dryRun?'ROLLBACK':'COMMIT');
   }
   assert.match(schemaV9MigrationSql,/13710/);assert.match(schemaV9MigrationSql,/822/);
   assert.doesNotMatch(schemaV9MigrationSql,/DELETE FROM|TRUNCATE|UPDATE vaults\.private_/);
   await assert.rejects(migrateSchema8To9(new MigrationClient({version:8,checksum:'0'.repeat(64)})),/migration refused/);
 });
+
+test('schema 10 preserves data and adds isolated request budgets',async()=>{for(const dryRun of [true,false]){const c=new MigrationClient({version:9,checksum:schemaV9Checksum});assert.deepEqual(await migrateSchema9To10(c,{dryRun}),{from:9,to:10,dryRun});assert.ok(c.calls.some(x=>x.sql===schemaV10MigrationSql));assert.equal(c.calls.at(-2).parameters[0],schemaChecksum);assert.equal(c.calls.at(-1).sql,dryRun?'ROLLBACK':'COMMIT')}await assert.rejects(migrateSchema9To10(new MigrationClient({version:9,checksum:'0'.repeat(64)})),/migration refused/)});

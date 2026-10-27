@@ -19,7 +19,7 @@ const guestEmail=`guest-${run}@example.invalid`,invitation=await call('/api/v1/i
 
 await ceremony();
 const accountId=crypto.randomUUID(),deviceId=crypto.randomUUID(),secret=new Uint8Array(32).fill(8),guestKey=createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),Buffer.alloc(32,10)]),format:'der',type:'pkcs8'}),publicKey=createPublicKey(guestKey).export({format:'der',type:'spki'}).subarray(-32),registration=wasm.ExperimentalOpaqueBridge.client_registration_start(secret,password);
-const prepared=await call('/api/v1/onboarding/register',{method:'POST',body:{accountId,deviceId,request:b64(registration.message())}}),upload=wasm.ExperimentalOpaqueBridge.client_registration_finish(registration.state(),secret,password,un(prepared.response),un(prepared.binding));
+const prepared=await call('/api/v1/onboarding/register',{method:'POST',body:{accountId,deviceId,request:b64(registration.message()),token:invitation.token,email:guestEmail}}),upload=wasm.ExperimentalOpaqueBridge.client_registration_finish(registration.state(),secret,password,un(prepared.response),un(prepared.binding));
 const candidate={accountId,deviceId,username:`guest_${run}`,displayName:'Fictitious Guest',email:guestEmail,signingPublicKey:b64(publicKey),opaqueUpload:b64(upload),wrappedRootDescriptor:b64(Buffer.alloc(93,1)),wrappedRootEnvelope:b64(Buffer.alloc(173,2)),registrationArtifact:prepared.registrationArtifact};
 candidate.activationSignature=b64(sign(null,registrationActivationBytes({...candidate,opaqueRecord:b64(upload)},Buffer.from(upload)),guestKey));
 const begun=await call('/api/v1/onboarding/invitation',{method:'POST',body:{token:invitation.token,email:candidate.email,candidate}});

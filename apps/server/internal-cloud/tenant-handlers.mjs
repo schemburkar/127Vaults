@@ -15,6 +15,7 @@ import { PgVaultRemovalStore, createVaultRemovalHandler } from '../src/vault-rem
 import { PgSignedSyncStore } from '../src/sync-pg.mjs';
 import { createSignedSyncHandler } from '../src/sync-handler.mjs';
 import { PgDeviceLifecycleStore } from '../src/device-lifecycle-pg.mjs';
+import { PgCredentialRotationStore, createCredentialRotationHandler } from '../src/credential-rotation.mjs';
 import { createDeviceLifecycleHandler } from '../src/device-lifecycle-handler.mjs';
 import { createDeviceEnrollmentHandler } from '../src/device-enrollment-handler.mjs';
 import { writeError, writeJson } from '../src/http-boundary.mjs';
@@ -37,15 +38,16 @@ export function createInternalCloudTenantHandlers({ bridge, tokenKey, checkpoint
     }
     const authService = new AuthService({ store: new PgAuthStore(pool, tokenKey, publicKey, { tenantId: tenant.id }), opaque });
     const authenticate = async token => context.requirePrincipal(await authService.authenticate(token));
-    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin });
+    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin, authorizeStart:input=>new OnboardingService({store:new PgOnboardingStore(pool,{tenantId:tenant.id}),tokenKey}).authorizeRegistration(input) });
     const syncStore = new PgSignedSyncStore(pool, checkpointPrivateKey);
-    const deviceStore = new PgDeviceLifecycleStore(pool);
+    const deviceStore = new PgDeviceLifecycleStore(pool,{tenantId:tenant.id});
     const handlers = [
       createAuthHandler(authService, origin),
       ...(mailer ? [createOnboardingHandler(new OnboardingService({
         store: new PgOnboardingStore(pool, { tenantId: tenant.id }), mailer, tokenKey
       }), createRegistrationCompletion(opaque, registration), origin, authenticate, registration)] : []),
       createDeviceEnrollmentHandler(deviceStore, authenticate, origin),
+      createCredentialRotationHandler({store:new PgCredentialRotationStore(pool),authenticate,origin,registration,opaque}),
       createDeviceLifecycleHandler(deviceStore, authenticate, origin),
       createSignedSyncHandler(syncStore, authenticate, origin, { checkpointPublicKey }),
       createPrivateVaultHandler(new PgPrivateVaultStore(pool, syncStore), authenticate, origin),
@@ -72,7 +74,7 @@ export function createInternalCloudEnrollmentHandlers({ bridge, tokenKey }) {
     if (!setup) throw new Error('Cloud tenant authentication setup is unavailable.');
     const publicKey = Buffer.from(bridge.server_public_key(setup));
     const service = new AuthService({ store: new PgAuthStore(pool, tokenKey, publicKey, { tenantId: tenant.id }), opaque });
-    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin });
+    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin, authorizeStart:input=>new OnboardingService({store:new PgOnboardingStore(pool,{tenantId:tenant.id}),tokenKey}).authorizeRegistration(input) });
     const onboarding = new OnboardingService({ store: new PgOnboardingStore(pool, { tenantId: tenant.id }),
       mailer: { sendCode: async () => { throw new Error('Cloud email is unavailable.'); } }, tokenKey });
     const handlers = [createAuthHandler(service, origin),

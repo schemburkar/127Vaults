@@ -23,7 +23,7 @@ export function createDeviceEnrollmentHandler(store,authenticate,origin){return 
         return true;
       }
       const method={request:'requestEnrollment',poll:'pollEnrollment',complete:'completeEnrollmentRequest'}[action];
-      writeJson(res,200,await store[method](id?{enrollmentId:id,...value}:value));return true;
+      writeJson(res,200,await store[method](id?{enrollmentId:id,...value}:{...value,source:req.socket?.remoteAddress??'unknown'}));return true;
     }
   }catch(error){const status=error instanceof AuthError?401:error instanceof DeviceLifecycleStoreError||error instanceof HttpBoundaryError?error.status:503;writeError(res,status,status===401?'authentication_required':status===429?'rate_limited':status===503?'unavailable':error.code??'invalid_request');return true}
 }}

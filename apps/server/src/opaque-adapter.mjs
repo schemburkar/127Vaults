@@ -42,21 +42,30 @@ export function registrationActivationBytes(candidate, opaqueRecord) {
   return Buffer.concat([Buffer.from('127Vaults/first-device-activation/1\0'), uuidBytes(candidate.deviceId), Buffer.from(candidate.signingPublicKey, 'base64url'), createHash('sha512').update(opaqueRecord).digest(), createHash('sha512').update(Buffer.from(candidate.wrappedRootDescriptor, 'base64url')).digest(), createHash('sha512').update(Buffer.from(candidate.wrappedRootEnvelope, 'base64url')).digest(), createHash('sha512').update(Buffer.from(candidate.privateDirectory ?? '', 'base64url')).digest()]);
 }
 export class RegistrationAdapter {
-  constructor({opaque,setup,installation,serverPublicKey,tokenKey,origin,now=()=>Date.now()}){Object.assign(this,{opaque,setup,installation,serverPublicKey,tokenKey,origin,now});}
-  async start({accountId,deviceId,request}){
+  constructor({opaque,setup,installation,serverPublicKey,tokenKey,origin,now=()=>Date.now(),authorizeStart}){Object.assign(this,{opaque,setup,installation,serverPublicKey,tokenKey,origin,now,authorizeStart});}
+  async start(input){
+    if(typeof this.authorizeStart!=='function')throw new AuthError(503);
+    await this.authorizeStart(input);
+    return this.#start(input,{purpose:'enrollment'});
+  }
+  startRotation(input,scope){
+    if(!['password-rotation','secret-rotation'].includes(scope.purpose))throw new AuthError(400);
+    return this.#start(input,scope);
+  }
+  async #start({accountId,deviceId,request},scope){
     const requestBytes=Buffer.from(request??'','base64url');if(requestBytes.length!==32||requestBytes.toString('base64url')!==request)throw new AuthError(400);
     if(uuidBytes(accountId).length!==16||uuidBytes(deviceId).length!==16)throw new AuthError(400);
-    const attempt=randomBytes(32),expires=this.now()+120000,binding={origin:this.origin,installation:this.installation,account:accountId,device:deviceId,epoch:1,attempt,serverPublicKey:this.serverPublicKey};
+    const attempt=randomBytes(32),expires=this.now()+120000,binding={origin:this.origin,installation:this.installation,account:accountId,device:deviceId,epoch:scope.credentialEpoch??1,attempt,serverPublicKey:this.serverPublicKey};
     const response=await this.opaque.serverRegistrationStart({setup:this.setup,request:requestBytes,binding});
-    const payload=Buffer.from(JSON.stringify({v:2,accountId,deviceId,installation:this.installation,origin:this.origin,attempt:attempt.toString('base64url'),expires}));const mac=createHmac('sha256',this.tokenKey).update('registration-artifact\0').update(payload).digest();
+    const payload=Buffer.from(JSON.stringify({v:3,...scope,accountId,deviceId,installation:this.installation,origin:this.origin,attempt:attempt.toString('base64url'),expires}));const mac=createHmac('sha256',this.tokenKey).update('registration-artifact\0').update(payload).digest();
     return {response:response.toString('base64url'),binding:encodeBinding(binding).toString('base64url'),registrationArtifact:`${payload.toString('base64url')}.${mac.toString('base64url')}`};
   }
-  verifyArtifact(candidate){const [body,tag,...rest]=String(candidate.registrationArtifact??'').split('.');if(rest.length||!body||!tag)throw new AuthError(400);const payload=Buffer.from(body,'base64url'),provided=Buffer.from(tag,'base64url'),expected=createHmac('sha256',this.tokenKey).update('registration-artifact\0').update(payload).digest();if(provided.length!==32||!provided.equals(expected))throw new AuthError(400);let value;try{value=JSON.parse(payload);}catch{throw new AuthError(400);}if(value.v!==2||value.expires<this.now()||value.accountId!==candidate.accountId||value.deviceId!==candidate.deviceId||value.installation!==this.installation||value.origin!==this.origin)throw new AuthError(400);return value;}
+  verifyArtifact(candidate,purpose='enrollment'){const [body,tag,...rest]=String(candidate.registrationArtifact??'').split('.');if(rest.length||!body||!tag)throw new AuthError(400);const payload=Buffer.from(body,'base64url'),provided=Buffer.from(tag,'base64url'),expected=createHmac('sha256',this.tokenKey).update('registration-artifact\0').update(payload).digest();if(provided.length!==32||!provided.equals(expected))throw new AuthError(400);let value;try{value=JSON.parse(payload);}catch{throw new AuthError(400);}if(value.v!==3||value.purpose!==purpose||value.expires<=this.now()||value.accountId!==candidate.accountId||value.deviceId!==candidate.deviceId||value.installation!==this.installation||value.origin!==this.origin)throw new AuthError(400);return value;}
 }
-export function createRegistrationCompletion(opaque, registration) {
+export function createRegistrationCompletion(opaque, registration, purpose='enrollment') {
   return async candidate => {
     if (!candidate || typeof candidate !== 'object') throw new AuthError(400);
-    registration?.verifyArtifact(candidate);
+    registration?.verifyArtifact(candidate,purpose);
     const upload = Buffer.from(candidate.opaqueUpload ?? '', 'base64url');
     const signature = Buffer.from(candidate.activationSignature ?? '', 'base64url');
     if (upload.length !== 192 || signature.length !== 64) throw new AuthError(400);

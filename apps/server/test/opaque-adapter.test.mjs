@@ -6,7 +6,7 @@ import { OpaqueAdapter, RegistrationAdapter, createRegistrationCompletion, regis
 test('registration artifact binds IDs, expiry, OPAQUE validation and first device proof',async()=>{
   const {privateKey,publicKey}=generateKeyPairSync('ed25519'),raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
   const bridge={server_registration_start:()=>Buffer.alloc(64),server_registration_finish:x=>x};
-  const opaque=new OpaqueAdapter(bridge),registration=new RegistrationAdapter({opaque,setup:Buffer.alloc(96),installation:'323e4567-e89b-42d3-a456-426614174000',serverPublicKey:Buffer.alloc(32),tokenKey:Buffer.alloc(32,7),origin:'https://127.0.0.1',now:()=>100});
+  const opaque=new OpaqueAdapter(bridge),registration=new RegistrationAdapter({opaque,setup:Buffer.alloc(96),installation:'323e4567-e89b-42d3-a456-426614174000',serverPublicKey:Buffer.alloc(32),tokenKey:Buffer.alloc(32,7),authorizeStart:async()=>{},origin:'https://127.0.0.1',now:()=>100});
   const ids={accountId:'223e4567-e89b-42d3-a456-426614174000',deviceId:'123e4567-e89b-42d3-a456-426614174000'};
   const started=await registration.start({...ids,request:Buffer.alloc(32).toString('base64url')});
   const candidate={...ids,username:'person_1',displayName:'Person',email:'person@example.test',signingPublicKey:raw.toString('base64url'),opaqueUpload:Buffer.alloc(192,2).toString('base64url'),wrappedRootDescriptor:Buffer.alloc(8,3).toString('base64url'),wrappedRootEnvelope:Buffer.alloc(16,4).toString('base64url'),registrationArtifact:started.registrationArtifact};

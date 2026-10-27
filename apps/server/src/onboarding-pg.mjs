@@ -1,9 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import { OnboardingError } from './onboarding.mjs';
 import { requireLicenseSeats } from './license-seats.mjs';
+import { reserveSecurityRequest } from './security-limits.mjs';
 
 export class PgOnboardingStore {
   constructor(pool, { tenantId = null, loadEntitlement = null } = {}) { this.pool = pool; this.tenantId = tenantId; this.loadEntitlement = loadEntitlement; }
+  async authorizeRegistration(input) {
+    const tenantId = this.tenantId ?? (await this.pool.query('SELECT id FROM vaults.installation WHERE singleton=true')).rows[0]?.id;
+    if (!tenantId) throw new OnboardingError();
+    if (!await reserveSecurityRequest(this.pool,{tenantId,purpose:'registration',source:input.source,now:input.now})) throw new OnboardingError('rate_limited',429);
+    return this.#tx(async c => {
+      // Neither bootstrap nor invitation registration may query an existing
+      // account's OPRF. Credential updates have a separate authenticated path.
+      if ((await c.query('SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND id=$2',[tenantId,input.accountId])).rowCount) throw new OnboardingError();
+      const allowed = input.bootstrap
+        ? await c.query(`SELECT 1 FROM vaults.bootstrap_tokens b WHERE b.tenant_id=$1 AND b.token_digest=$2 AND b.consumed_at IS NULL AND b.expires_at>$3
+            AND NOT EXISTS(SELECT 1 FROM vaults.accounts a WHERE a.tenant_id=b.tenant_id AND a.server_role='owner')`,[tenantId,input.digest,input.now])
+        : await c.query(`SELECT 1 FROM vaults.invitation_records i JOIN vaults.invitation_emails e USING(tenant_id,id)
+            WHERE i.tenant_id=$1 AND i.token_digest=$2 AND i.revoked_at IS NULL AND i.expires_at>$3 AND e.email=$4 AND e.redeemed_at IS NULL`,[tenantId,input.digest,input.now,input.email]);
+      if (!allowed.rowCount) throw new OnboardingError();
+      return { purpose:'enrollment' };
+    });
+  }
   async #tx(fn) { const c = await this.pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e instanceof OnboardingError ? e : new OnboardingError(); } finally { c.release(); } }
   async bootstrapOwner(input) { return this.#tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(127,6)');

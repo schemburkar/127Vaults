@@ -35,6 +35,8 @@ import { loadLicenseStatus } from './license-status.mjs';
 import { createLicenseWriteGuard } from './license-write-guard.mjs';
 import { LicenseClock } from './license-clock.mjs';
 import { createSetupHandler } from './setup-handler.mjs';
+import { PgCredentialRotationStore, createCredentialRotationHandler } from './credential-rotation.mjs';
+import { containRequestErrors } from './http-boundary.mjs';
 
 // Experimental internal MVP: use fictitious credentials and vault data only.
 const env = process.env;
@@ -82,7 +84,7 @@ if(!setup){setup=Buffer.from(Bridge.server_setup());const tenant=(await pool.que
 const publicKey=Buffer.from(Bridge.server_public_key(setup));
 const authService=new AuthService({store:new PgAuthStore(pool,tokenKey,publicKey),opaque});
 const installation=(await pool.query('SELECT id FROM vaults.installation WHERE singleton=true')).rows[0].id;
-const registration=new RegistrationAdapter({opaque,setup,installation,serverPublicKey:publicKey,tokenKey,origin:transport.origin});
+const registration=new RegistrationAdapter({opaque,setup,installation,serverPublicKey:publicKey,tokenKey,origin:transport.origin,authorizeStart:input=>onboardingService.authorizeRegistration(input)});
 const authHandler=createAuthHandler(authService,transport.origin);
 let mailer;
 if (env.SMTP_HOST) {
@@ -104,6 +106,7 @@ const vaultRemovalHandler=createVaultRemovalHandler(new PgVaultRemovalStore(pool
 const syncHandler=createSignedSyncHandler(syncStore,authenticate,transport.origin,{checkpointPublicKey});
 const deviceStore=new PgDeviceLifecycleStore(pool);
 const deviceLifecycleHandler=createDeviceLifecycleHandler(deviceStore,authenticate,transport.origin);
+const credentialRotationHandler=createCredentialRotationHandler({store:new PgCredentialRotationStore(pool),authenticate,origin:transport.origin,registration,opaque});
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
 const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
 const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
@@ -142,7 +145,7 @@ const webFiles=new Map([
   ['/wasm/vaults_browser_fixture_bg.wasm',['../../web/wasm/vaults_browser_fixture_bg.wasm','application/wasm']]
 ]);
 let stopping = false;
-const server = createServer(tls, async (req, res) => {
+const server = createServer(tls, containRequestErrors(async (req, res) => {
   const began = Date.now();
   res.once('finish', () => telemetry.request(req.method, res.statusCode, Date.now() - began, !req.url?.startsWith('/health/')));
   res.setHeader('Cache-Control', 'no-store');
@@ -173,6 +176,7 @@ const server = createServer(tls, async (req, res) => {
   if(await onboardingHandler(req,res))return;
   if(await licenseHandler(req,res))return;
   if(await deviceEnrollmentHandler(req,res))return;
+  if(await credentialRotationHandler(req,res))return;
   if(await deviceLifecycleHandler(req,res))return;
   if(await syncHandler(req,res))return;
   if(await privateVaultHandler(req,res))return;
@@ -190,7 +194,7 @@ const server = createServer(tls, async (req, res) => {
     await requireSchema(pool);
     reply(200, { status: 'ok', experimental: true, schemaVersion, scope: 'schema-only', ops: telemetry.snapshot() });
   } catch { reply(503, { status: 'unavailable' }); }
-});
+}, () => telemetry.event('request_error')));
 server.requestTimeout = 5000;
 server.headersTimeout = 5000;
 server.keepAliveTimeout = 1000;

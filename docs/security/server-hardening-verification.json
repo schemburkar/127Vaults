@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-10-27T05:51:44.726Z",
+  "sourceDigest": "05d940a507b14ed079d3c7b2292f1c32bf73aaaedb1a6dd95276e441593a54e9",
+  "tests": 199,
+  "passed": 194,
+  "failed": 0,
+  "skipped": 5,
+  "checks": [
+    "server suite",
+    "real OPAQUE and disposable PostgreSQL security regressions",
+    "browser registration and HTTP tests",
+    "signed sync protocol tests",
+    "upgrade and backup tests",
+    "server, browser and acceptance-client syntax"
+  ],
+  "isolation": {
+    "externalNetwork": false,
+    "sourceReadOnly": true,
+    "emptyEnvironment": true,
+    "cpu": 2,
+    "memory": "1g",
+    "processes": 128,
+    "scratch": "256m",
+    "wallSeconds": 600
+  }
+}

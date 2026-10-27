@@ -8,6 +8,14 @@ const cookie = req => {
   return /^[A-Za-z0-9_-]{43}$/.test(token ?? '') ? token : null;
 };
 
+// Lock before the settings row (including its absence). Rotation locks this
+// credential row exclusively, so an already-authenticated old request cannot
+// install a previous-epoch settings envelope after rotation commits.
+export async function lockSettingsCredentialEpoch(client,auth) {
+  const valid=await client.query('SELECT 1 FROM vaults.authentication_credentials WHERE tenant_id=$1 AND account_id=$2 AND credential_epoch=$3 FOR SHARE',[auth.tenantId,auth.accountId,auth.credentialEpoch]);
+  if(valid.rowCount!==1)throw new VaultError(401,'AUTHENTICATION_REQUIRED');
+}
+
 export function validateSettingsEnvelope(envelope, auth, revision) {
   if (envelope.length < 174 || envelope.length > 16557 || envelope.subarray(0,8).toString('binary') !== '127VEXP\0'
       || envelope.readUInt16BE(8) !== 1 || envelope[10] !== 1 || envelope[11] !== 5
@@ -29,6 +37,7 @@ export class PgVaultSettingsStore {
     try {
       await client.query('BEGIN');
       await client.query("SET LOCAL lock_timeout='5s'");
+      await lockSettingsCredentialEpoch(client,auth);
       const row = (await client.query('SELECT revision,envelope FROM vaults.private_account_settings WHERE tenant_id=$1 AND account_id=$2 FOR UPDATE', [auth.tenantId,auth.accountId])).rows[0];
       if (row?.revision === revision && Buffer.from(row.envelope).equals(envelope)) {
         await client.query('COMMIT');

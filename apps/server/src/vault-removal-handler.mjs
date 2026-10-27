@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { AuthError, AUTH_COOKIE, requireUnsafeRequest } from './auth-policy.mjs';
 import { HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJson } from './http-boundary.mjs';
 import { VaultError, bytes, catalogue, exact, uuid } from './private-vault.mjs';
-import { validateSettingsEnvelope } from './vault-settings-handler.mjs';
+import { validateSettingsEnvelope, lockSettingsCredentialEpoch } from './vault-settings-handler.mjs';
 
 const cookie = req => {
   const value = String(req.headers.cookie ?? '').split(';').map(x => x.trim()).find(x => x.startsWith(`${AUTH_COOKIE}=`))?.slice(AUTH_COOKIE.length + 1);
@@ -52,6 +52,7 @@ export class PgVaultRemovalStore {
       await client.query('BEGIN');
       await client.query("SET LOCAL statement_timeout='5s'");
       await client.query("SET LOCAL lock_timeout='5s'");
+      await lockSettingsCredentialEpoch(client,auth);
       const fp = fingerprint(path, raw);
       const previous = (await client.query('SELECT fingerprint,response FROM vaults.private_vault_removal_receipts WHERE tenant_id=$1 AND account_id=$2 AND request_id=$3 FOR UPDATE', [auth.tenantId, auth.accountId, choice.requestId])).rows[0];
       if (previous) {

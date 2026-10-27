@@ -24,7 +24,7 @@ export class AuthService {
     const pending = await this.store.consumePasswordAttempt({ attempt, now: this.now() });
     let sessionKey;
     try { sessionKey = await this.opaque.serverLoginFinish({ state: pending.state, finalization: finish, binding: pending.binding }); }
-    catch { await this.store.recordFailure(pending); throw new AuthError(); }
+    catch { throw new AuthError(); }
     try {
       const rootTag = await this.opaque.rootResponseTag({ sessionKey, binding: pending.binding, request: pending.request, response: pending.response, finalization: finish, descriptor: pending.descriptor, envelope: pending.envelope });
       const capability = randomBytes(32);

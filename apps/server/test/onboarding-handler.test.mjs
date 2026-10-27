@@ -11,7 +11,7 @@ async function invoke(handler,url,body,headers){const res=response();assert.equa
 test('v1 registration prepares OPAQUE and completes bootstrap through exact request variants',async()=>{
  const calls=[],service={async bootstrapOwner(value){calls.push(['bootstrap',value]);return{accountId:'account'}}},registration={async start(value){calls.push(['prepare',value]);return{registrationArtifact:'artifact'}}};
  const handler=createOnboardingHandler(service,async candidate=>({...candidate,completed:true}),origin,undefined,registration);
- const prepared=await invoke(handler,'/api/v1/onboarding/register',{accountId:'account',deviceId:'device',request:'opaque'});assert.equal(prepared.status,200);
+ const prepared=await invoke(handler,'/api/v1/onboarding/register',{accountId:'account',deviceId:'device',request:'opaque',token:'bootstrap',email:null});assert.equal(prepared.status,200);
  const completed=await invoke(handler,'/api/v1/onboarding/register',{token:'token',candidate:{username:'owner'}});assert.equal(completed.status,200);
  assert.deepEqual(calls.map(([name])=>name),['prepare','bootstrap']);assert.equal(calls[1][1].candidate.completed,true);
  const mixed=await invoke(handler,'/api/v1/onboarding/register',{token:'token',candidate:{},request:'unexpected'});assert.equal(mixed.status,400);

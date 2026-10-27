@@ -63,6 +63,13 @@ export const emailCode = () => {
 /** Orchestration only. The durable store owns all locking and atomicity. */
 export class OnboardingService {
   constructor({ store, mailer, tokenKey, now = () => new Date() }) { this.store = store; this.mailer = mailer; this.key = tokenKey; this.now = now; }
+  async authorizeRegistration({ accountId, deviceId, token, email, source }) {
+    if (![accountId,deviceId].every(id => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id))) throw new OnboardingError();
+    const bootstrap = typeof token === 'string' && token.startsWith('127V-B1-');
+    const prefix = bootstrap ? '127V-B1-' : '127V-I1-';
+    const digest = tokenDigest(this.key, bootstrap ? 'bootstrap' : 'invite', decodeToken(token,prefix));
+    return this.store.authorizeRegistration({ accountId, deviceId, digest, bootstrap, email: bootstrap ? null : normalizeEmail(email), source, now:this.now() });
+  }
   async bootstrapOwner({ token, candidate }) {
     const bootstrapDigest = tokenDigest(this.key, 'bootstrap', decodeToken(token, '127V-B1-'));
     return this.store.bootstrapOwner({ bootstrapDigest, candidate: validateCandidate(candidate), now: this.now() });
