@@ -201,7 +201,14 @@ try {
       await run(['install.mjs', 'upgrade', '--from', source, '--backup-dir', join(work, 'upgrade-backups'),
         '--backup-key-file', identityKey, ...provider], candidate);
       projects.push(candidate); source = candidate; await ready();
-      assert.deepEqual(await readFile(join(source, '.env')), before);
+      // Older installations gain the reviewed fixed relay identity on upgrade.
+      // Preserve every original byte/value apart from that exact appended field.
+      const original = before.toString('utf8');
+      const backend = /^VAULTS_SERVER_IP=(\d+\.\d+\.\d+)\.2\r?$/m.exec(original)?.[1];
+      const expected = /^VAULTS_RELAY_IP=/m.test(original) ? original
+        : `${original.replace(/\s*$/, '')}\nVAULTS_RELAY_IP=${backend}.4\n`;
+      assert.ok(/^VAULTS_RELAY_IP=/m.test(original) || backend, 'Known fixed backend required');
+      assert.deepEqual(await readFile(join(source, '.env')), Buffer.from(expected));
       assert.deepEqual(await readFile(join(identity, 'ca/ca.crt')), ca);
       if (licenseBefore) assert.deepEqual(await readFile(join(identity, 'runtime/licenses/1.json')), licenseBefore);
       assert.ok(existsSync(join(work, 'upgrade-backups/upgrade-receipt.json')));
