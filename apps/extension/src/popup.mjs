@@ -27,6 +27,18 @@ function status(message, error = false) {
   $('status').textContent = message;
   $('status').classList.toggle('error', error);
 }
+function updatePopupView() {
+  const locked = $('results').hidden && ['desktop', 'cli'].includes(selectedSource);
+  $('locked-view').hidden = !locked;
+  $('unlock-desktop').hidden = selectedSource !== 'desktop';
+  $('locked-description').textContent = selectedSource === 'cli' ? 'Unlock the CLI client, then return here to fill a sign-in.' : 'Unlock Desktop to use your saved sign-ins here.';
+  const badge = $('source-badge');
+  badge.hidden = locked || !selectedSource;
+  badge.textContent = selectedSource === 'desktop' ? 'Desktop' : selectedSource === 'cli' ? 'CLI' : 'Web vault';
+  badge.title = $('source-state').textContent;
+  $('extension-settings').hidden = locked;
+  if (locked && !$('status').classList.contains('error')) status('');
+}
 function errorMessage(error) {
   const code = String(error?.message || error);
   if (/Cannot access|permission|not allowed to access/i.test(code)) return 'Browser access to the vault tab was denied. Use Web connection to grant access to its HTTPS address, then refresh.';
@@ -186,10 +198,10 @@ async function refresh() {
   catch (error) { localSources = []; connectorError = error; }
   sourceSignature = JSON.stringify(localSources.map(source => [source.id, source.configured, source.active, source.localUnlocked, source.online]));
   const options = localSources.filter(source => source.configured).map(source => ({
-    id: source.id, label: `${source.id === 'desktop' ? '▣ Desktop' : '⌘ CLI'}${source.active || source.localUnlocked ? '' : ' · locked'}`,
+    id: source.id, label: `${source.id === 'desktop' ? 'Desktop' : 'CLI'}${source.active || source.localUnlocked ? '' : ' · locked'}`,
     preferred: source.active || source.localUnlocked,
   }));
-  if (vaultOrigin) options.push({ id: 'web', label: '◉ Web tab', preferred: false });
+  if (vaultOrigin) options.push({ id: 'web', label: 'Web vault', preferred: false });
   $('source-select').replaceChildren();
   for (const option of options) {
     const element = document.createElement('option');
@@ -210,7 +222,7 @@ async function refresh() {
   $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
     : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
   await loadSelectedSource();
-  } finally { refreshInProgress = false; await passkeys.refresh().catch(error => status(errorMessage(error), true)); }
+  } finally { refreshInProgress = false; await passkeys.refresh().catch(error => status(errorMessage(error), true)); updatePopupView(); }
 }
 async function choose(item) {
   if (pending) return;
@@ -276,10 +288,16 @@ $('connect').onclick = async () => {
     await refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
-$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => passkeys.refresh(true)).catch(error => status(errorMessage(error), true)); };
+$('source-select').onchange = () => { userSelectedSource = true; loadSelectedSource().then(() => { if (!$('results').hidden) $('source-controls').open = false; return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(updatePopupView); };
 $('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
+$('unlock-desktop').onclick = async () => {
+  try { await native({ action: 'open.desktop', source: 'desktop' }); status('Finish unlocking in Desktop. This popup reconnects automatically.'); }
+  catch { status('Open 127Vaults Desktop and unlock it. If it does not open, update the local connector.', true); }
+};
 $('settings').onclick = () => {
+  $('source-controls').open = true;
+  $('extension-settings').open = false;
   $('setup').hidden = false;
   $('vault-url').value = vaultOrigin || '';
   status('Web-tab connection is optional when desktop or CLI is available.');

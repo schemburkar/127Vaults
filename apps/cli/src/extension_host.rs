@@ -250,6 +250,23 @@ fn list_entries(
 impl Host {
     #[allow(clippy::too_many_lines)]
     fn dispatch(request: &mut Request) -> Result<Value, String> {
+        if request.action == "open.desktop" {
+            if request.source != "desktop" {
+                return Err("Desktop source required".to_owned());
+            }
+            let executable = std::env::current_exe()
+                .map_err(|_| "Desktop installation is unavailable")?
+                .with_file_name(if cfg!(windows) {
+                    "vaults-desktop-poc.exe"
+                } else {
+                    "vaults-desktop-poc"
+                });
+            if !executable.is_file() {
+                return Err("Open 127Vaults Desktop directly; the connector has no adjacent Desktop application".to_owned());
+            }
+            open_desktop(&executable)?;
+            return Ok(json!({"opened":true}));
+        }
         if request.action == "unlock" {
             return Err("Unlock your client directly. The extension does not accept account secrets or master passwords.".to_owned());
         }
@@ -382,6 +399,34 @@ impl Host {
     }
 }
 
+fn open_desktop(executable: &Path) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // The path comes only from this installed host, never from a web page.
+        let result = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; $exe=$env:VAULTS_DESKTOP_LAUNCH_PATH; $p=Get-Process | Where-Object { $_.ProcessName -eq 'vaults-desktop-poc' -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1; if ($p) { $ok=(New-Object -ComObject WScript.Shell).AppActivate($p.Id); if (!$ok) { throw 'Could not focus Desktop' } } else { Start-Process -FilePath $exe -WindowStyle Normal }"])
+            .env("VAULTS_DESKTOP_LAUNCH_PATH", executable)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+            .creation_flags(0x0800_0000)
+            .status().map_err(|_| "Could not open Desktop")?;
+        if !result.success() {
+            return Err("Could not focus Desktop; open it directly".to_owned());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new(executable)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| "Could not open Desktop")?;
+    }
+    Ok(())
+}
+
 fn read_frame(reader: &mut impl Read) -> Result<Option<Vec<u8>>, String> {
     let mut length = [0_u8; 4];
     match reader.read_exact(&mut length) {
@@ -452,6 +497,22 @@ pub fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_open_requires_desktop_source_and_cannot_supply_a_program() {
+        let mut wrong_source: Request =
+            serde_json::from_value(json!({"id":1,"action":"open.desktop","source":"cli"})).unwrap();
+        assert_eq!(
+            Host::dispatch(&mut wrong_source).unwrap_err(),
+            "Desktop source required"
+        );
+        assert!(
+            serde_json::from_value::<Request>(
+                json!({"id":1,"action":"open.desktop","source":"desktop","program":"arbitrary.exe"})
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn framing_round_trip_and_size_limit() {

@@ -53,3 +53,34 @@ button:disabled{opacity:.5;cursor:default}
 #disable-passkeys:hover,#passkey-browser:hover,#passkey-cancel:hover{background:#29334a;border-color:#e0bb95}
 
 .extension-brand { display: inline-flex; align-items: center; gap: 8px; }
+
+[hidden]{display:none!important}
+main{gap:8px;padding:18px}
+header{margin-bottom:2px}
+.source-badge{border:1px solid #ffffff1a;border-radius:20px;padding:4px 9px;color:#a6afc1;font-size:11px;cursor:help}
+#locked-view{text-align:center;padding:20px 12px 8px}
+.locked-symbol{display:grid;place-items:center;width:56px;height:56px;border-radius:18px;margin:0 auto 14px;background:#e0bb9512;color:#e0bb95}
+#locked-title{font-size:20px;letter-spacing:-.03em;margin:0 0 8px}
+#locked-description{margin:0 auto 20px;max-width:260px;line-height:1.6}
+#unlock-desktop{width:100%;min-height:42px}
+summary{cursor:pointer;list-style:none;color:#a6afc1;font-size:12px;outline-offset:4px}
+summary::-webkit-details-marker{display:none}
+summary:hover{color:#e0bb95}
+#source-controls>summary{text-align:center;padding:6px}
+#source-controls[open]{border:1px solid #ffffff15;border-radius:12px;padding:10px}
+#source-controls[open]>summary{margin-bottom:8px;color:#e0bb95}
+.source-options .header-actions{width:100%}
+.source-options select{flex:1;max-width:none;padding:9px;font-size:12px}
+#source-state{margin:10px 0 4px;line-height:1.6}
+#native-unlock{display:none}
+#results{margin-top:4px;max-height:340px}
+#search{min-height:42px;background:#ffffff06;border-color:#ffffff20;border-radius:10px}
+.item{border-radius:10px;border-color:#ffffff16;background:#ffffff04;padding:12px;margin:6px 0}
+footer{position:relative;border-color:#ffffff12;padding-top:10px;min-height:36px}
+#extension-settings{margin-left:auto}
+.settings-content{display:flex;flex-direction:column;gap:6px;padding-top:10px}
+#extension-settings[open]{width:100%}
+#extension-settings>summary{text-align:right;padding:4px}
+.icon-button{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:6px;border:0}
+#lock-vault{color:#a6afc1}
+footer:has(#extension-settings[hidden]){display:none}

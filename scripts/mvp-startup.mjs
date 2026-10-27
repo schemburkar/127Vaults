@@ -3,6 +3,22 @@ import { join } from 'node:path';
 import { get } from 'node:https';
 import { readFile, writeFile, chmod } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
+import { homedir } from 'node:os';
+
+export async function ensureDevOriginIsolated(origin, profile = process.env.VAULTS_CONFIG_DIR || join(process.env.APPDATA || join(homedir(), '.config'), '127Vaults'), identity) {
+  let trust;
+  try { trust = await readFile(join(profile, 'trust.conf'), 'utf8'); }
+  catch (error) { if (error.code === 'ENOENT') return; throw error; }
+  const address = /^url=(.+)$/m.exec(trust)?.[1]?.trim();
+  if (address && new URL(address).origin === origin) throw Error('This address belongs to an enrolled Desktop profile. Development startup cannot replace its server or history, even when the port is free. Restart the pinned server with node scripts/ops/local-server.mjs restart. Use independent development ports, identity and database for a new fixture.');
+  if (identity) {
+    try {
+      const binding = JSON.parse(await readFile(join(profile, 'tenant-binding.json'), 'utf8'));
+      const installation = (await readFile(join(identity, 'installation-id'), 'utf8')).trim();
+      if (installation === binding.tenant_id) throw Error('Development fixtures must use an independent identity and database. This identity belongs to the enrolled Desktop installation.');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
 
 export async function ensureRuntimeKeys(directory) {
   const names = ['token.key', 'checkpoint.key'];

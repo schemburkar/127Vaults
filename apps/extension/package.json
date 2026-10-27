@@ -6,7 +6,8 @@
   "scripts": {
     "check": "node ../../scripts/extension-assets.mjs && node --check src/passkey-settings.mjs && node --check src/passkeys.mjs && node --check src/passkey-page.js && node --check src/passkey-bridge.js && node --check src/passkey-queue.mjs && node --check src/passkey-provider.mjs && node --check src/popup-passkeys.mjs && node --check src/popup.mjs && node --check src/background.mjs && node --check src/fill.mjs && node --check src/match.mjs && node --check src/source-status.mjs && node -e \"JSON.parse(require('fs').readFileSync('manifest.json','utf8'))\"",
     "test": "node ../../scripts/extension-assets.mjs && node --test",
-    "prepare": "node ../../scripts/extension-assets.mjs"
+    "prepare": "node ../../scripts/extension-assets.mjs",
+    "test:popup": "node scripts/popup-layout-smoke.mjs"
   },
   "dependencies": {
     "@127vaults/domain": "workspace:*"

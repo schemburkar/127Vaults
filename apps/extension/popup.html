@@ -8,12 +8,9 @@
   </head>
   <body>
     <main>
-      <header><strong class="extension-brand" aria-label="127 Vaults"><img src="src/icons/brand-mark.svg" width="28" height="28" alt=""><img src="src/icons/vaults-wordmark.svg" width="82" height="28" alt=""></strong><div class="header-actions"><select id="source-select" aria-label="Credential source" title="Credential source" hidden></select><button id="refresh-sources" class="icon-button" type="button" title="Refresh sources" aria-label="Refresh sources" hidden>↻</button></div></header>
+      <header><strong class="extension-brand" aria-label="127 Vaults"><img src="src/icons/brand-mark.svg" width="28" height="28" alt=""><img src="src/icons/vaults-wordmark.svg" width="82" height="28" alt=""></strong><span id="source-badge" class="source-badge" hidden></span></header>
       <p id="site" class="site"></p>
       <p id="status" role="status" aria-live="polite"></p>
-      <button id="enable-passkeys" type="button" hidden>Enable 127Vaults passkeys on all HTTPS sites</button>
-      <button id="disable-passkeys" type="button" hidden>Disable 127Vaults passkeys</button>
-      <p id="windows-passkeys" class="hint" hidden>Passkeys are handled by Windows. Enable 127Vaults in Windows Settings → Accounts → Passkeys → Advanced options after installing the Desktop provider.</p>
       <section id="passkey-request" hidden>
         <h2 id="passkey-operation"></h2>
         <strong id="passkey-origin"></strong>
@@ -24,10 +21,13 @@
         <button id="passkey-cancel" type="button">Cancel</button>
       </section>
       <section id="saved-passkeys" hidden><p id="passkey-save-status" class="hint" role="status"></p><div id="saved-passkey-items"></div></section>
+      <section id="locked-view" hidden><div class="locked-symbol" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><h1 id="locked-title">Your vault is locked</h1><p id="locked-description" class="hint">Unlock Desktop to use your saved sign-ins here.</p><button id="unlock-desktop" type="button">Unlock desktop</button></section>
+      <details id="source-controls"><summary>Change source</summary><div class="source-options"><div class="header-actions"><select id="source-select" aria-label="Credential source" title="Credential source" hidden></select><button id="refresh-sources" class="icon-button" type="button" title="Refresh sources" aria-label="Refresh sources" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-2l2 3M4 16l2 3a7 7 0 0 0 12-2"/></svg></button></div></div>
       <section id="source-panel" hidden>
         <p id="source-state" class="hint" role="status"></p>
         <p id="native-unlock" class="hint" hidden>Unlock your client to connect. Your account secret and master password stay in the client.</p>
       </section>
+      <button id="settings" type="button">Connect web vault</button>
       <section id="setup" hidden>
         <h2>Use a vault web tab</h2>
         <p class="hint">Desktop and CLI are detected automatically when their local connector is installed and the client is enrolled.</p>
@@ -37,12 +37,16 @@
         <button id="connect" type="button">Connect web tab</button>
         <p class="hint">Grant access only to your vault address. Keep that tab open and unlocked to use it as a source.</p>
       </section>
+      </details>
       <section id="results" hidden>
         <input id="search" type="search" placeholder="Search sign-ins" aria-label="Search sign-ins">
         <div id="items"></div>
         <div id="frames" hidden></div>
       </section>
-      <footer><button id="lock-vault" type="button" hidden>Lock source</button><button id="settings" type="button">Web connection</button><button id="open-vault" type="button" hidden>Open web vault</button></footer>
+      <footer><button id="lock-vault" class="icon-button" type="button" title="Lock vault" aria-label="Lock vault" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button><details id="extension-settings"><summary>Settings</summary><div class="settings-content">      <button id="enable-passkeys" type="button" hidden>Enable 127Vaults passkeys on all HTTPS sites</button>
+      <button id="disable-passkeys" type="button" hidden>Disable 127Vaults passkeys</button>
+      <p id="windows-passkeys" class="hint" hidden>Passkeys are handled by Windows. Enable 127Vaults in Windows Settings → Accounts → Passkeys → Advanced options after installing the Desktop provider.</p>
+<button id="open-vault" type="button" hidden>Open web vault</button></div></details></footer>
     </main>
     <script type="module" src="src/popup.mjs"></script>
   </body>

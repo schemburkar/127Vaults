@@ -1,4 +1,4 @@
-import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi } from './mvp-startup.mjs';
+import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated } from './mvp-startup.mjs';
 import { spawnSync } from 'node:child_process';
 import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
@@ -18,6 +18,7 @@ if(action==='start'||action==='dev'){
   process.exit(0);
  }
 }
+if (['start', 'dev', 'migrate', 'reset'].includes(action)) await ensureDevOriginIsolated(origin, undefined, values.VAULTS_TLS_DIR);
 const localCompose=join(root,'.tools','compose',process.platform==='win32'?'Scripts/podman-compose.exe':'bin/podman-compose');
 const podman=process.platform==='win32'?join(process.env.ProgramFiles??'C:\\Program Files','RedHat','Podman','podman.exe'):'podman';
 const composeProvider=await (async()=>await access(localCompose).then(()=>true).catch(()=>false)?localCompose:'docker-compose')();

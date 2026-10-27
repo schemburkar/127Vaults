@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi } from './mvp-startup.mjs';
+import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated } from './mvp-startup.mjs';
 import { createServer } from 'node:http';
 
 test('development settings retain defaults and reject ambiguous ports or unsafe project names', () => {
@@ -132,4 +132,15 @@ test('launcher preflight accepts complete TLS files without starting containers 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Local TLS startup files are present/);
   assert.deepEqual((await readdir(identity)).sort(), ['ca', 'live']);
+});
+
+test('an enrolled origin cannot be taken over even if no listener is running', async t => {
+ const dir=await mkdtemp(join(tmpdir(),'127v-origin-pin-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ await writeFile(join(dir,'trust.conf'),'url=https://127.0.0.1:12780/\n');
+ await assert.rejects(ensureDevOriginIsolated('https://127.0.0.1:12780',dir),/enrolled Desktop profile/);
+ await ensureDevOriginIsolated('https://127.0.0.1:12961',dir);
+ await ensureDevOriginIsolated('https://127.0.0.1:12780',join(dir,'missing'));
+ await writeFile(join(dir,'tenant-binding.json'),JSON.stringify({tenant_id:'fixture-original'}));
+ await writeFile(join(dir,'installation-id'),'fixture-original');
+ await assert.rejects(ensureDevOriginIsolated('https://127.0.0.1:12961',dir,dir),/independent identity/);
 });
