@@ -35,6 +35,15 @@ up the selected installed executable, replaces only that connector and verifies
 its SHA-256 hash. Existing native messaging registrations remain intact. Reload
 the unpacked extension to use updated popup files.
 
+`node scripts/ops/local-server.mjs refresh-clock` installs a locally tested clock
+module fix into the pinned installation. It runs clock/license regressions,
+builds a derived image from that server's exact image, clones its configuration
+with the same storage mounts and retains the original stopped container for
+rollback. The replacement retains the pinned server name. Module hashes, test
+logs and rollback provenance are retained with the verification receipts. This
+is a local maintenance action, not a package publication. It does not reset clock
+records or change signed license dates.
+
 For an unpacked extension installed outside the checkout, refresh just its popup
 using `scripts/ops/refresh-local-extension.ps1 -InstalledDirectory <extension-root>
 -ReceiptDirectory <new-private-directory>`. This retains its manifest and browser

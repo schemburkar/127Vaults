@@ -1,12 +1,14 @@
-// Pinned local installation operations. Container recreation and volume deletion
-// are intentionally outside this workflow; history must survive restarts.
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
+// Pinned local installation operations. Routine restarts preserve containers;
+// explicit clock-module refresh retains the original container for rollback.
+// Database volumes and remembered history are never deleted or replaced.
+import { readFile, readdir, mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { get } from 'node:https';
 import { homedir } from 'node:os';
 import { checkpointHash } from '../../packages/sync/src/index.mjs';
+import { createHash } from 'node:crypto';
 
 export function verifyReplicaHistory(replicas, operations, checkpoints) {
   const serverOperations = new Map(operations.map(row => [`${row.vaultId}:${row.cursor}`, row.opId]));
@@ -31,7 +33,7 @@ export function verifyPinnedMounts(actual, expected) {
 async function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
   const action = process.argv[2];
-  if (!['status', 'restart', 'restore'].includes(action)) throw Error('Use status, restart or restore.');
+  if (!['status', 'restart', 'restore', 'refresh-clock'].includes(action)) throw Error('Use status, restart, restore or refresh-clock.');
   const config = JSON.parse(await readFile(join(root, '.tools/local-server.json'), 'utf8'));
   const podman = process.platform === 'win32' ? join(process.env.ProgramFiles || 'C:/Program Files', 'RedHat/Podman/podman.exe') : 'podman';
   function run(args) {
@@ -54,6 +56,45 @@ async function main() {
   const history = verifyReplicaHistory(replicas,
     query("SELECT coalesce(json_agg(json_build_object('vaultId',vault_id,'cursor',cursor,'opId',encode(operation_id,'hex'))),'[]'::json) FROM vaults.sync_operations"),
     query("SELECT coalesce(json_agg(json_build_object('vaultId',vault_id,'hash',encode(checkpoint_hash,'hex'))),'[]'::json) FROM vaults.sync_checkpoints"));
+  let clockModule;
+  if (action === 'refresh-clock') {
+    const tests = spawnSync(process.execPath, ['--test', 'apps/server/test/license-clock.test.mjs', 'apps/server/test/license-status.test.mjs'], { cwd: root, encoding: 'utf8', timeout: 60000 });
+    if (tests.status !== 0) throw Error('Clock regression checks failed; running server preserved.');
+    const directory = join(root, '.tools/verification/local-server', `${Date.now()}-clock-module`);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'tests.log'), tests.stdout + tests.stderr);
+    const source = join(root, 'apps/server/src/license-clock.mjs');
+    const target = `${config.server}:/app/apps/server/src/license-clock.mjs`;
+    const backup = join(directory, 'previous-license-clock.mjs');
+    run(['cp', target, backup]);
+    const sha256 = createHash('sha256').update(await readFile(source)).digest('hex');
+    // Installed containers have read-only roots. Build a narrow derived image
+    // and retain the original container for rollback, preserving exact storage.
+    const original = JSON.parse(run(['inspect', config.server]))[0];
+    const stamp = Date.now();
+    const image = 'localhost/127vaults-clock-fix:' + stamp;
+    const replacement = config.server + '-clock-' + stamp;
+    const previous = config.server + '-before-clock-' + stamp;
+    await copyFile(source, join(directory, 'license-clock.mjs'));
+    await writeFile(join(directory, 'Containerfile'), 'FROM ' + original.Image + '\nCOPY --chown=node:node license-clock.mjs /app/apps/server/src/license-clock.mjs\n');
+    run(['build', '--pull=never', '-t', image, directory]);
+    run([...(process.platform === 'win32' ? ['machine', 'ssh', 'podman'] : []), 'container', 'clone', config.server, replacement, image]);
+    verifyPinnedMounts(JSON.parse(run(['inspect', replacement]))[0].Mounts, config.mounts.server);
+    run(['stop', '--time', '20', config.server]);
+    run(['rename', config.server, previous]);
+    try {
+      run(['rename', replacement, config.server]);
+      run(['start', config.server]);
+      const installed = run(['exec', config.server, 'node', '-e', 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("/app/apps/server/src/license-clock.mjs")).digest("hex"))']);
+      if (installed !== sha256) throw Error('Installed clock module hash mismatch.');
+    } catch (error) {
+      try { run(['stop', '--time', '20', config.server]); run(['rename', config.server, replacement]); } catch {}
+      run(['rename', previous, config.server]); run(['start', config.server]);
+      throw error;
+    }
+    clockModule = { sha256, backup, image, previousContainer: previous };
+    await writeFile(join(directory, 'refresh.json'), JSON.stringify(clockModule, null, 2));
+  }
   if (action === 'restore') {
     if (process.platform === 'win32') {
       // Stop only this checkout's web Vite process, which can otherwise occupy
@@ -69,7 +110,7 @@ async function main() {
   }
   if (action !== 'status') {
     run(['start', config.database, config.server]);
-    if (action === 'restart') run(['restart', '--time', '20', config.server]);
+    if (action === 'restart' || action === 'refresh-clock') run(['restart', '--time', '20', config.server]);
     run(['start', config.relay]);
   }
   const ca = await readFile(join(config.identity, 'ca/ca.crt'));
@@ -87,7 +128,7 @@ async function main() {
       break;
     } catch (error) { if (attempt === 19 || action === 'status') throw error; await new Promise(done => setTimeout(done, 1000)); }
   }
-  const receipt = { action, at: new Date().toISOString(), origin: config.origin, installationId: databaseId, server: config.server, database: config.database, history, status };
+  const receipt = { action, at: new Date().toISOString(), origin: config.origin, installationId: databaseId, server: config.server, database: config.database, history, status, clockModule };
   await mkdir(join(root, '.tools/verification/local-server'), { recursive: true });
   await writeFile(join(root, '.tools/verification/local-server', `${Date.now()}-${action}.json`), JSON.stringify(receipt, null, 2), { flag: 'wx' });
   console.log(JSON.stringify(receipt, null, 2));

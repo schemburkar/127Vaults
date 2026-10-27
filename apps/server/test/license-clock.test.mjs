@@ -35,3 +35,27 @@ test('malformed clock state fails closed', async () => {
     await assert.rejects(new LicenseClock(path).observe(), /license_clock_unavailable/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('long-running VM elapsed-time drift and resume cannot manufacture future clock observations', async t => {
+  const dir = await mkdtemp(join(tmpdir(), '127v-clock-drift-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, 'clock.json');
+  let wall = Date.parse('2026-10-27T00:00:00Z'), mono = 0;
+  // Supply the former monotonic dependency to reproduce the old failure.
+  const clock = new LicenseClock(path, { wallNow: () => wall, monotonicNow: () => mono });
+  await clock.observe();
+  for (let hour = 0; hour < 72; hour++) {
+    wall += 3600_000;
+    mono += 3600_000 + 180_000;
+    const result = await clock.observe();
+    assert.equal(result.clockState, 'trusted');
+    assert.equal(result.now.getTime(), wall);
+    assert.equal(JSON.parse(await readFile(path, 'utf8')).lastObservedMs, wall);
+  }
+  mono += 86400_000;
+  assert.equal((await clock.observe()).clockState, 'trusted');
+  assert.equal((await new LicenseClock(path, { wallNow: () => wall }).observe()).clockState, 'trusted');
+  wall -= 5 * 60_000;
+  assert.equal((await clock.observe()).clockState, 'rollback_detected');
+  assert.equal((await new LicenseClock(path, { wallNow: () => wall }).observe()).clockState, 'rollback_detected');
+});
