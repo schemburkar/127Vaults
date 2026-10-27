@@ -44,6 +44,8 @@ try {
  assert.equal(await page.locator('#settings').isVisible(),false);
  const lockedSource=await page.locator('#change-source').boundingBox();
  assert.equal(lockedSource.x,loadingSource.x);
+ assert.equal(lockedSource.x,await page.locator('.footer-icons').evaluate(node=>node.getBoundingClientRect().left));
+ assert.equal(await page.locator('#lock-vault').isVisible(),false);
  await page.screenshot({path:join(output,'locked.png')});
  await page.locator('#unlock-desktop').click();
  assert.equal(await page.evaluate(()=>window.lastConnectorAction),'open.desktop');
@@ -58,7 +60,7 @@ try {
  assert.equal(await page.locator('#source-select').isVisible(),false);
  assert.equal(await page.locator('#lock-vault').isVisible(),true);
  const lock=await page.locator('#lock-vault').boundingBox(),source=await page.locator('#change-source').boundingBox();
- assert.equal(lock.y,source.y); assert(source.x>lock.x); assert.equal(source.x,lockedSource.x);
+ assert.equal(lock.y,source.y); assert(source.x>lock.x); assert.equal(lock.x,lockedSource.x); assert.equal(source.x,lock.x+lock.width+6);
  assert.equal(await page.locator('#loading-view').isVisible(),false);
  await page.screenshot({path:join(output,'unlocked.png')});
  await page.locator('#extension-settings>summary').click();
@@ -68,7 +70,7 @@ try {
  await page.evaluate(()=>{window.fixtureNoItems=true;});
  await page.locator('#refresh-sources').click();
  await page.waitForFunction(()=>document.querySelector('#status').textContent==='No sign-ins saved for this site.');
- assert.equal((await page.locator('#change-source').boundingBox()).x,lockedSource.x);
+ assert.equal((await page.locator('#change-source').boundingBox()).x,source.x);
  assert.deepEqual(errors,[]);
  console.log('Popup smoke passed: locked CTA, native open action, source disclosure, unlocked results, secondary passkey settings. Screenshots: '+output);
 } finally {await browser.close();}

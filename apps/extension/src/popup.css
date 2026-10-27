@@ -83,13 +83,11 @@ footer{position:relative;border-color:#ffffff12;padding-top:10px;min-height:36px
 
 
 #source-controls{border:1px solid #ffffff15;border-radius:12px;padding:12px;margin-top:4px}
-footer{display:grid;grid-template-columns:32px 32px minmax(0,1fr);gap:6px;align-items:start}
-#lock-vault{grid-column:1;grid-row:1}
-#lock-vault[hidden]{display:inline-flex!important;visibility:hidden}
-#change-source{grid-column:2;grid-row:1;color:#a6afc1}
+footer{display:flex;flex-wrap:wrap;gap:6px;align-items:start}
+.footer-icons{display:flex;align-items:center;gap:6px}
+#change-source{color:#a6afc1}
 #change-source[aria-expanded=true]{background:#e0bb9512;color:#e0bb95}
-#extension-settings{grid-column:3;grid-row:1;justify-self:end}
-#extension-settings[open]{grid-column:1/-1;grid-row:2}
+#extension-settings[open]{flex-basis:100%}
 #loading-view{display:flex;align-items:center;justify-content:center;gap:10px;min-height:124px;color:#a6afc1;font-size:13px}
 .loading-spinner{width:16px;height:16px;border:2px solid #ffffff20;border-top-color:#e0bb95;border-radius:50%;animation:popup-spin .8s linear infinite}
 @keyframes popup-spin{to{transform:rotate(360deg)}}
