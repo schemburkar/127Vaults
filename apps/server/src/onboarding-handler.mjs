@@ -35,7 +35,7 @@ export function createOnboardingHandler(service, completeRegistration, configure
         const fields = Object.keys(untyped).sort().join(',');
         if (fields === 'accountId,deviceId,email,request,token') {
           if (!registration) throw new OnboardingError('onboarding_failed', 503);
-          writeJson(res, 200, await registration.start({ ...untyped, source:req.socket.remoteAddress??'unknown' })); return true;
+          writeJson(res, 200, await registration.start({ ...untyped, source:requestSource(req) })); return true;
         }
         if (fields !== 'candidate,token') throw new OnboardingError('onboarding_failed', 400);
         writeJson(res, 200, await service.bootstrapOwner({ ...untyped, candidate: await completeRegistration(untyped.candidate) })); return true;

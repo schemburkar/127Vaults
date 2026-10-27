@@ -21,6 +21,11 @@ New installations reserve backend `.4` for the relay; upgrades derive it from
 the existing server address while retaining the old bundle's configuration.
 Direct connections use their actual socket address. No deployment is included.
 
+The registration-preparation handler also uses the preserved caller address.
+A regression through the real relay, ingress, onboarding handler and PostgreSQL
+budget verifies that ten invalid attempts exhaust only that caller's allowance;
+a different caller can still prepare a valid invitation registration.
+
 This change addresses the seven items from the focused server review. It is a
 source remediation and regression record, not an independent cryptographic
 audit or a deployment/publication receipt.

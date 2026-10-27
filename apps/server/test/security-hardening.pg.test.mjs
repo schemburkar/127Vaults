@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { createServer, request as httpRequest } from 'node:http';
+import { once } from 'node:events';
+import { createRelayIngress, requestSource } from '../src/relay-ingress.mjs';
+import { createPrivateRelay } from '../src/private-relay.mjs';
+import { createOnboardingHandler } from '../src/onboarding-handler.mjs';
 import pg from 'pg';
 import { schemaSql, schemaV9Checksum, schemaV10MigrationSql, requireSchema } from '../src/schema.mjs';
 import { migrateSchema9To10, schemaStatus } from '../src/schema-migration.mjs';
@@ -84,6 +89,35 @@ test('offline PostgreSQL and real OPAQUE security regressions',{skip:!url,timeou
     return {...value,authorizationSignature:b64(sign(null,credentialPreparationBytes({auth,...value}),user.key.privateKey))};
   }
   let aliceAuth,bobAuth;
+  await t.test('registration limits isolate callers through the relay and private ingress',async t=>{
+    const csrf='c'.repeat(43),token=newInviteToken(),email='relay-registration@example.invalid';
+    await pool.query("INSERT INTO vaults.invitation_records(tenant_id,id,token_digest,created_by,expires_at) VALUES($1,$2,$3,$4,now()+interval '1 hour') RETURNING id",[tenant,randomUUID(),tokenDigest(tokenKey,'invite',decodeToken(token,'127V-I1-')),alice.accountId]).then(async result=>{
+      await pool.query('INSERT INTO vaults.invitation_emails(tenant_id,id,email) VALUES($1,$2,$3)',[tenant,result.rows[0].id,email]);
+    });
+    const handler=createOnboardingHandler(onboarding,async x=>x,origin,undefined,registration);
+    const backend=createServer(async(req,res)=>{requestSource(req);await handler(req,res);});
+    backend.listen(0,'127.0.0.1');await once(backend,'listening');
+    const ingress=createRelayIngress({targetPort:backend.address().port,trustedRelayPeer:'127.0.0.2'});
+    ingress.listen(0,'127.0.0.1');await once(ingress,'listening');
+    const relay=createPrivateRelay({bind:'127.0.0.1',backendBind:'127.0.0.2',target:'127.0.0.1',targetPort:ingress.address().port,port:0,sourceMetadata:true});
+    await relay.start();
+    t.after(async()=>{await relay.stop();await ingress.stop();backend.closeAllConnections();await new Promise(done=>backend.close(done));});
+    const step=bridge.client_registration_start(randomBytes(32),Buffer.from('registration-fixture-only'));
+    t.after(()=>step.free());
+    const body=JSON.stringify({accountId:randomUUID(),deviceId:randomUUID(),request:b64(step.message()),token,email});
+    const send=(localAddress,payload)=>new Promise((resolve,reject)=>{
+      const req=httpRequest({host:'127.0.0.1',port:relay.address().port,localAddress,method:'POST',path:'/api/v1/onboarding/register',agent:false,
+        headers:{origin,'content-type':'application/json',cookie:`__Host-127v-ceremony=${csrf}`,'x-127v-csrf':csrf}},res=>{
+          res.resume();res.on('end',()=>resolve(res.statusCode));
+        });req.on('error',reject);req.end(payload);
+    });
+    const invalid=JSON.stringify({...JSON.parse(body),token:newInviteToken()});
+    for(let i=0;i<10;i++)assert.equal(await send('127.0.0.3',invalid),400);
+    assert.equal(await send('127.0.0.3',invalid),429);
+    assert.equal(await send('127.0.0.4',body),200);
+    const sources=(await pool.query("SELECT source,count(*)::int n FROM vaults.security_request_limits WHERE tenant_id=$1 AND purpose='registration' AND source=ANY($2::text[]) GROUP BY source ORDER BY source",[tenant,['127.0.0.3','127.0.0.4']])).rows;
+    assert.deepEqual(sources,[{source:'127.0.0.3',n:10},{source:'127.0.0.4',n:1}]);
+  });
   await t.test('real sign-in binds each session to its own account and device',async()=>{
     aliceAuth=await login(alice);bobAuth=await login(bob);
     assert.equal(aliceAuth.accountId,alice.accountId);assert.equal(bobAuth.accountId,bob.accountId);
