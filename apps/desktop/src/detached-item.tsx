@@ -20,6 +20,17 @@ export function DetachedItem() {
   const [message, setMessage] = useState("Loading item…");
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   useEffect(() => {
+    let last = 0;
+    const activity = (event: Event) => {
+      if (!event.isTrusted || !active.current || Date.now() - last < 60000) return;
+      last = Date.now();
+      void invoke("session_activity").catch(() => {});
+    };
+    window.addEventListener("pointerdown", activity);
+    window.addEventListener("keydown", activity);
+    return () => { window.removeEventListener("pointerdown", activity); window.removeEventListener("keydown", activity); };
+  }, []);
+  useEffect(() => {
     let disposed = false;
     active.current = true;
     const clear = () => { disposed = true; active.current = false; setItem(null); setRevealed({}); setMessage("Vault locked. Reopen this item from the main window after unlocking."); };
@@ -39,7 +50,7 @@ export function DetachedItem() {
   }, [vaultId, itemId]);
   const secret = (field: string) => invoke<string>("item_secret", { vaultId, itemId, field });
   const copy = async (field: string, value: string, hidden: boolean) => {
-    try { const text = hidden ? await secret(field) : value; if (!active.current) return; await navigator.clipboard.writeText(text); setMessage("Copied · clipboard clears in 30 seconds"); setTimeout(() => void navigator.clipboard.writeText("").catch(() => {}), 30000); }
+    try { const text = hidden ? await secret(field) : value; if (!active.current) return; await invoke("clipboard_copy", { value: text }); setMessage("Copied · clipboard clears in 30 seconds"); }
     catch { setMessage("Could not copy this field."); }
   };
   const toggleReveal = async (field: string) => {

@@ -1,0 +1,53 @@
+{
+  "checkedAt": "2026-10-27T09:35:50.095Z",
+  "sourceDigest": "8951a0db437442abde0770bbde96bb43caee5d2d0c79c002f3c0a5a431762daf",
+  "checks": {
+    "desktopTypeScript": "passed",
+    "productionFrontendBuild": "passed",
+    "linuxNativeCompile": "passed",
+    "desktopUi": {
+      "passed": 51,
+      "failed": 0
+    },
+    "nativePolicy": {
+      "passed": 6,
+      "failed": 0
+    },
+    "linuxNativeClipboardOnIsolatedDisplay": {
+      "passed": 1,
+      "failed": 0
+    },
+    "cliLibrary": {
+      "passed": 123,
+      "failed": 0,
+      "ignored": 1
+    },
+    "windowsClipboardModuleCrossCompile": "passed",
+    "installedWindowsGuiAcceptance": "not run"
+  },
+  "isolation": {
+    "externalNetwork": false,
+    "sourceAndToolchainReadOnly": true,
+    "environmentAllowlisted": true,
+    "writableScratchLimit": "3 GiB",
+    "native": {
+      "wallSeconds": 600,
+      "cpuSecondsPerProcess": 540,
+      "processes": 128,
+      "virtualMemoryPerProcess": "4 GiB",
+      "cargoJobs": 2
+    },
+    "ui": {
+      "wallSeconds": 120,
+      "cpuSecondsPerProcess": 100,
+      "processes": 96,
+      "nodeHeapMiB": 256
+    },
+    "clipboardDisplay": {
+      "wallSeconds": 30,
+      "cpus": 1,
+      "memoryMiB": 512,
+      "processes": 64
+    }
+  }
+}

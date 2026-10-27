@@ -2,11 +2,13 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
+import react from '@vitejs/plugin-react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-test('shared read-only details render grouped credentials, related fields and distinct window actions', async () => {
-  const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true }, appType: 'custom' });
+test('shared read-only details render grouped credentials, related fields and distinct window actions', { timeout: 15000 }, async () => {
+  const server = await createServer({ configFile: false, plugins: [react()], cacheDir: process.env.VAULTS_TEST_CACHE_DIR, root: fileURLToPath(new URL('../', import.meta.url)),
+    optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
   try {
     const { ReadonlyItem } = await server.ssrLoadModule('/src/readonly-item.tsx');
     const html = renderToStaticMarkup(createElement(ReadonlyItem, {

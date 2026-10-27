@@ -18,9 +18,11 @@ tauri-plugin-opener = "2.5.3"
 vaults-cli = { path = "../../cli" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "=0.61.3", features = ["ApplicationModel_DataTransfer", "Foundation"] }
 keyring = { version = "=3.6.3", default-features = false, features = ["windows-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gtk = "=0.18.2"
 keyring = { version = "=3.6.3", default-features = false, features = ["linux-native-sync-persistent", "crypto-rust"] }
 
 [lints]

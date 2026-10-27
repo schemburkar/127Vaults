@@ -5623,6 +5623,7 @@ name = "vaults-desktop-poc"
 version = "0.0.0"
 dependencies = [
  "dirs",
+ "gtk",
  "keyring",
  "serde_json",
  "tauri",
@@ -5630,6 +5631,7 @@ dependencies = [
  "tauri-plugin-opener",
  "url",
  "vaults-cli",
+ "windows",
  "zeroize",
 ]
 

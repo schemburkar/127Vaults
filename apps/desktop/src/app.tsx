@@ -343,6 +343,8 @@ function DesktopApp() {
     setItems([]);
     setSelected(null);
     setEditOriginal(null);
+    setConflict(null);
+    setSettingsReview(null);
     setRevealed(new Set());
     setAccountSecret("");
     setMasterPassword("");
@@ -1009,12 +1011,8 @@ function DesktopApp() {
   };
   const copyValue = async (value: string) => {
     if (!value) return;
-    await navigator.clipboard.writeText(value);
+    await invoke("clipboard_copy", { value });
     setStatus("Copied to clipboard · clears in 30 seconds");
-    setTimeout(
-      () => navigator.clipboard.writeText("").catch(() => undefined),
-      30000,
-    );
   };
   const toggleReveal = (key: string) =>
     setRevealed((current) => {

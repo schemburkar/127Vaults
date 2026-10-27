@@ -3,6 +3,9 @@
 
 use serde_json::{Value, json};
 use tauri::{Emitter, Manager};
+mod clipboard;
+mod idle_lease;
+mod renderer_boundary;
 mod session_epoch;
 use std::{
     fs,
@@ -25,8 +28,10 @@ struct DesktopState {
     enrollment: std::sync::Arc<Mutex<Value>>,
     connector_owned: Mutex<Option<(u64, PathBuf)>>,
     connector_seen: Mutex<Option<(u64, PathBuf)>>,
-    epoch: session_epoch::SessionEpoch,
+    epoch: std::sync::Arc<session_epoch::SessionEpoch>,
+    transitions: std::sync::Arc<Mutex<()>>,
     unlocking: AtomicBool,
+    idle: Mutex<Option<idle_lease::IdleLease>>,
 }
 
 struct UnlockLease<'a>(&'a AtomicBool);
@@ -322,8 +327,18 @@ fn with_session<T>(
         .map_err(|_| "desktop vault state is unavailable".to_owned())?;
     let (epoch, session) = guard.as_mut().ok_or("vault is locked")?;
     let expected = *epoch;
-    if state.epoch.current() != expected {
-        guard.take();
+    let expired = state
+        .idle
+        .lock()
+        .map_err(|_| "desktop idle state is unavailable")?
+        .as_ref()
+        .is_some_and(|lease| lease.expired(expected, std::time::Instant::now()));
+    if state.epoch.current() != expected || expired {
+        // The watchdog emits the lock event before dropping an expired online
+        // session, whose logout request can block on the network.
+        if !expired {
+            guard.take();
+        }
         return Err("vault is locked".to_owned());
     }
     session.require_license(false)?;
@@ -346,25 +361,34 @@ async fn unlock(
         return Err("unlock is already in progress".to_owned());
     }
     let _lease = UnlockLease(&state.unlocking);
-    let epoch = state.epoch.advance();
-    state
-        .connector_seen
-        .lock()
-        .map_err(|_| "desktop connector state is unavailable")?
-        .take();
-    if let Some((_, path)) = state
-        .connector_owned
-        .lock()
-        .map_err(|_| "desktop connector state is unavailable".to_owned())?
-        .take()
-    {
-        stop_connector_agent(&path);
-    }
+    let epoch = {
+        let _transition = state
+            .transitions
+            .lock()
+            .map_err(|_| "desktop transition state is unavailable")?;
+        let epoch = state.epoch.advance();
+        state
+            .connector_seen
+            .lock()
+            .map_err(|_| "desktop connector state is unavailable")?
+            .take();
+        if let Some((_, path)) = state
+            .connector_owned
+            .lock()
+            .map_err(|_| "desktop connector state is unavailable".to_owned())?
+            .take()
+        {
+            stop_connector_agent(&path);
+        }
+        epoch
+    };
     // Password derivation, replica verification and the initial network request
     // can all be expensive. Keep them off the webview command thread so the
     // unlock progress UI remains responsive.
     let config = config_directory()?;
     let connector_config = config.clone();
+    let transitions = state.transitions.clone();
+    let current_epoch = state.epoch.clone();
     let supplied_secret = !account_secret.is_empty();
     let (session, result, connector_owned) = tauri::async_runtime::spawn_blocking(move || {
         let secret = if account_secret.is_empty() {
@@ -410,6 +434,8 @@ async fn unlock(
             default_view["id"].as_str().filter(|selected| vaults.as_array().is_some_and(|rows| rows.iter().any(|row| row["vaultId"] == *selected && row["retired"] != true))).unwrap_or(&vault).to_owned()
         } else { vault.clone() };
         let secret_remembered = if supplied_secret { remember_account_secret(&config, &username, &secret).is_ok() } else { true };
+        let _transition = transitions.lock().map_err(|_| "desktop transition state is unavailable")?;
+        if current_epoch.current() != epoch { return Err("unlock was canceled by a lock request".into()); }
         let connector_start = if vaults_cli::connector_agent_desktop_compatible(&config) {
             Ok(false)
         } else {
@@ -446,6 +472,10 @@ fn commit_unlock(
     connector_owned: Option<PathBuf>,
     connector_config: PathBuf,
 ) -> Result<Value, String> {
+    let _transition = state
+        .transitions
+        .lock()
+        .map_err(|_| "desktop transition state is unavailable")?;
     let mut current = state
         .session
         .lock()
@@ -457,6 +487,11 @@ fn commit_unlock(
         return Err("unlock was canceled by a lock request".to_owned());
     }
     *current = Some((epoch, session));
+    *state
+        .idle
+        .lock()
+        .map_err(|_| "desktop idle state is unavailable")? =
+        Some(idle_lease::IdleLease::new(epoch, std::time::Instant::now()));
     *state
         .connector_owned
         .lock()
@@ -476,6 +511,18 @@ fn commit_unlock(
 
 #[tauri::command]
 async fn session_activity(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    let epoch = state.epoch.current();
+    if let Some(lease) = state
+        .idle
+        .lock()
+        .map_err(|_| "desktop idle state is unavailable")?
+        .as_mut()
+    {
+        // Activity cannot revive a lease that has already expired.
+        if !lease.expired(epoch, std::time::Instant::now()) {
+            lease.touch(epoch, std::time::Instant::now());
+        }
+    }
     let owned = state
         .connector_seen
         .lock()
@@ -730,7 +777,7 @@ fn item_get(
     item_id: String,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
-        session.item_get(&vault_id, &item_id, None)
+        session.item_get(&vault_id, &item_id, None).map(renderer_boundary::public_value)
     })
 }
 
@@ -742,6 +789,8 @@ fn item_secret(
     field: String,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
+        let summary = session.item_get(&vault_id, &item_id, None)?;
+        renderer_boundary::allow_secret(&summary, &field)?;
         session.item_get(&vault_id, &item_id, Some(&field))
     })
 }
@@ -941,7 +990,9 @@ fn conflict_draft(
     operation_id: String,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
-        session.conflict_draft(&vault_id, &item_id, &operation_id)
+        session
+            .conflict_draft(&vault_id, &item_id, &operation_id)
+            .map(renderer_boundary::public_value)
     })
 }
 
@@ -953,32 +1004,108 @@ fn conflict_compare(
     operation_id: String,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
-        session.conflict_compare(&vault_id, &item_id, &operation_id)
+        session
+            .conflict_compare(&vault_id, &item_id, &operation_id)
+            .map(renderer_boundary::public_value)
     })
 }
 
 #[tauri::command]
-fn lock(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+fn lock(app: tauri::AppHandle, state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    let _transition = state
+        .transitions
+        .lock()
+        .map_err(|_| "desktop transition state is unavailable")?;
     state.epoch.advance();
-    state
+    schedule_clipboard_clear(&app, None, true);
+    let seen = state
         .connector_seen
         .lock()
         .map_err(|_| "desktop connector state is unavailable")?
         .take();
     state
+        .idle
+        .lock()
+        .map_err(|_| "desktop idle state is unavailable")?
+        .take();
+    let owned = state
+        .connector_owned
+        .lock()
+        .map_err(|_| "desktop connector state is unavailable")?
+        .take();
+    for path in connector_lock_paths(
+        seen.map(|(_, path)| path),
+        owned.map(|(_, path)| path),
+        config_directory().ok(),
+    ) {
+        stop_connector_agent(&path);
+    }
+    state
         .session
         .lock()
         .map_err(|_| "desktop vault state is unavailable".to_owned())?
         .take();
-    if let Some((_, path)) = state
-        .connector_owned
-        .lock()
-        .map_err(|_| "desktop connector state is unavailable".to_owned())?
-        .take()
-    {
-        stop_connector_agent(&path);
-    }
     Ok(())
+}
+
+fn connector_lock_paths(
+    seen: Option<PathBuf>,
+    owned: Option<PathBuf>,
+    pending: Option<PathBuf>,
+) -> std::collections::BTreeSet<PathBuf> {
+    seen.into_iter().chain(owned).chain(pending).collect()
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+    #[test]
+    fn explicit_lock_revokes_borrowed_owned_and_pending_connectors_once() {
+        let path = PathBuf::from("synthetic-profile");
+        assert!(connector_lock_paths(Some(path.clone()), None, None).contains(&path));
+        assert!(connector_lock_paths(None, Some(path.clone()), None).contains(&path));
+        assert!(connector_lock_paths(None, None, Some(path.clone())).contains(&path));
+        assert_eq!(
+            connector_lock_paths(Some(path.clone()), Some(path.clone()), Some(path)).len(),
+            1
+        );
+    }
+}
+
+fn schedule_clipboard_clear(app: &tauri::AppHandle, owner: Option<String>, force: bool) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        handle
+            .state::<clipboard::ClipboardState>()
+            .clear(owner.as_deref(), force)
+    });
+}
+
+#[tauri::command]
+async fn clipboard_copy(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    value: String,
+) -> Result<(), String> {
+    let epoch = app.state::<DesktopState>().epoch.current();
+    let owner = window.label().to_owned();
+    let handle = app.clone();
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    app.run_on_main_thread(move || {
+        let state = handle.state::<DesktopState>();
+        let result = if state.epoch.current() != epoch {
+            Err("Vault is locked".into())
+        } else {
+            with_session(&state, |_| {
+                handle
+                    .state::<clipboard::ClipboardState>()
+                    .copy(owner, value)
+            })
+        };
+        let _ = sender.try_send(result);
+    })
+    .map_err(|_| "Clipboard worker is unavailable")?;
+    receiver.recv().await.ok_or("Clipboard worker stopped")?
 }
 
 #[tauri::command]
@@ -1063,26 +1190,56 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(DesktopState::default())
+        .manage(clipboard::ClipboardState::default())
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                // Native cleanup remains available after the renderer is gone.
+                window
+                    .state::<clipboard::ClipboardState>()
+                    .clear(Some(window.label()), true);
+                if window.label() == "main" {
+                    window
+                        .state::<clipboard::ClipboardState>()
+                        .clear(None, true);
+                    let _ = lock(window.app_handle().clone(), window.state::<DesktopState>());
+                }
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut confirmation = vaults_cli::ConnectorLockConfirmation::default();
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(1));
+                    schedule_clipboard_clear(&handle, None, false);
                     let state = handle.state::<DesktopState>();
+                    let epoch = state.epoch.current();
+                    let expired = state.idle.lock().ok().is_some_and(|lease| {
+                        lease
+                            .as_ref()
+                            .is_some_and(|lease| lease.expired(epoch, std::time::Instant::now()))
+                    });
                     let owned = state
                         .connector_seen
                         .lock()
                         .ok()
                         .and_then(|owned| owned.clone());
-                    let Some((epoch, path)) = owned else {
+                    let reason = if expired {
+                        Some("Vault locked after inactivity".to_owned())
+                    } else {
+                        owned
+                            .as_ref()
+                            .and_then(|(_, path)| vaults_cli::connector_agent_lock_reason(path))
+                    };
+                    if state.epoch.current() != epoch
+                        || !(expired || confirmation.observe(epoch, reason.is_some()))
+                    {
+                        continue;
+                    }
+                    let Ok(_transition) = state.transitions.lock() else {
                         continue;
                     };
-                    let reason = vaults_cli::connector_agent_lock_reason(&path);
-                    if state.epoch.current() != epoch
-                        || !confirmation.observe(epoch, reason.is_some())
-                        || !state.epoch.revoke(epoch)
-                    {
+                    if !state.epoch.revoke(epoch) {
                         continue;
                     }
                     // Revoke access and notify every window before waiting on an in-flight network operation.
@@ -1090,6 +1247,12 @@ fn main() {
                         "vaults-connector-locked",
                         json!({"epoch":epoch,"reason":reason}),
                     );
+                    if let Some((saved, path)) = owned
+                        && saved == epoch
+                    {
+                        stop_connector_agent(&path);
+                    }
+                    schedule_clipboard_clear(&handle, None, true);
                     if let Ok(mut session) = state.session.lock()
                         && session.as_ref().is_some_and(|(saved, _)| *saved == epoch)
                     {
@@ -1111,6 +1274,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             generate_secret,
+            clipboard_copy,
             native_passkey_provider,
             desktop_info,
             unlock,
