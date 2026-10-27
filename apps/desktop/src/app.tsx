@@ -18,6 +18,8 @@ import { browseColumnValue, browseGroups } from "@127vaults/domain/item-browser"
 import { choicesForConflict } from "./conflict-choice.mjs";
 import { ITEM_TYPES, SECTION_TYPES, CUSTOM_SECTION, addWebsite, addRelatedSection, addSectionField, completeRelatedFields, itemType, ordinaryFields, primaryFields, removeSection, renameSection, replaceItemType, sections, setItemType, visibleFields, type ItemType, type SectionType } from "@127vaults/domain/item-types";
 import {
+  Pencil,
+  CopyPlus,
   PanelsTopLeft,
   ExternalLink,
   Star,
@@ -128,7 +130,8 @@ function DesktopApp() {
     [registrationUsername, setRegistrationUsername] = useState("");
   const [vaultId, setVaultId] = useState(""),
     [query, setQuery] = useState(""),
-    [status, setStatus] = useState("Locked");
+    [status, setStatus] = useState("");
+  const [searchActionsDismissed, setSearchActionsDismissed] = useState(false);
   const [viewMode, setViewMode] = useState<"single" | "all" | "collection">("single");
   const { itemLayout, changeItemLayout, browseMode, setBrowseMode, typeFilter, setTypeFilter, wide } = useItemLayout();
   const [itemVaultId, setItemVaultId] = useState("");
@@ -303,7 +306,7 @@ function DesktopApp() {
     finally { bytes.fill(0); if (generation === importGeneration.current) setImportBusy(false); }
   };
 
-  const lock = async (reason = "Locked") => {
+  const lock = async (reason = "") => {
     cancelConfirmation();
     sessionRevocation.current.lock();
     syncReviewGeneration.current += 1;
@@ -352,7 +355,7 @@ function DesktopApp() {
   useEffect(() => {
     let dispose: (() => void) | undefined, stopped = false;
     void listen<{ epoch: number; reason?: string }>("vaults-connector-locked", event => {
-      if (sessionRevocation.current.revoke(event.payload.epoch)) void lock(event.payload.reason ? `Client locked: ${event.payload.reason}` : "Client locked. Unlock to continue.");
+      if (sessionRevocation.current.revoke(event.payload.epoch)) void lock(event.payload.reason && !/not logged in|run login first/i.test(event.payload.reason) ? event.payload.reason : "");
     }).then(unlisten => { if (stopped) unlisten(); else dispose = unlisten; });
     return () => { stopped = true; dispose?.(); };
   }, []);
@@ -1488,7 +1491,7 @@ function DesktopApp() {
           <p className="mt-2 text-center text-sm text-slate-400">
             Open your encrypted vault on this device.
           </p>
-          <div className="mt-6 grid gap-3">
+          <form className="mt-6 grid gap-3" onSubmit={(event) => { event.preventDefault(); if (!busy && !enrolling) void unlock(); }}>
             <Input
               aria-label="Username"
               aria-invalid={!!errors.username}
@@ -1522,8 +1525,8 @@ function DesktopApp() {
                 {errors.accountSecret}
               </p>
             )}
-            {rememberedSecret && !showSecretEntry && <button className="w-fit text-left text-xs text-[#E0BB95]" onClick={() => setShowSecretEntry(true)}>Enter account secret</button>}
-            {rememberedSecret && showSecretEntry && <button className="w-fit text-left text-xs text-[#E0BB95]" onClick={() => { setShowSecretEntry(false); setAccountSecret(""); }}>Use saved account secret</button>}
+            {rememberedSecret && !showSecretEntry && <button type="button" className="w-fit text-left text-xs text-[#E0BB95]" onClick={() => setShowSecretEntry(true)}>Enter account secret</button>}
+            {rememberedSecret && showSecretEntry && <button type="button" className="w-fit text-left text-xs text-[#E0BB95]" onClick={() => { setShowSecretEntry(false); setAccountSecret(""); }}>Use saved account secret</button>}
             <Input
               aria-label="Master password"
               aria-invalid={!!errors.masterPassword}
@@ -1543,11 +1546,11 @@ function DesktopApp() {
                 {errors.masterPassword}
               </p>
             )}
-            <Button disabled={busy || enrolling} onClick={unlock}>
+            <Button type="submit" disabled={busy || enrolling}>
               {busy && <LoaderCircle className="animate-spin" size={17} />}
               {busy ? "Unlocking…" : "Unlock encrypted replica"}
             </Button>
-          </div>
+          </form>
           {busy && (
             <div className="mt-4" role="status" aria-live="polite">
               <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-white/8">
@@ -1659,14 +1662,16 @@ function DesktopApp() {
             <Input
               ref={searchRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setSearchActionsDismissed(false); }}
+              onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setSearchActionsDismissed(true); } }}
               className="pl-10"
               placeholder="Search items or run an action…"
               aria-label="Search items and actions"
             />
           </div>
-          {!!omniActions.length && (
+          {!searchActionsDismissed && !!omniActions.length && (
             <div className="absolute z-30 mt-2 w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#11162b] p-1 shadow-2xl">
+              <div className="flex justify-end"><IconButton label="Dismiss action suggestions" onClick={() => setSearchActionsDismissed(true)}><X size={15} aria-hidden="true" /></IconButton></div>
               {omniActions.map((action) => (
                 <button
                   key={action.id}
@@ -1951,8 +1956,8 @@ function DesktopApp() {
             ) : (
               <>
 <ReadonlyItem item={selected} revealed={revealed} toggleReveal={toggleReveal} copyValue={copyValue} dragValue={dragValue} endDrag={() => dragSession.end()} openWebsite={url => void openUrl(url)} actions={<>
-                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <Button variant="ghost" disabled={saving} onClick={duplicateItem}>Duplicate</Button>}<Button variant="secondary" disabled={saving} onClick={beginEditing}>Edit</Button><IconButton label="Delete item" disabled={saving || busy} onClick={() => void deleteItem()}><Trash2 size={17} /></IconButton><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
-                      <Button variant="ghost" aria-label="Close item details" onClick={async () => { if ((await confirmDiscard())) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /> Close</Button></>} />
+                      <IconButton label={isFavorite(selected.customFields) ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite(selected.customFields)} disabled={saving} onClick={() => void save({ ...selected, customFields: setFavorite(selected.customFields, !isFavorite(selected.customFields)) })}><Star size={17} fill={isFavorite(selected.customFields) ? "currentColor" : "none"} /></IconButton>{!selected.customFields.some(f => f.id === "__127vaults_passkey") && <IconButton label="Duplicate item" disabled={saving} onClick={duplicateItem}><CopyPlus size={17} aria-hidden="true" /></IconButton>}<IconButton label="Edit item" disabled={saving} onClick={beginEditing}><Pencil size={17} aria-hidden="true" /></IconButton><IconButton label="Delete item" disabled={saving || busy} onClick={() => void deleteItem()}><Trash2 size={17} /></IconButton><IconButton label="Keep in tab" onClick={pinItem}><PanelsTopLeft size={17} aria-hidden="true" /></IconButton><IconButton label="Open in window" onClick={() => void popOutItem()}><ExternalLink size={17} aria-hidden="true" /></IconButton>
+                      <IconButton label="Close item details" onClick={async () => { if ((await confirmDiscard())) { setSelected(null); setEditing(false); } }}><X size={17} aria-hidden="true" /></IconButton></>} />
               </>
             )}
           </div>
