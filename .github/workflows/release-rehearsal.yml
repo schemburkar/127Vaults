@@ -1,0 +1,26 @@
+name: Local release rehearsal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workstation-release
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, X64, vaults-release]
+    timeout-minutes: 720
+    steps:
+      - name: Build and validate locally
+        shell: pwsh
+        env:
+          RELEASE_SOURCE: ${{ github.sha }}
+          RELEASE_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          & C:\Projects\127Vaults\scripts\release\rehearse.ps1 -Revision $env:RELEASE_SOURCE -Label "actions-$env:RELEASE_RUN"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
