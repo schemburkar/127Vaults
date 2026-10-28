@@ -13,7 +13,11 @@ test('HTTP dry runs require explicit opt-in and stay on loopback origins', () =>
   assert.equal(validIntakeOrigin('http://localhost:12951'), false);
   assert.equal(validIntakeOrigin('http://localhost:12951', true), true);
   assert.equal(validIntakeOrigin('http://127.0.0.1:12951', true), true);
-  for (const origin of ['http://192.168.1.50:12951', 'http://public.example', 'http://localhost.attacker.example', 'http://localhost:12951/path']) {
+  for (const host of ['admin.localhost', 'manage.localhost', 'admin.127vaults.localhost']) {
+    assert.equal(validIntakeOrigin(`http://${host}:12952`, true), true);
+    assert.equal(validIntakeOrigin(`http://${host}:12952`), false);
+  }
+  for (const origin of ['http://admin.localhost.attacker.example', 'http://notlocalhost', 'http://bad..localhost', 'http://admin.localhost:12952/path', 'http://192.168.1.50:12951', 'http://public.example', 'http://localhost.attacker.example', 'http://localhost:12951/path']) {
     assert.equal(validIntakeOrigin(origin, true), false);
   }
 });

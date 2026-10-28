@@ -26,7 +26,7 @@ For local validation after committing, run:
 ```
 
 `-PlanOnly` validates build planning without compiling. The default performs the
-full coordinated build (including both standalone installers and all existing
+local three-site integration checks (`pnpm test:sites`), then the full coordinated build (including both standalone installers and all existing
 gates), previews publication, then runs pnpm check and pnpm test. Private logs
 remain in `C:\Projects\127Vaults-Rehearsals`; package receipts remain in the
 existing release cache. Nothing is uploaded as an Actions artifact.
@@ -36,3 +36,21 @@ deployment dry-run or validate remote writes. GitHub release creation and push
 are omitted, not simulated successfully. Versioned notes must be prepared and
 reviewed with the intended release source before a future publishing workflow.
 Actual runner execution and publication remain separate validation gates.
+
+## Local website trial
+
+`pnpm sites:local` starts the public site at `http://localhost:12951`, Admin at
+`http://admin.localhost:12952`, and the customer portal at `http://manage.localhost:12953`.
+These model the intended production roles `127vaults.com`, `admin.127vaults.com`,
+and `manage.127vaults.com`; they do not deploy those domains. Each listener binds
+only to loopback and enforces its own Host and mutation Origin. Existing preview
+state and operator keys persist under `.tools/site-preview`. Local billing and
+outbound email remain disabled. No proxy, certificate trust or hosts-file change
+is required on this workstation.
+
+The rehearsal tests start and stop isolated listeners and verify the real flows;
+they do not leave development servers running inside an Actions job. Run
+`pnpm sites:local` separately for interactive review. The current release engine
+still packages the legacy combined Cloudflare target: passing a rehearsal does
+not establish separate production Workers or production domains. That deployment
+migration remains a separate gate before enabling real payments.

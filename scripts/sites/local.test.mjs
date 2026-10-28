@@ -30,7 +30,7 @@ test('separate site builds contain only their own executable pages and modules',
 });
 test('local site configuration uses separate host cookies and refuses non-loopback origins', () => {
   assert.deepEqual(validateOrigins(defaultOrigins), defaultOrigins);
-  assert.throws(() => validateOrigins({ ...defaultOrigins, admin: 'http://127.0.0.1:12952' }));
+  assert.throws(() => validateOrigins({ ...defaultOrigins, admin: 'http://localhost:12952' }));
   assert.throws(() => validateOrigins({ ...defaultOrigins, public: 'https://public.example.com' }));
   assert.throws(() => validateOrigins({ ...defaultOrigins, admin: 'http://localhost:12951' }));
   for (const path of [repository, join(repository, '..'), join(repository, 'public-website'), join(repository, '.tools')]) assert.throws(() => validatePreviewDirectory(path));
@@ -41,12 +41,20 @@ test('local HTTP listeners bind only loopback and enforce their own Host, pages 
   const ports = await Promise.all(Array.from({ length: 3 }, async () => {
     const server = createServer(); await new Promise(done => server.listen(0, '127.0.0.1', done)); return server;
   }));
-  const origins = { public: `http://127.0.0.1:${ports[0].address().port}`, admin: `http://localhost:${ports[1].address().port}`, customer: `http://127.0.0.1:${ports[2].address().port}` };
+  const origins = Object.fromEntries(Object.entries(defaultOrigins).map(([surface, origin], index) => {
+    const url = new URL(origin); url.port = String(ports[index].address().port); return [surface, url.origin];
+  }));
   await Promise.all(ports.map(server => new Promise(done => server.close(done))));
   const dir = await mkdtemp(join(tmpdir(), '127v-site-http-')); let local;
   t.after(async () => { await local?.close(); await rm(dir, { recursive: true, force: true }); });
   local = await createLocalSites({ directory: dir, origins }); await local.listen();
   const home = await fetch(origins.admin); assert.equal(home.status, 200); assert.ok((await home.text()).includes('127Vaults Admin'));
+  for (const surface of ['public', 'customer']) {
+    const wrongSurface = await new Promise((done, reject) => {
+      const req = httpRequest(origins.admin, { headers: { Host: new URL(origins[surface]).host } }, res => { res.resume(); res.on('end', () => done(res.statusCode)); });
+      req.on('error', reject); req.end();
+    }); assert.equal(wrongSurface, 403);
+  }
   const wrongHost = await new Promise((done, reject) => {
     const req = httpRequest(origins.public, { headers: { Host: 'malicious.example.com' } }, res => { res.resume(); res.on('end', () => done(res.statusCode)); });
     req.on('error', reject); req.end();

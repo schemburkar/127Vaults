@@ -17,6 +17,10 @@ $receipt = Join-Path $receiptRoot "$Label.log"
 if (Test-Path -LiteralPath $receipt) { throw 'Use a new rehearsal label; previous receipts are retained.' }
 Start-Transcript -LiteralPath $receipt | Out-Null
 try {
+    if (-not $PlanOnly) {
+        & pnpm test:sites
+        if ($LASTEXITCODE -ne 0) { throw 'Local site and hostname checks failed.' }
+    }
     $buildArgs = @('build', '-Ref', $Revision, '-Label', $Label)
     if ($PlanOnly) { $buildArgs += '-Plan' }
     & pwsh -NoProfile -File ./release-set.ps1 @buildArgs

@@ -20,7 +20,7 @@ pnpm sites:local
 pnpm sites:mail
 ```
 
-Open `http://127.0.0.1:12953/`. First submit a request on the public site. Email sign-in can then show its pending status; approve it separately in Admin to enable downloads. Local sign-in messages are encrypted in `.tools/site-preview/customer-mail.jsonl`; `pnpm sites:mail` decrypts the latest simulated messages in the operator's terminal so a developer can enter the code. For a custom preview directory, use `pnpm sites:mail --work PRIVATE-PREVIEW-DIRECTORY`. This never sends outbound email and exposes no mailbox-reading HTTP route.
+Open `http://manage.localhost:12953/`. First submit a request on the public site. Email sign-in can then show its pending status; approve it separately in Admin to enable downloads. Local sign-in messages are encrypted in `.tools/site-preview/customer-mail.jsonl`; `pnpm sites:mail` decrypts the latest simulated messages in the operator's terminal so a developer can enter the code. For a custom preview directory, use `pnpm sites:mail --work PRIVATE-PREVIEW-DIRECTORY`. This never sends outbound email and exposes no mailbox-reading HTTP route.
 
 Restart an older local preview to load the new portal assets and apply the additional migration. Its existing D1 data, invitations and issuer/operator keys are preserved. The earlier filesystem/mock customer-account implementation remains under the legacy test flow; this portal authenticates the actual D1 access-request/licensing records instead of the mock checkout store.
 

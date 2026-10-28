@@ -8,18 +8,17 @@ import { join, resolve, relative, isAbsolute, sep, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stageSite, repository } from './assets.mjs';
 import { protectedDirectory } from '../cloudflare/config.mjs';
-import { validIntakeOrigin } from '../../apps/public-intake/src/intake-origin.mjs';
+import { validIntakeOrigin, isLoopbackHostname } from '../../apps/public-intake/src/intake-origin.mjs';
 import { encryptionKey, seal } from '../../apps/public-intake/cloudflare/crypto.mjs';
 
-export const defaultOrigins = { public: 'http://127.0.0.1:12951', admin: 'http://localhost:12952', customer: 'http://127.0.0.1:12953' };
+export const defaultOrigins = { public: 'http://localhost:12951', admin: 'http://admin.localhost:12952', customer: 'http://manage.localhost:12953' };
 export function validateOrigins(origins) {
   if (Object.keys(origins).sort().join(',') !== 'admin,customer,public'
     || Object.values(origins).some(origin => !validIntakeOrigin(origin, true)
-      || new URL(origin).protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(new URL(origin).hostname))
+      || new URL(origin).protocol !== 'http:' || !isLoopbackHostname(new URL(origin).hostname))
     || new Set(Object.values(origins)).size !== 3
     || new Set(Object.values(origins).map(origin => new URL(origin).port)).size !== 3
-    || new URL(origins.admin).hostname === new URL(origins.public).hostname
-    || new URL(origins.admin).hostname === new URL(origins.customer).hostname) throw Error('Use three distinct loopback origins and a separate admin hostname.');
+    || new Set(Object.values(origins).map(origin => new URL(origin).hostname)).size !== 3) throw Error('Use three distinct loopback origins and three separate hostnames.');
   return origins;
 }
 export function validatePreviewDirectory(directory) {
@@ -107,11 +106,11 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
     };
     mf = new Miniflare({ host: '127.0.0.1', port: 0, d1Persist: join(directory, 'state', 'd1'), r2Persist: join(directory, 'state', 'r2'),
       workers: [
-        { ...base, name: 'public', scriptPath: join(repository, 'apps/public-intake/cloudflare/public-site.mjs'),
+        { ...base, name: 'public', routes: [`${new URL(origins.public).hostname}/*`], scriptPath: join(repository, 'apps/public-intake/cloudflare/public-site.mjs'),
           bindings: { PUBLIC_INTAKE_ORIGIN: origins.public }, serviceBindings: { INTAKE: 'intake', ASSETS: assetServices.public } },
         { ...base, name: 'intake', scriptPath: join(repository, 'apps/public-intake/cloudflare/intake-only.mjs'),
           bindings: { PUBLIC_INTAKE_ORIGIN: origins.public, ...await intakeKeys(intakeKey) }, d1Databases: db },
-        ...['admin', 'customer'].map(surface => ({ ...base, name: surface,
+        ...['admin', 'customer'].map(surface => ({ ...base, name: surface, routes: [`${new URL(origins[surface]).hostname}/*`],
           scriptPath: join(repository, 'apps/public-intake/cloudflare/worker.mjs'), bindings: { ...control, SITE_SURFACE: surface, PUBLIC_INTAKE_ORIGIN: origins[surface] },
           d1Databases: db, r2Buckets: r2, serviceBindings: { ASSETS: assetServices[surface], ...(surface === 'customer' ? { CUSTOMER_MAIL: mailService } : {}) } })),
       ] });
