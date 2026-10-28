@@ -25,10 +25,16 @@ For local validation after committing, run:
 ./scripts/release/rehearse.ps1 -Revision (git rev-parse HEAD) -Label local-rehearsal-1
 ```
 
-`-PlanOnly` validates build planning without compiling. The default performs the
-local three-site integration checks (`pnpm test:sites`), then the full coordinated build (including both standalone installers and all existing
-gates), previews publication, then runs pnpm check and pnpm test. Private logs
-remain in `C:\Projects\127Vaults-Rehearsals`; package receipts remain in the
+`-PlanOnly` validates build planning without compiling. The default first runs
+local site checks, `pnpm check` and `pnpm test`, then performs the full coordinated
+build (both standalone installers and every existing gate) and previews publication.
+Workspace failures stop before expensive compilation. Each label gets a separate
+package output directory and release-set configuration under
+`C:\Projects\127Vaults-Rehearsals`; production package paths and the production
+candidate pointer are not replaced. The generated configuration resolves existing
+private settings against their original directory and reuses the existing keys.
+Native output is captured in `<label>.log`; `<label>.json` records each step and
+its exit status, including failed runs. Detailed package receipts remain in the
 existing release cache. Nothing is uploaded as an Actions artifact.
 
 This is a rehearsal workflow. Publication preview does not execute Cloudflare's

@@ -14,24 +14,52 @@ if (git status --porcelain) { throw 'Commit or preserve workstation edits before
 $receiptRoot = Join-Path (Split-Path $repository) '127Vaults-Rehearsals'
 New-Item -ItemType Directory -Force -Path $receiptRoot | Out-Null
 $receipt = Join-Path $receiptRoot "$Label.log"
-if (Test-Path -LiteralPath $receipt) { throw 'Use a new rehearsal label; previous receipts are retained.' }
+$recordPath = Join-Path $receiptRoot "$Label.json"
+$configPath = Join-Path $receiptRoot "$Label-release-set.json"
+if ((Test-Path -LiteralPath $receipt) -or (Test-Path -LiteralPath $recordPath) -or (Test-Path -LiteralPath $configPath)) { throw 'Use a new rehearsal label; previous receipts are retained.' }
+# Rehearsals must not claim production output paths or change the production candidate pointer.
+$originalConfig = Join-Path $repository '.cloudflare-deploy/release-set.json'
+$originalDirectory = Split-Path $originalConfig
+$settings = if (Test-Path -LiteralPath $originalConfig) { Get-Content -LiteralPath $originalConfig -Raw | ConvertFrom-Json -AsHashtable } else { @{} }
+foreach ($field in @('deploymentConfig', 'cacheRoot', 'composeProvider', 'sevenZip', 'r2CredentialsFile')) {
+    if ($settings[$field] -and -not [IO.Path]::IsPathRooted($settings[$field])) { $settings[$field] = [IO.Path]::GetFullPath((Join-Path $originalDirectory $settings[$field])) }
+}
+if (-not $settings.deploymentConfig) { $settings.deploymentConfig = Join-Path $originalDirectory 'config.json' }
+$settings.outputRoot = Join-Path $receiptRoot "$Label-packages"
+$settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configPath -Encoding utf8NoBOM
+$record = [ordered]@{ schemaVersion = 1; sourceRevision = $Revision; label = $Label; planOnly = [bool]$PlanOnly; startedAt = [DateTime]::UtcNow.ToString('o'); status = 'running'; steps = @(); outputRoot = $settings.outputRoot; config = $configPath; remoteWrites = $false }
+function Invoke-RehearsalStep([string]$Name, [string]$Command, [string[]]$Arguments) {
+    $step = [ordered]@{ name = $Name; startedAt = [DateTime]::UtcNow.ToString('o'); status = 'running' }
+    $record.steps += $step
+    Write-Output "Checking $Name..."
+    try {
+        # Route native output through PowerShell so the transcript retains it.
+        & $Command @Arguments 2>&1 | Out-Host
+        $step.exitCode = $LASTEXITCODE
+        if ($LASTEXITCODE -ne 0) { throw "$Name failed (exit $LASTEXITCODE)." }
+        $step.status = 'passed'
+    } catch { $step.status = 'failed'; throw }
+    finally { $step.finishedAt = [DateTime]::UtcNow.ToString('o') }
+}
 Start-Transcript -LiteralPath $receipt | Out-Null
 try {
+    # Fail on workspace problems before spending time building the installer set.
     if (-not $PlanOnly) {
-        & pnpm test:sites
-        if ($LASTEXITCODE -ne 0) { throw 'Local site and hostname checks failed.' }
+        Invoke-RehearsalStep 'Local sites' 'pnpm' @('test:sites')
+        Invoke-RehearsalStep 'Workspace checks' 'pnpm' @('check')
+        Invoke-RehearsalStep 'Workspace tests' 'pnpm' @('test')
     }
-    $buildArgs = @('build', '-Ref', $Revision, '-Label', $Label)
+    $buildArgs = @('-NoProfile', '-File', './release-set.ps1', 'build', '-Config', $configPath, '-Ref', $Revision, '-Label', $Label)
     if ($PlanOnly) { $buildArgs += '-Plan' }
-    & pwsh -NoProfile -File ./release-set.ps1 @buildArgs
-    if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
+    Invoke-RehearsalStep 'Release build' 'pwsh' $buildArgs
     if (-not $PlanOnly) {
-        & pwsh -NoProfile -File ./release-set.ps1 publish -Label $Label -Plan
-        if ($LASTEXITCODE -ne 0) { throw 'Publication preview failed.' }
-        & pnpm check
-        if ($LASTEXITCODE -ne 0) { throw 'Workspace checks failed.' }
-        & pnpm test
-        if ($LASTEXITCODE -ne 0) { throw 'Workspace tests failed.' }
+        Invoke-RehearsalStep 'Publication preview' 'pwsh' @('-NoProfile', '-File', './release-set.ps1', 'publish', '-Config', $configPath, '-Label', $Label, '-Plan')
     }
+    $record.status = 'passed'
     Write-Output 'Rehearsal passed. Cloudflare uploads, deployment, Git pushes and GitHub release creation were not executed.'
-} finally { Stop-Transcript | Out-Null }
+} catch { $record.status = 'failed'; $record.error = $_.Exception.Message; throw }
+finally {
+    $record.finishedAt = [DateTime]::UtcNow.ToString('o')
+    $record | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $recordPath -Encoding utf8NoBOM
+    Stop-Transcript | Out-Null
+}

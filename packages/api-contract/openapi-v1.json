@@ -1539,8 +1539,86 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "properties": {},
-                "required": []
+                "properties": {
+                  "candidate": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "type": "string"
+                      },
+                      "deviceId": {
+                        "type": "string"
+                      },
+                      "signingPublicKey": {
+                        "type": "string"
+                      },
+                      "opaqueUpload": {
+                        "type": "string"
+                      },
+                      "wrappedRootDescriptor": {
+                        "type": "string"
+                      },
+                      "wrappedRootEnvelope": {
+                        "type": "string"
+                      },
+                      "registrationArtifact": {
+                        "type": "string"
+                      },
+                      "activationSignature": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "accountId",
+                      "deviceId",
+                      "signingPublicKey",
+                      "opaqueUpload",
+                      "wrappedRootDescriptor",
+                      "wrappedRootEnvelope",
+                      "registrationArtifact",
+                      "activationSignature"
+                    ]
+                  },
+                  "authorizationSignature": {
+                    "type": "string"
+                  },
+                  "settings": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "baseRevision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "envelope": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "baseRevision",
+                          "revision",
+                          "envelope"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "candidate",
+                  "authorizationSignature",
+                  "settings"
+                ]
               }
             }
           }
@@ -1580,16 +1658,84 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "replacementDeviceId": {
+                  "candidate": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "type": "string"
+                      },
+                      "deviceId": {
+                        "type": "string"
+                      },
+                      "signingPublicKey": {
+                        "type": "string"
+                      },
+                      "opaqueUpload": {
+                        "type": "string"
+                      },
+                      "wrappedRootDescriptor": {
+                        "type": "string"
+                      },
+                      "wrappedRootEnvelope": {
+                        "type": "string"
+                      },
+                      "registrationArtifact": {
+                        "type": "string"
+                      },
+                      "activationSignature": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "accountId",
+                      "deviceId",
+                      "signingPublicKey",
+                      "opaqueUpload",
+                      "wrappedRootDescriptor",
+                      "wrappedRootEnvelope",
+                      "registrationArtifact",
+                      "activationSignature"
+                    ]
+                  },
+                  "authorizationSignature": {
                     "type": "string"
                   },
-                  "replacementPublicKey": {
-                    "type": "string"
+                  "settings": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "baseRevision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "envelope": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "baseRevision",
+                          "revision",
+                          "envelope"
+                        ]
+                      }
+                    ]
                   }
                 },
                 "required": [
-                  "replacementDeviceId",
-                  "replacementPublicKey"
+                  "candidate",
+                  "authorizationSignature",
+                  "settings"
                 ]
               }
             }
@@ -1704,6 +1850,130 @@
           },
           "default": {
             "description": "Detail-safe authentication, authorization or availability error."
+          }
+        }
+      }
+    },
+    "/api/v1/devices/rotate-password/start": {
+      "post": {
+        "summary": "Begin authenticated replacement OPAQUE registration for the current device.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "request": {
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "issuedAt": {
+                    "type": "integer"
+                  },
+                  "authorizationSignature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request",
+                  "deviceId",
+                  "nonce",
+                  "issuedAt",
+                  "authorizationSignature"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/rotate-account-secret/start": {
+      "post": {
+        "summary": "Begin authenticated replacement OPAQUE registration for a replacement device.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "request": {
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "issuedAt": {
+                    "type": "integer"
+                  },
+                  "authorizationSignature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request",
+                  "deviceId",
+                  "nonce",
+                  "issuedAt",
+                  "authorizationSignature"
+                ]
+              }
+            }
           }
         }
       }
