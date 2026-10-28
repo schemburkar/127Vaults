@@ -13,10 +13,191 @@ import { TrialStore } from '../cloudflare/store.mjs';
 import { handleRequest, prune } from '../cloudflare/worker.mjs';
 import { stageAssets } from '../../../scripts/cloudflare/config.mjs';
 import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-license.mjs';
+import { handleBilling, syncSubscription, billingWebhook, reconcileBilling } from '../cloudflare/billing.mjs';
+import { verifyWebhook } from '../cloudflare/dodo.mjs';
+import { issuer, hash } from '../cloudflare/crypto.mjs';
 
 const origin = 'https://trial.example.com';
 const admin = '/api/access-admin/requests';
 const root = fileURLToPath(new URL('../../../', import.meta.url));
+async function billingFixture(t) {
+  const f = await fixture(t, { bindings: { DODO_ENABLED: '1', DODO_MODE: 'test_mode', DODO_API_KEY: 'test-key',
+    DODO_WEBHOOK_SECRET: 'whsec_' + Buffer.alloc(32, 7).toString('base64'), DODO_BUSINESS_ID: 'biz_test',
+    DODO_PLANS: JSON.stringify({ 'commercial-monthly': { productId: 'pdt_test', plan: 'commercial', maxUsers: 8 } }) } });
+  const id = await f.submit(), a = await f.approve(id), installationId = randomUUID();
+  assert.equal((await f.post(`${a.base}/activate`, { installationId }, a.token)).status, 200);
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
+  const release = async () => ({ signingKey: await issuer(f.bindings.TRIAL_ISSUER_PRIVATE_KEY, f.publicKeys.trial) });
+  const req = (path, value, bearer = a.token) => new Request(origin + path, { method: value === undefined ? 'GET' : 'POST',
+    headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json', Origin: origin },
+    ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
+  const offer = await handleBilling(req(`/api/access-admin/billing/${id}/offer`, { plan: 'commercial-monthly' }), f.env, store, release, Date.now(), true);
+  const b = (await store.get(id)).trial.billing;
+  const sub = { subscription_id: 'sub_test', status: 'active', product_id: 'pdt_test', quantity: 1, trial_period_days: 0,
+    customer: { customer_id: 'cus_test' }, metadata: { access_request_id: id, order_id: b.orderId, billing_mode: 'test_mode' },
+    next_billing_date: new Date(Date.now() + 31 * 86400000).toISOString() };
+  return { ...f, id, a, store, release, req, offer, sub, installationId };
+}
+
+test('Dodo private checkout binds the server plan, reserves once, and never trusts redirect or browser pricing', async t => {
+  const f = await billingFixture(t); let calls = 0;
+  const provider = async (url, options) => {
+    calls++; assert.equal(url, 'https://test.dodopayments.com/checkouts');
+    const v = JSON.parse(options.body); assert.deepEqual(v.product_cart, [{ product_id: 'pdt_test', quantity: 1 }]);
+    assert.equal(v.subscription_data.trial_period_days, 0); assert.deepEqual(v.discount_codes, ['FRIEND']);
+    return Response.json({ checkout_url: 'https://checkout.dodopayments.com/buy/test', session_id: 'cks_test' });
+  };
+  const route = `/api/billing/${f.id}/checkout`;
+  await assert.rejects(handleBilling(f.req(route, { price: 1 }), f.env, f.store, f.release, Date.now(), false, provider));
+  assert.equal((await handleBilling(f.req(route, { coupon: 'FRIEND' }), f.env, f.store, f.release, Date.now(), false, provider)).checkoutUrl, 'https://checkout.dodopayments.com/buy/test');
+  await assert.rejects(handleBilling(f.req(route, {}), f.env, f.store, f.release, Date.now(), false, provider), /checkout_unavailable/);
+  assert.equal(calls, 1);
+  const row = await f.store.get(f.id); assert.equal(row.trial.billing.status, 'checkout_pending');
+  assert.equal(verifyLicenseFile(row.trial.license, f.publicKeys, f.installationId).sequence, 1);
+});
+
+test('Dodo confirmed renewal issues a higher signed license; failure never extends expiry and grace ends in cancellation', async t => {
+  const f = await billingFixture(t); let cancels = 0;
+  const provider = async (_url, options) => { if (options.method === 'PATCH') cancels++; return Response.json(f.sub); };
+  await syncSubscription(f.env, f.store, await f.store.get(f.id), f.release, Date.now(), provider, 'sub_test');
+  let row = await f.store.get(f.id), license = verifyLicenseFile(row.trial.license, f.publicKeys, f.installationId);
+  assert.equal(license.sequence, 2); assert.equal(license.plan, 'commercial'); assert.equal(license.maxActiveUsers, 8);
+  assert.equal(license.expiresAt, f.sub.next_billing_date);
+  await syncSubscription(f.env, f.store, row, f.release, Date.now(), provider);
+  assert.equal((await f.store.get(f.id)).trial.license, row.trial.license);
+  f.sub.status = 'on_hold';
+  await syncSubscription(f.env, f.store, await f.store.get(f.id), f.release, Date.now(), provider);
+  assert.equal((await f.store.get(f.id)).trial.license, row.trial.license);
+  const later = Date.parse(license.expiresAt) + 30 * 86400000;
+  const result = await reconcileBilling(f.env, f.store, f.release, later, provider);
+  assert.deepEqual(result, { checked: 1, failed: 0 }); assert.equal(cancels, 1);
+  assert.equal((await f.store.get(f.id)).trial.billing.status, 'cancelled');
+  f.sub.status = 'active'; f.sub.next_billing_date = new Date(later + 31 * 86400000).toISOString();
+  await syncSubscription(f.env, f.store, await f.store.get(f.id), f.release, later, provider);
+  row = await f.store.get(f.id); assert.equal(verifyLicenseFile(row.trial.license, f.publicKeys, f.installationId).sequence, 3);
+});
+
+test('Dodo rejects cross-order, product, customer, environment and trial subscription substitutions', async t => {
+  const f = await billingFixture(t);
+  for (const change of [{ product_id: 'pdt_other' }, { quantity: 2 }, { trial_period_days: 7 },
+    { metadata: { ...f.sub.metadata, order_id: 'other' } }, { metadata: { ...f.sub.metadata, billing_mode: 'live_mode' } }]) {
+    await assert.rejects(syncSubscription(f.env, f.store, await f.store.get(f.id), f.release, Date.now(), async () => Response.json({ ...f.sub, ...change }), 'sub_test'), /binding/);
+  }
+  assert.equal(verifyLicenseFile((await f.store.get(f.id)).trial.license, f.publicKeys, f.installationId).sequence, 1);
+  const machine = f.req(`/api/billing/${f.id}/portal`, {}, f.offer.refreshToken);
+  await assert.rejects(handleBilling(machine, f.env, f.store, f.release, Date.now(), false), /access_required/);
+});
+
+test('Dodo Standard Webhooks verifies raw bytes, freshness and account; durable replay is idempotent', async t => {
+  const f = await billingFixture(t), now = Date.now(), id = 'msg_test';
+  const event = { business_id: 'biz_test', type: 'subscription.active', timestamp: new Date(now).toISOString(), data: f.sub };
+  const signed = async (eventBody = event, time = Math.floor(now / 1000), rawOverride) => {
+    const raw = JSON.stringify(eventBody), key = await crypto.subtle.importKey('raw', Buffer.alloc(32, 7), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${time}.${raw}`))).toString('base64');
+    return new Request(origin + '/api/billing/webhook', { method: 'POST', headers: { 'webhook-id': id, 'webhook-timestamp': String(time), 'webhook-signature': `v1,${signature}` }, body: rawOverride ?? raw });
+  };
+  await assert.rejects(verifyWebhook(await signed(event, Math.floor(now / 1000) - 301), f.env, now), /signature/);
+  await assert.rejects(verifyWebhook(await signed(event, undefined, JSON.stringify(event) + ' '), f.env, now), /signature/);
+  await assert.rejects(verifyWebhook(await signed({ ...event, business_id: 'other' }), f.env, now), /event/);
+  let calls = 0; const provider = async () => { calls++; return Response.json(f.sub); };
+  await billingWebhook(await signed(), f.env, f.store, f.release, now, provider);
+  const license = (await f.store.get(f.id)).trial.license;
+  await billingWebhook(await signed(), f.env, f.store, f.release, now, provider);
+  assert.equal(calls, 1); assert.equal((await f.store.get(f.id)).trial.license, license);
+  const ledger = await f.db.prepare('SELECT * FROM billing_events WHERE id = ?').bind(id).first();
+  assert.equal(ledger.processed_at, now); assert.ok(!ledger.event.includes('cus_test'));
+  const eventId = 'msg_retry', retryRaw = JSON.stringify(event), retryTime = String(Math.floor(now / 1000));
+  const retryKey = await crypto.subtle.importKey('raw', Buffer.alloc(32, 7), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const retrySignature = Buffer.from(await crypto.subtle.sign('HMAC', retryKey, new TextEncoder().encode(`${eventId}.${retryTime}.${retryRaw}`))).toString('base64');
+  const retryRequest = new Request(origin + '/api/billing/webhook', { method: 'POST', body: retryRaw,
+    headers: { 'webhook-id': eventId, 'webhook-timestamp': retryTime, 'webhook-signature': `v1,${retrySignature}` } });
+  await assert.rejects(billingWebhook(retryRequest, f.env, f.store, f.release, now, async () => { throw Error('provider down'); }));
+  assert.equal((await f.db.prepare('SELECT processed_at FROM billing_events WHERE id = ?').bind(eventId).first()).processed_at, null);
+  await reconcileBilling(f.env, f.store, f.release, now + 3600000, provider);
+  assert.ok((await f.db.prepare('SELECT processed_at FROM billing_events WHERE id = ?').bind(eventId).first()).processed_at);
+});
+
+test('Dodo operator coupons enforce plan scope, bounded redemptions, cycles and free or nominal discounts', async t => {
+  const f = await billingFixture(t), route = '/api/access-admin/billing/coupons'; let calls = 0;
+  const value = { plan: 'commercial-monthly', basisPoints: 10000, cycles: 12, usageLimit: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() };
+  const provider = async (url, options) => { calls++; assert.equal(url, 'https://test.dodopayments.com/discounts');
+    const v = JSON.parse(options.body); assert.equal(v.amount, 10000); assert.equal(v.subscription_cycles, 12);
+    assert.deepEqual(v.restricted_to, ['pdt_test']); assert.equal(v.usage_limit, 1);
+    return Response.json({ code: v.code, discount_id: 'dis_test' }); };
+  await assert.rejects(handleBilling(f.req(route, value), f.env, f.store, f.release, Date.now(), false, provider), /access_required/);
+  await assert.rejects(handleBilling(f.req(route, { ...value, basisPoints: 10001 }), f.env, f.store, f.release, Date.now(), true, provider), /coupon/);
+  const result = await handleBilling(f.req(route, value), f.env, f.store, f.release, Date.now(), true, provider);
+  assert.match(result.code, /^[A-Z0-9]{16}$/); assert.equal(calls, 1);
+});
+
+test('Dodo Worker HTTP boundary keeps checkout private, rejects cross-origin changes, and authenticates webhooks without browser Origin', async t => {
+  const f = await billingFixture(t);
+  assert.equal((await f.post(`/api/billing/${f.id}/checkout`, {}, f.a.token, 'https://other.example.com')).status, 403);
+  assert.equal((await f.get(`/api/billing/${f.id}`, 'x'.repeat(43))).status, 401);
+  assert.equal((await f.get(`/api/billing/${f.id}`, f.a.token)).status, 200);
+  assert.equal((await f.get('/api/access-admin/billing/plans')).status, 401);
+  assert.equal((await f.get('/api/access-admin/billing/plans', f.operatorToken)).status, 200);
+  const wrong = await f.mf.dispatchFetch(origin + '/api/billing/webhook', { method: 'POST', body: '{}' });
+  assert.equal(wrong.status, 401);
+  const now = Date.now(), timestamp = String(Math.floor(now / 1000)), id = 'msg_http';
+  const raw = JSON.stringify({ business_id: 'biz_test', type: 'payment.processing', timestamp: new Date(now).toISOString(), data: {} });
+  const key = await crypto.subtle.importKey('raw', Buffer.alloc(32, 7), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${raw}`))).toString('base64');
+  const accepted = await f.mf.dispatchFetch(origin + '/api/billing/webhook', { method: 'POST', body: raw,
+    headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': `v1,${signature}` } });
+  assert.equal(accepted.status, 200, await accepted.clone().text());
+  assert.equal((await f.post(`${admin}/${f.id}/extend`, { days: 1 }, f.operatorToken)).status, 409);
+  assert.equal((await f.get(f.a.base, f.a.token)).status, 200);
+});
+
+test('Dodo definite checkout rejection permits correction, while an ambiguous timeout preserves the reserved order', async t => {
+  const f = await billingFixture(t), path = `/api/billing/${f.id}/checkout`;
+  await assert.rejects(handleBilling(f.req(path, { coupon: 'INVALID' }), f.env, f.store, f.release, Date.now(), false,
+    async () => new Response('{}', { status: 422 })), /checkout_rejected/);
+  assert.equal((await f.store.get(f.id)).trial.billing.status, 'offered');
+  await assert.rejects(handleBilling(f.req(path, {}), f.env, f.store, f.release, Date.now(), false,
+    async () => { throw Error('network timeout'); }), /timeout/);
+  assert.equal((await f.store.get(f.id)).trial.billing.status, 'checkout_pending');
+});
+
+test('Dodo installation replacement delivers a signed revocation to the retired server without binding it to the new installation', async t => {
+  const f = await billingFixture(t), replacement = randomUUID();
+  assert.equal((await f.post(`${f.a.base}/replacement-request`, { installationId: replacement, reason: 'Host replacement', retired: true }, f.a.token)).status, 202);
+  const retired = await handleBilling(f.req(`/api/billing/${f.id}/refresh`, { installationId: f.installationId }, f.offer.refreshToken), f.env, f.store, f.release, Date.now(), false);
+  const old = verifyLicenseFile(retired.license, f.publicKeys, f.installationId);
+  assert.equal(verifyLicenseRevocationFile(retired.revocation, f.publicKeys, f.installationId, old.licenseId).licenseId, old.licenseId);
+  const result = await f.post(`${admin}/${f.id}/replace-installation`, { installationId: replacement, retired: true }, f.operatorToken);
+  assert.equal(result.status, 200, await result.clone().text());
+  const after = await handleBilling(f.req(`/api/billing/${f.id}/refresh`, { installationId: f.installationId }, f.offer.refreshToken), f.env, f.store, f.release, Date.now(), false);
+  assert.equal(after.status, 'replaced'); assert.equal(after.license, retired.license); assert.equal(after.revocation, retired.revocation);
+  const newLicense = verifyLicenseFile((await f.store.get(f.id)).trial.license, f.publicKeys, replacement);
+  assert.equal(newLicense.sequence, old.sequence + 1);
+});
+
+test('Dodo full refund of the current payment revokes service and cancels collection without exposing provider data to the machine', async t => {
+  const f = await billingFixture(t), now = Date.now(), timestamp = String(Math.floor(now / 1000)), id = 'msg_refund';
+  await syncSubscription(f.env, f.store, await f.store.get(f.id), f.release, now, async () => Response.json(f.sub), 'sub_test');
+  const raw = JSON.stringify({ business_id: 'biz_test', type: 'refund.succeeded', timestamp: new Date(now).toISOString(),
+    data: { payment_id: 'pay_test', refund_id: 'ref_test' } });
+  const key = await crypto.subtle.importKey('raw', Buffer.alloc(32, 7), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${raw}`))).toString('base64');
+  let cancellations = 0;
+  const provider = async (url, options) => {
+    if (options.method === 'PATCH') { cancellations++; return Response.json({}); }
+    if (url.includes('/payments/')) return Response.json({ subscription_id: 'sub_test', payment_id: 'pay_test',
+      created_at: new Date(now).toISOString(), status: 'succeeded', total_amount: 1000, currency: 'USD',
+      service_periods: [{ subscription_id: 'sub_test', starts_at: new Date(now).toISOString(), ends_at: f.sub.next_billing_date }],
+      refunds: [{ status: 'succeeded', is_partial: false }] });
+    return Response.json(f.sub);
+  };
+  await billingWebhook(new Request(origin + '/api/billing/webhook', { method: 'POST', body: raw,
+    headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': `v1,${signature}` } }), f.env, f.store, f.release, now, provider);
+  const row = await f.store.get(f.id), license = verifyLicenseFile(row.trial.license, f.publicKeys, f.installationId);
+  assert.equal(cancellations, 1); assert.equal(row.trial.billing.status, 'refunded');
+  assert.equal(verifyLicenseRevocationFile(row.trial.billing.revocation, f.publicKeys, f.installationId, license.licenseId).licenseId, license.licenseId);
+  const result = await handleBilling(f.req(`/api/billing/${f.id}/refresh`, {}, f.offer.refreshToken), f.env, f.store, f.release, now, false, provider);
+  assert.equal(result.revocation, row.trial.billing.revocation); assert.equal(result.customerId, undefined);
+});
 async function fixture(t, options = {}) {
   const issuerPrivateKey = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
   const publicKeys = { trial: createPublicKey(issuerPrivateKey).export({ type: 'spki', format: 'pem' }) };
@@ -54,8 +235,10 @@ async function fixture(t, options = {}) {
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
   const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
-  const sql = await readFile(new URL('../cloudflare/migrations/0001_trials.sql', import.meta.url), 'utf8');
-  for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
+  for (const name of ['0001_trials.sql', '0002_billing.sql']) {
+    const sql = await readFile(new URL(`../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
+    for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
+  }
   const object = await bucket.put('releases/test/server.tar', archive, { customMetadata: { sha256 } });
   assert.equal(object.etag, catalogue.artifacts[0].etag);
   await bucket.put(bindings.TRIAL_CATALOGUE_KEY, catalogueSource);

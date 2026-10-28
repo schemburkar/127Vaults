@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { validIntakeOrigin } from '../../apps/public-intake/src/intake-origin.mjs';
 import { issuer } from '../../apps/public-intake/cloudflare/crypto.mjs';
 import { versionParts } from '../../apps/public-intake/cloudflare/installer.mjs';
+import { billingConfig } from '../../apps/public-intake/cloudflare/dodo.mjs';
 const run = promisify(execFile);
 export const repository = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 export const localDeploymentDirectory = join(repository, '.cloudflare-deploy');
@@ -15,7 +16,7 @@ export const workerDirectory = join(repository, 'apps/public-intake/cloudflare')
 export const assetFiles = ['index.html', 'product.html', 'security.html', 'security-technical.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'release-notes-history.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
-  'trial.mjs', 'access-admin.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
+  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'billing-admin.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
 function contains(directory, path) {
   const rel = relative(directory, path);
   return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));
@@ -31,7 +32,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -45,6 +46,11 @@ export function validateConfig(value, file) {
       || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertFrom)
       || value.requestAlertFrom.split('@')[1].toLowerCase() !== new URL(value.origin).hostname))) throw Error('Invalid Cloudflare deployment configuration');
   if (value.minimumInstallerVersion !== undefined && !versionParts(value.minimumInstallerVersion)) throw Error('Invalid minimum installer version');
+  if (value.billing) {
+    if (Object.keys(value.billing).some(key => !['mode', 'businessId', 'plans'].includes(key))) throw Error('Invalid billing configuration');
+    billingConfig({ DODO_ENABLED: '1', DODO_MODE: value.billing.mode ?? 'test_mode', DODO_BUSINESS_ID: value.billing.businessId,
+      DODO_PLANS: JSON.stringify(value.billing.plans), DODO_API_KEY: 'validate-only', DODO_WEBHOOK_SECRET: 'validate-only' });
+  }
   const base = dirname(resolve(file));
   for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) {
     if (typeof value[name] !== 'string' || !value[name]) throw Error(`Missing ${name}`);
@@ -99,6 +105,12 @@ export async function loadSecrets(config, catalogue) {
     values.TRIAL_EMAIL_API_TOKEN = await read('cloudflare-email-token');
     if (!/^[\x21-\x7e]{20,512}$/.test(values.TRIAL_EMAIL_API_TOKEN)) throw Error('Invalid email API token');
   }
+  if (config.billing) {
+    values.DODO_API_KEY = await read('dodo-api-key');
+    values.DODO_WEBHOOK_SECRET = await read('dodo-webhook-secret');
+    if (!/^[\x21-\x7e]{20,512}$/.test(values.DODO_API_KEY)
+      || !/^(?:whsec_)?[A-Za-z0-9+/=_-]{20,512}$/.test(values.DODO_WEBHOOK_SECRET)) throw Error('Invalid billing secrets');
+  }
   return values;
 }
 export function wranglerConfig(config, state, assetsDirectory) {
@@ -111,6 +123,9 @@ export function wranglerConfig(config, state, assetsDirectory) {
     r2_buckets: [{ binding: 'ARTIFACTS', bucket_name: config.bucketName }],
     ...(config.requestAlertTo ? { send_email: [{ name: 'REQUEST_ALERTS', destination_address: config.requestAlertTo }] } : {}),
     vars: { PUBLIC_INTAKE_ORIGIN: config.origin, TRIAL_ISSUER_KEY_ID: config.issuerKeyId,
+      DODO_ENABLED: config.billing ? '1' : '0',
+      ...(config.billing ? { DODO_MODE: config.billing.mode ?? 'test_mode', DODO_BUSINESS_ID: config.billing.businessId,
+        DODO_PLANS: JSON.stringify(config.billing.plans) } : {}),
       INSTALLER_MIN_VERSION: config.minimumInstallerVersion ?? '0.1.0',
       TRIAL_CATALOGUE_KEY: state.catalogueKey ?? 'not-uploaded', TRIAL_CATALOGUE_SHA256: state.catalogueSha256 ?? 'not-uploaded',
       TRIAL_SOURCE_REVISION: state.sourceRevision ?? 'not-uploaded',

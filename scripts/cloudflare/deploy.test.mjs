@@ -18,6 +18,24 @@ test('deployment preserves the installer compatibility floor and rejects invalid
   assert.throws(() => validateConfig({ ...f.config, minimumInstallerVersion: '0.01.0' }, path), /installer version/);
 });
 
+test('Dodo deployment explicitly disables retained secrets by default and validates separate test/live product configuration', async t => {
+  const f = await fixture(t), file = join(f.directory, 'config.json'), state = { databaseId: '12345678-1234-1234-1234-123456789abc' };
+  assert.equal(wranglerConfig(f.config, state, f.directory).vars.DODO_ENABLED, '0');
+  const billing = { businessId: 'biz_test', plans: { annual: { productId: 'pdt_test', plan: 'commercial', maxUsers: 5 } } };
+  const config = validateConfig({ ...f.config, billing }, file);
+  assert.equal(wranglerConfig(config, state, f.directory).vars.DODO_MODE, 'test_mode');
+  for (const changed of [{ mode: 'production' }, { businessId: '' }, { plans: {} },
+    { plans: { cloud: { productId: 'pdt_test', plan: 'cloud', maxUsers: 5 } } }]) {
+    assert.throws(() => validateConfig({ ...f.config, billing: { ...billing, ...changed } }, file));
+  }
+  await writeFile(join(f.config.secretsDirectory, 'dodo-api-key'), 'test_' + 'a'.repeat(32));
+  await writeFile(join(f.config.secretsDirectory, 'dodo-webhook-secret'), 'whsec_' + Buffer.alloc(32, 7).toString('base64'));
+  const secrets = await loadSecrets(config, f.catalogue);
+  assert.match(secrets.DODO_API_KEY, /^test_/);
+  const vars = wranglerConfig(config, state, f.directory).vars;
+  assert.ok(!JSON.stringify(vars).includes(secrets.DODO_API_KEY));
+});
+
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), '127v-cloudflare-deploy-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

@@ -130,8 +130,14 @@ async function download(action, filename) {
 async function open() {
   if (!match && !operatorReview) { status('Open the complete private link from your invitation email.'); return; }
   const record = await (await api()).json();
+  if (record.billingAvailable && match) {
+    const link = make('a', 'Manage subscription, invoices and payment methods');
+    link.href = `/billing#${match[1]}.${token}`; link.className = 'button primary';
+    $('trial-status').after(link);
+    $('trial-terms').textContent = 'Your subscription license follows your confirmed paid period. Failed renewals stop writes, then allow 30 days for reads and exports. Your encrypted data is retained.';
+  }
   $('trial-content').hidden = false;
-  status(operatorReview ? 'Operator session verified. Current packages are ready to review and download.' : 'Your private trial is ready. No payment is required.');
+  status(operatorReview ? 'Operator session verified. Current packages are ready to review and download.' : record.billingAvailable ? 'Your private access is ready. Manage your subscription below.' : 'Your private trial is ready. No payment is required.');
   $('trial-release').textContent = `Release source: ${record.sourceRevision}`;
   showInstaller(record);
   if (operatorReview) {

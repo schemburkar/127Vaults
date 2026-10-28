@@ -8,7 +8,7 @@ const bundled = existsSync(join(root, 'manifest.json'));
 const [group, action, ...args] = process.argv.slice(2);
 const commands = {
   admin: ['apps/server/src/admin/credentials.mjs', 'lib/admin-credentials.mjs', 'runAdmin', ['init']],
-  install: ['deploy/test-install.mjs', 'lib/test-install.mjs', 'runTestInstall', ['init', 'start', 'status', 'identify', 'license', 'revoke', 'stop', 'bootstrap', 'restore']],
+  install: ['deploy/test-install.mjs', 'lib/test-install.mjs', 'runTestInstall', ['init', 'start', 'status', 'identify', 'license', 'subscription', 'revoke', 'stop', 'bootstrap', 'restore']],
   database: ['scripts/ops/server-data.mjs', 'lib/server-data.mjs', 'runServerData', ['keygen', 'backup', 'rehearse']],
   identity: ['scripts/ops/identity-backup.mjs', 'lib/identity-backup.mjs', 'runIdentityBackup', ['backup', 'restore']],
   envelope: ['scripts/ops/backup-envelope.mjs', 'lib/backup-envelope.mjs', 'runEnvelope', ['seal', 'verify', 'open']],

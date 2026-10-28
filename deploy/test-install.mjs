@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { isIP } from 'node:net';
 import { request } from 'node:https';
 import { resolve, join } from 'node:path';
-import { installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
+import { configureSubscription, installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
 import { discoverTailscale, discoverTailscaleIdentity, enableTailnetForward, tailscaleIPv4, validServerHostname, verifyHostnameAddress, checkPublication } from './private-network.mjs';
 
 export function restoreBackupSchema(metadata, installationId) {
@@ -268,6 +268,15 @@ else {
   if (!existsSync('.env')) throw Error('Run init first.');
   if (action === 'restore') await restoreDatabase();
   else if (action === 'license') await installLicense();
+  else if (action === 'subscription') {
+    await verifyBundle();
+    const file = argv.find((value, index) => argv[index - 1] === '--file');
+    if (!file) throw Error('Subscription setup requires --file <private subscription.json>.');
+    const content = await readFile('.env', 'utf8');
+    if (/^VAULTS_TLS_DIR=(.+)$/m.exec(content)?.[1] !== privateDir.replaceAll('\\', '/')) throw Error('Private directory does not match this installation.');
+    await configureSubscription({ runtimeDir: join(privateDir, 'runtime'), envPath: '.env', source: await readFile(resolve(file), 'utf8') });
+    console.log('Automatic subscription renewal configured. Run install start to activate it.');
+  }
   else if (action === 'revoke') await installRevocation();
   else if (action === 'start') {
     await verifyBundle();

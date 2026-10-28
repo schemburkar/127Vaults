@@ -76,6 +76,8 @@ async function refresh() {
     const state = cell(''); const badge = document.createElement('span'); badge.className = 'request-state';
     badge.textContent = row.state === 'rejected' ? 'Declined' : row.state === 'requested' ? 'Pending' : row.state.charAt(0).toUpperCase() + row.state.slice(1);
     state.append(badge);
+    if (row.billingStatus) { const billing = document.createElement('small'); billing.textContent = `Subscription: ${row.billingStatus}`; state.append(billing); }
+    email.title = `Request ID: ${row.id}`;
     if (row.archivedAt) { const archived = document.createElement('small'); archived.textContent = 'Archived'; state.append(archived); }
     if (row.replacementRequest) { const pending = document.createElement('small'); pending.textContent = `Replacement requested: ${row.replacementRequest.installationId}. ${row.replacementRequest.reason}`; state.append(pending); }
     if (row.expiresAt) { const expiry = document.createElement('small'); expiry.textContent = `Expires ${new Date(row.expiresAt).toLocaleDateString()}`; state.append(expiry); }
@@ -166,7 +168,7 @@ async function refresh() {
       act('Decline', 'reject', {}, 'Decline this access request?');
     }
     if (row.state === 'approved') {
-      if (row.kind !== 'development' && row.installationId && !row.replacementRequest) act('Extend trial', 'extend', () => {
+      if (!row.billingStatus && row.kind !== 'development' && row.installationId && !row.replacementRequest) act('Extend trial', 'extend', () => {
         const answer = prompt('Extra trial days for ' + row.email + ' (1-60). Added from the later of today or the current expiry. They must install the updated license.', '10');
         if (answer === null) return null;
         const days = Number(answer);
@@ -179,7 +181,7 @@ async function refresh() {
       if (row.canSendEmail) act(emailDryRun ? 'Send invitation (dry run)' : 'Send invitation', 'send-invitation', {}, emailDryRun ? `Simulate the invitation to ${row.email}? No real email will be sent.` : `Send the approved 10-day trial invitation to ${row.email} through Cloudflare?`);
       act('Replace private link', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
       if (row.updateAvailable === true) act('Offer updated packages', 'update-release', {}, `Offer the current verified packages and replace the private link? Preserve the existing installation, license, trial activation and expiry. This does not start another trial.`);
-      act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
+      if (!row.billingStatus) act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
     }
     if (row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);
     act(row.archivedAt ? 'Restore to inbox' : 'Archive', row.archivedAt ? 'unarchive' : 'archive', {});

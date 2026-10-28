@@ -9,12 +9,14 @@ import { installerPolicy, installerProtocol } from './installer.mjs';
 import { developmentPolicy } from './development.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
+import { BillingError } from './dodo.mjs';
+import { billingWebhook, handleBilling, reconcileBilling } from './billing.mjs';
 
 const day = 86400000;
 const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
   && Date.parse(record.entitlementExpiresAt) > at;
 const activeExtension = (record,at) => record?.state === 'approved' && record.extendedAt && Date.parse(record.expiresAt) > at;
-const retained = (row,at) => at - row.receivedAt < 90 * day || activeDevelopment(row.trial,at) || activeExtension(row.trial,at);
+const retained = (row,at) => at - row.receivedAt < 90 * day || Boolean(row.trial?.billing) || activeDevelopment(row.trial,at) || activeExtension(row.trial,at);
 const installationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
 const keyCache = new WeakMap(), issuerCache = new WeakMap();
@@ -57,6 +59,7 @@ function summary(record, mailer) {
     expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
     replacementRequest: record?.replacementRequest ? { installationId: record.replacementRequest.installationId, requestedAt: record.replacementRequest.requestedAt, reason: record.replacementRequest.reason } : null,
     replacementCount: record?.replacementCount ?? 0,
+    billingStatus: record?.billing?.status ?? null, billingLastCheckedAt: record?.billing?.lastCheckedAt ?? null,
     requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
 async function setup(env, now) {
@@ -139,6 +142,10 @@ async function dispatch(request, env, now, schedule) {
     return env.ASSETS.fetch(request);
   }
   const artifactHead = request.method === 'HEAD' && (/^\/api\/trials\/[a-f0-9]{64}\/artifacts\/[a-z0-9-]+$/.test(path) || /^\/api\/access-admin\/releases\/artifacts\/[a-z0-9-]+$/.test(path));
+  if (path === '/api/billing/webhook' && request.method === 'POST') {
+    const store = await setup(env, now);
+    return json(200, await billingWebhook(request, env, store, release, now(), fetch, schedule));
+  }
   if (!['GET', 'POST'].includes(request.method) && !artifactHead) fail(405, 'method_not_allowed');
   if (request.method === 'POST' && (request.headers.get('origin') !== env.PUBLIC_INTAKE_ORIGIN
     || request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json')) fail(403, 'forbidden');
@@ -163,12 +170,14 @@ async function dispatch(request, env, now, schedule) {
     return json(202, { received: true });
   }
   const admin = path.startsWith('/api/access-admin/');
-  if (!admin && !path.startsWith('/api/trials/')) fail(404, 'not_found');
+  if (!admin && !path.startsWith('/api/trials/') && !path.startsWith('/api/billing/')) fail(404, 'not_found');
   const operatorAuthorized = admin && (await equal(bearer, env.OPERATOR_TOKEN) || await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at));
   if (admin && !operatorAuthorized) {
     if (!await store.allow('admin-auth', ip, 20, 3600000)) fail(429, 'rate_limited');
     fail(401, 'access_required');
   }
+  const billing = await handleBilling(request, env, store, release, at, operatorAuthorized);
+  if (billing !== null) return json(200, billing);
   if (path === '/api/access-admin/session' && request.method === 'POST') {
     empty(await body(request));
     if (!await equal(bearer, env.OPERATOR_TOKEN)) fail(401, 'access_required');
@@ -221,6 +230,7 @@ async function dispatch(request, env, now, schedule) {
   const input = request.method === 'POST' ? await body(request) : null;
   if (admin) {
     if (!row?.contact || !retained(row,at)) fail(404, 'not_found');
+    if (record?.billing && ['approve', 'approve-development', 'extend', 'close', 'reject', 'erase'].includes(action)) fail(409, 'manage_billing_subscription');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
       return json(200, { email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     }
@@ -301,7 +311,7 @@ async function dispatch(request, env, now, schedule) {
       });
       record = { ...record, installationId: input.installationId, license,
         replacementCount: (record.replacementCount ?? 0) + 1, replacedAt: installedAt,
-        previousRevocation: record.revocation, replacementHistory: [...(record.replacementHistory ?? []), { installationId: old.installationId, licenseId: old.licenseId, revokedAt: record.replacementRequest.requestedAt, replacedAt: installedAt, revocation: record.revocation }], ticketHash: null, ticketUntil: 0 };
+        previousRevocation: record.revocation, replacementHistory: [...(record.replacementHistory ?? []), { installationId: old.installationId, licenseId: old.licenseId, license: record.license, revokedAt: record.replacementRequest.requestedAt, replacedAt: installedAt, revocation: record.revocation }], ticketHash: null, ticketUntil: 0 };
       delete record.revocation; delete record.replacementRequest;
       delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
       if (record.invitation) {
@@ -357,7 +367,7 @@ async function dispatch(request, env, now, schedule) {
     installationId: record.installationId ?? null, sourceRevision: catalogue.sourceRevision,
     artifacts: catalogue.artifacts.map(publicArtifact),
   });
-  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), trialDays: record.kind === 'development' ? 0 : 10, payment: 'none',
+  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), billingAvailable: Boolean(record.billing), trialDays: record.kind === 'development' ? 0 : 10, payment: record.billing?.status ?? 'none',
     sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   if (action === 'ticket' && request.method === 'POST') {
     empty(input); const value = token(); record = { ...record, ticketHash: await hash(value), ticketUntil: at + 300000 };
@@ -413,7 +423,7 @@ export async function handleRequest(request, env, options = {}) {
   const now = options.now ?? (() => Date.now());
   try { return await dispatch(request, env, now, typeof options.waitUntil === 'function' ? promise => options.waitUntil(promise) : null); }
   catch (error) {
-    if (error instanceof HttpError) return json(error.status, { error: error.message });
+    if (error instanceof HttpError || error instanceof BillingError) return json(error.status, { error: error.message });
     if (error instanceof Conflict) return json(409, { error: 'state_changed' });
     // Never include keys, contact data, links or provider errors in public responses or logs.
     return json(503, { error: 'unavailable' });
@@ -428,7 +438,7 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(!rows.length)break;
     for (const row of rows) {
     afterId=row.id;
-    if (activeDevelopment(row.trial,now()) || activeExtension(row.trial,now())) continue;
+    if (row.trial?.billing || activeDevelopment(row.trial,now()) || activeExtension(row.trial,now())) continue;
     const record = { ...row.trial };
     if (record.license && !record.revocation) {
       signingKey ??= (await release(env)).signingKey;
@@ -441,4 +451,7 @@ export async function prune(env, { now = () => Date.now() } = {}) {
   }
   await store.pruneLimits();
 }
-export default { fetch: handleRequest, scheduled: (_event, env, ctx) => ctx.waitUntil(prune(env)) };
+export async function reconcile(env, { now = () => Date.now() } = {}) {
+  return reconcileBilling(env, await setup(env, now), release, now());
+}
+export default { fetch: handleRequest, scheduled: (_event, env, ctx) => ctx.waitUntil(Promise.all([prune(env), reconcile(env)])) };

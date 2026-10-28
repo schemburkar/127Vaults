@@ -6,6 +6,15 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const verifier = existsSync(join(here, 'license-status.mjs')) ? './license-status.mjs' : '../apps/server/src/license-status.mjs';
 
+async function currentSubscriptionLicense(runtimeDir, base, keys, installationId) {
+  let state;
+  try { state = JSON.parse(await readFile(join(dirname(runtimeDir), 'output', 'subscription-license.json'), 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return base; throw error; }
+  const { verifyLicenseFile } = await import(verifier);
+  const renewed = verifyLicenseFile(state.license, keys, installationId);
+  return !base || renewed.sequence > base.sequence ? renewed : base;
+}
+
 export async function installLicenseFiles({ runtimeDir, envPath, installationId, licenseSource, keySource, now = new Date() }) {
   const { verifyLicenseFile, licenseStatus } = await import(verifier);
   let keys;
@@ -22,7 +31,8 @@ export async function installLicenseFiles({ runtimeDir, envPath, installationId,
       throw error;
     })).trim());
     const existing = (await readdir(licenseDir)).filter(name => /^[1-9]\d*\.json$/.test(name)).map(name => Number(name.slice(0, -5)));
-    const prior = Math.max(recorded, 0, ...existing);
+    const renewed = await currentSubscriptionLicense(runtimeDir, null, keys, installationId);
+    const prior = Math.max(recorded, renewed?.sequence ?? 0, ...existing);
     if (!Number.isSafeInteger(prior) || prior < 0 || accepted.sequence <= prior) throw Error('License sequence must be higher than the last installed sequence.');
     const licenseName = `${accepted.sequence}.json`;
     const keyName = `${accepted.sequence}.keys.json`;
@@ -42,6 +52,25 @@ export async function installLicenseFiles({ runtimeDir, envPath, installationId,
   } finally { await rm(lock, { force: true }); }
 }
 
+export async function configureSubscription({ runtimeDir, envPath, source }) {
+  const value = JSON.parse(source), url = new URL(value.refreshUrl);
+  if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.search
+    || !/^\/api\/billing\/[a-f0-9]{64}\/refresh$/.test(url.pathname)
+    || !/^[A-Za-z0-9_-]{43}$/.test(value.refreshToken)) throw Error('Invalid subscription configuration.');
+  const path = join(runtimeDir, 'subscription.json');
+  const lock = join(runtimeDir, '.subscription-lock'), configStage = `${path}.${crypto.randomUUID()}.tmp`;
+  const staged = `${envPath}.subscription-next`;
+  await writeFile(lock, '', { mode: 0o600, flag: 'wx' });
+  try {
+    const current = await readFile(envPath, 'utf8');
+    await writeFile(configStage, JSON.stringify({ refreshUrl: url.href, refreshToken: value.refreshToken }), { mode: 0o600, flag: 'wx' });
+    await writeFile(staged, current.replace(/^VAULTS_SUBSCRIPTION_FILE=.*(?:\r?\n|$)/gm, '').trimEnd()
+      + '\nVAULTS_SUBSCRIPTION_FILE=/run/secrets/runtime/subscription.json\n', { mode: 0o600, flag: 'wx' });
+    await rename(configStage, path);
+    await rename(staged, envPath);
+  } finally { await rm(configStage, { force: true }); await rm(staged, { force: true }); await rm(lock, { force: true }); }
+}
+
 export async function installRevocationFile({ runtimeDir, envPath, installationId, revocationSource }) {
   const { verifyLicenseFile, verifyLicenseRevocationFile } = await import(verifier);
   const licenseDir = join(runtimeDir, 'licenses');
@@ -54,7 +83,8 @@ export async function installRevocationFile({ runtimeDir, envPath, installationI
     if (!licenseName || !keysName || licenseName.slice(0, -5) !== keysName.slice(0, -10)) throw Error('Install a signed license before revocation.');
     const keySource = await readFile(join(licenseDir, keysName), 'utf8');
     const publicKeys = JSON.parse(keySource);
-    const license = verifyLicenseFile(await readFile(join(licenseDir, licenseName), 'utf8'), publicKeys, installationId);
+    const license = await currentSubscriptionLicense(runtimeDir,
+      verifyLicenseFile(await readFile(join(licenseDir, licenseName), 'utf8'), publicKeys, installationId), publicKeys, installationId);
     const revocation = verifyLicenseRevocationFile(revocationSource, publicKeys, installationId, license.licenseId);
     const name = `${license.licenseId}.revocation.json`;
     const staged = `${envPath}.revocation-next`;
@@ -92,8 +122,9 @@ export async function restoredLicenseEnvironment({ runtimeDir, installationId })
   if (!highest) return [];
   const keys = JSON.parse(await readFile(join(directory,`${highest}.keys.json`),'utf8'));
   const { verifyLicenseFile, verifyLicenseRevocationFile } = await import(verifier);
-  const license = verifyLicenseFile(await readFile(join(directory,`${highest}.json`),'utf8'),keys,installationId);
-  if (license.sequence !== highest) throw Error('Restored license sequence does not match its recorded sequence.');
+  const baseLicense = verifyLicenseFile(await readFile(join(directory,`${highest}.json`),'utf8'),keys,installationId);
+  if (baseLicense.sequence !== highest) throw Error('Restored license sequence does not match its recorded sequence.');
+  const license = await currentSubscriptionLicense(runtimeDir, baseLicense, keys, installationId);
   const result = [`VAULTS_LICENSE_FILE=/run/secrets/runtime/licenses/${highest}.json`,
     `VAULTS_LICENSE_PUBLIC_KEYS_FILE=/run/secrets/runtime/licenses/${highest}.keys.json`];
   const revocationName = `${license.licenseId}.revocation.json`;
@@ -101,5 +132,6 @@ export async function restoredLicenseEnvironment({ runtimeDir, installationId })
     verifyLicenseRevocationFile(await readFile(join(directory,revocationName),'utf8'),keys,installationId,license.licenseId);
     result.push(`VAULTS_LICENSE_REVOCATION_FILE=/run/secrets/runtime/licenses/${revocationName}`);
   }
+  if (existsSync(join(runtimeDir, 'subscription.json'))) result.push('VAULTS_SUBSCRIPTION_FILE=/run/secrets/runtime/subscription.json');
   return result;
 }

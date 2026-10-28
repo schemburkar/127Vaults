@@ -1,12 +1,43 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
+import { configureSubscription, installLicenseFiles, installRevocationFile, restoredLicenseEnvironment } from './license-files.mjs';
 import { issueSelfHostedLicense } from '../scripts/ops/issue-self-hosted-license.mjs';
 import { issueLicenseRevocation } from '../scripts/ops/issue-license-revocation.mjs';
+
+test('subscription setup validates private refresh settings and rotates them without duplicating environment settings', async t => {
+  const dir = await mkdtemp(join(tmpdir(), '127v-subscription-install-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const envPath = join(dir, '.env'); await writeFile(envPath, 'PRESERVE=yes\n');
+  const input = { refreshUrl: `https://billing.example.com/api/billing/${'a'.repeat(64)}/refresh`, refreshToken: 'x'.repeat(43) };
+  for (const changed of [{ refreshUrl: 'http://localhost/refresh' }, { refreshToken: 'bad' }, { refreshUrl: input.refreshUrl + '?token=secret' }]) {
+    await assert.rejects(configureSubscription({ runtimeDir: dir, envPath, source: JSON.stringify({ ...input, ...changed }) }));
+  }
+  await configureSubscription({ runtimeDir: dir, envPath, source: JSON.stringify(input) });
+  await configureSubscription({ runtimeDir: dir, envPath, source: JSON.stringify({ ...input, refreshToken: 'y'.repeat(43) }) });
+  assert.equal(JSON.parse(await readFile(join(dir, 'subscription.json'), 'utf8')).refreshToken, 'y'.repeat(43));
+  const env = await readFile(envPath, 'utf8'); assert.match(env, /PRESERVE=yes/); assert.equal((env.match(/VAULTS_SUBSCRIPTION_FILE=/g) ?? []).length, 1);
+});
+
+test('manual installation and revocation respect the newer automatically renewed license and survive restore', async t => {
+  const dir = await mkdtemp(join(tmpdir(), '127v-subscription-high-water-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const runtimeDir = join(dir, 'runtime'), envPath = join(dir, '.env'); await writeFile(envPath, 'PRESERVE=yes\n');
+  const privateKeyPem = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const installationId = randomUUID(), now = new Date('2026-10-28T00:00:00Z');
+  const issue = sequence => issueSelfHostedLicense({ privateKeyPem, keyId: 'test', installationId, plan: 'commercial', majorVersion: null,
+    maxActiveUsers: 8, sequence, expiresAt: '2027-10-01T00:00:00.000Z', now });
+  const first = issue(1), newer = issue(3);
+  await installLicenseFiles({ runtimeDir, envPath, installationId, licenseSource: first.license, keySource: first.publicKeys, now });
+  await mkdir(join(dir, 'output'));
+  await writeFile(join(dir, 'output', 'subscription-license.json'), JSON.stringify({ license: newer.license, checkedAt: now.getTime() }));
+  await assert.rejects(installLicenseFiles({ runtimeDir, envPath, installationId, licenseSource: issue(2).license, keySource: first.publicKeys, now }), /sequence/);
+  const current = JSON.parse(Buffer.from(JSON.parse(newer.license).payload, 'base64url').toString());
+  const revocation = issueLicenseRevocation({ privateKeyPem, keyId: 'test', installationId, licenseId: current.licenseId, revokedAt: 'now', now });
+  await installRevocationFile({ runtimeDir, envPath, installationId, revocationSource: revocation });
+  assert.match((await restoredLicenseEnvironment({ runtimeDir, installationId })).join('\n'), new RegExp(current.licenseId));
+});
 
 test('local license installation verifies binding and refuses replay or lower sequence', async () => {
   const dir = await mkdtemp(join(tmpdir(), '127v-license-install-'));

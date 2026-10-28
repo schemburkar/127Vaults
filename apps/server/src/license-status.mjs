@@ -1,5 +1,7 @@
 import { createPublicKey, verify } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { subscriptionLicense } from './subscription-refresh.mjs';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const b64 = /^[A-Za-z0-9_-]+$/;
@@ -76,7 +78,8 @@ export function verifyLicenseRevocationFile(file, publicKeys, installationId, li
   return payload;
 }
 
-export async function loadLicenseStatus({ licenseFile, publicKeyFile, revocationFile, installationId, now = new Date(), clock }) {
+export async function loadLicenseStatus({ licenseFile, publicKeyFile, revocationFile, installationId, now = new Date(), clock,
+  subscriptionFile = process.env.VAULTS_SUBSCRIPTION_FILE }) {
   if (!licenseFile && !publicKeyFile) {
     if (revocationFile) fail();
     return licenseStatus(null, now);
@@ -88,10 +91,15 @@ export async function loadLicenseStatus({ licenseFile, publicKeyFile, revocation
   let keys;
   try { keys = JSON.parse(keyFile); } catch { fail(); }
   if (!keys || typeof keys !== 'object' || Array.isArray(keys)) fail();
-  const license = verifyLicenseFile(file, keys, installationId);
+  const effective = subscriptionFile ? await subscriptionLicense({ configFile: subscriptionFile,
+    stateFile: join(dirname(clock?.path ?? licenseFile), 'subscription-license.json'), installationId,
+    keys, original: file, verify: verifyLicenseFile, verifyRevocation: verifyLicenseRevocationFile, now: observed.now.getTime() }) : { license: file };
+  const license = verifyLicenseFile(effective.license, keys, installationId);
   const status = licenseStatus(license, observed.now);
-  const revocation = revocationSource ? verifyLicenseRevocationFile(revocationSource, keys, installationId) : null;
-  const revoked = revocation?.licenseId === license.licenseId && observed.now >= new Date(revocation.revokedAt);
+  const revocation = [effective.revocation, revocationSource].filter(Boolean)
+    .map(source => verifyLicenseRevocationFile(source, keys, installationId))
+    .find(value => value.licenseId === license.licenseId && observed.now >= new Date(value.revokedAt));
+  const revoked = Boolean(revocation);
   return { ...status, mode: revoked ? 'revoked' : observed.clockState === 'rollback_detected' ? 'locked' : status.mode,
     revokedAt: revoked ? revocation.revokedAt : null, clockState: observed.clockState };
 }
