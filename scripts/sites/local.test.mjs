@@ -75,6 +75,11 @@ test('local public request reaches the private admin; public and customer routes
   assert.equal((await get('admin', '/api/waitlist')).status, 404);
   assert.equal((await get('customer', '/api/waitlist')).status, 404);
   const adminPage = await get('admin', '/'); assert.equal(adminPage.status, 200, await adminPage.clone().text());
+  for (const page of ['/licenses', '/subscriptions', '/coupons', '/admin-shell.mjs', '/admin.css']) {
+    assert.equal((await get('admin', page)).status, 200, page);
+    assert.equal((await get('public', page)).status, 404, page);
+    assert.equal((await get('customer', page)).status, 404, page);
+  }
   const reviewPage = await get('admin', '/releases'); assert.equal(reviewPage.status, 200, await reviewPage.clone().text());
   assert.equal((await get('admin', '/api/access-admin/requests')).status, 401);
   const submission = { email: 'local-review@example.com', plan: 'commercial', organization: 'Local test', contactName: 'Local user', requestedSeats: 3, consent: true, website: '' };

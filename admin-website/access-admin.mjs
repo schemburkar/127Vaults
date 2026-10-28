@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-let token = '';
+import { adminReady, adminFetch } from './admin-shell.mjs';
 let emailDryRun = false;
 let activeMenu = null;
 function closeMenu(restoreFocus = false) {
@@ -27,12 +27,12 @@ document.addEventListener('scroll', event => {
 }, true);
 const status = message => { $('desk-status').textContent = message; };
 async function api(path = '', value) {
-  const response = await fetch(`/api/access-admin/requests${path}`, { method: value === undefined ? 'GET' : 'POST',
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
+  const response = await adminFetch(`/api/access-admin/requests${path}`, { method: value === undefined ? 'GET' : 'POST',
+    headers: { ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: value === undefined ? undefined : JSON.stringify(value), cache: 'no-store', credentials: 'same-origin' });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    if (response.status === 401) { $('inbox').hidden = true; $('logout').hidden = true; $('operator-login').hidden = false; clearInvitation(); $('requests').replaceChildren(); }
+    if (response.status === 401) { $('inbox').hidden = true; clearInvitation(); $('requests').replaceChildren(); }
     if (error.error === 'email_not_configured') throw Error('Cloudflare email is not configured. Copy the invitation and send it manually.');
     if (error.error === 'email_already_attempted') throw Error('Email was already attempted. Refresh its status. If needed, replace the private link before sending another invitation.');
     throw Error(error.error === 'owner_required' ? 'This action requires owner access.' : error.error === 'access_required' ? 'Access key not accepted.' : error.error === 'state_changed'
@@ -49,13 +49,13 @@ async function refresh() {
   emailDryRun = data.emailDryRun === true;
   const canApproveDevelopment=data.permissions?.approveDevelopment===true;
   $('request-alert-status').textContent = data.requestAlertsEnabled === true ? 'New-request email alerts are on.' : 'New-request email alerts are off.';
-  $('operator-login').hidden = true; $('inbox').hidden = false;
-  $('logout').hidden = false;
+  $('inbox').hidden = false;
   closeMenu();
   document.querySelectorAll('.request-menu-items').forEach(popup => popup.remove());
   $('requests').replaceChildren();
   const view = $('request-view').value;
-  const rows = data.requests.filter(row => view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
+  const selected = new URLSearchParams(location.search).get('request');
+  const rows = data.requests.filter(row => (!selected || row.id === selected)).filter(row => selected || view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
   status(`Operator access - ${rows.length} request${rows.length === 1 ? '' : 's'}`);
   if (!rows.length) {
     const empty = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 9;
@@ -188,12 +188,8 @@ async function refresh() {
     $('requests').append(card);
   }
 }
-$('operator-login').addEventListener('submit', async event => {
-  event.preventDefault(); token = $('operator-token').value.trim(); $('operator-token').value = '';
-  try { await sessionAction('session'); token = ''; await refresh(); } catch (error) { token = ''; status(error.message); }
-});
 $('refresh').addEventListener('click', () => refresh().catch(error => status(error.message)));
-$('request-view').addEventListener('change', () => { clearInvitation(); refresh().catch(error => status(error.message)); });
+$('request-view').addEventListener('change', () => { history.replaceState(null, '', location.pathname); clearInvitation(); refresh().catch(error => status(error.message)); });
 $('export').addEventListener('click', async () => {
   try {
     const response = await api(); const url = URL.createObjectURL(await response.blob());
@@ -201,18 +197,10 @@ $('export').addEventListener('click', async () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000); status('Requests exported.');
   } catch (error) { status(error.message); }
 });
-$('logout').addEventListener('click', async () => { try { await sessionAction('logout'); } catch (error) { status(error.message); return; } closeMenu(); document.querySelectorAll('.request-menu-items').forEach(popup => popup.remove()); token = ''; clearInvitation(); $('requests').replaceChildren(); $('inbox').hidden = true; $('logout').hidden = true; $('operator-login').hidden = false; status('Signed out.'); });
 $('hide-invite').addEventListener('click', clearInvitation);
 $('copy-invite').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(`To: ${$('invite-to').value}\nSubject: ${$('invite-subject').value}\n\n${$('invite-message').value}`); status('Email message copied. Send it from your email client.'); }
   catch { $('invite-message').select(); status('Select and copy the message manually.'); }
 });
 
-async function sessionAction(action) {
-  const response = await fetch(`/api/access-admin/${action}`, { method: 'POST', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: '{}' });
-  if (!response.ok) throw Error(action === 'session' ? 'Access key not accepted.' : 'Sign out failed. Refresh and try again.');
-}
-refresh().catch(() => status('Enter your operator key. Sessions last one hour.'));
-
-$('review-releases').addEventListener('click', () => { location.assign('/releases'); });
+adminReady.then(ready => { if (ready) return refresh(); }).catch(error => status(error.message));

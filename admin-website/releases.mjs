@@ -1,6 +1,7 @@
+import { adminReady, adminFetch } from './admin-shell.mjs';
 const status = document.getElementById('release-status');
 async function open() {
-  const response = await fetch('/api/access-admin/releases', { credentials: 'same-origin', cache: 'no-store' });
+  const response = await adminFetch('/api/access-admin/releases', { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) throw Error(response.status === 401 ? 'Sign in on the access requests page, then return to review releases.' : 'Release review is temporarily unavailable.');
   const record = await response.json();
   status.textContent = `Current release: ${record.sourceRevision}`;
@@ -14,4 +15,4 @@ async function open() {
     card.append(title, detail, checksum, download); document.getElementById('release-artifacts').append(card);
   }
 }
-open().catch(error => { status.textContent = error.message; });
+adminReady.then(ready => { if (ready) return open(); }).catch(error => { status.textContent = error.message; });

@@ -6,7 +6,7 @@ import { repository } from './assets.mjs';
 
 const checks = [
   ['--check', 'scripts/sites/local.mjs'], ['--check', 'scripts/sites/assets.mjs'],
-  ['--check', 'admin-website/access-admin.mjs'], ['--check', 'admin-website/billing-admin.mjs'], ['--check', 'admin-website/releases.mjs'],
+  ['--check', 'admin-website/admin-shell.mjs'], ['--check', 'admin-website/licenses.mjs'], ['--check', 'admin-website/access-admin.mjs'], ['--check', 'admin-website/billing-admin.mjs'], ['--check', 'admin-website/releases.mjs'],
   ['--check', 'customer-website/trial.mjs'], ['--check', 'customer-website/billing.mjs'],
   ['--check', 'customer-website/portal.mjs'], ['--check', 'customer-website/portal-client.mjs'],
   ['--check', 'apps/public-intake/cloudflare/customer-portal.mjs'],
