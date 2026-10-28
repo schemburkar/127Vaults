@@ -21,7 +21,7 @@ export async function notifyNewAccessRequest(env, store, id, contact, at, { repl
         `Email: ${contact.email}`, `Name: ${contact.contactName || 'Not supplied'}`,
         `Organization: ${contact.organization || 'Not supplied'}`, `Plan: ${contact.plan}`,
         `Requested users: ${contact.requestedSeats ?? 'Not supplied'}`, `Received: ${new Date(at).toISOString()}`, '',
-        `Review: ${env.PUBLIC_INTAKE_ORIGIN}/access-admin`,
+        `Review: ${env.ADMIN_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/access-admin`,
         'Open the access desk and sign in with your operator key. This email does not approve the request.',
       ].join('\n') }), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('alert deadline')), 15000); })]);
     if (typeof result?.messageId === 'string' && result.messageId) state = 'accepted';

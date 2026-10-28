@@ -10,8 +10,8 @@ const receiptFile = resolve(root, '.cloudflare-deploy/billing/verification.json'
 const commands = [
   ['scripts/cloudflare/check.mjs'],
   ['--check', 'apps/server/src/subscription-refresh.mjs'],
-  ['--check', 'public-website/billing.mjs'],
-  ['--check', 'public-website/billing-admin.mjs'],
+  ['--check', 'customer-website/billing.mjs'],
+  ['--check', 'admin-website/billing-admin.mjs'],
   ['--test', '--test-name-pattern', 'Dodo', 'apps/public-intake/test/cloudflare-worker.test.mjs'],
   ['--test', 'apps/server/test/subscription-refresh.test.mjs', 'apps/server/test/license-status.test.mjs',
     'apps/server/test/license-handler.test.mjs', 'apps/server/test/license-write-guard.test.mjs',
@@ -24,8 +24,10 @@ const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), sourceR
   workingTreeDiffSha256: createHash('sha256').update(git(['diff', 'HEAD'])).digest('hex'), checks: [] };
 const changed = [...new Set([git(['diff', '--name-only', 'HEAD']), git(['ls-files', '--others', '--exclude-standard'])]
   .flatMap(v => v.split(/\r?\n/)).filter(Boolean))].sort();
-receipt.changedFiles = await Promise.all(changed.map(async path => ({ path,
-  sha256: createHash('sha256').update(await readFile(resolve(root, path))).digest('hex') })));
+receipt.changedFiles = await Promise.all(changed.map(async path => {
+  try { return { path, sha256: createHash('sha256').update(await readFile(resolve(root, path))).digest('hex') }; }
+  catch (error) { if (error.code === 'ENOENT') return { path, deleted: true }; throw error; }
+}));
 await mkdir(dirname(receiptFile), { recursive: true });
 for (const args of commands) {
   const code = await new Promise((done, reject) => {

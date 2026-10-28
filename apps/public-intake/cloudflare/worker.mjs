@@ -63,7 +63,7 @@ function summary(record, mailer) {
     requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
 async function setup(env, now) {
-  if (!validIntakeOrigin(env.PUBLIC_INTAKE_ORIGIN) || !/^[A-Za-z0-9_-]{43,128}$/.test(env.OPERATOR_TOKEN ?? '')
+  if (!validIntakeOrigin(env.PUBLIC_INTAKE_ORIGIN, env.LOCAL_SITE_PREVIEW === '1') || !/^[A-Za-z0-9_-]{43,128}$/.test(env.OPERATOR_TOKEN ?? '')
     || !/^[A-Za-z0-9_-]{1,40}$/.test(env.TRIAL_ISSUER_KEY_ID ?? '') || !env.DB || !env.ARTIFACTS) throw Error('Configuration incomplete');
   if (!keyCache.has(env)) keyCache.set(env, Promise.all([
     encryptionKey(env.INTAKE_KEY, 'contacts'), encryptionKey(env.INTAKE_KEY, 'trials'), limiterKey(env.INTAKE_KEY),
@@ -136,7 +136,16 @@ async function serveArtifact(env, asset, request) {
 }
 async function dispatch(request, env, now, schedule) {
   const url = new URL(request.url), path = url.pathname;
+  const customerOrigin = env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN;
+  if (!validIntakeOrigin(customerOrigin, env.LOCAL_SITE_PREVIEW === '1')) fail(503, 'unavailable');
   if (url.origin !== env.PUBLIC_INTAKE_ORIGIN) fail(403, 'forbidden');
+  // Explicit local surface boundaries. The legacy deployment remains unchanged until its separate migration.
+  if (path.startsWith('/api/') && env.SITE_SURFACE) {
+    const allowed = env.SITE_SURFACE === 'admin' ? path.startsWith('/api/access-admin/')
+      : env.SITE_SURFACE === 'customer' ? path.startsWith('/api/trials/') || path.startsWith('/api/billing/')
+      : env.SITE_SURFACE === 'public' ? path === '/api/waitlist' : false;
+    if (!allowed) fail(404, 'not_found');
+  }
   if (!path.startsWith('/api/')) {
     if (!['GET', 'HEAD'].includes(request.method)) fail(405, 'method_not_allowed');
     return env.ASSETS.fetch(request);
@@ -244,7 +253,7 @@ async function dispatch(request, env, now, schedule) {
       let policy;
       try {policy = await developmentPolicy(input,catalogue.issuerPublicKeys,at);} catch {fail(400,'invalid_development_policy');}
       const value = token();
-      const link = `${env.PUBLIC_INTAKE_ORIGIN}/trial?open=1#${id}.${value}`;
+      const link = `${customerOrigin}/trial?open=1#${id}.${value}`;
       record = {...policy,state:'approved',approvedAt:new Date(at).toISOString(),payment:'none',trialDays:0,
         serverMajorVersion:serverMajor(catalogue),tokenHash:await hash(value),linkExpiresAt:new Date(at+30*day).toISOString(),
         ticketHash:null,ticketUntil:0,sourceRevision:catalogue.sourceRevision,releaseHash:identity,
@@ -266,7 +275,7 @@ async function dispatch(request, env, now, schedule) {
         ticketHash: null, ticketUntil: 0, sourceRevision: catalogue.sourceRevision, releaseHash: identity };
       // A query forces document navigation even from a legacy trial page whose
       // script predates fragment-change handling. It contains no credentials.
-      const link = `${env.PUBLIC_INTAKE_ORIGIN}/trial?open=1#${id}.${value}`;
+      const link = `${customerOrigin}/trial?open=1#${id}.${value}`;
       record.invitation = { subject: 'Your private 10-day 127Vaults trial',
         text: `Your unpaid 127Vaults trial is ready. Open your private link:\n${link}\n\nDownload the server and clients, then activate one server installation. Your 10-day trial starts at activation. No payment or subscription is created. Use fictitious data only. The link is private; please do not forward it.\n\nAfter 10 days, server writes stop under the existing read-only policy; your encrypted data is preserved.` };
       delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
@@ -289,7 +298,7 @@ async function dispatch(request, env, now, schedule) {
       const license = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
         ...old, licenseId: crypto.randomUUID(), issuedAt, notBefore: issuedAt, expiresAt, sequence: old.sequence + 1,
       });
-      const value = token(), link = env.PUBLIC_INTAKE_ORIGIN + '/trial?open=1#' + id + '.' + value;
+      const value = token(), link = customerOrigin + '/trial?open=1#' + id + '.' + value;
       record = { ...record, license, expiresAt, extendedAt: issuedAt,
         tokenHash: await hash(value), linkExpiresAt: new Date(Math.max(Date.parse(expiresAt), at + 30 * day)).toISOString(), ticketHash: null, ticketUntil: 0,
         invitation: { subject: 'Your 127Vaults trial has been extended', text: 'Your trial has been extended until ' + expiresAt + '. Open your private link:\n' + link + '\n\nDownload the updated license and install it on your existing server to apply the extension. Keep the existing installation, data and keys. Your user limit and major-version access are unchanged.' } };

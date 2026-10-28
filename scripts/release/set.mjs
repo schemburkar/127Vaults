@@ -91,7 +91,7 @@ const defaults = { runRelease, verifyRelease, prepareTrialCatalogue, verifyEmbed
 
 async function deploymentSource(revision, deps) {
   // Cloudflare stages the controller checkout. Refuse a different/uncommitted website or Worker.
-  await deps.git(repository, ['diff', '--quiet', revision, '--', 'public-website', 'apps/public-intake', 'scripts/cloudflare']);
+  await deps.git(repository, ['diff', '--quiet', revision, '--', 'public-website', 'admin-website', 'customer-website', 'apps/public-intake', 'scripts/cloudflare', 'scripts/sites']);
 }
 
 export async function planSet(request, settings, active, deps = defaults) {
@@ -149,7 +149,7 @@ export async function buildSet(request, settings, active, deps = defaults) {
     await saveJson(issuer, plan.baseline.issuerPublicKeys);
     await deps.loadSecrets(active, plan.baseline); // Preserve the existing issuer; never generate replacement keys.
     const tests = [];
-    for (const folder of ['scripts/cloudflare', 'public-website', 'apps/public-intake/test']) {
+    for (const folder of ['scripts/cloudflare', 'scripts/sites', 'public-website', 'customer-website', 'apps/public-intake/test']) {
       tests.push(...(await readdir(join(repository, folder))).filter(n => n.endsWith('.test.mjs')).map(n => join(repository, folder, n)));
     }
     await deps.execute(process.execPath, ['--test', ...tests]);

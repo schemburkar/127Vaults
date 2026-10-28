@@ -215,4 +215,4 @@ async function sessionAction(action) {
 }
 refresh().catch(() => status('Enter your operator key. Sessions last one hour.'));
 
-$('review-releases').addEventListener('click', () => { location.assign('/trial?review=1'); });
+$('review-releases').addEventListener('click', () => { location.assign('/releases'); });

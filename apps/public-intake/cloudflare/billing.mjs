@@ -134,6 +134,7 @@ async function processBillingEvent(id, event, env, store, release, now, fetcher)
 }
 export async function handleBilling(request, env, store, release, now, operatorAuthorized, fetcher = fetch) {
   const path = new URL(request.url).pathname;
+  const customerOrigin = env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN;
   if (!path.startsWith('/api/billing/') && !path.startsWith('/api/access-admin/billing/')) return null;
   const config = billingConfig(env);
   const admin = path.startsWith('/api/access-admin/');
@@ -189,13 +190,13 @@ export async function handleBilling(request, env, store, release, now, operatorA
     const refreshToken = token();
     await store.save(row, { ...row.trial, billingHistory: [...(row.trial.billingHistory ?? []), ...(row.trial.billing ? [row.trial.billing] : [])], billing: { mode: config.mode, planSlug: v.plan, productId: plan.productId,
       status: 'offered', orderId: crypto.randomUUID(), refreshHash: await hash(refreshToken) } });
-    return { ...publicStatus(row.trial.billing), refreshToken, refreshUrl: `${env.PUBLIC_INTAKE_ORIGIN}/api/billing/${id}/refresh` };
+    return { ...publicStatus(row.trial.billing), refreshToken, refreshUrl: `${customerOrigin}/api/billing/${id}/refresh` };
   }
   if (!record.billing) reject(404, 'not_found');
   if (admin && action === 'rotate-refresh' && request.method === 'POST') {
     fields(await input(request), []); const refreshToken = token();
     await store.save(row, { ...record, billing: { ...record.billing, refreshHash: await hash(refreshToken) } });
-    return { refreshToken, refreshUrl: `${env.PUBLIC_INTAKE_ORIGIN}/api/billing/${id}/refresh` };
+    return { refreshToken, refreshUrl: `${customerOrigin}/api/billing/${id}/refresh` };
   }
   if (admin && action === 'recover-checkout' && request.method === 'POST') {
     const value = await input(request); fields(value, ['sessionId']);
@@ -230,7 +231,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
       customer: { email: row.contact.email }, subscription_data: { trial_period_days: 0 },
       metadata: { access_request_id: id, order_id: record.billing.orderId, billing_mode: config.mode },
       ...(v.coupon ? { discount_codes: [v.coupon.toUpperCase()] } : {}),
-      feature_flags: { allow_discount_code: true }, return_url: `${env.PUBLIC_INTAKE_ORIGIN}/trial?billing=return`,
+      feature_flags: { allow_discount_code: true }, return_url: `${customerOrigin}/trial?billing=return`,
     }, fetcher); }
     catch (error) {
       if (error instanceof DodoError && [400, 422].includes(error.providerStatus)) {

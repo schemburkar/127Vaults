@@ -1,0 +1,50 @@
+# Separate local public, admin and customer sites
+
+Implemented 2026-10-28 as a local architecture step. No deployed Worker, DNS, Cloudflare Access, MFA, payment account, or live data was changed.
+
+## Run
+
+From the repository root:
+
+```text
+pnpm sites:local
+```
+
+| Local address | Purpose | APIs exposed |
+| --- | --- | --- |
+| `http://127.0.0.1:12951/get-started` | Public website and Request access | `/api/waitlist` only |
+| `http://localhost:12952/` | 127Vaults Admin | `/api/access-admin/*` only |
+| `http://127.0.0.1:12953/` | Customer invitations, downloads and billing | `/api/trials/*`, `/api/billing/*` only |
+
+The launcher prints the path to the admin operator key. Paste that key into the existing admin sign-in. It is never printed as a value or embedded in a public asset. Submit an access request at the public site, refresh the admin inbox, approve it, and open the resulting customer invitation. Release review uses the admin's `/releases` page. Existing approval, development licensing, replacement, release and subscription management APIs remain in the control-plane implementation. Dodo is disabled until account configuration; the subscription panel reports this clearly. All outbound HTTP/email services are disabled in the local preview.
+
+Default preview data is generated locally and stored persistently under the ignored `.tools/site-preview/` directory. Packages are explicitly labelled non-installable sample data. This verifies site and licensing flows without building, publishing, downloading or installing real packages. It does not claim installed-package or real-provider acceptance. Existing vaults, deployed records, private releases and keys are not read or modified. Restarting the preview preserves requests, operator identity, invitation bindings and accepted licenses.
+
+Options:
+
+```text
+pnpm sites:local --work C:/PRIVATE/local-site-preview --port 12951 --admin-port 12952 --customer-port 12953
+pnpm test:sites
+pnpm test:billing
+```
+
+Run from a shell and use Ctrl+C to stop all three listeners. Preview state survives shutdown. Ports must be different and available. Only loopback addresses are accepted. A directory lock prevents two preview runtimes from using the same state. After a crash, stop any remaining preview processes before removing its orphaned `.preview-lock` directory; do not remove the database or identity files. The earlier `scripts/ops/private-trial-dry-run.mjs` command forwards to this launcher, explicitly using sample packages; previous prepared catalogues, installers and legacy JSONL trial records are retained but are not imported into the new D1 preview store.
+
+`pnpm test:sites` records checks and the tested source revision in `.tools/site-checks/verification.json`. The integration suite verifies actual local HTTP listeners, Host validation, cross-origin mutation rejection, role-specific asset/API boundaries, authenticated admin sessions, request -> approval -> customer activation -> signed-license verification, and persistence across restart. `pnpm test:billing` retains the provider-mock and subscription/licensing regression coverage.
+
+Verification for this change: the site suite passed, the billing suite passed, `pnpm check:public-intake` passed, and 124 intake/public/customer/Cloudflare/release/site regression tests passed. Broad regression output is retained in `.tools/site-checks/regression.log`; billing output is in `.tools/site-checks/billing.log` with its structured receipt at `.cloudflare-deploy/billing/verification.json`. Tests use local/synthetic records and mocked provider calls; no remote publication or real charge is performed.
+
+## Local boundaries
+
+- `public-website/` contains marketing and Request access. Admin and customer application sources were moved out. The public Worker entry point has only its own immutable static assets and a binding to the submission-only intake service. It has no database, R2, operator, issuer or Dodo binding.
+- The internal intake Worker exposes only waitlist GET/POST. It has a contact-encryption key and rate-limit key derived separately from the private state key; it cannot decrypt trial/license records and receives no issuer, payment or operator credentials. The admin reads the same encrypted contact rows through the private backend. The intake's underlying D1 binding still has database-level powers; storage-level least privilege is part of the later deployment design.
+- `admin-website/` contains only operator application pages/modules. `customer-website/` contains invitation and customer billing pages/modules, without operator API calls or a hidden operator-review mode. Legacy mock pages are excluded from every build. Each site is staged into a fresh directory from an explicit manifest. Shared branding is copied at build time, never fetched live from the public site.
+- Admin and customer Workers reuse the existing control-plane implementation with explicit `SITE_SURFACE` route restrictions before any administrative authentication or mutation. Even a valid operator key/cookie cannot open admin routes at the public/customer address. Invitation and renewal URLs explicitly target the customer origin; operator alert links can target the admin origin.
+- Existing administrator authentication remains required. Admin uses `localhost` while public/customer use `127.0.0.1`, so the preview does not accidentally share host cookies merely by changing ports. No Domain cookie or cross-origin admin API allowance is introduced. Exact Origin checks remain enforced for browser mutations. Final production cookie/session policy is intentionally deferred.
+- Local listeners bind to `127.0.0.1`, enforce their exact Host header, reject absolute request targets, and stream responses/downloads. The local Worker runtime uses separate per-site asset maps; arbitrary paths and directory fallbacks are not served. The public site cannot proxy another API by changing its request path.
+
+## What this phase does not establish
+
+The local Workers run inside one development runtime and share a development data store. This is local site/API separation, not an OS/account-level isolation claim. Production service permissions, storage isolation, dedicated deployment credentials, audit policies, Cloudflare Access/MFA and domain/cookie configuration remain the next design step.
+
+The current Cloudflare release workflow remains a **legacy combined deployment**. Its explicit compatibility manifest resolves moved files from their new source folders so existing deployment scripts do not break merely because files moved. The release source-provenance gate now covers the new folders as well. This compatibility target does not provide the local isolation described above and should be migrated to separate deployed targets before enabling live payments. No deployment was run in this phase. Future work must remove the compatibility bundle, give each site its own Worker/domain/credentials, and preserve invitation/download/renewal URLs and stored state during migration.

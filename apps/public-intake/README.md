@@ -1,5 +1,11 @@
 # Public waitlist intake (experimental)
 
+## Separate local sites
+
+Run `pnpm sites:local` for independent public, admin and customer sites with persistent local D1/R2 records. The public site can only call the submission-only intake service; it has no database, signing, payment or operator credentials. Administrative pages are in `admin-website/`, customer pages in `customer-website/`. The existing operator key/session is retained. Account integrations, email, Cloudflare configuration and MFA are not enabled by this preview. See [local site separation](../../docs/architecture/local-site-separation.md).
+
+The existing Cloudflare target and filesystem services described below are compatibility paths. The Cloudflare target is still a combined deployment pending the separate hosting migration; do not infer production isolation from the local site split. The former combined dry-run command now launches the separated sample preview and preserves, but does not migrate, old JSONL records and prepared packages.
+
 ## Cloudflare deployment target
 
 The separate `cloudflare/worker.mjs` target runs the access/trial APIs in Workers,

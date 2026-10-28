@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.mjs",
-    "check": "node --check src/server.mjs && node --check src/mock-selfhost.mjs && node --check src/trials.mjs && node --check src/cloudflare-email.mjs && node --check ../../public-website/access-admin.mjs && node --check ../../public-website/trial.mjs",
+    "check": "node --check src/server.mjs && node --check src/mock-selfhost.mjs && node --check src/trials.mjs && node --check src/cloudflare-email.mjs && node --check ../../admin-website/access-admin.mjs && node --check ../../customer-website/trial.mjs",
     "test": "node --test"
   }
 }

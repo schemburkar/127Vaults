@@ -33,11 +33,11 @@
     "check:contracts": "tsc -p tsconfig.contracts.json",
     "check:desktop": "node scripts/check-desktop.mjs",
     "check:cli": "node scripts/check-cli.mjs",
-    "check:public-intake": "node --check apps/public-intake/src/server.mjs && node --check apps/public-intake/src/trials.mjs && node --check apps/public-intake/src/cloudflare-email.mjs && node --check public-website/access-admin.mjs && node --check public-website/trial.mjs && node --check scripts/ops/prepare-private-trial.mjs && node --check apps/public-intake/src/validate-request.mjs && node scripts/cloudflare/check.mjs",
+    "check:public-intake": "node --check apps/public-intake/src/server.mjs && node --check apps/public-intake/src/trials.mjs && node --check apps/public-intake/src/cloudflare-email.mjs && node --check admin-website/access-admin.mjs && node --check customer-website/trial.mjs && node --check scripts/ops/prepare-private-trial.mjs && node --check apps/public-intake/src/validate-request.mjs && node scripts/cloudflare/check.mjs",
     "check": "node --check scripts/dev.mjs && node --check scripts/mvp-startup.mjs && node --check scripts/mvp-acceptance.mjs && node --check scripts/build-fixture.mjs && pnpm check:public-intake && pnpm -r check && pnpm check:contracts",
     "check:rust:core": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo run -p vaults-crypto --example feasibility && cargo build -p vaults-crypto --target wasm32-unknown-unknown",
     "check:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
-    "test": "pnpm -r test && node --test tests/acceptance/structure.test.mjs tests/internal/structure.test.mjs scripts/mvp-startup.test.mjs scripts/dev-launcher.test.mjs apps/public-intake/test/*.test.mjs public-website/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs scripts/cloudflare/*.test.mjs && node public-website/validate-releases.mjs",
+    "test": "pnpm -r test && node --test tests/acceptance/structure.test.mjs tests/internal/structure.test.mjs scripts/mvp-startup.test.mjs scripts/dev-launcher.test.mjs apps/public-intake/test/*.test.mjs public-website/*.test.mjs customer-website/*.test.mjs scripts/sites/*.test.mjs deploy/*.test.mjs scripts/ops/*.test.mjs scripts/release/*.test.mjs scripts/cloudflare/*.test.mjs && node public-website/validate-releases.mjs",
     "test:internal": "node tests/internal/run.mjs",
     "test:internal:check": "node --test tests/internal/structure.test.mjs",
     "test:internal:audit": "node tests/internal/audit/release-gap-audit.mjs --basic",
@@ -54,7 +54,9 @@
     "cloudflare:test": "node --test apps/public-intake/test/cloudflare-worker.test.mjs scripts/cloudflare/*.test.mjs",
     "cloudflare:audit": "node scripts/cloudflare/deploy.mjs audit",
     "test:acceptance:check": "node --test tests/acceptance/structure.test.mjs",
-    "website:release-notes": "node public-website/build-release-notes.mjs"
+    "website:release-notes": "node public-website/build-release-notes.mjs",
+    "sites:local": "node scripts/sites/local.mjs",
+    "test:sites": "node scripts/sites/check.mjs"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1152.0",

@@ -6,21 +6,17 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('./trial.mjs', import.meta.url), 'utf8');
 const startup = source.slice(0, source.indexOf('const base ='));
 
-test('recommended installer commands keep invitation credentials out of operator review', () => {
+test('recommended installer commands use only the customer invitation and selected packages', () => {
   const renderer = source.slice(source.indexOf('function showInstaller'), source.indexOf('function showLicense'));
-  for (const [review, artifacts, visible] of [[false, [{ product: 'installer', supporting: false }], true],
-    [true, [{ product: 'installer', supporting: false }], true], [false, [{ product: 'server' }], false],
-    [false, [{ product: 'installer', supporting: true }], false]]) {
+  for (const [artifacts, visible] of [[[{ product: 'installer', supporting: false }], true],
+    [[{ product: 'server' }], false], [[{ product: 'installer', supporting: true }], false]]) {
     const nodes = { 'trial-installer': { hidden: true }, 'trial-installer-command': { textContent: '' }, 'trial-installer-command-help': { textContent: '' } };
-    const context = vm.createContext({ operatorReview: review, token: 'A'.repeat(43), match: [null, 'a'.repeat(64)],
+    const context = vm.createContext({ token: 'A'.repeat(43), match: [null, 'a'.repeat(64)],
       location: { origin: 'https://vaults.example' }, $: id => nodes[id], record: { artifacts } });
     vm.runInContext(`${renderer}\nshowInstaller(record);`, context);
     assert.equal(nodes['trial-installer'].hidden, !visible);
     if (visible) {
-      if (review) {
-        assert.ok(!nodes['trial-installer-command'].textContent.includes('A'.repeat(43)));
-        assert.ok(!nodes['trial-installer-command'].textContent.includes('--invitation'));
-      } else assert.ok(nodes['trial-installer-command'].textContent.includes(`https://vaults.example/trial.html#${'a'.repeat(64)}.${'A'.repeat(43)}`));
+      assert.ok(nodes['trial-installer-command'].textContent.includes(`https://vaults.example/trial.html#${'a'.repeat(64)}.${'A'.repeat(43)}`));
       assert.ok(nodes['trial-installer-command'].textContent.includes('.\\127vaults-install.exe'));
       assert.ok(nodes['trial-installer-command'].textContent.includes('./127vaults-install'));
     } else assert.equal(nodes['trial-installer-command'].textContent, '');
@@ -55,12 +51,13 @@ test('invalid fragments remain invalid and are never sent as a query credential'
 });
 
 
-test('operator review uses a credential-free mode and preserves it on reload', () => {
+test('a former operator-review URL never enables admin behavior on the customer site', () => {
   const browser = new EventTarget(), paths = [];
   browser.location = { pathname: '/trial', search: '?review=1', hash: '', reload() {} };
   browser.history = { replaceState(_state, _title, path) { paths.push(path); } };
   const context = vm.createContext({ URLSearchParams, window: browser, location: browser.location, history: browser.history });
-  vm.runInContext(`${startup}\nglobalThis.review = operatorReview; globalThis.parsed = match;`, context);
-  assert.equal(context.review, true); assert.equal(context.parsed, null);
-  assert.deepEqual(paths, ['/trial?review=1']);
+  vm.runInContext(`${startup}\nglobalThis.parsed = match;`, context);
+  assert.equal(context.parsed, null);
+  assert.deepEqual(paths, ['/trial']);
+  assert.ok(!source.includes('/api/access-admin/'));
 });

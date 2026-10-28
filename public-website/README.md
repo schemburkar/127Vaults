@@ -3,15 +3,14 @@
 ## Private friend trials
 
 For Cloudflare hosting, see the [Worker/D1/R2 deployment runbook](../docs/release/cloudflare-access-deployment.md).
-The deployment scripts stage an explicit allowlist from this folder, excluding
-tests, build scripts, documentation and legacy simulated-checkout pages.
+The existing Cloudflare publication target still stages a compatibility bundle from all three site source folders. Separating that deployed target is a later phase; local separation does not change the live site.
 
-The local site now includes access-admin.html for the protected operator inbox and trial.html for manually approved unpaid ten-day trials. Configure the same-origin intake API; static hosting alone cannot receive requests or issue licenses. The public release catalogue stays empty. See [private trial setup](../docs/release/private-friend-trials.md).
+Local administration lives in `admin-website/`; private customer invitation, download and billing pages live in `customer-website/`. This folder contains marketing and the Request access form. Run `pnpm sites:local` from the repository root for the separate sites and the real local intake/backend. See [local site separation](../docs/architecture/local-site-separation.md). Static hosting alone cannot receive requests or issue licenses. The public release catalogue stays empty.
 
 
 This folder is an independent, static marketing site. It is separate from `apps/web`, the password-manager web client, and has no third-party build dependencies.
 
-The eight main marketing pages are Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Separate trial/operator and legacy simulation pages support their configured services. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five marketing pages and the linked `security-technical.html` page are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root. To regenerate only security pages, use `node public-website/build-pages.mjs security.html security-technical.html`. Keep published cryptographic parameters aligned with the implementation and run `node --test public-website/security.test.mjs`.
+The eight main marketing pages are Home, Product, Security, Deployment, Pricing, Downloads, Get Access, and FAQ. Legacy simulation sources are retained under `customer-website/legacy/` and excluded from all three site builds. Edit `index.html`, `downloads.html`, or `get-started.html` directly. The other five marketing pages and the linked `security-technical.html` page are generated from `build-pages.mjs`; after editing their copy, run `node public-website/build-pages.mjs` from the repository root. To regenerate only security pages, use `node public-website/build-pages.mjs security.html security-technical.html`. Keep published cryptographic parameters aligned with the implementation and run `node --test public-website/security.test.mjs`.
 
 Every page carries a visible coming-soon notice for Cloud, proposed pricing,
 and release availability. Product copy describes private vaults only; the Work

@@ -9,6 +9,7 @@ import { validIntakeOrigin } from '../../apps/public-intake/src/intake-origin.mj
 import { issuer } from '../../apps/public-intake/cloudflare/crypto.mjs';
 import { versionParts } from '../../apps/public-intake/cloudflare/installer.mjs';
 import { billingConfig } from '../../apps/public-intake/cloudflare/dodo.mjs';
+import { legacyAssetDirectory } from '../sites/assets.mjs';
 const run = promisify(execFile);
 export const repository = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 export const localDeploymentDirectory = join(repository, '.cloudflare-deploy');
@@ -16,7 +17,7 @@ export const workerDirectory = join(repository, 'apps/public-intake/cloudflare')
 export const assetFiles = ['index.html', 'product.html', 'security.html', 'security-technical.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'release-notes-history.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
-  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'billing-admin.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
+  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'billing-admin.mjs', 'releases.html', 'releases.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
 function contains(directory, path) {
   const rel = relative(directory, path);
   return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));
@@ -179,8 +180,9 @@ export async function stageAssets(directory) {
   X-Robots-Tag: noindex, nofollow
 ${assetFiles.filter(name => /\.(?:css|mjs|svg)$/.test(name)).map(name => `/${name}\n  Cache-Control: public, max-age=86400, must-revalidate\n`).join('')}`);
 }
-export async function readPublicAsset(name, sourceDirectory = join(repository, 'public-website')) {
+export async function readPublicAsset(name, sourceDirectory) {
   if (!assetFiles.includes(name)) throw Error('File is not approved for public hosting');
+  sourceDirectory ??= legacyAssetDirectory(name);
   const source = join(sourceDirectory, name), info = await lstat(source);
   if (!info.isFile() || info.isSymbolicLink()
     || relative(await realpath(sourceDirectory), await realpath(source)) !== name) throw Error(`Public asset is not a regular direct file: ${name}`);
