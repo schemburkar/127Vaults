@@ -7,17 +7,50 @@ The checkout must be clean, on main, and match the dispatched GitHub commit.
 Synchronize it before dispatch. Concurrent workflow runs queue without cancellation;
 do not run a manual release concurrently.
 
-Register a repository-scoped runner using GitHub Settings → Actions → Runners →
-New self-hosted runner → Windows x64. Follow GitHub's generated download,
-checksum and registration commands in a separate directory outside the repository.
-Add label `vaults-release`. Run it interactively under the same Windows account
-that already has WSL, Podman, build tools and private release configuration.
-A service account does not automatically inherit these prerequisites.
-Keep the runner restricted to this trusted repository and manual main runs.
+## Register and check the runner
 
-The workflow must be pushed before GitHub can dispatch it. This initial change
-does not push or register a runner. Registration requires the repository's
-short-lived registration token; do not save it in source or receipts.
+GitHub CLI must be installed and authenticated with administration access to the
+private repository. From the workstation checkout, use:
+
+```powershell
+pwsh -NoProfile -File ./scripts/release/runner.ps1 register
+pwsh -NoProfile -File ./scripts/release/runner.ps1 status
+pwsh -NoProfile -File ./scripts/release/runner.ps1 start
+```
+
+`register` obtains the Windows x64 package from GitHub's runner-download API,
+checks its SHA-256 against the official `actions/runner` release, installs it at
+`C:\Projects\127Vaults-Runner`, and registers it only with this private repository.
+It adds `vaults-release` alongside the default `self-hosted`, `Windows` and `X64`
+labels. The default name is `<COMPUTERNAME>-127vaults-release`. It starts the
+listener in the background under the current Windows account and waits for
+GitHub to report it online. Repeating registration reuses the matching local
+registration; it never replaces a runner belonging to another identity. Optional
+`-RunnerDirectory` and `-RunnerName` select a different dedicated installation.
+
+`start` reconnects an already registered runner without making a duplicate.
+`status` checks the local/remote runner identity and reports GitHub's online and
+busy status. The listener must be running to accept jobs. This is a background
+user process, **not a Windows service or a login/startup task**: after logout or
+reboot, run `start` again from the same build account. WSL distributions and
+Podman configuration belong to that account; a SYSTEM service would not
+inherit them. A separate Linux runner is unnecessary for the current job,
+because the established Windows release engine invokes Ubuntu-24.04 WSL for
+Linux desktop, CLI and installer builds. Split jobs may use one later.
+
+The runner directory grants access only to the current account, SYSTEM and
+Administrators. Persistent runner credentials remain there, outside the checkout.
+The short-lived registration token crosses an environment variable supported by
+the runner, is masked by the runner, and is removed after configuration; the
+script never writes it into command arguments, source, or receipts. Installation
+and status receipts are stored in that directory. Listener output is under
+`logs/`; GitHub's diagnostic logs are under `_diag/`. Treat runner files as private.
+
+Keep the runner restricted to this trusted repository and manual main runs.
+Registration and status checks do not push source, dispatch a workflow, deploy,
+or publish packages. The workflow must be pushed before GitHub can dispatch it,
+and the workstation HEAD must match the dispatched commit. The runner can be
+inspected in the repository's Settings → Actions → Runners page.
 
 For local validation after committing, run:
 
