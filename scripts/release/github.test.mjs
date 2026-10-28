@@ -2,14 +2,15 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {publishNotes} from './github.mjs';
 const revision='a'.repeat(40), args=['v0.1.13',revision,'notes.md'];
-function fixture({privateRepo=true, commit=true, existing=null, failed=false}={}) {
-  const calls=[];
-  return {calls, deps:{execFileSync:()=> 'https://github.com/owner/repo.git',
+function fixture({privateRepo=true, commit=true, existing=null, failed=false, tagRevision=revision}={}) {
+  const calls=[]; let created=false;
+  return {calls, deps:{env:{},execFileSync:()=> 'https://github.com/owner/repo.git',
     spawnSync:()=>({status:0,stdout:'password=test-only-token\n'}),readFile:async()=> 'Release notes',
     fetch:async(url,options)=>{
       calls.push({url,...options});
       assert.ok(url.startsWith('https://api.github.com/repos/owner/repo'));
-      const value=url.endsWith('/repo')?{private:privateRepo}:url.includes('/commits/')?(commit?{sha:revision}:null):options.method==='POST'?{html_url:'https://github.com/owner/repo/releases/tag/v0.1.13'}:existing;
+      if(options.method==='POST') created=true;
+      const value=url.includes('/git/ref/tags/') ? (existing || created ? {object:{type:'commit',sha:tagRevision}} : null) : url.endsWith('/repo')?{private:privateRepo}:url.includes('/commits/')?(commit?{sha:revision}:null):options.method==='POST'?{html_url:'https://github.com/owner/repo/releases/tag/v0.1.13'}:existing;
       return {status:failed?403:value?200:404,ok:!failed,json:async()=>value};
     }}};
 }
@@ -34,4 +35,14 @@ test('retries identical release without writes and refuses differing release',as
 });
 test('invalid arguments fail before credentials or network',async()=>{
  await assert.rejects(publishNotes(['bad',revision,'notes.md']),/Usage/);
+});
+
+test('workflow token avoids the credential helper and conflicting existing tags cannot be published',async()=>{
+ const {calls,deps}=fixture(); deps.env={GITHUB_TOKEN:'workflow-test-token'};
+ deps.spawnSync=()=>{throw Error('Credential helper must not run');};
+ assert.equal((await publishNotes(args,deps)).status,'ready');
+ assert.ok(calls.every(call=>call.headers.Authorization==='Bearer workflow-test-token'));
+ const wrong=fixture({existing:{body:'Release notes',draft:false,target_commitish:revision},tagRevision:'b'.repeat(40)});
+ await assert.rejects(publishNotes([...args,'--publish'],wrong.deps),/exact package source/);
+ assert.ok(wrong.calls.every(call=>call.method==='GET'));
 });

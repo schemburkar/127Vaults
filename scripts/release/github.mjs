@@ -59,13 +59,17 @@ export async function publishNotes([tag, revision, notesFile, mode = '--plan', i
   const remote = exec('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', windowsHide: true }).trim();
   const match = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(remote);
   if (!match) throw Error('Expected a GitHub HTTPS origin.');
-  const credential = spawn('git', ['credential', 'fill'], {
-    input: `protocol=https\nhost=github.com\npath=${match[1]}/${match[2]}\n\n`, encoding: 'utf8', windowsHide: true, timeout: 30000,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' },
-  });
-  if (credential.status !== 0) throw Error('GitHub credentials unavailable from the configured Git credential helper.');
-  const token = credential.stdout.split(/\r?\n/).find(line => line.startsWith('password='))?.slice(9);
-  if (!token) throw Error('Git credential helper returned no access token.');
+  const environment = deps.env ?? process.env;
+  let token = environment.GITHUB_TOKEN || environment.GH_TOKEN;
+  if (!token) {
+    const credential = spawn('git', ['credential', 'fill'], {
+      input: `protocol=https\nhost=github.com\npath=${match[1]}/${match[2]}\n\n`, encoding: 'utf8', windowsHide: true, timeout: 30000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' },
+    });
+    if (credential.status !== 0) throw Error('GitHub credentials unavailable from the configured Git credential helper.');
+    token = credential.stdout.split(/\r?\n/).find(line => line.startsWith('password='))?.slice(9);
+    if (!token) throw Error('Git credential helper returned no access token.');
+  }
   const base = `https://api.github.com/repos/${match[1]}/${match[2]}`;
   async function request(path, method = 'GET', value) {
     const response = await (deps.fetch || fetch)(base + path, { method, signal: AbortSignal.timeout(30000), headers: {
@@ -88,11 +92,20 @@ export async function publishNotes([tag, revision, notesFile, mode = '--plan', i
     if (!response.ok) throw Error(`GitHub asset upload failed: HTTP ${response.status}`);
     return response.json();
   }
+  async function verifyTag(required = false) {
+    const ref = await request(`/git/ref/tags/${tag}`);
+    if (!ref) { if (required) throw Error('GitHub release tag is missing.'); return; }
+    let object = ref.object;
+    for (let depth = 0; object?.type === 'tag' && depth < 4; depth++) object = (await request(`/git/tags/${object.sha}`))?.object;
+    if (object?.type !== 'commit' || object.sha !== revision) throw Error('GitHub tag does not point at the exact package source commit.');
+  }
+  await verifyTag();
   const existing = await request(`/releases/tags/${tag}`);
   if (existing) {
+    await verifyTag(true);
     // Attaching installers preserves the existing notes, which may describe the
     // original notes-only release. Source and version must still match exactly.
-    if ((!installersRoot && existing.body !== body) || existing.draft || existing.target_commitish !== revision) throw Error('Existing GitHub release differs; review it before updating.');
+    if ((existing.body !== body && (!installersRoot || existing.body?.replace('no package assets are attached to this GitHub release.', 'the standalone installer archives and checksums are also attached below.') !== body)) || existing.draft || existing.target_commitish !== revision) throw Error('Existing GitHub release differs; review it before updating.');
     const attached = assets.length ? await attachAssets(existing, assets, mode, {request, upload}) : [];
     if (assets.length && mode === '--publish') {
       const updatedBody = existing.body?.replace('no package assets are attached to this GitHub release.', 'the standalone installer archives and checksums are also attached below.');
@@ -103,6 +116,7 @@ export async function publishNotes([tag, revision, notesFile, mode = '--plan', i
   if (mode === '--plan') return { status: 'ready', tag, revision, private: repo.private, assets: assets.length };
   const result = await request('/releases', 'POST', { tag_name: tag, target_commitish: revision, name: `127Vaults ${tag.slice(1)}`, body, draft: false, prerelease: false });
   if (!result) throw Error('GitHub release creation failed.');
+  await verifyTag(true);
   const attached = assets.length ? await attachAssets(result, assets, mode, {request, upload}) : [];
   return { status: 'published', url: result.html_url, ...(assets.length ? {assets: attached} : {}) };
 }

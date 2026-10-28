@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { assertMainSynchronized } from './workflow-gates.mjs';
+test('release source gate rejects dirty, unpushed, stale and non-main source', async t => {
+  const directory = await mkdtemp(join(tmpdir(),'127v-release-sync-')); t.after(()=>rm(directory,{recursive:true,force:true}));
+  const git = args => execFileSync('git',args,{cwd:directory,encoding:'utf8',windowsHide:true}).trim();
+  git(['init','-b','main']); git(['config','user.name','Release gate test']); git(['config','user.email','release@example.invalid']);
+  await writeFile(join(directory,'source'),'one'); git(['add','.']); git(['commit','-m','first']);
+  const first = git(['rev-parse','HEAD']); git(['update-ref','refs/remotes/origin/main',first]);
+  assert.equal(assertMainSynchronized(first,directory).unpushedCommits,0);
+  await writeFile(join(directory,'source'),'two'); assert.throws(()=>assertMainSynchronized(first,directory),/Commit intended/);
+  git(['add','.']); git(['commit','-m','second']); const second=git(['rev-parse','HEAD']);
+  assert.throws(()=>assertMainSynchronized(second,directory),/synchronize/);
+  git(['update-ref','refs/remotes/origin/main',second]); assert.throws(()=>assertMainSynchronized(first,directory),/synchronize/);
+  git(['checkout','-b','other']); assert.throws(()=>assertMainSynchronized(second,directory),/local main/);
+});
+import { mkdir } from 'node:fs/promises';
+import { checkReleaseNotes } from './workflow-gates.mjs';
+test('release notes gate requires one version and matching committed Markdown and rendered site notes', async t => {
+  const directory = await mkdtemp(join(tmpdir(),'127v-release-notes-')); t.after(()=>rm(directory,{recursive:true,force:true}));
+  await assert.rejects(checkReleaseNotes('bad',directory),/coordinated/);
+  await mkdir(join(directory,'public-website')); await mkdir(join(directory,'docs/release'),{recursive:true});
+  const notes=[{version:'1.2.3',changes:['Verified change']}];
+  await writeFile(join(directory,'public-website/release-notes.json'),JSON.stringify(notes));
+  await writeFile(join(directory,'docs/release/1.2.3.md'),'# 127Vaults 1.2.3\r\n\r\nRelease notes.');
+  await writeFile(join(directory,'public-website/downloads.html'),'<h2 id="version-1-2-3">Version 1.2.3</h2>');
+  assert.equal((await checkReleaseNotes('1.2.3',directory)).version,'1.2.3');
+  await writeFile(join(directory,'public-website/downloads.html'),'<h2>Old version</h2>');
+  await assert.rejects(checkReleaseNotes('1.2.3',directory),/matching Markdown/);
+  await writeFile(join(directory,'public-website/release-notes.json'),JSON.stringify([...notes,...notes]));
+  await assert.rejects(checkReleaseNotes('1.2.3',directory),/versioned public release notes/);
+});

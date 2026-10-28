@@ -93,3 +93,48 @@ they do not leave development servers running inside an Actions job. Run
 still packages the legacy combined Cloudflare target: passing a rehearsal does
 not establish separate production Workers or production domains. That deployment
 migration remains a separate gate before enabling real payments.
+
+## Complete publication workflow
+
+`Publish coordinated release` (`.github/workflows/release-publish.yml`) is a
+separate, manually dispatched main-only workflow. It uses the same Windows
+runner and release concurrency group, with `contents: write` only on the
+publishing job. Before dispatch, prepare and commit `docs/release/X.Y.Z.md`,
+`public-website/release-notes.json`, and generated public notes; push main and
+keep this workstation at that exact commit. Pass the coordinated `version`
+input. No checkout is reset and no unknown work is committed automatically.
+
+The job calls `scripts/release/publish-workflow.ps1`, which runs local sites and
+workspace checks/tests, uses `release-set.ps1 build` for the complete package
+set and standalone installers, and uses `release-set.ps1 publish` for the real
+Cloudflare backup, compilation, migrations, private R2 upload/hash checks,
+deployment and protected live delivery checks. It reruns workspace checks/tests
+after deployment, confirms live versioned site notes, pushes main, fetches and
+requires clean identical local/remote main with zero unpushed commits, then calls
+`github.mjs` to publish the exact-source tag/release with both installer archives
+and SHA-256 checksums. Existing conflicting tags or assets fail closed. Final
+GitHub assets, source synchronization and receipts are checked again.
+
+The GitHub job token is used for GitHub release APIs; local Git Credential
+Manager supplies noninteractive Git pushes as it does in manual releases.
+Cloudflare OAuth, R2 upload credentials and the existing issuer remain in the
+build account's protected local configuration. They are not copied to workflow
+YAML, Actions artifacts, or source. Native output and structured attempt receipts
+stay under `C:\Projects\127Vaults-Releases\actions\actions-release-<run-id>`.
+
+Reruns keep the same run label and get separate attempt receipts. Completed
+verified package sets are reused only for the same version/source, and a
+previously deployed catalogue is verified instead of redeployed. Earlier partial
+uploads use the existing uploader's resume/hash checks. Retain all failed receipts.
+The normal local latest-release pointer is updated only after all publication
+and GitHub verification succeeds.
+
+A read-only plan can be run after committing:
+
+```powershell
+pwsh -File scripts/release/publish-workflow.ps1 -Revision (git rev-parse HEAD) -Version X.Y.Z -Label unique-plan-label -Plan
+```
+
+This publishes the currently configured Cloudflare target. The separate
+`admin.127vaults.com` and `manage.127vaults.com` Worker/domain migration is not
+implied, and live Dodo collection remains disabled until merchant configuration.

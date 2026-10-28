@@ -51,6 +51,17 @@ change repository visibility or publish installer downloads on the public site.
 GitHub assets inherit the repository's visibility. Those public-distribution
 decisions remain separate from the release workflow.
 
+## Self-hosted GitHub publication
+
+The manually dispatched `Publish coordinated release` workflow runs the same
+complete process on the provisioned Windows workstation (including Linux builds
+through WSL). Prepare, commit and push the versioned Markdown/public notes first;
+select main and provide that coordinated version. The workstation must remain
+clean at the dispatched source. The job publishes Cloudflare and GitHub through
+the existing scripts, retains private receipts, and verifies exact source,
+installer assets and synchronized main before completing. See
+[self-hosted runner and workflow setup](self-hosted-runner.md).
+
 ## Complete installer set and Cloudflare publication
 
 From the Windows build host, use these two commands:
