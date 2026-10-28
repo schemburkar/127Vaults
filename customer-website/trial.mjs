@@ -6,8 +6,10 @@ window.addEventListener('hashchange', () => {
   if (location.hash) location.reload();
 });
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(fragment);
-history.replaceState(null, '', location.pathname);
-const base = match ? `/api/trials/${match[1]}` : '';
+const selected = new URLSearchParams(location.search).get('request');
+const requestId = match?.[1] ?? (/^[a-f0-9]{64}$/.test(selected ?? '') ? selected : null);
+history.replaceState(null, '', !match && requestId ? `${location.pathname}?request=${requestId}` : location.pathname);
+const base = requestId ? `/api/trials/${requestId}` : '';
 const productNames = { server: 'Server', desktop: 'Desktop', cli: 'CLI', extension: 'Browser extension', installer: 'Installer' };
 
 function describe(asset) {
@@ -125,11 +127,15 @@ async function download(action, filename) {
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 async function open() {
-  if (!match) { status('Open the complete private link from your invitation email.'); return; }
+  if (!requestId) { status('Sign in to the customer portal or open the complete private invitation.'); return; }
+  if (match) {
+    const { establishInvitationSession } = await import('./portal-client.mjs');
+    await establishInvitationSession(requestId, token).then(() => history.replaceState(null, '', `${location.pathname}?request=${requestId}`)).catch(() => {});
+  }
   const record = await (await api()).json();
-  if (record.billingAvailable && match) {
+  if (record.billingAvailable) {
     const link = make('a', 'Manage subscription, invoices and payment methods');
-    link.href = `/billing#${match[1]}.${token}`; link.className = 'button primary';
+    link.href = token ? `/billing#${requestId}.${token}` : `/billing?request=${requestId}`; link.className = 'button primary';
     $('trial-status').after(link);
     $('trial-terms').textContent = 'Your subscription license follows your confirmed paid period. Failed renewals stop writes, then allow 30 days for reads and exports. Your encrypted data is retained.';
   }

@@ -10,7 +10,7 @@ export const publicAssets = ['index.html', 'product.html', 'security.html', 'sec
   'pricing.html', 'downloads.html', 'release-notes-history.html', 'get-started.html', 'faq.html', 'setup-guide.html',
   'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs', 'setup-guide.mjs', 'releases.json', ...sharedAssets];
 export const adminAssets = ['access-admin.html', 'access-admin.mjs', 'billing-admin.mjs', 'releases.html', 'releases.mjs', 'trial.css', ...sharedAssets];
-export const customerAssets = ['trial.html', 'trial.mjs', 'billing.html', 'billing.mjs', 'trial.css', 'setup-guide.html', 'setup-guide.mjs', ...sharedAssets];
+export const customerAssets = ['portal.html', 'portal.mjs', 'portal-client.mjs', 'trial.html', 'trial.mjs', 'billing.html', 'billing.mjs', 'trial.css', 'setup-guide.html', 'setup-guide.mjs', ...sharedAssets];
 export const siteAssets = { public: publicAssets, admin: adminAssets, customer: customerAssets };
 const common = new Set([...sharedAssets, 'trial.css', 'setup-guide.html', 'setup-guide.mjs']);
 export function assetDirectory(surface, name) {
@@ -37,7 +37,7 @@ export async function readSiteAsset(surface, name) {
 export async function stageSite(surface, directory, { publicOrigin } = {}) {
   if (!siteAssets[surface]) throw Error('Unknown site');
   const sources = new Map(await Promise.all(siteAssets[surface].map(async name => [name, await readSiteAsset(surface, name)])));
-  if (surface !== 'public') sources.set('index.html', sources.get(surface === 'admin' ? 'access-admin.html' : 'trial.html'));
+  if (surface !== 'public') sources.set('index.html', sources.get(surface === 'admin' ? 'access-admin.html' : 'portal.html'));
   const digest = createHash('sha256');
   for (const [name, data] of sources) digest.update(name).update('\0').update(data);
   const version = digest.digest('hex').slice(0, 20);

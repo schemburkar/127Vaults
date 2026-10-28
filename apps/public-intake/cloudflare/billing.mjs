@@ -1,5 +1,6 @@
 import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError } from './dodo.mjs';
 import { equal, hash, token, signEnvelope, from64, seal, unseal } from './crypto.mjs';
+import { customerCanAccess } from './customer-portal.mjs';
 
 const day = 86400000;
 const iso = at => new Date(at).toISOString();
@@ -169,11 +170,12 @@ export async function handleBilling(request, env, store, release, now, operatorA
   if (!match) reject(404, 'not_found');
   const [, id, action] = match;
   const row = await store.get(id), record = row?.trial;
-  if (!record || record.state !== 'approved' || (action !== 'refresh' && (record.replacementRequest || record.revocation))) reject(404, 'not_found');
+  if (!record || record.state !== 'approved' || (['offer', 'checkout', 'license'].includes(action) && (record.replacementRequest || record.revocation))) reject(404, 'not_found');
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get('authorization') ?? '')?.[1];
   // Machine refresh credentials cannot open checkout or customer billing sessions.
   const machine = action === 'refresh' && record.billing?.refreshHash && await equal(await hash(bearer ?? ''), record.billing.refreshHash);
-  if (!admin && !machine && (!bearer || !await equal(await hash(bearer), record.tokenHash)
+  const portalAuthorized = !admin && !machine && await customerCanAccess(request, env, store, row, now, 'billing');
+  if (!admin && !machine && !portalAuthorized && (!bearer || !await equal(await hash(bearer), record.tokenHash)
     || Date.parse(record.linkExpiresAt) <= now)) reject(401, 'access_required');
   if (admin && action === 'offer' && request.method === 'POST') {
     const v = await input(request); fields(v, ['plan']); const plan = config.plans[v.plan];
@@ -231,7 +233,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
       customer: { email: row.contact.email }, subscription_data: { trial_period_days: 0 },
       metadata: { access_request_id: id, order_id: record.billing.orderId, billing_mode: config.mode },
       ...(v.coupon ? { discount_codes: [v.coupon.toUpperCase()] } : {}),
-      feature_flags: { allow_discount_code: true }, return_url: `${customerOrigin}/trial?billing=return`,
+      feature_flags: { allow_discount_code: true }, return_url: `${customerOrigin}/portal?billing=return`,
     }, fetcher); }
     catch (error) {
       if (error instanceof DodoError && [400, 422].includes(error.providerStatus)) {

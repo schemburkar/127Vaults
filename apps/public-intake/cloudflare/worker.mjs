@@ -11,6 +11,7 @@ import { createOperatorSession, validOperatorSession, clearOperatorSession } fro
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
 import { BillingError } from './dodo.mjs';
 import { billingWebhook, handleBilling, reconcileBilling } from './billing.mjs';
+import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal } from './customer-portal.mjs';
 
 const day = 86400000;
 const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
@@ -142,7 +143,7 @@ async function dispatch(request, env, now, schedule) {
   // Explicit local surface boundaries. The legacy deployment remains unchanged until its separate migration.
   if (path.startsWith('/api/') && env.SITE_SURFACE) {
     const allowed = env.SITE_SURFACE === 'admin' ? path.startsWith('/api/access-admin/')
-      : env.SITE_SURFACE === 'customer' ? path.startsWith('/api/trials/') || path.startsWith('/api/billing/')
+      : env.SITE_SURFACE === 'customer' ? path.startsWith('/api/trials/') || path.startsWith('/api/billing/') || path.startsWith('/api/customer/')
       : env.SITE_SURFACE === 'public' ? path === '/api/waitlist' : false;
     if (!allowed) fail(404, 'not_found');
   }
@@ -161,6 +162,8 @@ async function dispatch(request, env, now, schedule) {
   const store = await setup(env, now), at = now();
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const bearer = /^Bearer ([A-Za-z0-9_-]{43,128})$/.exec(request.headers.get('authorization') ?? '')?.[1];
+  const portal = await handleCustomerPortal(request, env, store, at);
+  if (portal) return portal;
   if (path === '/api/waitlist') {
     if (request.method === 'GET') return json(200, { open: true });
     if (!await store.allow('waitlist-ip', ip, 60, 3600000)) fail(429, 'rate_limited');
@@ -362,12 +365,14 @@ async function dispatch(request, env, now, schedule) {
     await store.save(row, record, action === 'erase');
     return json(200, { ...summary(record, mailer), hasRevocation: Boolean(record.revocation), installedLicenseUnaffected: action !== 'replace-installation' && Boolean(record.license) });
   }
-  if (!record || record.state !== 'approved' || at >= Date.parse(record.linkExpiresAt) || !row.contact || !retained(row,at)) fail(404, 'link_unavailable');
+  const portalAuthorized = await customerCanAccess(request, env, store, row, at);
+  const installerGrant = env.CUSTOMER_PORTAL_ENABLED === '1' && await customerInstallerGrant(row, bearer, at);
+  if (!record || record.state !== 'approved' || (!portalAuthorized && !installerGrant && at >= Date.parse(record.linkExpiresAt)) || !row.contact || !retained(row,at)) fail(404, 'link_unavailable');
   const { catalogue, publicKey, signingKey } = await entitledRelease(env, record);
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith('__Secure-127v-trial='))?.slice('__Secure-127v-trial='.length);
   const ticketValid = action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method) && record.ticketHash
     && at < record.ticketUntil && await equal(await hash(cookie ?? ''), record.ticketHash);
-  if (!ticketValid && (!bearer || !await equal(await hash(bearer), record.tokenHash))) fail(401, 'access_required');
+  if (!ticketValid && !portalAuthorized && !installerGrant && (!bearer || !await equal(await hash(bearer), record.tokenHash))) fail(401, 'access_required');
   const installerVersion = request.headers.get('X-127Vaults-Installer-Version');
   if ((action === 'installer' || installerVersion !== null)
     && !installerPolicy(installerVersion, env.INSTALLER_MIN_VERSION ?? '0.1.0')) fail(426, 'installer_update_required');
@@ -459,6 +464,7 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(rows.length<100)break;
   }
   await store.pruneLimits();
+  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now());
 }
 export async function reconcile(env, { now = () => Date.now() } = {}) {
   return reconcileBilling(env, await setup(env, now), release, now());

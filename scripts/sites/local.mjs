@@ -3,12 +3,13 @@ import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createHash, createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile, rmdir, realpath } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rmdir, realpath, appendFile } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, sep, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stageSite, repository } from './assets.mjs';
 import { protectedDirectory } from '../cloudflare/config.mjs';
 import { validIntakeOrigin } from '../../apps/public-intake/src/intake-origin.mjs';
+import { encryptionKey, seal } from '../../apps/public-intake/cloudflare/crypto.mjs';
 
 export const defaultOrigins = { public: 'http://127.0.0.1:12951', admin: 'http://localhost:12952', customer: 'http://127.0.0.1:12953' };
 export function validateOrigins(origins) {
@@ -92,10 +93,18 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
     const assetServices = {};
     for (const surface of ['public', 'admin', 'customer']) assetServices[surface] = await localAssetService(sites[surface]);
     const control = { LOCAL_SITE_PREVIEW: '1', INTAKE_KEY: intakeKey, OPERATOR_TOKEN: operatorToken,
+      CUSTOMER_PORTAL_ENABLED: '1',
       CUSTOMER_ORIGIN: origins.customer, ADMIN_ORIGIN: origins.admin,
       TRIAL_ISSUER_KEY_ID: 'trial', TRIAL_ISSUER_PRIVATE_KEY: privateKey, TRIAL_CATALOGUE_KEY: 'releases/local/catalogue.json',
       TRIAL_CATALOGUE_SHA256: createHash('sha256').update(catalogueSource).digest('hex'), TRIAL_SOURCE_REVISION: catalogue.sourceRevision, DODO_ENABLED: '0' };
     const db = { DB: '127vaults-local-sites' }, r2 = { ARTIFACTS: '127vaults-local-packages' };
+    const mailKey = await encryptionKey(intakeKey, 'local-customer-mail');
+    const mailService = async request => {
+      const message = await request.json(), id = crypto.randomUUID();
+      await appendFile(join(directory, 'customer-mail.jsonl'), JSON.stringify({ id,
+        envelope: await seal({ ...message, at: new Date().toISOString(), simulated: true }, mailKey, `local-mail:${id}`) }) + '\n', { mode: 0o600 });
+      return new Response('{}');
+    };
     mf = new Miniflare({ host: '127.0.0.1', port: 0, d1Persist: join(directory, 'state', 'd1'), r2Persist: join(directory, 'state', 'r2'),
       workers: [
         { ...base, name: 'public', scriptPath: join(repository, 'apps/public-intake/cloudflare/public-site.mjs'),
@@ -104,11 +113,11 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
           bindings: { PUBLIC_INTAKE_ORIGIN: origins.public, ...await intakeKeys(intakeKey) }, d1Databases: db },
         ...['admin', 'customer'].map(surface => ({ ...base, name: surface,
           scriptPath: join(repository, 'apps/public-intake/cloudflare/worker.mjs'), bindings: { ...control, SITE_SURFACE: surface, PUBLIC_INTAKE_ORIGIN: origins[surface] },
-          d1Databases: db, r2Buckets: r2, serviceBindings: { ASSETS: assetServices[surface] } })),
+          d1Databases: db, r2Buckets: r2, serviceBindings: { ASSETS: assetServices[surface], ...(surface === 'customer' ? { CUSTOMER_MAIL: mailService } : {}) } })),
       ] });
     const database = await mf.getD1Database('DB', 'admin');
     await database.prepare('CREATE TABLE IF NOT EXISTS local_site_migrations (name TEXT PRIMARY KEY)').run();
-    for (const name of ['0001_trials.sql', '0002_billing.sql']) {
+    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql']) {
       if (await database.prepare('SELECT name FROM local_site_migrations WHERE name = ?').bind(name).first()) continue;
       const sql = await readFile(join(repository, 'apps/public-intake/cloudflare/migrations', name), 'utf8');
       await database.batch([...sql.split(';').map(v => v.trim()).filter(Boolean).map(v => database.prepare(v)),
@@ -158,7 +167,7 @@ export async function runLocalSites(args = process.argv.slice(2)) {
       const url = new URL(origins[surface]); url.port = String(port); origins[surface] = url.origin;
     }
     local = await createLocalSites({ directory: options['--work'], origins }); await local.listen();
-    console.log(`Public website: ${origins.public}/get-started\n127Vaults Admin: ${origins.admin}/\nCustomer invitations: ${origins.customer}/\nOperator key file: ${join(local.directory, 'operator-token')}\nLocal sample data/packages only. Dodo and outbound email are disabled. Ctrl+C stops all three sites and preserves their local data.`);
+    console.log(`Public website: ${origins.public}/get-started\n127Vaults Admin: ${origins.admin}/\nCustomer portal: ${origins.customer}/\nOperator key file: ${join(local.directory, 'operator-token')}\nLocal sign-in email preview: pnpm sites:mail --work "${local.directory}"\nLocal sample data/packages only. Dodo and outbound email are disabled. Ctrl+C stops all three sites and preserves their local data.`);
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { local.close().then(() => process.exit(0), () => process.exit(1)); });
     return local;
   } catch (error) { await local?.close(); console.error(error.message); process.exitCode = 1; }

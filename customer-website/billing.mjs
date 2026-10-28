@@ -1,11 +1,13 @@
 const $ = id => document.getElementById(id);
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(location.hash.slice(1));
-history.replaceState(null, '', location.pathname);
-const base = match ? `/api/billing/${match[1]}` : null;
+const selected = new URLSearchParams(location.search).get('request');
+const requestId = match?.[1] ?? (/^[a-f0-9]{64}$/.test(selected ?? '') ? selected : null);
+history.replaceState(null, '', !match && requestId ? `${location.pathname}?request=${requestId}` : location.pathname);
+const base = requestId ? `/api/billing/${requestId}` : null;
 async function api(action = '', value) {
   if (!base) throw Error('Reopen your private invitation to manage your subscription.');
   const response = await fetch(base + action, { method: value === undefined ? 'GET' : 'POST', cache: 'no-store',
-    headers: { Authorization: `Bearer ${match[2]}`, ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    credentials: 'same-origin', headers: { ...(match ? { Authorization: `Bearer ${match[2]}` } : {}), ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
     ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
@@ -40,4 +42,7 @@ $('license').addEventListener('click', () => run(async () => {
   const url = URL.createObjectURL(new Blob([result.license], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = 'subscription-license.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }));
-run(async () => show(await api()));
+run(async () => {
+  if (match) { const { establishInvitationSession } = await import('./portal-client.mjs'); await establishInvitationSession(requestId, match[2]).then(() => history.replaceState(null, '', `${location.pathname}?request=${requestId}`)).catch(() => {}); }
+  show(await api());
+});

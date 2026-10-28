@@ -16,6 +16,7 @@ import { issueSelfHostedLicense } from '../../../scripts/ops/issue-self-hosted-l
 import { handleBilling, syncSubscription, billingWebhook, reconcileBilling } from '../cloudflare/billing.mjs';
 import { verifyWebhook } from '../cloudflare/dodo.mjs';
 import { issuer, hash } from '../cloudflare/crypto.mjs';
+import { handleCustomerPortal } from '../cloudflare/customer-portal.mjs';
 
 const origin = 'https://trial.example.com';
 const admin = '/api/access-admin/requests';
@@ -54,6 +55,32 @@ test('Dodo private checkout binds the server plan, reserves once, and never trus
   assert.equal(calls, 1);
   const row = await f.store.get(f.id); assert.equal(row.trial.billing.status, 'checkout_pending');
   assert.equal(verifyLicenseFile(row.trial.license, f.publicKeys, f.installationId).sequence, 1);
+});
+
+test('Dodo customer portal sessions can manage billing and cancel only their owned subscription without an invitation bearer', async t => {
+  const f = await billingFixture(t), env = { ...f.env, CUSTOMER_PORTAL_ENABLED: '1' }, now = Date.now();
+  await syncSubscription(env, f.store, await f.store.get(f.id), f.release, now, async () => Response.json(f.sub), 'sub_test');
+  const session = await handleCustomerPortal(new Request(origin + '/api/customer/invitation', { method: 'POST', body: JSON.stringify({ requestId: f.id, token: f.a.token }) }), env, f.store, now);
+  const cookie = session.headers.get('set-cookie'); let cancelCalls = 0;
+  const provider = async (url, options) => {
+    if (url.includes('/customer-portal/session')) return Response.json({ link: 'https://customer.dodopayments.com/test' });
+    if (options.method === 'PATCH') { assert.deepEqual(JSON.parse(options.body), { cancel_at_next_billing_date: true }); cancelCalls++; }
+    return Response.json({ ...f.sub, cancel_at_next_billing_date: cancelCalls > 0 });
+  };
+  const request = action => new Request(origin + `/api/billing/${f.id}/${action}`, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal((await handleBilling(request('portal'), env, f.store, f.release, now, false, provider)).portalUrl, 'https://customer.dodopayments.com/test');
+  const before = (await f.store.get(f.id)).trial.license;
+  assert.equal((await handleBilling(request('cancel'), env, f.store, f.release, now, false, provider)).cancelAtPeriodEnd, true);
+  assert.equal(cancelCalls, 1); assert.equal((await f.store.get(f.id)).trial.license, before);
+  const grantResponse = await handleCustomerPortal(new Request(origin + '/api/customer/installer-link', { method: 'POST',
+    headers: { Cookie: cookie }, body: JSON.stringify({ requestId: f.id }) }), env, f.store, now);
+  const grant = (await grantResponse.json()).link.split('.').at(-1);
+  const installer = await handleCustomerPortal(new Request(origin + '/api/customer/invitation', { method: 'POST',
+    body: JSON.stringify({ requestId: f.id, token: grant }) }), env, f.store, now);
+  const restricted = new Request(origin + `/api/billing/${f.id}/cancel`, { method: 'POST', headers: { Cookie: installer.headers.get('set-cookie') }, body: '{}' });
+  await assert.rejects(handleBilling(restricted, env, f.store, f.release, now, false, provider), /access_required/);
+  await f.db.prepare('DELETE FROM customer_sessions').run();
+  await assert.rejects(handleBilling(request('portal'), env, f.store, f.release, now, false, provider), /access_required/);
 });
 
 test('Dodo confirmed renewal issues a higher signed license; failure never extends expiry and grace ends in cancellation', async t => {
@@ -235,7 +262,7 @@ async function fixture(t, options = {}) {
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
   const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
-  for (const name of ['0001_trials.sql', '0002_billing.sql']) {
+  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql']) {
     const sql = await readFile(new URL(`../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
   }
