@@ -41,7 +41,12 @@ async function createSession(request, env, store, principal, now, expiresAt = no
     .bind(id, await seal(principal, await portalKey(env), `customer-session:${id}`), expiresAt).run();
   return cookie(value, Math.max(1, Math.floor((expiresAt - now) / 1000)));
 }
-async function deliver(env, message) {
+async function deliver(env, message, store, challengeId, now) {
+  if (env.CUSTOMER_MANUAL_MAIL === '1') {
+    await store.db.prepare('INSERT INTO customer_manual_mail (id, payload, expires_at) VALUES (?, ?, ?)')
+      .bind(challengeId, await seal(message, await portalKey(env), `manual-customer-mail:${challengeId}`), now + 600000).run();
+    return;
+  }
   if (env.LOCAL_SITE_PREVIEW === '1' && env.CUSTOMER_MAIL) {
     const response = await env.CUSTOMER_MAIL.fetch('https://local.invalid/customer-code', { method: 'POST', body: JSON.stringify(message) });
     if (!response.ok) throw Error('local_mail_unavailable');
@@ -59,6 +64,7 @@ export async function handleCustomerPortal(request, env, store, now) {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   if (!await store.allow('portal-ip', ip, 120, 3600000)) reject(429, 'rate_limited');
   if (path === '/api/customer/start' && request.method === 'POST') {
+    if (env.CUSTOMER_EMAIL_LOGIN === '0') return json(503, { error: 'email_sign_in_unavailable' });
     const input = await body(request, ['email']), email = normalize(input.email);
     if (!validEmail(email)) reject(400, 'invalid_request');
     if (!await store.allow('portal-start-ip', ip, 20, 3600000) || !await store.allow('portal-start-email', email, 3, 3600000)) reject(429, 'rate_limited');
@@ -71,10 +77,12 @@ export async function handleCustomerPortal(request, env, store, now) {
       await store.db.prepare('INSERT INTO customer_challenges (id, payload, expires_at) VALUES (?, ?, ?)')
         .bind(challengeId, await seal({ email, codeHash }, await portalKey(env), `customer-challenge:${challengeId}`), now + 600000).run();
       try { await deliver(env, { to: email, subject: 'Your 127Vaults customer portal sign-in code',
-        text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }); }
+        text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nOpen ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/ and enter the code in the browser where you requested it.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }, store, challengeId, now); }
       catch { await store.db.prepare('DELETE FROM customer_challenges WHERE id = ?').bind(challengeId).run(); }
     }
-    return json(202, { challengeId, message: 'If this email has an access request or invitation, a sign-in code will be sent.' });
+    return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1'
+      ? 'If this email has an access request or invitation, an operator can send your sign-in code. Delivery is manual; contact your operator.'
+      : 'If this email has an access request or invitation, a sign-in code will be sent.' });
   }
   if (path === '/api/customer/complete' && request.method === 'POST') {
     const input = await body(request, ['challengeId', 'code']);
@@ -134,7 +142,16 @@ export async function handleCustomerPortal(request, env, store, now) {
   }
   reject(404, 'not_found');
 }
-export async function pruneCustomerPortal(store, now) {
+export async function manualCustomerMail(env, store, now) {
+  if (env.CUSTOMER_MANUAL_MAIL !== '1') return { messages: [] };
+  const { results } = await store.db.prepare(`SELECT m.id, m.payload, m.expires_at FROM customer_manual_mail m
+    JOIN customer_challenges c ON c.id = m.id WHERE m.expires_at > ? AND c.expires_at > ? AND c.attempts < 5
+    ORDER BY m.expires_at LIMIT 50`).bind(now, now).all();
+  return { messages: await Promise.all(results.map(async row => ({ id: row.id,
+    ...await unseal(row.payload, await portalKey(env), `manual-customer-mail:${row.id}`), expiresAt: new Date(row.expires_at).toISOString() }))) };
+}
+export async function pruneCustomerPortal(store, now, manual = false) {
   await store.db.batch([store.db.prepare('DELETE FROM customer_challenges WHERE expires_at <= ?').bind(now),
     store.db.prepare('DELETE FROM customer_sessions WHERE expires_at <= ?').bind(now)]);
+  if (manual) await store.db.prepare('DELETE FROM customer_manual_mail WHERE expires_at <= ? OR id NOT IN (SELECT id FROM customer_challenges)').bind(now).run();
 }

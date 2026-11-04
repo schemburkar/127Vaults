@@ -3,7 +3,7 @@
 ## Private friend trials
 
 For Cloudflare hosting, see the [Worker/D1/R2 deployment runbook](../docs/release/cloudflare-access-deployment.md).
-The existing Cloudflare publication target still stages a compatibility bundle from all three site source folders. Separating that deployed target is a later phase; local separation does not change the live site.
+Cloudflare publication supports independent public, admin and customer Workers through the protected `sites` configuration. See [separate production sites](../docs/release/separated-sites.md) for the site-only GitHub workflow, manual customer messages and deployment boundaries.
 
 Local administration lives in `admin-website/`; private customer invitation, download and billing pages live in `customer-website/`. This folder contains marketing and the Request access form. Run `pnpm sites:local` from the repository root for the separate sites and the real local intake/backend. See [local site separation](../docs/architecture/local-site-separation.md). Static hosting alone cannot receive requests or issue licenses. The public release catalogue stays empty.
 

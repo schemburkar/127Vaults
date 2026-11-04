@@ -228,6 +228,7 @@ export async function publishSet(request, settings, active, deps = defaults) {
       for (const key of ['origin', 'accountId', 'workerName', 'bucketName', 'databaseName']) {
         if (config[key] !== active[key]) throw Error('Saved deployment belongs to a different Cloudflare target.');
       }
+      if (JSON.stringify(config.sites) !== JSON.stringify(active.sites)) throw Error('Saved deployment has different site boundaries; do not restore a legacy combined target.');
       if (config.releaseId !== record.label || config.catalogueFile !== record.catalogueFile
         || config.stateDirectory !== join(directory, 'cloudflare')) throw Error('Saved deployment does not match the tested release set.');
       const delivery = await deps.verifyLiveDelivery(config, catalogue, secrets.OPERATOR_TOKEN);

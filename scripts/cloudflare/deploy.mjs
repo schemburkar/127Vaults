@@ -8,6 +8,7 @@ import { loadConfig, loadSecrets, protectedDirectory, repository, saveJson, stag
 import { checkLocalCatalogue, r2Client, uploadArtifacts } from './artifacts.mjs';
 import { catalogueIdentity } from '../../apps/public-intake/cloudflare/catalogue.mjs';
 import { auditPublication } from './publication.mjs';
+import { deploySites, verifySites } from './sites.mjs';
 const require = createRequire(import.meta.url);
 const cli = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
 
@@ -31,6 +32,8 @@ export async function readState(config) {
   const value = await readFile(file, 'utf8').then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return {}; throw error; });
   if (value.accountId && (value.accountId !== config.accountId || value.databaseName !== config.databaseName
     || value.bucketName !== config.bucketName || value.workerName !== config.workerName)) throw Error('State belongs to a different deployment; use a separate state directory');
+  if (value.sites && !config.sites) throw Error('This deployment has separated sites; refusing to restore the combined target');
+  if (value.sites && JSON.stringify(value.sites.origins) !== JSON.stringify({ public: config.origin, admin: config.sites.adminOrigin, customer: config.sites.customerOrigin })) throw Error('Separated site origins changed; use an explicit reviewed migration');
   return { ...value, accountId: config.accountId, databaseName: config.databaseName, bucketName: config.bucketName, workerName: config.workerName };
 }
 export async function assertPrivateBucket(config, run = runWrangler) {
@@ -87,6 +90,9 @@ export async function execute(command, config, { run = runWrangler, createClient
   if (command === 'audit') { console.log(JSON.stringify({ ...publication, configuredSecretMatches: 0, remoteChanges: false }, null, 2)); return; }
   if (command === 'plan') {
     console.log(JSON.stringify({ origin: config.origin, worker: config.workerName, database: config.databaseName,
+      ...(config.sites ? { sites: { public: config.origin, admin: config.sites.adminOrigin, customer: config.sites.customerOrigin },
+        adminAuthentication: config.sites.adminAccess === false ? 'operator key/session; Access and MFA deferred' : 'Cloudflare Access/MFA plus operator key/session',
+        customerEmail: config.sites.emailLogin ? 'Cloudflare Email Sending' : 'operator-copyable messages' } : {}),
       privateBucket: config.bucketName, releaseId: config.releaseId, artifacts: catalogue.artifacts.length,
       totalBytes: catalogue.artifacts.reduce((sum, asset) => sum + asset.sizeBytes, 0),
       sourceRevision: catalogue.sourceRevision, email: config.emailFrom ? 'Cloudflare sending (Paid required for arbitrary recipients)' : 'manual copy/send',
@@ -97,6 +103,10 @@ export async function execute(command, config, { run = runWrangler, createClient
   await protectedDirectory(config.stateDirectory);
   const state = await readState(config), stateFile = join(config.stateDirectory, 'state.json');
   if (command === 'dry-run') {
+    if (config.sites) {
+      await deploySites(config, { ...state, databaseId: state.databaseId ?? '00000000-0000-4000-8000-000000000000' }, secrets, run, { dryRun: true });
+      return;
+    }
     const file = await render(config, { ...state, databaseId: state.databaseId ?? '00000000-0000-4000-8000-000000000000' });
     await run(['deploy', '--config', file, '--dry-run', '--outdir', join(config.stateDirectory, 'bundle')], config);
     return;
@@ -127,17 +137,28 @@ export async function execute(command, config, { run = runWrangler, createClient
     if (!state.catalogueKey || !/^[a-f0-9]{64}$/.test(state.catalogueSha256 ?? '') || state.sourceRevision !== catalogue.sourceRevision
       || state.releaseIdentity !== await catalogueIdentity(catalogue)) throw Error('Upload and verify the selected release before deployment');
     await assertPrivateBucket(config, run);
-    const file = await render(config, state);
-    const secretFile = join(config.stateDirectory, `.worker-secrets-${crypto.randomUUID()}.json`);
-    try {
-      await writeFile(secretFile, JSON.stringify(secrets), { flag: 'wx', mode: 0o600 });
-      await run(['deploy', '--config', file, '--secrets-file', secretFile], config);
-    } finally { await unlink(secretFile).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
+    if (config.sites) {
+      await deploySites(config, state, secrets, run);
+    } else {
+      const file = await render(config, state);
+      const secretFile = join(config.stateDirectory, `.worker-secrets-${crypto.randomUUID()}.json`);
+      try {
+        await writeFile(secretFile, JSON.stringify(secrets), { flag: 'wx', mode: 0o600 });
+        await run(['deploy', '--config', file, '--secrets-file', secretFile], config);
+      } finally { await unlink(secretFile).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
+    }
     state.deployedAt = new Date().toISOString(); state.deployedReleaseIdentity = state.releaseIdentity;
     delete state.verifiedAt; delete state.verifiedReleaseIdentity; await saveJson(stateFile, state);
   }
   if (command === 'verify' || command === 'deploy' || command === 'all') {
     await assertPrivateBucket(config, run);
+    if (config.sites) {
+      await verifySites(config, state, catalogue, secrets, { fetchImpl });
+      state.verifiedAt = new Date().toISOString(); state.verifiedReleaseIdentity = await catalogueIdentity(catalogue);
+      await saveJson(stateFile, state);
+      console.log('Separated site deployment checks passed.');
+      return;
+    }
     const check = async (path, expected, headers = {}) => {
       const response = await fetchImpl(config.origin + path, { headers, redirect: 'error', signal: AbortSignal.timeout(20000) });
       if (response.status !== expected) throw Error(`Deployment check failed: ${path} returned ${response.status}, expected ${expected}`);

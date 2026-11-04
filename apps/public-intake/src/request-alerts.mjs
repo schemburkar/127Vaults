@@ -3,7 +3,7 @@ export function requestAlertsEnabled(env) {
   const email = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
   return typeof env.REQUEST_ALERTS?.send === 'function' && email.test(env.REQUEST_ALERT_TO ?? '')
     && email.test(env.REQUEST_ALERT_FROM ?? '')
-    && env.REQUEST_ALERT_FROM.split('@')[1].toLowerCase() === new URL(env.PUBLIC_INTAKE_ORIGIN).hostname;
+    && env.REQUEST_ALERT_FROM.split('@')[1].toLowerCase() === new URL(env.PUBLIC_SITE_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN).hostname;
 }
 export async function notifyNewAccessRequest(env, store, id, contact, at, { replacement = false } = {}) {
   if (!requestAlertsEnabled(env)) return;

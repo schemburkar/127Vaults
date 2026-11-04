@@ -1,0 +1,23 @@
+name: Publish separated websites
+run-name: Publish public, admin and Manage sites from main
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: workstation-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, X64, vaults-release]
+    timeout-minutes: 60
+    steps:
+      - name: Test, back up, deploy and verify websites
+        shell: pwsh
+        working-directory: C:\Projects\127Vaults
+        env:
+          SITE_SOURCE: ${{ github.sha }}
+        run: |
+          & ./scripts/cloudflare/publish-sites.ps1 -Revision $env:SITE_SOURCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

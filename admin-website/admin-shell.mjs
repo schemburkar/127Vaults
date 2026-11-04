@@ -4,6 +4,7 @@ const pages = [
   ['subscriptions', 'Subscriptions', 'Plans and payments', '03'],
   ['coupons', 'Coupons', 'Private discounts', '04'],
   ['releases', 'Review releases', 'Packages and installers', '05'],
+  ['customer-mail', 'Customer messages', 'Copy and send', '06'],
 ];
 const page = location.pathname.split('/').pop().replace(/\.html$/, '') || 'access-admin';
 const current = pages.find(([id]) => id === page) || pages[0];

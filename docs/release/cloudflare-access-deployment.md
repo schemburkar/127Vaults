@@ -1,5 +1,11 @@
 # Cloudflare access website and private installer delivery
 
+For the three-domain deployment, use [separate Cloudflare websites](separated-sites.md).
+The same deployment engine selects independent public/intake/admin/customer
+Workers when the protected configuration has `sites`. The single-Worker
+architecture described below is the legacy compatibility target, not the
+separated deployment's security boundary.
+
 Before first publication, see the publication security review (internal record retained outside Git).
 Run `pnpm cloudflare:audit .cloudflare-deploy/config.json` to repeat the publication checks
 offline. These checks also run automatically before deployment operations.

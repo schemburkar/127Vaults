@@ -17,7 +17,7 @@ export const workerDirectory = join(repository, 'apps/public-intake/cloudflare')
 export const assetFiles = ['index.html', 'product.html', 'security.html', 'security-technical.html', 'deployment.html', 'pricing.html',
   'downloads.html', 'release-notes-history.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'site.css', 'trial.css', 'theme.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
-  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'portal.html', 'portal.mjs', 'portal-client.mjs', 'billing-admin.mjs', 'admin-shell.mjs', 'admin.css', 'subscriptions.html', 'coupons.html', 'licenses.html', 'licenses.mjs', 'releases.html', 'releases.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
+  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'portal.html', 'portal.mjs', 'portal-client.mjs', 'billing-admin.mjs', 'admin-shell.mjs', 'admin.css', 'subscriptions.html', 'coupons.html', 'licenses.html', 'licenses.mjs', 'releases.html', 'releases.mjs', 'customer-mail.html', 'customer-mail.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
 function contains(directory, path) {
   const rel = relative(directory, path);
   return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));
@@ -33,7 +33,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -47,6 +47,18 @@ export function validateConfig(value, file) {
       || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertFrom)
       || value.requestAlertFrom.split('@')[1].toLowerCase() !== new URL(value.origin).hostname))) throw Error('Invalid Cloudflare deployment configuration');
   if (value.minimumInstallerVersion !== undefined && !versionParts(value.minimumInstallerVersion)) throw Error('Invalid minimum installer version');
+  if (value.sites) {
+    const sites = value.sites;
+    if (Object.keys(sites).some(key => !['adminOrigin', 'customerOrigin', 'adminEmails', 'emailLogin', 'adminAccess'].includes(key))
+      || ![sites.adminOrigin, sites.customerOrigin].every(origin => validIntakeOrigin(origin) && !new URL(origin).port)
+      || new Set([value.origin, sites.adminOrigin, sites.customerOrigin].map(origin => new URL(origin).hostname)).size !== 3
+      || !Array.isArray(sites.adminEmails) || !sites.adminEmails.length
+      || sites.adminEmails.some(email => typeof email !== 'string' || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(email))
+      || (sites.emailLogin !== undefined && typeof sites.emailLogin !== 'boolean')
+      || (sites.adminAccess !== undefined && typeof sites.adminAccess !== 'boolean')
+      || (sites.emailLogin && !value.emailFrom)) throw Error('Invalid separated site configuration');
+    if (value.workerName.length > 53) throw Error('Worker name is too long for separated targets');
+  }
   if (value.billing) {
     if (Object.keys(value.billing).some(key => !['mode', 'businessId', 'plans'].includes(key))) throw Error('Invalid billing configuration');
     billingConfig({ DODO_ENABLED: '1', DODO_MODE: value.billing.mode ?? 'test_mode', DODO_BUSINESS_ID: value.billing.businessId,

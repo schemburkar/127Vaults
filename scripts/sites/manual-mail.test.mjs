@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createLocalSites } from './local.mjs';
+
+test('operator can copy an encrypted sign-in message; customer/public cannot read it; the code is single-use', { timeout: 60000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), '127v-manual-mail-'));
+  const local = await createLocalSites({ directory, manualMail: true });
+  t.after(async () => { await local.close(); await rm(directory, { recursive: true, force: true }); });
+  const post = (surface, path, value, token) => local.request(surface, path, { method: 'POST',
+    headers: { Origin: local.origins[surface], 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(value) });
+  const get = (surface, path, token) => local.request(surface, path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const email = 'manual@example.com';
+  assert.equal((await post('public', '/api/waitlist', { email, plan: 'personal', requestedSeats: 2, consent: true, organization: '', website: '' })).status, 202);
+  const requests = await (await get('admin', '/api/access-admin/requests', local.operatorToken)).json();
+  const id = requests.requests[0].id;
+  const invitation = await (await post('admin', `/api/access-admin/requests/${id}/approve`, { maxUsers: 2 }, local.operatorToken)).json();
+  const token = new URL(invitation.link).hash.slice(1).split('.')[1];
+  const installationId = randomUUID();
+  assert.equal((await post('customer', `/api/trials/${id}/activate`, { installationId }, token)).status, 200);
+  const before = await (await get('customer', `/api/trials/${id}/license`, token)).text();
+  const response = await post('customer', '/api/customer/start', { email });
+  assert.equal(response.status, 202); const started = await response.json();
+  assert.match(started.message, /manual/); assert.equal(started.code, undefined);
+  for (const surface of ['public', 'customer']) assert.equal((await get(surface, '/api/access-admin/customer-mail', local.operatorToken)).status, 404);
+  assert.equal((await get('admin', '/api/access-admin/customer-mail')).status, 401);
+  const outbox = await get('admin', '/api/access-admin/customer-mail', local.operatorToken);
+  assert.match(outbox.headers.get('cache-control'), /no-store/);
+  const { messages } = await outbox.json(); assert.equal(messages.length, 1); assert.equal(messages[0].to, email);
+  const code = /code is (\d{6})/.exec(messages[0].text)[1];
+  const stored = await local.database.prepare('SELECT payload FROM customer_manual_mail').first();
+  assert.ok(!stored.payload.includes(code)); assert.ok(!stored.payload.includes(email));
+  const signedIn = await post('customer', '/api/customer/complete', { challengeId: started.challengeId, code });
+  assert.equal(signedIn.status, 200, await signedIn.clone().text());
+  const cookie = signedIn.headers.get('set-cookie'); assert.ok(!cookie.includes('Domain='));
+  const account = await local.request('customer', '/api/customer/me', { headers: { Cookie: cookie } });
+  assert.equal(account.status, 200); assert.equal((await account.json()).requests[0].installationId, installationId);
+  assert.equal((await (await get('admin', '/api/access-admin/customer-mail', local.operatorToken)).json()).messages.length, 0);
+  assert.notEqual((await post('customer', '/api/customer/complete', { challengeId: started.challengeId, code })).status, 200);
+  assert.equal(await (await get('customer', `/api/trials/${id}/license`, token)).text(), before);
+  const unknown = await (await post('customer', '/api/customer/start', { email: 'unknown@example.com' })).json();
+  assert.equal(unknown.message, started.message);
+  assert.equal((await (await get('admin', '/api/access-admin/customer-mail', local.operatorToken)).json()).messages.length, 0);
+});

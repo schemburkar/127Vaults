@@ -6,12 +6,12 @@ import { repository } from './assets.mjs';
 
 const checks = [
   ['--check', 'scripts/sites/local.mjs'], ['--check', 'scripts/sites/assets.mjs'],
-  ['--check', 'admin-website/admin-shell.mjs'], ['--check', 'admin-website/licenses.mjs'], ['--check', 'admin-website/access-admin.mjs'], ['--check', 'admin-website/billing-admin.mjs'], ['--check', 'admin-website/releases.mjs'],
+  ['--check', 'admin-website/admin-shell.mjs'], ['--check', 'admin-website/customer-mail.mjs'], ['--check', 'admin-website/licenses.mjs'], ['--check', 'admin-website/access-admin.mjs'], ['--check', 'admin-website/billing-admin.mjs'], ['--check', 'admin-website/releases.mjs'],
   ['--check', 'customer-website/trial.mjs'], ['--check', 'customer-website/billing.mjs'],
   ['--check', 'customer-website/portal.mjs'], ['--check', 'customer-website/portal-client.mjs'],
   ['--check', 'apps/public-intake/cloudflare/customer-portal.mjs'],
   ['--check', 'apps/public-intake/cloudflare/public-site.mjs'], ['--check', 'apps/public-intake/cloudflare/intake-only.mjs'],
-  ['--test', 'scripts/sites/local.test.mjs', 'scripts/sites/portal.test.mjs', 'customer-website/trial-navigation.test.mjs', 'apps/public-intake/test/operator-session.test.mjs'],
+  ['--test', 'scripts/sites/local.test.mjs', 'scripts/sites/portal.test.mjs', 'scripts/sites/manual-mail.test.mjs', 'customer-website/trial-navigation.test.mjs', 'apps/public-intake/test/operator-session.test.mjs'],
 ];
 const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8', windowsHide: true }).trim(), checks: [] };
 for (const args of checks) {

@@ -5,7 +5,7 @@ import { rawBody, BillingError } from './dodo.mjs';
 
 const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const json = (status, value) => new Response(JSON.stringify(value), { status, headers });
-export default { async fetch(request, env) {
+export default { async fetch(request, env, ctx) {
   try {
     const url = new URL(request.url);
     if (url.origin !== env.PUBLIC_INTAKE_ORIGIN) return json(403, { error: 'forbidden' });
@@ -24,7 +24,12 @@ export default { async fetch(request, env) {
     if (!await store.allow('waitlist-email', input.email, 3, 3600000)) return json(429, { error: 'rate_limited' });
     if (!input.trapped) {
       const { trapped: _, ...contact } = input;
-      await store.insert(await hash(token()), { ...contact, receivedAt: new Date().toISOString() });
+      const id = await hash(token());
+      await store.insert(id, { ...contact, receivedAt: new Date().toISOString() });
+      if (env.ALERTS) {
+        const notify = env.ALERTS.notify(id).catch(() => {});
+        if (ctx?.waitUntil) ctx.waitUntil(notify); else await notify;
+      }
     }
     return json(202, { received: true });
   } catch (error) { return json(error instanceof BillingError ? error.status : 503, { error: error instanceof BillingError ? error.message : 'unavailable' }); }

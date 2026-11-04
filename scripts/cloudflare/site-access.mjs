@@ -1,0 +1,11 @@
+import { resolve } from 'node:path';
+import { loadConfig, protectedDirectory } from './config.mjs';
+import { readState } from './deploy.mjs';
+import { configureAccess } from './access.mjs';
+const [action, file] = process.argv.slice(2);
+if (!['configure', 'verify'].includes(action) || !file) throw Error('Use site-access.mjs configure|verify <private-config.json>');
+const config = await loadConfig(resolve(file));
+if (!config.sites) throw Error('Separated site configuration is required');
+await protectedDirectory(config.stateDirectory);
+const result = await configureAccess(config, await readState(config), { verifyOnly: action === 'verify' });
+console.log(JSON.stringify(result));

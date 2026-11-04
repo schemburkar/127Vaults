@@ -35,13 +35,14 @@ export async function verifyEmbeddedAgreements(directories, settings, run = exec
 }
 
 export async function verifyLiveDelivery(config, catalogue, token, { fetchImpl = fetch, partSize = 4 * 1024 * 1024 } = {}) {
-  const auth = { Authorization: `Bearer ${token}` };
+  const automation = config.sites ? await (await import('../cloudflare/access.mjs')).accessHeaders(config) : {};
+  const auth = { ...automation, Authorization: `Bearer ${token}` };
   const unauthenticatedDenialStatuses = new Set();
   const request = async (path, options = {}, read = response => response, authenticated = true) => {
     for (let attempt = 0; ; attempt++) {
       try {
-        const response = await fetchImpl(config.origin + path, {
-          ...options, headers: { ...(authenticated ? auth : {}), ...options.headers }, redirect: 'error', signal: AbortSignal.timeout(45000),
+        const response = await fetchImpl((config.sites?.adminOrigin ?? config.origin) + path, {
+          ...options, headers: { ...(authenticated ? auth : automation), ...options.headers }, redirect: 'error', signal: AbortSignal.timeout(45000),
         });
         if ([502, 503, 504].includes(response.status) && attempt < 2) {
           await response.body?.cancel();

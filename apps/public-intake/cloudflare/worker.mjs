@@ -11,7 +11,7 @@ import { createOperatorSession, validOperatorSession, clearOperatorSession } fro
 import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
 import { BillingError } from './dodo.mjs';
 import { billingWebhook, handleBilling, reconcileBilling } from './billing.mjs';
-import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal } from './customer-portal.mjs';
+import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal, manualCustomerMail } from './customer-portal.mjs';
 
 const day = 86400000;
 const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
@@ -64,7 +64,7 @@ function summary(record, mailer) {
     requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
 async function setup(env, now) {
-  if (!validIntakeOrigin(env.PUBLIC_INTAKE_ORIGIN, env.LOCAL_SITE_PREVIEW === '1') || !/^[A-Za-z0-9_-]{43,128}$/.test(env.OPERATOR_TOKEN ?? '')
+  if (!validIntakeOrigin(env.PUBLIC_INTAKE_ORIGIN, env.LOCAL_SITE_PREVIEW === '1') || (env.SITE_SURFACE !== 'customer' && !/^[A-Za-z0-9_-]{43,128}$/.test(env.OPERATOR_TOKEN ?? ''))
     || !/^[A-Za-z0-9_-]{1,40}$/.test(env.TRIAL_ISSUER_KEY_ID ?? '') || !env.DB || !env.ARTIFACTS) throw Error('Configuration incomplete');
   if (!keyCache.has(env)) keyCache.set(env, Promise.all([
     encryptionKey(env.INTAKE_KEY, 'contacts'), encryptionKey(env.INTAKE_KEY, 'trials'), limiterKey(env.INTAKE_KEY),
@@ -107,6 +107,16 @@ function mailerFor(env) {
   return createCloudflareTrialMailer({ accountId: env.CF_ACCOUNT_ID,
     apiToken: env.TRIAL_EMAIL_API_TOKEN, from: env.TRIAL_EMAIL_FROM });
 }
+export function customerInvitation(invitation, env) {
+  if (!invitation || !env.CUSTOMER_ORIGIN || !env.PUBLIC_SITE_ORIGIN) return invitation;
+  return { ...invitation, text: invitation.text.replace(/https:\/\/[^\s]+/g, value => {
+    try {
+      const url = new URL(value);
+      if (url.origin !== env.PUBLIC_SITE_ORIGIN || !['/trial', '/trial.html'].includes(url.pathname)) return value;
+      return env.CUSTOMER_ORIGIN + url.pathname + url.search + url.hash;
+    } catch { return value; }
+  }) };
+}
 async function revoke(record, env, signingKey, at) {
   if (record?.license && !record.revocation) {
     const payload = JSON.parse(new TextDecoder().decode(from64(JSON.parse(record.license).payload)));
@@ -140,7 +150,7 @@ async function dispatch(request, env, now, schedule) {
   const customerOrigin = env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN;
   if (!validIntakeOrigin(customerOrigin, env.LOCAL_SITE_PREVIEW === '1')) fail(503, 'unavailable');
   if (url.origin !== env.PUBLIC_INTAKE_ORIGIN) fail(403, 'forbidden');
-  // Explicit local surface boundaries. The legacy deployment remains unchanged until its separate migration.
+  // Check the site's API boundary before authentication or storage access.
   if (path.startsWith('/api/') && env.SITE_SURFACE) {
     const allowed = env.SITE_SURFACE === 'admin' ? path.startsWith('/api/access-admin/')
       : env.SITE_SURFACE === 'customer' ? path.startsWith('/api/trials/') || path.startsWith('/api/billing/') || path.startsWith('/api/customer/')
@@ -188,6 +198,7 @@ async function dispatch(request, env, now, schedule) {
     if (!await store.allow('admin-auth', ip, 20, 3600000)) fail(429, 'rate_limited');
     fail(401, 'access_required');
   }
+  if (path === '/api/access-admin/customer-mail' && request.method === 'GET') return json(200, await manualCustomerMail(env, store, at));
   const billing = await handleBilling(request, env, store, release, at, operatorAuthorized);
   if (billing !== null) return json(200, billing);
   if (path === '/api/access-admin/session' && request.method === 'POST') {
@@ -244,7 +255,8 @@ async function dispatch(request, env, now, schedule) {
     if (!row?.contact || !retained(row,at)) fail(404, 'not_found');
     if (record?.billing && ['approve', 'approve-development', 'extend', 'close', 'reject', 'erase'].includes(action)) fail(409, 'manage_billing_subscription');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
-      return json(200, { email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
+      const invitation = customerInvitation(record.invitation, env);
+      return json(200, { email: row.contact.email, subject: invitation.subject, message: invitation.text });
     }
     if (action === 'revocation' && request.method === 'GET' && (record?.revocation || record?.previousRevocation)) return attachment('trial-revocation.json', record.revocation ?? record.previousRevocation);
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
@@ -343,7 +355,7 @@ async function dispatch(request, env, now, schedule) {
       record = { ...record, emailState: 'sending', emailAttemptId: attempt, emailAttemptedAt: new Date(at).toISOString() };
       await store.save(row, record); // Claim durably before external I/O; never auto-resend an ambiguous attempt.
       let state = 'unknown';
-      try { const result = await mailer.sendInvitation({ to: row.contact.email, ...record.invitation });
+      try { const result = await mailer.sendInvitation({ to: row.contact.email, ...customerInvitation(record.invitation, env) });
         if (['accepted', 'queued', 'bounced'].includes(result?.state)) state = result.state;
       } catch { /* An interrupted send remains explicit and cannot be retried automatically. */ }
       const fresh = await store.get(id);
@@ -464,9 +476,14 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(rows.length<100)break;
   }
   await store.pruneLimits();
-  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now());
+  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(), env.CUSTOMER_MANUAL_MAIL === '1');
 }
 export async function reconcile(env, { now = () => Date.now() } = {}) {
   return reconcileBilling(env, await setup(env, now), release, now());
+}
+export async function notifyAccessRequest(env, id) {
+  if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Invalid request identifier');
+  const store = await setup(env, () => Date.now()), row = await store.get(id);
+  if (row?.contact) await notifyNewAccessRequest(env, store, id, row.contact, Date.now());
 }
 export default { fetch: handleRequest, scheduled: (_event, env, ctx) => ctx.waitUntil(Promise.all([prune(env), reconcile(env)])) };
