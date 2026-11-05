@@ -25,6 +25,7 @@ try {
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
   const errors = [];
+  let portalSignedIn = false;
   await context.route('**/*', async route => {
     const url = new URL(route.request().url()), surface = url.hostname === 'admin.example.invalid' ? 'admin' : url.hostname === 'manage.example.invalid' ? 'customer' : null;
     if (!surface) return route.abort();
@@ -34,7 +35,12 @@ try {
     if (url.pathname.startsWith('/api/access-admin/releases/artifacts/')) {
       return route.fulfill({ status: 200, headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="review-fixture.zip"' }, body: 'synthetic review download' });
     }
-    if (url.pathname === '/api/customer/invitation') return json({ signedIn: true });
+    if (url.pathname === '/api/customer/invitation' || url.pathname === '/api/customer/complete') { portalSignedIn = true; return json({ signedIn: true }); }
+    if (url.pathname === '/api/customer/logout') { portalSignedIn = false; return json({ signedOut: true }); }
+    if (url.pathname === '/api/customer/start') return json({ challengeId: 'fixture', message: 'An operator can send your sign-in code. Delivery is manual.' });
+    if (url.pathname === '/api/customer/installer-link') return json({ link: `https://manage.example.invalid/trial#${'c'.repeat(64)}.${'D'.repeat(43)}` });
+    if (url.pathname === '/api/customer/me') return portalSignedIn ? json({ scope: 'invitation', requests: [{ id: 'c'.repeat(64), plan: 'personal', state: 'approved', installationId: '11111111-1111-4111-8111-111111111111', expiresAt: '2099-01-01T00:00:00Z', maxUsers: 5 }] })
+      : route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"access_required"}' });
     if (/^\/api\/trials\/[a-f0-9]{64}$/.test(url.pathname)) return json({ sourceRevision: source, artifacts, state: 'approved', maxUsers: 2, linkExpiresAt: '2099-01-01T00:00:00Z' });
     if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 404, body: '{}' });
     const path = url.pathname.slice(1) || 'index';
@@ -67,8 +73,38 @@ try {
   assert.equal(await page.locator('#trial-artifacts table').count(), 1);
   await page.getByRole('button', { name: 'Card view', exact: true }).click();
   assert.equal(await page.locator('#trial-artifacts .trial-artifact').count(), 3);
+  portalSignedIn = false;
+  await page.goto('https://manage.example.invalid/');
+  await page.locator('#portal-login').waitFor();
+  assert.equal(await page.locator('.brand-wordmark').count(), 1);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: join(output, 'portal-login-mobile.png'), fullPage: true });
+  await page.locator('#email').fill('customer@example.invalid');
+  await page.getByRole('button', { name: 'Request sign-in code', exact: true }).click();
+  await page.locator('#email-complete').waitFor();
+  assert.match(await page.locator('#portal-status').textContent(), /manual/);
+  await page.locator('#invitation').fill(`https://manage.example.invalid/trial#${'c'.repeat(64)}.${'D'.repeat(43)}`);
+  await page.getByRole('button', { name: 'Open my invitation', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Self-Hosted', exact: true }).waitFor();
+  const primary = page.getByRole('link', { name: 'Downloads and license', exact: true });
+  assert.equal(await primary.getAttribute('href'), `/trial?request=${'c'.repeat(64)}`);
+  assert.equal(await primary.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(157, 31, 50)');
+  const secondary = page.getByRole('button', { name: 'Get installer invitation', exact: true });
+  assert.equal(await secondary.evaluate(node => getComputedStyle(node).color), 'rgb(255, 255, 255)');
+  assert.equal(await secondary.evaluate(node => getComputedStyle(node).appearance), 'none');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: join(output, 'portal-account-mobile.png'), fullPage: true });
+  await secondary.click();
+  await page.getByRole('link', { name: 'Open installer invitation (valid for one hour)', exact: true }).waitFor();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: join(output, 'portal-account-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 320, height: 800 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.locator('#portal-login').waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   assert.deepEqual(errors, []);
   await context.close();
-  await writeFile(join(output, 'verification.json'), JSON.stringify({ passed: true, verifiedAt: new Date().toISOString(), checks: ['admin installer cards', 'grouped table and card toggle', 'collapsed supporting files', 'admin-only download URL', 'mobile width', 'customer invitation rendering preserved', 'no browser errors'] }, null, 2));
-  console.log('Admin and invitation download styling passed browser checks.');
+  await writeFile(join(output, 'verification.json'), JSON.stringify({ passed: true, verifiedAt: new Date().toISOString(), checks: ['admin installer cards', 'grouped table and card toggle', 'collapsed supporting files', 'admin-only download URL', 'mobile width', 'customer invitation rendering preserved', 'branded portal sign-in', 'invitation sign-in and account actions', 'explicit secondary button appearance', 'manual email request', '320px layout and sign-out', 'no browser errors'] }, null, 2));
+  console.log('Admin, invitation downloads and Manage portal styling passed browser checks.');
 } finally { await browser.close(); await rm(temporary, { recursive: true, force: true }); }

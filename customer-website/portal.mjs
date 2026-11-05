@@ -6,29 +6,42 @@ async function run(work) {
   try { await work(); } catch (error) { $('portal-status').textContent = error.message; }
   finally { buttons.forEach(button => { button.disabled = false; }); }
 }
-function link(label, path) { const node = document.createElement('a'); node.className = 'button'; node.textContent = label; node.href = path; return node; }
+function link(label, path, primary = false) { const node = document.createElement('a'); node.className = `button ${primary ? 'primary' : 'secondary'}`; node.textContent = label; node.href = path; return node; }
 async function account() {
   const value = await portalApi('me');
   $('portal-login').hidden = true; $('portal-account').hidden = false;
   $('portal-identity').textContent = value.email ? `Signed in as ${value.email}` : value.scope === 'installer' ? 'Signed in with an installer invitation. This session opens installation downloads and licensing only.' : 'Signed in with an invitation. This session opens only that invitation.';
   $('portal-requests').replaceChildren();
   for (const row of value.requests) {
-    const card = document.createElement('article'); card.className = 'access-card';
-    const title = document.createElement('h2'); title.textContent = row.plan;
-    const status = document.createElement('p'); status.textContent = `Access: ${row.state}${row.billingStatus ? ` · Subscription: ${row.billingStatus}` : ''}${row.cancelAtPeriodEnd ? ' · Cancellation scheduled' : ''}`;
-    card.append(title, status);
-    if (row.installationId) { const installation = document.createElement('p'); installation.textContent = `Installation: ${row.installationId}`; card.append(installation); }
-    if (row.expiresAt) { const expiry = document.createElement('p'); expiry.textContent = `License expires ${new Date(row.expiresAt).toLocaleString()}.`; card.append(expiry); }
-    if (row.maxUsers) { const users = document.createElement('p'); users.textContent = `Licensed vault users: ${row.maxUsers}`; card.append(users); }
+    const card = document.createElement('article'); card.className = 'access-card portal-request';
+    const heading = document.createElement('div'); heading.className = 'portal-request-heading';
+    const title = document.createElement('h2'); title.textContent = { personal: 'Personal Self-Hosted', commercial: 'Commercial Self-Hosted' }[row.plan] ?? row.plan;
+    const status = document.createElement('span'); status.className = 'portal-state';
+    status.textContent = { approved: 'Approved', requested: 'Awaiting review', closed: 'Closed', rejected: 'Not approved' }[row.state] ?? row.state;
+    heading.append(title, status); card.append(heading);
+    const facts = document.createElement('dl'); facts.className = 'portal-facts';
+    const fact = (label, value, className) => {
+      const group = document.createElement('div'); if (className) group.className = className;
+      const term = document.createElement('dt'); term.textContent = label;
+      const detail = document.createElement('dd'); detail.textContent = value;
+      group.append(term, detail); facts.append(group);
+    };
+    if (row.installationId) fact('Server installation', row.installationId, 'portal-installation');
+    if (row.expiresAt) fact('License expires', new Date(row.expiresAt).toLocaleString());
+    if (row.maxUsers) fact('Licensed vault users', row.maxUsers);
+    if (row.billingStatus) fact('Subscription', `${row.billingStatus}${row.cancelAtPeriodEnd ? ' · Cancellation scheduled' : ''}`);
+    if (facts.children.length) card.append(facts);
     if (row.state === 'approved') {
-      card.append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`));
-      const installer = document.createElement('button'); installer.type = 'button'; installer.className = 'button'; installer.textContent = 'Get installer invitation';
+      const actions = document.createElement('div'); actions.className = 'portal-actions';
+      actions.append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`, true));
+      const installer = document.createElement('button'); installer.type = 'button'; installer.className = 'button secondary'; installer.textContent = 'Get installer invitation';
       installer.addEventListener('click', () => run(async () => {
         const value = await portalApi('installer-link', { requestId: row.id });
         const fresh = link('Open installer invitation (valid for one hour)', value.link); installer.replaceWith(fresh);
-      })); card.append(installer);
-      if (row.billingStatus && value.scope !== 'installer') card.append(link('Billing, invoices and cancellation', `/billing?request=${encodeURIComponent(row.id)}`));
-    } else { const note = document.createElement('p'); note.textContent = row.state === 'requested' ? 'Your request is waiting for review. Signing in does not approve access.' : 'This request is not currently approved. Contact your inviter if you need assistance.'; card.append(note); }
+      })); actions.append(installer);
+      if (row.billingStatus && value.scope !== 'installer') actions.append(link('Billing, invoices and cancellation', `/billing?request=${encodeURIComponent(row.id)}`));
+      card.append(actions);
+    } else { const note = document.createElement('p'); note.className = 'portal-request-note'; note.textContent = row.state === 'requested' ? 'Your request is waiting for review. Signing in does not approve access.' : 'This request is not currently approved. Contact your inviter if you need assistance.'; card.append(note); }
     $('portal-requests').append(card);
   }
   $('portal-status').textContent = value.requests.length ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
@@ -48,4 +61,4 @@ $('portal-logout').addEventListener('click', () => run(async () => {
   await portalApi('logout', {}); $('portal-account').hidden = true; $('portal-login').hidden = false;
   $('portal-requests').replaceChildren(); $('portal-identity').textContent = ''; $('portal-status').textContent = 'Signed out.';
 }));
-account().catch(error => { if (error.status !== 401) $('portal-status').textContent = error.message; });
+account().catch(error => { $('portal-login').hidden = false; $('portal-status').textContent = error.status === 401 ? '' : error.message; });
