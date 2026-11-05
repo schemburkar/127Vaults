@@ -82,6 +82,11 @@ Intake Worker with a mocked Siteverify service) and
 do not contact Turnstile or send Cloudflare/Resend mail. Browser screenshots and
 receipts are retained under `.tools/site-checks/intake-form/`.
 
+The website backup gate retains failed CLI diagnostics only in the private state
+directory. D1 export's observed provider internal error is retried at most three
+times with bounded waits; authentication/configuration failures stop immediately.
+Deployment still requires a successful SQL export. No backup gate is skipped.
+
 ## Customer messages
 
 - A receipt for a newly submitted public access request. It explicitly does not

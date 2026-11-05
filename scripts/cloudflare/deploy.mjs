@@ -17,11 +17,19 @@ export function runWrangler(args, config, { capture = false } = {}) {
     const child = spawn(process.execPath, [cli, ...args], { cwd: repository, windowsHide: true,
       env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: config.accountId, WRANGLER_SEND_METRICS: 'false',
         CI: 'true', NO_COLOR: '1', FORCE_COLOR: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '';
+    let output = '', errors = '';
     child.stdout.on('data', chunk => { output += chunk; if (!capture) process.stdout.write(chunk); });
-    child.stderr.on('data', chunk => { if (!capture) process.stderr.write(chunk); });
+    child.stderr.on('data', chunk => { if (!capture) process.stderr.write(chunk); else errors = (errors + chunk).slice(-262144); });
     child.on('error', reject);
-    child.on('exit', code => code === 0 ? resolveRun(output) : reject(Error(`Wrangler ${args.slice(0, 2).join(' ')} failed (exit ${code}); no later step ran`)));
+    child.on('exit', async code => {
+      if (code === 0) return resolveRun(output);
+      let diagnostic = '', diagnosticFile;
+      if (capture && config.stateDirectory) {
+        const file = join(config.stateDirectory, `.wrangler-failure-${crypto.randomUUID()}.log`);
+        try { await writeFile(file, output + '\n' + errors, { flag: 'wx', mode: 0o600 }); diagnosticFile = file; diagnostic = `; private diagnostic: ${file}`; } catch { /* Preserve the original failure. */ }
+      }
+      reject(Object.assign(Error(`Wrangler ${args.slice(0, 2).join(' ')} failed (exit ${code}); no later step ran${diagnostic}`), { diagnosticFile }));
+    });
   });
 }
 export function parseBucketNames(output) {
