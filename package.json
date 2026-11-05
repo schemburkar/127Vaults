@@ -63,6 +63,7 @@
     "@aws-sdk/client-s3": "3.1152.0",
     "@aws-sdk/lib-storage": "3.1152.0",
     "miniflare": "4.20260730.0",
+    "resend": "6.37.0",
     "typescript": "5.9.3",
     "wrangler": "4.151.1"
   }
