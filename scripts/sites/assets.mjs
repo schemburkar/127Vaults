@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 export const repository = fileURLToPath(new URL('../../', import.meta.url));
-export const sharedAssets = ['site.css', 'theme.mjs', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
+export const sharedAssets = ['site.css', 'theme.mjs', 'package-list.mjs', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
 export const publicAssets = ['index.html', 'product.html', 'security.html', 'security-technical.html', 'deployment.html',
   'pricing.html', 'downloads.html', 'release-notes-history.html', 'get-started.html', 'faq.html', 'setup-guide.html',
   'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs', 'setup-guide.mjs', 'releases.json', ...sharedAssets];
