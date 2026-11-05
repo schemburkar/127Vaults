@@ -13,13 +13,15 @@ The Resend account is connected. On 2026-11-05, `127vaults.com` was registered
 for sending in `us-east-1`, with receiving, open tracking and click tracking
 disabled. The four provider-requested DNS records were installed using the
 separate `cf` CLI profile and read back successfully. A second run confirmed
-idempotency. Resend authentication verification has been started; the
+idempotency. Resend reports the domain and all four records verified; the
 restricted sending key has not been provisioned. Automatic delivery remains
 disabled; operator-copyable customer messages remain available. No real test
 email has been sent.
 
-The user explicitly authorized one setup verification email. This exception
-does not permit real sends from automated tests or routine deployment checks.
+The user subsequently made live testing conditional on quota-free test emails.
+Resend's official test-email documentation states that test recipients consume
+sending quota, so no live setup or request-flow test will be sent. All validation
+uses local capture or mocked provider responses.
 
 The proposed sender is `127Vaults <accounts@127vaults.com>`. On 2026-11-05,
 [Resend pricing](https://resend.com/pricing) lists 3,000 transactional emails per
@@ -37,6 +39,27 @@ quota too. This integration does not enable a paid plan or pay-as-you-go.
 - Trial/license extensions and approved installation replacements, through their
   existing invitation messages, preserving the underlying entitlement rules.
 - Access-request closure or rejection notices.
+
+The operator's existing Cloudflare new-request and replacement-request alerts
+include the requester, organization, plan, requested users, timestamp and a
+direct `/access-admin?request=…` link. The link contains only a request reference,
+requires normal Admin authentication and never changes the request by opening it.
+These operator alerts remain independent of Resend customer delivery.
+
+The request desk displays whether automatic customer email is enabled and shows
+receipt/invitation/access-notice submission states. Approval, decline, closure,
+link replacement, package updates, extensions, replacement licenses and manual
+send actions explain their email effect before execution. Every mutation uses a
+confirmation dialog with requester identity and a required acknowledgment;
+extensions also show the chosen days and approval shows the chosen user limit.
+Cancel and Escape do not call the mutation API. Message previews remain
+available as an optional manual fallback; operators must check submission status
+before sending a copy themselves. Queued is not inbox delivery confirmation.
+
+Browser verification: `node scripts/sites/request-review-check.mjs` (using
+`VAULTS_PLAYWRIGHT_MODULE` / `VAULTS_BROWSER_EXECUTABLE` when required). It
+intercepts all network traffic and retains screenshots and its receipt beneath
+`.tools/site-checks/request-review/`.
 
 Approvals and license changes remain separate authorized Admin actions. Normal
 customer invitations send automatically after those actions when Resend is

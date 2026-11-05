@@ -12,10 +12,18 @@
   <a class="skip" href="#main">Skip to content</a>
   <main id="main" class="container trial-main">
     <span class="kicker">ACCESS DESK</span><h1>Access requests</h1>
-    <p>Review requests and manage trial invitations.</p>
+    <p>Review the requester and user limit before approving. Approval creates a private invitation; the 10-day trial starts when they activate their server.</p>
+    <p id="customer-email-status" class="billing-note" role="status"></p>
 
     <p id="desk-status" role="status" aria-live="polite"></p>
     <section id="inbox" hidden aria-label="Access requests"><div class="desk-toolbar"><div class="trial-actions"><button id="refresh" class="desk-button" type="button">Refresh</button><button id="export" class="desk-button" type="button">Export</button></div><label class="desk-view" for="request-view">View<select id="request-view"><option value="inbox">Inbox</option><option value="archived">Archived</option><option value="all">All requests</option></select></label></div><p id="request-alert-status"></p><div class="request-table-wrap" role="region" aria-label="Request grid" tabindex="0"><table class="request-table"><thead><tr><th scope="col">Requester email</th><th scope="col">Organization</th><th scope="col">Plan</th><th scope="col">Requested</th><th scope="col">Requested users</th><th scope="col">Approved limit</th><th scope="col">Status</th><th scope="col">Invitation</th><th scope="col">Actions</th></tr></thead><tbody id="requests"></tbody></table></div></section>
-    <section id="invitation" class="access-card" hidden aria-labelledby="invite-heading"><h2 id="invite-heading">Your invitation is ready</h2><p>Review the recipient and message, then use Send invitation on the request card if Cloudflare email is configured. You can also copy this message into your email client. Approval alone does not send email. Use Review invitation to reopen this message later.</p><label class="access-field" for="invite-to">To<input id="invite-to" readonly></label><label class="access-field" for="invite-subject">Subject<input id="invite-subject" readonly></label><label class="access-field" for="invite-message">Message<textarea id="invite-message" rows="12" readonly></textarea></label><button class="button primary" id="copy-invite" type="button">Copy email message</button><button class="button" id="hide-invite" type="button">Clear invitation from view</button></section>
+    <section id="invitation" class="access-card" hidden aria-labelledby="invite-heading"><h2 id="invite-heading">Invitation preview</h2><p id="invitation-guidance">Review the message below. Copying is an optional manual fallback; check the email status before sending another copy yourself.</p><label class="access-field" for="invite-to">To<input id="invite-to" readonly></label><label class="access-field" for="invite-subject">Subject<input id="invite-subject" readonly></label><label class="access-field" for="invite-message">Message<textarea id="invite-message" rows="12" readonly></textarea></label><button class="button primary" id="copy-invite" type="button">Copy email message</button><button class="button" id="hide-invite" type="button">Clear invitation from view</button></section>
   </main>
+  <dialog id="confirm-action" class="request-confirm" aria-labelledby="confirm-title" aria-describedby="confirm-details confirm-email">
+    <form method="dialog">
+      <h2 id="confirm-title">Confirm action</h2><p id="confirm-recipient"></p><p id="confirm-details"></p><p id="confirm-email"></p>
+      <label class="confirm-check"><input id="confirm-check" type="checkbox"> I checked the requester and understand this change.</label>
+      <div class="trial-actions"><button class="button" value="cancel" autofocus>Cancel</button><button id="confirm-submit" class="button primary" value="confirm" disabled>Confirm action</button></div>
+    </form>
+  </dialog>
 </body></html>

@@ -270,9 +270,13 @@ async function dispatch(request, env, now, schedule) {
           downloadAvailable = true; updateAvailable = row.trial.releaseHash !== selected.identity;
         } catch (error) { if (!(error instanceof HttpError)) throw error; }
       }
-      return { ...row.contact, id: row.id, ...summary(row.trial, mailer), updateAvailable, downloadAvailable };
+      const notifications = env.CUSTOMER_EMAIL_STORAGE === '1' || env.CUSTOMER_EMAIL_PROVIDER === 'resend'
+        ? (await store.db.prepare('SELECT purpose, state FROM customer_email_receipts WHERE request_id = ? ORDER BY rowid DESC').bind(row.id).all()).results : [];
+      return { ...row.contact, id: row.id, ...summary(row.trial, mailer), updateAvailable, downloadAvailable,
+        customerNotifications: Object.fromEntries([...notifications].reverse().map(({purpose, state}) => [purpose, state])) };
     }));
     return json(200, { permissions: { download: true, manageInstallations: true, approveDevelopment:true }, requests, emailEnabled: Boolean(mailer),
+      automaticCustomerEmail: resendCustomerEmailEnabled(env),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
   const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);

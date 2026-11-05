@@ -61,10 +61,15 @@ test('customer approval and access notices use mocked Resend once; development i
     throw Error('Mock email was not recorded');
   };
   await waitForCount(1); assert.equal(messages.length, 1); assert.match(messages[0].text, new RegExp(approved.token));
+  let review = await (await f.get(admin, f.operatorToken)).json();
+  assert.equal(review.automaticCustomerEmail, true);
+  assert.equal(review.requests.find(row => row.id === id).customerNotifications.invitation, 'queued');
   assert.equal((await f.post(`${admin}/${id}/send-invitation`, {}, f.operatorToken)).status, 200);
   assert.equal(messages.length, 1);
   assert.equal((await f.post(`${admin}/${id}/close`, {}, f.operatorToken)).status, 200);
   await waitForCount(2); assert.match(messages[1].subject, /access request/);
+  review = await (await f.get(admin, f.operatorToken)).json();
+  assert.equal(review.requests.find(row => row.id === id).customerNotifications.access, 'queued');
   const internalId = 'd'.repeat(64); await store.insert(internalId, { ...f.requestInput, email: 'developer@customer-domain.dev' });
   const row = await store.get(internalId);
   await store.save(row, { state: 'approved', kind: 'development', tokenHash: await hash('A'.repeat(43)),
@@ -683,6 +688,9 @@ test('fixed-recipient request alerts are durable, contain only a review summary,
   const response = await submit(f.requestInput); assert.equal(response.status, 202);
   assert.equal(sent.length, 1); assert.equal(sent[0].to, 'ops@example.com');
   assert.ok(sent[0].text.includes(f.requestInput.email)); assert.ok(sent[0].text.includes(origin + '/access-admin'));
+  const requestId = (await (await f.get(admin, f.operatorToken)).json()).requests[0].id;
+  assert.ok(sent[0].text.includes(`/access-admin?request=${requestId}`));
+  assert.match(sent[0].text, /Opening this link does not approve/);
   assert.ok(!sent[0].text.includes(f.operatorToken)); assert.doesNotMatch(sent[0].text, /\/trial(?:\.html)?(?:\?|#)/);
   let inbox = (await (await f.get(admin, f.operatorToken)).json()).requests;
   assert.equal(inbox[0].requestAlertState, 'accepted');
