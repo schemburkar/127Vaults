@@ -546,7 +546,7 @@ export async function notifyAccessRequest(env, id) {
     if (Date.now() - row.receivedAt < day && row.trial?.kind !== 'development') tasks.push(sendCustomerEmail(env, store, {
       requestId: id, event: 'request-received', purpose: 'signup', recordKind: row.trial?.kind,
       message: { to: row.contact.email, subject: 'We received your 127Vaults access request',
-        text: `Your ${row.contact.plan} access request has been received and is waiting for review. We will email your private invitation after approval.\n\nCustomer portal: ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_SITE_ORIGIN}\n\nThis receipt does not approve access, start a trial, or create a paid subscription. If you did not submit this request, you can ignore this email.` },
+        text: `Your ${row.contact.plan} access request has been received and is waiting for review.\n\nOnce approved, you’ll receive private downloads for an unpaid 10-day self-hosted trial. Your trial starts when you activate your server; no card or subscription is required. We will email your private invitation once your access is approved.\n\nCustomer portal: ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_SITE_ORIGIN}\n\nThis receipt does not approve access, start a trial, or create a paid subscription. If you did not submit this request, you can ignore this email.` },
     }));
     await Promise.allSettled(tasks);
   }
