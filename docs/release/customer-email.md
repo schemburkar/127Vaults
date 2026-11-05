@@ -11,7 +11,9 @@ this boundary. Message bodies and provider error bodies are not logged.
 
 The Resend account is connected. On 2026-11-05, `127vaults.com` was registered
 for sending in `us-east-1`, with receiving, open tracking and click tracking
-disabled. DNS authentication is awaiting configuration and verification; the
+disabled. The four provider-requested DNS records were installed using the
+separate `cf` CLI profile and read back successfully. A second run confirmed
+idempotency. Resend authentication verification has been started; the
 restricted sending key has not been provisioned. Automatic delivery remains
 disabled; operator-copyable customer messages remain available. No real test
 email has been sent.
@@ -63,6 +65,13 @@ their existing Cloudflare binding and do not consume Resend quota.
   delivery acceptance remains unverified until a genuine customer action occurs.
 
 ## Activate later
+
+DNS operations can use the separate `cf` CLI login, whose permissions differ
+from Wrangler's OAuth login. Use `scripts/cloudflare/configure-email-dns.ps1`
+with `-Zone`, a provider-record JSON array supplied through `-RecordsFile`, and
+`-ReceiptFile`. It adds missing TXT/MX/CNAME records, refuses conflicting values,
+preserves unrelated DNS, and verifies the resulting records. Resend setup
+receipts are retained under `.tools/site-checks/resend-dns-*-receipt.json`.
 
 1. Create the Resend account on the intended Free plan. Add and verify
    `127vaults.com` following Resend's displayed DNS records. Retain existing
