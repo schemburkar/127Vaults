@@ -13,10 +13,15 @@ The Resend account is connected. On 2026-11-05, `127vaults.com` was registered
 for sending in `us-east-1`, with receiving, open tracking and click tracking
 disabled. The four provider-requested DNS records were installed using the
 separate `cf` CLI profile and read back successfully. A second run confirmed
-idempotency. Resend reports the domain and all four records verified; the
-restricted sending key has not been provisioned. Automatic delivery remains
-disabled; operator-copyable customer messages remain available. No real test
-email has been sent.
+idempotency. Resend reports the domain and all four records verified. The user
+supplied the restricted sending key, and production delivery was enabled through
+the separated-sites workflow on 2026-11-05 (run `42037095461`, source `c43d88c`).
+The authenticated live status confirms Resend production mode and automatic
+customer email enabled. Existing request, invitation and license records passed
+the preservation check. Operator-copyable customer messages remain available.
+No real test email has been sent; provider submission and inbox delivery will
+first be exercised by genuine customer actions, not deployment probes.
+The activation receipt is `.tools/site-checks/resend-activation.json`.
 
 The user subsequently made live testing conditional on quota-free test emails.
 Resend's official test-email documentation states that test recipients consume
