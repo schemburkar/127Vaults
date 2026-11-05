@@ -60,6 +60,7 @@ export function renderInstallerCard(asset, button, doc = document) {
   const { os } = describe(asset);
   const badge = doc.createElement('span'); badge.className = 'trial-installer-platform'; badge.textContent = 'SETUP INSTALLER';
   const heading = doc.createElement('h3'); heading.textContent = os;
+  const purpose = doc.createElement('p'); purpose.textContent = `Install ${os} apps or set up the server using Docker.`;
   const detail = doc.createElement('p'); detail.textContent = `x64 · ${(asset.sizeBytes / 1048576).toFixed(1)} MB · ${asset.filename.endsWith('.zip') ? 'ZIP archive' : 'tar.gz archive'}`;
   const verification = doc.createElement('details'); verification.className = 'trial-installer-verification';
   const summary = doc.createElement('summary'); summary.textContent = 'Verify download';
@@ -67,7 +68,7 @@ export function renderInstallerCard(asset, button, doc = document) {
   const checksum = doc.createElement('code'); checksum.textContent = `SHA-256: ${asset.sha256}`;
   verification.append(summary, filename, checksum);
   button.textContent = `Download for ${os}`; button.setAttribute('aria-label', `Download ${os} setup installer`);
-  card.append(badge, heading, detail, button, verification);
+  card.append(badge, heading, purpose, detail, button, verification);
   return card;
 }
 

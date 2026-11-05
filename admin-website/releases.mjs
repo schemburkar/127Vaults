@@ -15,7 +15,7 @@ async function open() {
   };
   const installers = make('section', undefined, 'access-card trial-recommended');
   installers.append(make('span', 'Setup installers', 'trial-section-label'), make('h2', 'Review the installer downloads.'),
-    make('p', 'The same Windows and Linux installers offered through customer invitations.', 'trial-section-intro'));
+    make('p', 'The same setup installers offered through customer invitations. Run the installer for each computer’s operating system, choose what to install, and it downloads the required packages. An internet connection is required.', 'trial-section-intro'));
   const installerGrid = make('div', undefined, 'trial-installer-grid'); installers.append(installerGrid);
   const manual = make('section', undefined, 'access-card');
   const heading = make('div', undefined, 'trial-package-heading'); heading.append(make('h2', 'Individual packages'));
