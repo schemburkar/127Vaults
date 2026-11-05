@@ -50,6 +50,6 @@ export async function stageSite(surface, directory, { publicOrigin } = {}) {
         (all, prefix, path, quote) => sources.has(path.replace(/^\//, '')) ? `${prefix}${path}?v=${version}${quote}` : all) : data;
     await writeFile(join(directory, name), content, { flag: 'wx' });
   }
-  await writeFile(join(directory, '_headers'), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  X-Frame-Options: DENY\n  Cache-Control: no-store\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'\n${surface === 'public' ? '' : '  X-Robots-Tag: noindex, nofollow\n'}`);
+  await writeFile(join(directory, '_headers'), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  X-Frame-Options: DENY\n  Cache-Control: no-store\n  Content-Security-Policy: default-src 'self'; script-src 'self'${surface === 'public' ? ' https://challenges.cloudflare.com' : ''}; frame-src${surface === 'public' ? ' https://challenges.cloudflare.com' : " 'none'"}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'\n${surface === 'public' ? '' : '  X-Robots-Tag: noindex, nofollow\n'}`);
   return { surface, directory, version, files: [...sources.keys()] };
 }

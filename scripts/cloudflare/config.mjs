@@ -33,7 +33,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail', 'intakeProtection'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -47,6 +47,15 @@ export function validateConfig(value, file) {
       || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertFrom)
       || value.requestAlertFrom.split('@')[1].toLowerCase() !== new URL(value.origin).hostname))) throw Error('Invalid Cloudflare deployment configuration');
   if (value.minimumInstallerVersion !== undefined && !versionParts(value.minimumInstallerVersion)) throw Error('Invalid minimum installer version');
+  if (value.intakeProtection) {
+    const p = value.intakeProtection;
+    if (!value.sites || Object.keys(p).sort().join(',') !== 'cookieCooldownMs,siteKey,volumeThreshold,volumeWindowMs,waitMs'
+      || !/^[A-Za-z0-9_-]{10,100}$/.test(p.siteKey ?? '')
+      || !Number.isSafeInteger(p.waitMs) || p.waitMs < 1000 || p.waitMs > 60000
+      || !Number.isSafeInteger(p.cookieCooldownMs) || p.cookieCooldownMs < 1000 || p.cookieCooldownMs > 86400000
+      || !Number.isSafeInteger(p.volumeThreshold) || p.volumeThreshold < 2
+      || !Number.isSafeInteger(p.volumeWindowMs) || p.volumeWindowMs < 3600000 || p.volumeWindowMs > 86400000) throw Error('Invalid intake protection configuration');
+  }
   if (value.customerEmail) {
     const email = value.customerEmail;
     if (!value.sites || Object.keys(email).some(key => !['provider', 'from', 'enabled', 'dailyLimit', 'monthlyLimit'].includes(key))
@@ -129,6 +138,10 @@ export async function loadSecrets(config, catalogue) {
   if (config.customerEmail?.enabled) {
     values.RESEND_API_KEY = await read('resend-api-key');
     if (!/^re_[A-Za-z0-9_-]{16,200}$/.test(values.RESEND_API_KEY)) throw Error('Invalid Resend sending key');
+  }
+  if (config.intakeProtection) {
+    values.TURNSTILE_SECRET_KEY = await read('turnstile-secret-key');
+    if (!/^[A-Za-z0-9_-]{20,200}$/.test(values.TURNSTILE_SECRET_KEY)) throw Error('Invalid Turnstile secret');
   }
   if (config.billing) {
     values.DODO_API_KEY = await read('dodo-api-key');

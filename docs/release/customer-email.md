@@ -35,7 +35,54 @@ month, a 100/day cap and three domains on Free. This deployment defaults to a
 for sign-in codes. Other applications using the same Resend account consume its
 quota too. This integration does not enable a paid plan or pay-as-you-go.
 
-## Messages
+## Public request protection
+
+Production access requests require a chosen name for both Personal and Commercial
+plans. No first/last-name format is imposed. Existing contacts are not rewritten.
+The public form starts a fresh security challenge on submission, checks Turnstile,
+and waits briefly before posting the request. The server independently enforces
+the signed challenge's minimum age. Visitors must keep the page open until the
+request is accepted; this is not a delayed email queue or automatic approval.
+Customer receipt and normal operator alert dispatch starts only after acceptance.
+
+The host-only browser cookie is Secure, HttpOnly and SameSite=Strict, expires after
+one day and carries a signed random browser reference. A signed challenge binds
+that cookie, a keyed IP reference, issue time and random nonce. Challenges expire,
+are claimed once atomically, and a durable browser cooldown limits repeat sends.
+Turnstile validation checks success, exact hostname, action and challenge binding;
+provider outages fail closed. Existing IP/email limits and honeypot remain active.
+Clearing cookies or rotating IPs can evade individual checks, so this is layered
+abuse resistance rather than proof of identity or email ownership.
+
+The operator receives a separate Cloudflare volume alert when distinct accepted
+email addresses exceed the private rolling-window threshold. The threshold and
+window are private deployment variables on Admin, absent from public assets and
+API responses. The alert is claimed durably before sending and attempted at most
+once per monitoring window, including ambiguous outcomes. Rejected attempts and
+honeypot submissions do not count. The message prompts review without claiming
+that high volume proves either popularity or abuse. It never approves access and
+does not use Resend quota.
+
+`0006_intake_protection.sql` adds ephemeral challenge/browser state, keyed email
+activity and a single alert receipt. Scheduled cleanup prunes expired state; erased
+requests also lose activity entries. No existing request/license data is changed.
+The Turnstile secret is supplied only to Intake; Public, Admin and Manage do not
+receive it. CSP permits Turnstile's script and iframe only on the public site.
+
+Provision with `scripts/cloudflare/configure-intake-protection.ps1`, providing the
+private threshold through `-VolumeThreshold` and optionally `-WindowHours`. The
+script uses the separate `cf` CLI, reuses the named hostname-restricted widget,
+and stores its secret only in the protected secrets directory. Publish through
+the existing separated-sites workflow. Do not put actual thresholds in public
+copy or browser scripts.
+
+Validation uses `scripts/sites/intake-protection.test.mjs` (including the real
+Intake Worker with a mocked Siteverify service) and
+`scripts/sites/intake-form-check.mjs` (intercepted browser traffic). These checks
+do not contact Turnstile or send Cloudflare/Resend mail. Browser screenshots and
+receipts are retained under `.tools/site-checks/intake-form/`.
+
+## Customer messages
 
 - A receipt for a newly submitted public access request. It explicitly does not
   approve access, start a trial or create a subscription.

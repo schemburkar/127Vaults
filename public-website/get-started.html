@@ -25,9 +25,9 @@
   </div></fieldset>
   <div id="cloud-coming-soon" class="cloud-coming-soon" role="status" hidden><strong>Cloud is coming soon.</strong><p>Managed hosting isn’t available yet. Choose Personal or Commercial to try self-hosting.</p></div>
   <fieldset id="request-details" class="access-request-details">
+    <label class="access-field" for="access-contact-name">Name<input id="access-contact-name" name="contactName" type="text" autocomplete="name" maxlength="120" required placeholder="The name you would like us to use"></label>
     <label class="access-field" for="access-email">Email address<input id="access-email" name="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@example.com"></label>
     <fieldset id="commercial-fields" class="access-request-details" hidden disabled>
-      <label class="access-field" for="access-contact-name">Contact name<input id="access-contact-name" name="contactName" type="text" autocomplete="name" maxlength="120" placeholder="Your name"></label>
       <label class="access-field" for="access-organization">Organization<input id="access-organization" name="organization" type="text" autocomplete="organization" maxlength="120" placeholder="Your team or company"></label>
     </fieldset>
     <label class="access-field" for="access-seats">Number of vault users<input id="access-seats" name="requestedSeats" type="number" min="1" max="100" step="1" value="1" required><span>How many people will use your server? Include yourself.</span></label>
@@ -35,6 +35,8 @@
     <label class="access-consent"><input type="checkbox" name="consent" required><span>I agree to receive emails about my access request and customer account.</span></label>
     <p class="access-status">Your email is used for access updates and customer sign-in. When automatic delivery uses Resend, it processes the recipient address and message content. Your vault login and vault data stay on your own server.</p>
     <button class="button primary" type="submit" disabled>Request access</button>
+    <p class="access-status">Before sending, we check your browser and wait briefly to help prevent abuse. This uses a necessary security cookie and Cloudflare Turnstile. Please keep this page open until your request is confirmed.</p>
+    <div id="access-verification" aria-label="Browser verification"></div>
     <p class="access-status" id="access-status" role="status" aria-live="polite">Checking availability…</p>
   </fieldset>
 </form></div></div></section>

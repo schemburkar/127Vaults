@@ -16,7 +16,7 @@ export function validateRequest(value) {
     || (value.contactName !== undefined && typeof value.contactName !== 'string')
     || contactName.length > 120 || /[\x00-\x1f\x7f]/.test(contactName)
     || (value.plan === 'commercial' && (!organization || !contactName))) return null;
-  return { email, organization, contactName: value.plan === 'commercial' ? contactName : null,
+  return { email, organization, contactName: contactName || null,
     plan: value.plan, requestedSeats: value.requestedSeats,
     trapped: value.website !== '' };
 }

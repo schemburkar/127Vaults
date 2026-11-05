@@ -320,7 +320,7 @@ async function fixture(t, options = {}) {
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
   const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
-  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql']) {
+  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql']) {
     const sql = await readFile(new URL(`../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
   }

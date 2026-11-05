@@ -15,6 +15,20 @@ const config = { schemaVersion: 1, accountId: 'a'.repeat(32), origin: 'https://1
   databaseName: 'vaults-test', bucketName: 'vaults-private-test', releaseId: 'test', issuerKeyId: 'trial',
   sites: { adminOrigin: 'https://admin.127vaults.example', customerOrigin: 'https://manage.127vaults.example', adminEmails: ['owner@example.com'] } };
 const state = { databaseId: '11111111-1111-4111-8111-111111111111' };
+
+test('Turnstile secret belongs only to intake and volume settings only to Admin', async () => {
+  const settings = { ...config, intakeProtection: { siteKey: 'synthetic-site-key', waitMs: 15000, cookieCooldownMs: 60000, volumeThreshold: 7, volumeWindowMs: 14400000 } };
+  const secrets = { INTAKE_KEY: 'a'.repeat(64), OPERATOR_TOKEN: 'b'.repeat(43), TURNSTILE_SECRET_KEY: 'synthetic-private-secret' };
+  for (const surface of ['public', 'customer', 'admin']) {
+    assert.equal((await siteSecrets(surface, secrets)).TURNSTILE_SECRET_KEY, undefined);
+    assert.equal(siteConfig(settings, state, surface, 'assets').vars.TURNSTILE_SITE_KEY, undefined);
+  }
+  assert.equal((await siteSecrets('intake', secrets)).TURNSTILE_SECRET_KEY, secrets.TURNSTILE_SECRET_KEY);
+  assert.equal(siteConfig(settings, state, 'intake').vars.INTAKE_WAIT_MS, '15000');
+  assert.equal(siteConfig(settings, state, 'intake').vars.INTAKE_VOLUME_THRESHOLD, undefined);
+  assert.equal(siteConfig(settings, state, 'public', 'assets').vars.INTAKE_VOLUME_THRESHOLD, undefined);
+  assert.equal(siteConfig(settings, state, 'admin', 'assets').vars.INTAKE_VOLUME_THRESHOLD, '7');
+});
 test('record preservation check detects changed or deleted invitations/licenses while allowing newly submitted requests', () => {
   const original = { id: 'original', received_at: 1, contact: 'encrypted-contact', trial: 'encrypted-invitation-and-license', version: 3 };
   const before = recordFingerprints([original]);

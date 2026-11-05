@@ -34,3 +34,26 @@ export async function notifyNewAccessRequest(env, store, id, contact, at, { repl
     await store.save(row, { ...row.trial, [prefix + 'State']: state });
   }
 }
+
+// Operational threshold lives only in private deployment settings, never public assets or responses.
+export async function notifyRequestVolume(env, store, at) {
+  if (env.INTAKE_PROTECTION !== '1' || !requestAlertsEnabled(env)) return;
+  const threshold = Number(env.INTAKE_VOLUME_THRESHOLD), window = Number(env.INTAKE_VOLUME_WINDOW_MS);
+  if (!Number.isSafeInteger(threshold) || threshold < 2 || !Number.isSafeInteger(window) || window < 3600000) return;
+  const { total } = await store.db.prepare('SELECT count(DISTINCT email_hash) AS total FROM intake_activity WHERE received_at > ? AND received_at <= ?').bind(at - window, at).first();
+  if (total < threshold) return;
+  const claimed = await store.db.prepare(`INSERT INTO intake_volume_alerts (id, attempted_at, state) VALUES ('volume', ?, 'sending')
+    ON CONFLICT(id) DO UPDATE SET attempted_at = excluded.attempted_at, state = 'sending'
+    WHERE intake_volume_alerts.attempted_at <= ? RETURNING id`).bind(at, at - window).first();
+  if (!claimed) return;
+  let state = 'unconfirmed', timer;
+  try {
+    const result = await Promise.race([env.REQUEST_ALERTS.send({ from: env.REQUEST_ALERT_FROM, to: env.REQUEST_ALERT_TO,
+      subject: '127Vaults request volume is higher than usual',
+      text: `Your website received access requests from ${total} distinct email addresses in the last ${window / 3600000} hours. This may be interest from new visitors or attempted abuse; it does not establish either.\n\nReview the request timestamps, names and organizations before approving. Customer email budgets and request protections remain active. No access was automatically approved.\n\nOpen the private access desk: ${env.ADMIN_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/access-admin\n\nThis alert is limited to one attempt per monitoring window, including uncertain send results.` }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(Error('alert deadline')), 15000); })]);
+    if (result?.messageId) state = 'accepted';
+  } catch { /* Never repeat an uncertain alert automatically. */ }
+  finally { clearTimeout(timer); }
+  await store.db.prepare("UPDATE intake_volume_alerts SET state = ? WHERE id = 'volume' AND attempted_at = ?").bind(state, at).run();
+}

@@ -24,6 +24,8 @@ export function siteConfig(config, state, surface, assets) {
     delete common.assets; delete common.r2_buckets; delete common.send_email;
     common.services = [{ binding: 'ALERTS', service: `${config.workerName}-admin`, entrypoint: 'AccessRequestAlerts' }];
     common.vars = { PUBLIC_INTAKE_ORIGIN: config.origin, ADMIN_ORIGIN: config.sites.adminOrigin,
+      ...(config.intakeProtection ? { INTAKE_PROTECTION: '1', TURNSTILE_SITE_KEY: config.intakeProtection.siteKey,
+        INTAKE_WAIT_MS: String(config.intakeProtection.waitMs), INTAKE_COOKIE_COOLDOWN_MS: String(config.intakeProtection.cookieCooldownMs) } : {}),
       ...(config.requestAlertTo ? { REQUEST_ALERT_TO: config.requestAlertTo, REQUEST_ALERT_FROM: config.requestAlertFrom } : {}) };
   } else {
     common.vars.SITE_SURFACE = surface;
@@ -37,6 +39,10 @@ export function siteConfig(config, state, surface, assets) {
       CUSTOMER_EMAIL_MONTHLY_LIMIT: String(config.customerEmail.monthlyLimit ?? 2800),
     });
     if (surface === 'admin') common.triggers.crons = base.triggers.crons;
+    if (surface === 'admin' && config.intakeProtection) Object.assign(common.vars, {
+      INTAKE_PROTECTION: '1', INTAKE_VOLUME_THRESHOLD: String(config.intakeProtection.volumeThreshold),
+      INTAKE_VOLUME_WINDOW_MS: String(config.intakeProtection.volumeWindowMs),
+    });
     if (surface === 'customer') delete common.send_email;
   }
   return common;
@@ -47,9 +53,10 @@ export async function siteSecrets(surface, secrets) {
     const key = await crypto.subtle.importKey('raw', Buffer.from(secrets.INTAKE_KEY, 'hex'), 'HKDF', false, ['deriveBits']);
     const derive = async purpose => Buffer.from(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256',
       salt: new TextEncoder().encode('127Vaults Cloudflare v1'), info: new TextEncoder().encode(purpose) }, key, 256)).toString('base64url');
-    return { INTAKE_CONTACT_KEY: await derive('contacts'), INTAKE_LIMITER_KEY: await derive('request-limits') };
+    return { INTAKE_CONTACT_KEY: await derive('contacts'), INTAKE_LIMITER_KEY: await derive('request-limits'),
+      ...(secrets.TURNSTILE_SECRET_KEY ? { TURNSTILE_SECRET_KEY: secrets.TURNSTILE_SECRET_KEY } : {}) };
   }
-  return Object.fromEntries(Object.entries(secrets).filter(([name]) => surface === 'admin' || name !== 'OPERATOR_TOKEN'));
+  return Object.fromEntries(Object.entries(secrets).filter(([name]) => name !== 'TURNSTILE_SECRET_KEY' && (surface === 'admin' || name !== 'OPERATOR_TOKEN')));
 }
 export async function renderSites(config, state) {
   const root = await mkdtemp(join(config.stateDirectory, 'sites-')), files = {};
@@ -93,7 +100,16 @@ export async function verifySites(config, state, catalogue, secrets, { fetchImpl
   };
   for (const origin of [config.origin, config.sites.customerOrigin]) await check(origin, '/', 200);
   const waitlist = await check(config.origin, '/api/waitlist', 200);
-  if (!(await waitlist.json()).open || waitlist.headers.get('cache-control') !== 'no-store') throw Error('Intake is not ready');
+  const intake = await waitlist.json();
+  if (!intake.open || waitlist.headers.get('cache-control') !== 'no-store') throw Error('Intake is not ready');
+  if (config.intakeProtection) {
+    if (!intake.protected || intake.siteKey !== config.intakeProtection.siteKey || intake.waitMs !== config.intakeProtection.waitMs
+      || !intake.challenge || !intake.challengeId || !/__Host-access-browser=.*; Path=\/;.*HttpOnly; Secure; SameSite=Strict/.test(waitlist.headers.get('set-cookie') ?? '')) throw Error('Protected intake readiness differs');
+    const form = await check(config.origin, '/get-started', 200);
+    const csp = form.headers.get('content-security-policy') ?? '';
+    if (!csp.includes("script-src 'self' https://challenges.cloudflare.com") || !csp.includes('frame-src https://challenges.cloudflare.com')
+      || !(await form.text()).includes('name="contactName"')) throw Error('Protected request form is not ready');
+  }
   for (const path of ['/api/access-admin/requests', '/api/customer/me', '/api/trials/' + 'a'.repeat(64) + '/installer', '/access-admin', '/portal', '/access-admin.mjs', '/trial.mjs']) await check(config.origin, path, 404);
   for (const path of ['/api/access-admin/requests', '/access-admin', '/access-admin.mjs', '/api/waitlist']) await check(config.sites.customerOrigin, path, 404);
   const gate = await check(config.sites.adminOrigin, '/', config.sites.adminAccess === false ? 200 : [302, 401, 403]);

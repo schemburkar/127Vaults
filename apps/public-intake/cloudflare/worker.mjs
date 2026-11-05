@@ -8,7 +8,7 @@ import { byteRange } from './download.mjs';
 import { installerPolicy, installerProtocol } from './installer.mjs';
 import { developmentPolicy } from './development.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
-import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-alerts.mjs';
+import { notifyNewAccessRequest, notifyRequestVolume, requestAlertsEnabled } from '../src/request-alerts.mjs';
 import { BillingError } from './dodo.mjs';
 import { billingWebhook, handleBilling, reconcileBilling } from './billing.mjs';
 import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal, manualCustomerMail } from './customer-portal.mjs';
@@ -417,6 +417,7 @@ async function dispatch(request, env, now, schedule) {
     }
     await store.save(row, record, action === 'erase');
     if (action === 'erase' && env.CUSTOMER_EMAIL_STORAGE === '1') await store.db.prepare('DELETE FROM customer_email_receipts WHERE request_id = ?').bind(row.id).run();
+    if (action === 'erase' && env.INTAKE_PROTECTION === '1') await store.db.prepare('DELETE FROM intake_activity WHERE request_id = ?').bind(row.id).run();
     if (action === 'replace-installation') await notifyInvitation(env, store, row, record, at, schedule);
     if (['close', 'reject'].includes(action) && record.kind !== 'development') {
       const pending = sendCustomerEmail(env, store, { requestId: row.id, event: `${action}:${record.closedAt}`, purpose: 'access',
@@ -527,6 +528,11 @@ export async function prune(env, { now = () => Date.now() } = {}) {
   await store.pruneLimits();
   if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(), env.CUSTOMER_MANUAL_MAIL === '1' || env.CUSTOMER_EMAIL_PROVIDER === 'resend');
   await pruneCustomerEmail(env, store, now());
+  if (env.INTAKE_PROTECTION === '1') await store.db.batch([
+    store.db.prepare('DELETE FROM intake_challenges WHERE expires_at <= ?').bind(now()),
+    store.db.prepare('DELETE FROM intake_browsers WHERE next_at <= ?').bind(now() - day),
+    store.db.prepare('DELETE FROM intake_activity WHERE received_at <= ?').bind(now() - Number(env.INTAKE_VOLUME_WINDOW_MS)),
+  ]);
 }
 export async function reconcile(env, { now = () => Date.now() } = {}) {
   return reconcileBilling(env, await setup(env, now), release, now());
@@ -535,7 +541,7 @@ export async function notifyAccessRequest(env, id) {
   if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Invalid request identifier');
   const store = await setup(env, () => Date.now()), row = await store.get(id);
   if (row?.contact) {
-    const tasks = [notifyNewAccessRequest(env, store, id, row.contact, Date.now())];
+    const tasks = [notifyNewAccessRequest(env, store, id, row.contact, Date.now()), notifyRequestVolume(env, store, Date.now())];
     // Only newly submitted requests get receipts. Enabling a provider never backfills old contacts.
     if (Date.now() - row.receivedAt < day && row.trial?.kind !== 'development') tasks.push(sendCustomerEmail(env, store, {
       requestId: id, event: 'request-received', purpose: 'signup', recordKind: row.trial?.kind,
