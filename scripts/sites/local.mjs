@@ -94,6 +94,8 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
     const control = { LOCAL_SITE_PREVIEW: '1', INTAKE_KEY: intakeKey, OPERATOR_TOKEN: operatorToken,
       CUSTOMER_PORTAL_ENABLED: '1',
       CUSTOMER_MANUAL_MAIL: manualMail ? '1' : '0',
+      CUSTOMER_EMAIL_MODE: 'capture',
+      CUSTOMER_EMAIL_STORAGE: '1',
       CUSTOMER_ORIGIN: origins.customer, ADMIN_ORIGIN: origins.admin,
       TRIAL_ISSUER_KEY_ID: 'trial', TRIAL_ISSUER_PRIVATE_KEY: privateKey, TRIAL_CATALOGUE_KEY: 'releases/local/catalogue.json',
       TRIAL_CATALOGUE_SHA256: createHash('sha256').update(catalogueSource).digest('hex'), TRIAL_SOURCE_REVISION: catalogue.sourceRevision, DODO_ENABLED: '0' };
@@ -119,7 +121,7 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
       ] });
     const database = await mf.getD1Database('DB', 'admin');
     await database.prepare('CREATE TABLE IF NOT EXISTS local_site_migrations (name TEXT PRIMARY KEY)').run();
-    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql']) {
+    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql']) {
       if (await database.prepare('SELECT name FROM local_site_migrations WHERE name = ?').bind(name).first()) continue;
       const sql = await readFile(join(repository, 'apps/public-intake/cloudflare/migrations', name), 'utf8');
       await database.batch([...sql.split(';').map(v => v.trim()).filter(Boolean).map(v => database.prepare(v)),

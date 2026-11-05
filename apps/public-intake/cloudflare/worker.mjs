@@ -12,6 +12,7 @@ import { notifyNewAccessRequest, requestAlertsEnabled } from '../src/request-ale
 import { BillingError } from './dodo.mjs';
 import { billingWebhook, handleBilling, reconcileBilling } from './billing.mjs';
 import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal, manualCustomerMail } from './customer-portal.mjs';
+import { resendCustomerEmailEnabled, sendCustomerEmail, pruneCustomerEmail } from './customer-email.mjs';
 
 const day = 86400000;
 const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
@@ -54,7 +55,8 @@ function summary(record, mailer) {
   return { state: record?.state ?? 'requested', maxUsers: record?.maxUsers, archivedAt: record?.archivedAt ?? null,
     approvedAt: record?.approvedAt, kind: record?.kind ?? 'trial', entitlementExpiresAt: record?.entitlementExpiresAt,
     linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
-    emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState && !record.replacementRequest),
+    emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState && !record.replacementRequest
+      && (mailer.provider !== 'resend' || record.kind !== 'development')),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
     serverMajorVersion: record?.state === 'approved' ? entitledMajor(record) : undefined,
     expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
@@ -102,6 +104,7 @@ async function entitledRelease(env, record) {
   return selected;
 }
 function mailerFor(env) {
+  if (env.CUSTOMER_EMAIL_PROVIDER === 'resend') return resendCustomerEmailEnabled(env) ? { provider: 'resend' } : null;
   // Wrangler retains omitted secrets on updates. Removing the sender disables email even if the old token remains.
   if (!env.TRIAL_EMAIL_FROM) return null;
   return createCloudflareTrialMailer({ accountId: env.CF_ACCOUNT_ID,
@@ -116,6 +119,27 @@ export function customerInvitation(invitation, env) {
       return env.CUSTOMER_ORIGIN + url.pathname + url.search + url.hash;
     } catch { return value; }
   }) };
+}
+async function sendResendInvitation(env, store, row, record, at) {
+  if (!resendCustomerEmailEnabled(env) || record?.kind === 'development' || !record?.invitation) return { state: 'suppressed' };
+  const current = await store.get(row.id);
+  if (!current?.contact || current.trial?.state !== 'approved' || current.trial?.tokenHash !== record.tokenHash
+    || current.trial?.invitation?.text !== record.invitation.text) return { state: 'suppressed' };
+  const invitation = customerInvitation(record.invitation, env);
+  const result = await sendCustomerEmail(env, store, { requestId: row.id, event: await hash(JSON.stringify(invitation)), purpose: 'invitation',
+    message: { to: row.contact.email, ...invitation }, recordKind: record.kind });
+  if (result.state !== 'already_attempted' && result.state !== 'suppressed') {
+    const fresh = await store.get(row.id);
+    if (fresh?.contact && fresh.trial?.tokenHash === record.tokenHash && fresh.trial?.invitation?.text === record.invitation.text) {
+      try { await store.save(fresh, { ...fresh.trial, emailState: result.state, emailAttemptedAt: new Date(at).toISOString() }); }
+      catch (error) { if (!(error instanceof Conflict)) throw error; }
+    }
+  }
+  return result;
+}
+async function notifyInvitation(env, store, row, record, at, schedule) {
+  const pending = sendResendInvitation(env, store, row, record, at).catch(() => {});
+  if (schedule) schedule(pending); else await pending;
 }
 async function revoke(record, env, signingKey, at) {
   if (record?.license && !record.revocation) {
@@ -199,6 +223,11 @@ async function dispatch(request, env, now, schedule) {
     fail(401, 'access_required');
   }
   if (path === '/api/access-admin/customer-mail' && request.method === 'GET') return json(200, await manualCustomerMail(env, store, at));
+  if (path === '/api/access-admin/email-status' && request.method === 'GET') return json(200, {
+    provider: env.CUSTOMER_EMAIL_PROVIDER ?? 'manual', enabled: resendCustomerEmailEnabled(env),
+    mode: env.CUSTOMER_EMAIL_MODE ?? 'manual', dailyLimit: Number(env.CUSTOMER_EMAIL_DAILY_LIMIT ?? 90),
+    monthlyLimit: Number(env.CUSTOMER_EMAIL_MONTHLY_LIMIT ?? 2800),
+  });
   const billing = await handleBilling(request, env, store, release, at, operatorAuthorized);
   if (billing !== null) return json(200, billing);
   if (path === '/api/access-admin/session' && request.method === 'POST') {
@@ -300,6 +329,7 @@ async function dispatch(request, env, now, schedule) {
       if (record.kind === 'development') record.invitation = {subject:'Your 127Vaults development access',
         text:`Development packages are available:\n${link}\n\nDevelopment license expiry: ${record.entitlementExpiresAt}. Preserve your existing installation, license, data and backup key. No trial activation is required for an already bound server.`};
       await store.save(row, record);
+      await notifyInvitation(env, store, row, record, at, schedule);
       return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     } else if (action === 'extend') {
       if (record?.state !== 'approved' || record.kind === 'development' || !record.license || record.replacementRequest || record.revocation) fail(409, 'extension_unavailable');
@@ -319,6 +349,7 @@ async function dispatch(request, env, now, schedule) {
         invitation: { subject: 'Your 127Vaults trial has been extended', text: 'Your trial has been extended until ' + expiresAt + '. Open your private link:\n' + link + '\n\nDownload the updated license and install it on your existing server to apply the extension. Keep the existing installation, data and keys. Your user limit and major-version access are unchanged.' } };
       delete record.emailState; delete record.emailAttemptedAt; delete record.emailAttemptId;
       await store.save(row, record);
+      await notifyInvitation(env, store, row, record, at, schedule);
       return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
     } else if (action === 'replace-installation') {
       if (record?.state !== 'approved' || !record.license || !record.replacementRequest) fail(409, 'replacement_unavailable');
@@ -349,6 +380,12 @@ async function dispatch(request, env, now, schedule) {
       if (!mailer) fail(503, 'email_not_configured');
       await entitledRelease(env, record);
       if (record?.state !== 'approved' || !record.invitation || record.replacementRequest || at >= Date.parse(record.linkExpiresAt)) fail(409, 'invitation_unavailable');
+      if (mailer.provider === 'resend') {
+        if (record.kind === 'development') fail(409, 'manual_delivery_only');
+        await sendResendInvitation(env, store, row, record, at);
+        const fresh = await store.get(row.id);
+        return json(200, summary(fresh.trial, mailer));
+      }
       if (record.emailState) fail(409, 'email_already_attempted');
       if (!await store.allow('trial-email', id, 3, 3600000)) fail(429, 'rate_limited');
       const attempt = crypto.randomUUID();
@@ -375,6 +412,14 @@ async function dispatch(request, env, now, schedule) {
       if (action === 'reject') record.state = 'rejected';
     }
     await store.save(row, record, action === 'erase');
+    if (action === 'erase' && env.CUSTOMER_EMAIL_STORAGE === '1') await store.db.prepare('DELETE FROM customer_email_receipts WHERE request_id = ?').bind(row.id).run();
+    if (action === 'replace-installation') await notifyInvitation(env, store, row, record, at, schedule);
+    if (['close', 'reject'].includes(action) && record.kind !== 'development') {
+      const pending = sendCustomerEmail(env, store, { requestId: row.id, event: `${action}:${record.closedAt}`, purpose: 'access',
+        recordKind: record.kind, message: { to: row.contact.email, subject: 'Your 127Vaults access request has changed',
+          text: `Your access request has been ${action === 'reject' ? 'declined' : 'closed'}. Contact your inviter if you need assistance.\n\nThis notice does not remove vault data or remotely stop an offline server.` } }).catch(() => {});
+      if (schedule) schedule(pending); else await pending;
+    }
     return json(200, { ...summary(record, mailer), hasRevocation: Boolean(record.revocation), installedLicenseUnaffected: action !== 'replace-installation' && Boolean(record.license) });
   }
   const portalAuthorized = await customerCanAccess(request, env, store, row, at);
@@ -476,7 +521,8 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(rows.length<100)break;
   }
   await store.pruneLimits();
-  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(), env.CUSTOMER_MANUAL_MAIL === '1');
+  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(), env.CUSTOMER_MANUAL_MAIL === '1' || env.CUSTOMER_EMAIL_PROVIDER === 'resend');
+  await pruneCustomerEmail(env, store, now());
 }
 export async function reconcile(env, { now = () => Date.now() } = {}) {
   return reconcileBilling(env, await setup(env, now), release, now());
@@ -484,6 +530,15 @@ export async function reconcile(env, { now = () => Date.now() } = {}) {
 export async function notifyAccessRequest(env, id) {
   if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Invalid request identifier');
   const store = await setup(env, () => Date.now()), row = await store.get(id);
-  if (row?.contact) await notifyNewAccessRequest(env, store, id, row.contact, Date.now());
+  if (row?.contact) {
+    const tasks = [notifyNewAccessRequest(env, store, id, row.contact, Date.now())];
+    // Only newly submitted requests get receipts. Enabling a provider never backfills old contacts.
+    if (Date.now() - row.receivedAt < day && row.trial?.kind !== 'development') tasks.push(sendCustomerEmail(env, store, {
+      requestId: id, event: 'request-received', purpose: 'signup', recordKind: row.trial?.kind,
+      message: { to: row.contact.email, subject: 'We received your 127Vaults access request',
+        text: `Your ${row.contact.plan} access request has been received and is waiting for review. We will email your private invitation after approval.\n\nCustomer portal: ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_SITE_ORIGIN}\n\nThis receipt does not approve access, start a trial, or create a paid subscription. If you did not submit this request, you can ignore this email.` },
+    }));
+    await Promise.allSettled(tasks);
+  }
 }
 export default { fetch: handleRequest, scheduled: (_event, env, ctx) => ctx.waitUntil(Promise.all([prune(env), reconcile(env)])) };

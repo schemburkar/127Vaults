@@ -32,7 +32,8 @@
     </fieldset>
     <label class="access-field" for="access-seats">Number of vault users<input id="access-seats" name="requestedSeats" type="number" min="1" max="100" step="1" value="1" required><span>How many people will use your server? Include yourself.</span></label>
     <div class="access-honeypot" aria-hidden="true"><label for="access-website">Website<input id="access-website" name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
-    <label class="access-consent"><input type="checkbox" name="consent" required><span>I agree to be contacted about my access request.</span></label>
+    <label class="access-consent"><input type="checkbox" name="consent" required><span>I agree to receive emails about my access request and customer account.</span></label>
+    <p class="access-status">Your email is used for access updates and customer sign-in. When automatic delivery uses Resend, it processes the recipient address and message content. Your vault login and vault data stay on your own server.</p>
     <button class="button primary" type="submit" disabled>Request access</button>
     <p class="access-status" id="access-status" role="status" aria-live="polite">Checking availability…</p>
   </fieldset>

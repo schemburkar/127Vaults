@@ -50,3 +50,13 @@ Describe the implemented encryption, storage model and trust boundaries in publi
 security pages and policies. Keep experimental/private-test status and audit-status
 disclaimers in internal documentation, not public-facing copy. Do not imply an
 audit or certification that has not occurred. Preserve accurate technical limits.
+
+# Customer email
+
+Reserve Resend for genuine production customer transactional messages. Internal
+tests, local previews, smoke checks and release/deployment verification must use
+local capture or mocked transports. Never call Resend's real sending API for
+testing, including its test-recipient addresses. Do not request production
+customer sign-in codes or submit synthetic production signups as a verification
+step. Provider activation checks must not send probe emails. Keep delivery
+disabled until the account, verified sender domain and sending-only key are ready.

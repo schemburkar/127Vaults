@@ -7,6 +7,33 @@ import { join, parse } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateConfig, loadConfig, loadSecrets, stageAssets, assetFiles, wranglerConfig, repository, localDeploymentDirectory } from './config.mjs';
 import { assertPrivateBucket, execute, parseBucketNames, provision, runWrangler } from './deploy.mjs';
+import { configureResend } from './configure-resend.mjs';
+import { siteConfig, siteSecrets } from './sites.mjs';
+
+test('Resend configuration starts disabled and cannot enable without a private sending key; credentials never reach public or intake', async t => {
+  const f = await fixture(t), file = join(f.directory, 'config.json');
+  const sites = { adminOrigin: 'https://admin.example.com', customerOrigin: 'https://manage.example.com', adminEmails: ['owner@example.com'], adminAccess: false };
+  await writeFile(file, JSON.stringify({ ...f.config, sites }));
+  const prepared = await configureResend('prepare', file);
+  assert.equal(prepared.enabled, false); assert.equal(prepared.networkCalls, 0); assert.equal(prepared.emailsSent, 0);
+  await assert.rejects(configureResend('enable', file));
+  assert.equal((await loadConfig(file)).customerEmail.enabled, false);
+  await writeFile(join(f.config.secretsDirectory, 'resend-api-key'), 're_' + 'fake'.repeat(8));
+  const enabled = await configureResend('enable', file); assert.equal(enabled.enabled, true); assert.equal(enabled.emailsSent, 0);
+  const config = await loadConfig(file), secrets = await loadSecrets(config, f.catalogue);
+  assert.ok(secrets.RESEND_API_KEY);
+  const state = { databaseId: '11111111-1111-4111-8111-111111111111' };
+  for (const surface of ['public', 'intake']) {
+    assert.equal((await siteSecrets(surface, secrets)).RESEND_API_KEY, undefined);
+    assert.equal(siteConfig(config, state, surface, f.directory).vars.CUSTOMER_EMAIL_MODE, undefined);
+  }
+  assert.equal(siteConfig(config, state, 'customer', f.directory).vars.CUSTOMER_MANUAL_MAIL, '0');
+  assert.equal(siteConfig(config, state, 'admin', f.directory).vars.CUSTOMER_EMAIL_MODE, 'production');
+  assert.equal(siteConfig(config, state, 'customer', f.directory).vars.RESEND_API_KEY, undefined);
+  await configureResend('disable', file);
+  assert.equal(siteConfig(await loadConfig(file), state, 'customer', f.directory).vars.CUSTOMER_MANUAL_MAIL, '1');
+  for (const changed of [{ dailyLimit: 100 }, { monthlyLimit: 3001 }, { enabled: 'yes' }]) assert.throws(() => validateConfig({ ...config, customerEmail: { ...config.customerEmail, ...changed } }, file));
+});
 
 test('deployment preserves the installer compatibility floor and rejects invalid policy', async t => {
   const f = await fixture(t);

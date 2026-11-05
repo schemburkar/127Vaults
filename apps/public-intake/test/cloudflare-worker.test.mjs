@@ -21,6 +21,59 @@ import { handleCustomerPortal } from '../cloudflare/customer-portal.mjs';
 const origin = 'https://trial.example.com';
 const admin = '/api/access-admin/requests';
 const root = fileURLToPath(new URL('../../../', import.meta.url));
+
+test('customer sign-in uses only mocked Resend while development-only identities retain manual delivery', { timeout: 15000 }, async t => {
+  const messages = [];
+  const f = await fixture(t, { bindings: { SITE_SURFACE: 'customer', CUSTOMER_PORTAL_ENABLED: '1', CUSTOMER_EMAIL_PROVIDER: 'resend',
+    CUSTOMER_EMAIL_MODE: 'production', CUSTOMER_EMAIL_FROM: 'accounts@127vaults.com', RESEND_API_KEY: 're_' + 'fake'.repeat(8) },
+    outboundService: async request => { assert.equal(request.url, 'https://api.resend.com/emails'); messages.push(await request.json()); return Response.json({ id: `fake-${messages.length}` }); } });
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
+  await store.insert('a'.repeat(64), { ...f.requestInput, email: 'customer@customer-domain.dev' });
+  const started = await f.post('/api/customer/start', { email: 'customer@customer-domain.dev' });
+  assert.equal(started.status, 202); const challenge = await started.json(); assert.equal(challenge.code, undefined);
+  assert.equal(messages.length, 1); const code = /code is (\d{6})/.exec(messages[0].text)[1];
+  assert.equal((await f.post('/api/customer/complete', { challengeId: challenge.challengeId, code })).status, 200);
+  await store.insert('b'.repeat(64), { ...f.requestInput, email: 'developer@customer-domain.dev' });
+  const developer = await store.get('b'.repeat(64)); await store.save(developer, { kind: 'development', state: 'approved' });
+  assert.equal((await f.post('/api/customer/start', { email: 'developer@customer-domain.dev' })).status, 202);
+  assert.equal(messages.length, 1);
+  assert.equal((await f.db.prepare('SELECT count(*) AS n FROM customer_manual_mail').first()).n, 1);
+});
+
+test('customer approval and access notices use mocked Resend once; development invitations never use its transport', { timeout: 15000 }, async t => {
+  const messages = [];
+  const f = await fixture(t, { bindings: { SITE_SURFACE: 'admin', CUSTOMER_EMAIL_PROVIDER: 'resend', CUSTOMER_EMAIL_MODE: 'production',
+    CUSTOMER_EMAIL_FROM: 'accounts@127vaults.com', RESEND_API_KEY: 're_' + 'fake'.repeat(8), CUSTOMER_EMAIL_STORAGE: '1' },
+    outboundService: async request => {
+      assert.equal(request.url, 'https://api.resend.com/emails');
+      messages.push(await request.json()); return Response.json({ id: `mock-only-${messages.length}` });
+    } });
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
+  const id = 'c'.repeat(64); await store.insert(id, { ...f.requestInput, email: 'customer@customer-domain.dev' });
+  const approved = await f.approve(id);
+  const waitForCount = async count => {
+    const until = Date.now() + 4000;
+    while (Date.now() < until) {
+      const row = await f.db.prepare("SELECT count(*) AS n FROM customer_email_receipts WHERE state = 'queued'").first();
+      if (row.n === count) return;
+      await new Promise(done => setTimeout(done, 20));
+    }
+    throw Error('Mock email was not recorded');
+  };
+  await waitForCount(1); assert.equal(messages.length, 1); assert.match(messages[0].text, new RegExp(approved.token));
+  assert.equal((await f.post(`${admin}/${id}/send-invitation`, {}, f.operatorToken)).status, 200);
+  assert.equal(messages.length, 1);
+  assert.equal((await f.post(`${admin}/${id}/close`, {}, f.operatorToken)).status, 200);
+  await waitForCount(2); assert.match(messages[1].subject, /access request/);
+  const internalId = 'd'.repeat(64); await store.insert(internalId, { ...f.requestInput, email: 'developer@customer-domain.dev' });
+  const row = await store.get(internalId);
+  await store.save(row, { state: 'approved', kind: 'development', tokenHash: await hash('A'.repeat(43)),
+    linkExpiresAt: new Date(Date.now() + 86400000).toISOString(), serverMajorVersion: 0,
+    invitation: { subject: 'Development access', text: 'Internal use only' } });
+  assert.equal((await f.post(`${admin}/${internalId}/send-invitation`, {}, f.operatorToken)).status, 409);
+  assert.equal(messages.length, 2);
+});
+
 async function billingFixture(t) {
   const f = await fixture(t, { bindings: { DODO_ENABLED: '1', DODO_MODE: 'test_mode', DODO_API_KEY: 'test-key',
     DODO_WEBHOOK_SECRET: 'whsec_' + Buffer.alloc(32, 7).toString('base64'), DODO_BUSINESS_ID: 'biz_test',
@@ -254,7 +307,7 @@ async function fixture(t, options = {}) {
     const directory = fileURLToPath(new URL('../cloudflare/', import.meta.url));
     const paths = [mfOptions.scriptPath,
       ...(await readdir(directory)).filter(name => name.endsWith('.mjs') && name !== 'worker.mjs').map(name => join(directory, name)),
-      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs', 'operator-session.mjs', 'request-alerts.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
+      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs', 'resend-email.mjs', 'operator-session.mjs', 'request-alerts.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
     mf = new bundled.Miniflare(bundled.convertV4MiniflareOptions({ ...mfOptions, scriptPath: undefined,
       modulesRules: undefined, modules: paths.map(path => ({ type: 'ESModule', path })) }));
   } else mf = new Miniflare(mfOptions);
@@ -262,7 +315,7 @@ async function fixture(t, options = {}) {
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
   const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
-  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql']) {
+  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql']) {
     const sql = await readFile(new URL(`../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
   }

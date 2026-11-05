@@ -68,6 +68,11 @@ Later, `emailLogin: true` requires `emailFrom` and the protected
 `cloudflare-email-token` file for the existing Cloudflare Email Sending adapter.
 Provider onboarding and real delivery acceptance remain required.
 
+The optional [Resend customer-email integration](customer-email.md) supersedes
+that Cloudflare sender configuration when `customerEmail` is present. It remains
+disabled until the Resend account, domain and sending key are ready. Internal
+tests use local capture/mocks exclusively; activation does not send test emails.
+
 ## Migration and invitation handling
 
 The script backs up the existing encrypted D1 records before applying pending

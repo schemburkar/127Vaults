@@ -33,7 +33,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -47,6 +47,14 @@ export function validateConfig(value, file) {
       || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(value.requestAlertFrom)
       || value.requestAlertFrom.split('@')[1].toLowerCase() !== new URL(value.origin).hostname))) throw Error('Invalid Cloudflare deployment configuration');
   if (value.minimumInstallerVersion !== undefined && !versionParts(value.minimumInstallerVersion)) throw Error('Invalid minimum installer version');
+  if (value.customerEmail) {
+    const email = value.customerEmail;
+    if (!value.sites || Object.keys(email).some(key => !['provider', 'from', 'enabled', 'dailyLimit', 'monthlyLimit'].includes(key))
+      || email.provider !== 'resend' || typeof email.enabled !== 'boolean'
+      || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(email.from ?? '')
+      || (email.dailyLimit !== undefined && (!Number.isSafeInteger(email.dailyLimit) || email.dailyLimit < 21 || email.dailyLimit > 90))
+      || (email.monthlyLimit !== undefined && (!Number.isSafeInteger(email.monthlyLimit) || email.monthlyLimit < 1 || email.monthlyLimit > 2800))) throw Error('Invalid production customer email configuration');
+  }
   if (value.sites) {
     const sites = value.sites;
     if (Object.keys(sites).some(key => !['adminOrigin', 'customerOrigin', 'adminEmails', 'emailLogin', 'adminAccess'].includes(key))
@@ -56,7 +64,7 @@ export function validateConfig(value, file) {
       || sites.adminEmails.some(email => typeof email !== 'string' || !/^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/.test(email))
       || (sites.emailLogin !== undefined && typeof sites.emailLogin !== 'boolean')
       || (sites.adminAccess !== undefined && typeof sites.adminAccess !== 'boolean')
-      || (sites.emailLogin && !value.emailFrom)) throw Error('Invalid separated site configuration');
+      || (sites.emailLogin && !value.emailFrom && !value.customerEmail?.enabled)) throw Error('Invalid separated site configuration');
     if (value.workerName.length > 53) throw Error('Worker name is too long for separated targets');
   }
   if (value.billing) {
@@ -114,9 +122,13 @@ export async function loadSecrets(config, catalogue) {
   const publicKey = createPublicKey(values.TRIAL_ISSUER_PRIVATE_KEY).export({ type: 'spki', format: 'pem' });
   if (catalogue.issuerPublicKeys?.[config.issuerKeyId] !== publicKey) throw Error('Issuer does not match the selected server release');
   await issuer(values.TRIAL_ISSUER_PRIVATE_KEY, publicKey);
-  if (config.emailFrom) {
+  if (config.emailFrom && !config.customerEmail) {
     values.TRIAL_EMAIL_API_TOKEN = await read('cloudflare-email-token');
     if (!/^[\x21-\x7e]{20,512}$/.test(values.TRIAL_EMAIL_API_TOKEN)) throw Error('Invalid email API token');
+  }
+  if (config.customerEmail?.enabled) {
+    values.RESEND_API_KEY = await read('resend-api-key');
+    if (!/^re_[A-Za-z0-9_-]{16,200}$/.test(values.RESEND_API_KEY)) throw Error('Invalid Resend sending key');
   }
   if (config.billing) {
     values.DODO_API_KEY = await read('dodo-api-key');

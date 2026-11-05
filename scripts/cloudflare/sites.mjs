@@ -28,8 +28,14 @@ export function siteConfig(config, state, surface, assets) {
   } else {
     common.vars.SITE_SURFACE = surface;
     common.vars.CUSTOMER_PORTAL_ENABLED = '1';
+    common.vars.CUSTOMER_EMAIL_STORAGE = '1';
     common.vars.CUSTOMER_EMAIL_LOGIN = '1';
-    common.vars.CUSTOMER_MANUAL_MAIL = config.sites.emailLogin ? '0' : '1';
+    common.vars.CUSTOMER_MANUAL_MAIL = (config.customerEmail ? config.customerEmail.enabled : config.sites.emailLogin) ? '0' : '1';
+    if (config.customerEmail) Object.assign(common.vars, {
+      CUSTOMER_EMAIL_PROVIDER: 'resend', CUSTOMER_EMAIL_MODE: config.customerEmail.enabled ? 'production' : 'disabled',
+      CUSTOMER_EMAIL_FROM: config.customerEmail.from, CUSTOMER_EMAIL_DAILY_LIMIT: String(config.customerEmail.dailyLimit ?? 90),
+      CUSTOMER_EMAIL_MONTHLY_LIMIT: String(config.customerEmail.monthlyLimit ?? 2800),
+    });
     if (surface === 'admin') common.triggers.crons = base.triggers.crons;
     if (surface === 'customer') delete common.send_email;
   }

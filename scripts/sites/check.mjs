@@ -11,7 +11,7 @@ const checks = [
   ['--check', 'customer-website/portal.mjs'], ['--check', 'customer-website/portal-client.mjs'],
   ['--check', 'apps/public-intake/cloudflare/customer-portal.mjs'],
   ['--check', 'apps/public-intake/cloudflare/public-site.mjs'], ['--check', 'apps/public-intake/cloudflare/intake-only.mjs'],
-  ['--test', 'scripts/sites/local.test.mjs', 'scripts/sites/portal.test.mjs', 'scripts/sites/manual-mail.test.mjs', 'customer-website/trial-navigation.test.mjs', 'apps/public-intake/test/operator-session.test.mjs'],
+  ['--test', 'scripts/sites/local.test.mjs', 'scripts/sites/portal.test.mjs', 'scripts/sites/manual-mail.test.mjs', 'scripts/sites/customer-email.test.mjs', 'customer-website/trial-navigation.test.mjs', 'apps/public-intake/test/operator-session.test.mjs'],
 ];
 const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8', windowsHide: true }).trim(), checks: [] };
 for (const args of checks) {

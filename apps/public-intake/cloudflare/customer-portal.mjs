@@ -1,6 +1,8 @@
 import { encryptionKey, hash, equal, token, seal, unseal, limitIdentity } from './crypto.mjs';
 import { rawBody, reject } from './dodo.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
+import { productionRecipient } from '../src/resend-email.mjs';
+import { sendCustomerEmail } from './customer-email.mjs';
 
 const cookieName = '__Host-127v-portal', lifetime = 12 * 3600000;
 const normalize = email => typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -41,8 +43,8 @@ async function createSession(request, env, store, principal, now, expiresAt = no
     .bind(id, await seal(principal, await portalKey(env), `customer-session:${id}`), expiresAt).run();
   return cookie(value, Math.max(1, Math.floor((expiresAt - now) / 1000)));
 }
-async function deliver(env, message, store, challengeId, now) {
-  if (env.CUSTOMER_MANUAL_MAIL === '1') {
+async function deliver(env, message, store, challengeId, now, requestId, internal) {
+  if (env.CUSTOMER_MANUAL_MAIL === '1' || internal) {
     await store.db.prepare('INSERT INTO customer_manual_mail (id, payload, expires_at) VALUES (?, ?, ?)')
       .bind(challengeId, await seal(message, await portalKey(env), `manual-customer-mail:${challengeId}`), now + 600000).run();
     return;
@@ -50,6 +52,11 @@ async function deliver(env, message, store, challengeId, now) {
   if (env.LOCAL_SITE_PREVIEW === '1' && env.CUSTOMER_MAIL) {
     const response = await env.CUSTOMER_MAIL.fetch('https://local.invalid/customer-code', { method: 'POST', body: JSON.stringify(message) });
     if (!response.ok) throw Error('local_mail_unavailable');
+    return;
+  }
+  if (env.CUSTOMER_EMAIL_PROVIDER === 'resend') {
+    const result = await sendCustomerEmail(env, store, { requestId, event: challengeId, purpose: 'sign-in', message, expiresAt: now + 600000 }, { now });
+    if (result.state !== 'queued') throw Error('mail_unavailable');
     return;
   }
   const mailer = createCloudflareTrialMailer({ accountId: env.CF_ACCOUNT_ID, apiToken: env.TRIAL_EMAIL_API_TOKEN, from: env.TRIAL_EMAIL_FROM });
@@ -70,14 +77,17 @@ export async function handleCustomerPortal(request, env, store, now) {
     if (!await store.allow('portal-start-ip', ip, 20, 3600000) || !await store.allow('portal-start-email', email, 3, 3600000)) reject(429, 'rate_limited');
     const challengeId = token();
     const rows = await store.list();
-    if (rows.some(row => normalize(row.contact?.email) === email)) {
+    const owned = rows.filter(row => normalize(row.contact?.email) === email);
+    if (owned.length) {
+      const customer = owned.find(row => row.trial?.kind !== 'development') ?? owned[0];
+      const internal = env.CUSTOMER_EMAIL_PROVIDER === 'resend' && (customer.trial?.kind === 'development' || !productionRecipient(email));
       let random; do { random = crypto.getRandomValues(new Uint32Array(1))[0]; } while (random >= 4294000000);
       const code = String(random % 1000000).padStart(6, '0');
       const codeHash = await limitIdentity(store.limiterKey, `portal-code:${challengeId}:${code}`);
       await store.db.prepare('INSERT INTO customer_challenges (id, payload, expires_at) VALUES (?, ?, ?)')
         .bind(challengeId, await seal({ email, codeHash }, await portalKey(env), `customer-challenge:${challengeId}`), now + 600000).run();
       try { await deliver(env, { to: email, subject: 'Your 127Vaults customer portal sign-in code',
-        text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nOpen ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/ and enter the code in the browser where you requested it.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }, store, challengeId, now); }
+        text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nOpen ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/ and enter the code in the browser where you requested it.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }, store, challengeId, now, customer.id, internal); }
       catch { await store.db.prepare('DELETE FROM customer_challenges WHERE id = ?').bind(challengeId).run(); }
     }
     return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1'
@@ -143,7 +153,7 @@ export async function handleCustomerPortal(request, env, store, now) {
   reject(404, 'not_found');
 }
 export async function manualCustomerMail(env, store, now) {
-  if (env.CUSTOMER_MANUAL_MAIL !== '1') return { messages: [] };
+  if (env.CUSTOMER_MANUAL_MAIL !== '1' && env.CUSTOMER_EMAIL_PROVIDER !== 'resend') return { messages: [] };
   const { results } = await store.db.prepare(`SELECT m.id, m.payload, m.expires_at FROM customer_manual_mail m
     JOIN customer_challenges c ON c.id = m.id WHERE m.expires_at > ? AND c.expires_at > ? AND c.attempts < 5
     ORDER BY m.expires_at LIMIT 50`).bind(now, now).all();
