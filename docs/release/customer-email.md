@@ -9,10 +9,15 @@ this boundary. Message bodies and provider error bodies are not logged.
 
 ## Current activation state
 
-Implementation is ready, but the Resend account, verified sending domain and
-restricted sending key have not been created yet. Automatic delivery remains
-disabled; operator-copyable customer messages remain available. No Resend API
-request or real test email was used to validate this integration.
+The Resend account is connected. On 2026-11-05, `127vaults.com` was registered
+for sending in `us-east-1`, with receiving, open tracking and click tracking
+disabled. DNS authentication is awaiting configuration and verification; the
+restricted sending key has not been provisioned. Automatic delivery remains
+disabled; operator-copyable customer messages remain available. No real test
+email has been sent.
+
+The user explicitly authorized one setup verification email. This exception
+does not permit real sends from automated tests or routine deployment checks.
 
 The proposed sender is `127Vaults <accounts@127vaults.com>`. On 2026-11-05,
 [Resend pricing](https://resend.com/pricing) lists 3,000 transactional emails per
@@ -53,7 +58,7 @@ their existing Cloudflare binding and do not consume Resend quota.
 - Use local capture or operator-copyable invitations for internal acceptance.
   Do not submit synthetic requests or request sign-in emails on the production
   customer site as part of smoke tests after activation.
-- Never run a send probe to check a key, sender or domain. Activation readiness
+- Do not run routine send probes to check a key, sender or domain. Activation readiness
   checks validate configuration and secrets without contacting Resend. Resend
   delivery acceptance remains unverified until a genuine customer action occurs.
 
