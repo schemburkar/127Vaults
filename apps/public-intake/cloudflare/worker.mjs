@@ -296,6 +296,7 @@ async function dispatch(request, env, now, schedule) {
     if (action === 'archive' || action === 'unarchive') {
       empty(input); record = { state: 'requested', ...record, archivedAt: action === 'archive' ? new Date(at).toISOString() : null };
     } else if (action === 'approve-development') {
+      if (row.contact.plan === 'support') fail(409, 'plan_unavailable');
       if (record && record.state !== 'requested') fail(409,'state_changed');
       const {catalogue,identity} = await release(env);
       let policy;
@@ -543,7 +544,7 @@ export async function notifyAccessRequest(env, id) {
   if (row?.contact) {
     const tasks = [notifyNewAccessRequest(env, store, id, row.contact, Date.now()), notifyRequestVolume(env, store, Date.now())];
     // Only newly submitted requests get receipts. Enabling a provider never backfills old contacts.
-    if (Date.now() - row.receivedAt < day && row.trial?.kind !== 'development') tasks.push(sendCustomerEmail(env, store, {
+    if (Date.now() - row.receivedAt < day && row.contact.plan !== 'support' && row.trial?.kind !== 'development') tasks.push(sendCustomerEmail(env, store, {
       requestId: id, event: 'request-received', purpose: 'signup', recordKind: row.trial?.kind,
       message: { to: row.contact.email, subject: 'We received your 127Vaults access request',
         text: `Your ${row.contact.plan} access request has been received and is waiting for review.\n\nOnce approved, you’ll receive private downloads for an unpaid 10-day self-hosted trial. Your trial starts when you activate your server; no card or subscription is required. We will email your private invitation once your access is approved.\n\nCustomer portal: ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_SITE_ORIGIN}\n\nThis receipt does not approve access, start a trial, or create a paid subscription. If you did not submit this request, you can ignore this email.` },

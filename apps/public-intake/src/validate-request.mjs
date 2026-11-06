@@ -2,6 +2,16 @@ const plans = new Set(['personal', 'commercial']);
 const emailPattern = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}$/;
 
 export function validateRequest(value) {
+  if (value?.plan === 'support') {
+    const { email, contactName, message, website, consent } = value;
+    if (Object.keys(value).some(key => !['plan', 'email', 'contactName', 'message', 'website', 'consent'].includes(key))
+      || typeof email !== 'string' || email.trim().length > 254 || !emailPattern.test(email.trim())
+      || typeof contactName !== 'string' || !contactName.trim() || contactName.length > 120 || /[\x00-\x1f\x7f]/.test(contactName)
+      || typeof message !== 'string' || !message.trim() || message.length > 300 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(message)
+      || typeof website !== 'string' || website.length > 200 || consent !== true) return null;
+    return { plan: 'support', email: email.trim().toLowerCase(), contactName: contactName.trim(),
+      message: message.trim(), trapped: website !== '' };
+  }
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some(key => !['consent', 'email', 'organization', 'contactName', 'plan', 'website', 'requestedSeats'].includes(key))
     || ['consent', 'email', 'organization', 'plan', 'website'].some(key => !Object.hasOwn(value, key))) return null;

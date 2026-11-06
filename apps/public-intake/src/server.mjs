@@ -26,7 +26,8 @@ export function encryptRequest(request, key, now = new Date()) {
   const nonce = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   const plaintext = Buffer.from(JSON.stringify({ email: request.email, organization: request.organization,
-    contactName: request.contactName ?? null, plan: request.plan, requestedSeats: request.requestedSeats, receivedAt: now.toISOString() }));
+    contactName: request.contactName ?? null, plan: request.plan, requestedSeats: request.requestedSeats,
+    message: request.message, receivedAt: now.toISOString() }));
   const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return JSON.stringify({ version: 1, nonce: nonce.toString('base64url'),
     ciphertext: encrypted.toString('base64url'), tag: cipher.getAuthTag().toString('base64url') }) + '\n';

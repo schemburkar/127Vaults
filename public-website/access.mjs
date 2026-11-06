@@ -4,6 +4,7 @@ const button = form.querySelector('button[type="submit"]');
 const details = document.querySelector('#request-details');
 const commercialFields = document.querySelector('#commercial-fields');
 const comingSoon = document.querySelector('#cloud-coming-soon');
+const support = form.hasAttribute('data-support');
 let waitlistOpen = false;
 let submitting = false;
 let turnstileScript;
@@ -39,14 +40,16 @@ async function protectRequest() {
   } finally { if (widget !== undefined) window.turnstile.remove(widget); }
 }
 const plan = new URLSearchParams(location.search).get('plan');
-if (['personal', 'commercial', 'cloud'].includes(plan)) form.querySelector(`[name="plan"][value="${plan}"]`).checked = true;
+if (!support && ['personal', 'commercial', 'cloud'].includes(plan)) form.querySelector(`[name="plan"][value="${plan}"]`).checked = true;
 function updatePlan() {
   const selected = form.querySelector('[name="plan"]:checked')?.value;
   const cloud = selected === 'cloud', commercial = selected === 'commercial';
-  comingSoon.hidden = !cloud;
+  if (comingSoon) comingSoon.hidden = !cloud;
   details.hidden = cloud; details.disabled = cloud;
-  commercialFields.hidden = !commercial; commercialFields.disabled = !commercial;
-  for (const field of commercialFields.querySelectorAll('input')) field.required = commercial;
+  if (commercialFields) {
+    commercialFields.hidden = !commercial; commercialFields.disabled = !commercial;
+    for (const field of commercialFields.querySelectorAll('input')) field.required = commercial;
+  }
   button.disabled = cloud || !waitlistOpen || submitting;
   status.textContent = waitlistOpen ? '' : 'Requests are currently unavailable. Please check back soon.';
 }
@@ -62,13 +65,15 @@ form.addEventListener('submit', async event => {
   if (button.disabled || details.disabled || !form.reportValidity()) return;
   submitting = true; button.disabled = true; status.textContent = 'Sending your request…';
   const data = new FormData(form), selectedPlan = String(data.get('plan') ?? '');
-  const body = { email: String(data.get('email') ?? '').trim(),
-    organization: selectedPlan === 'commercial' ? String(data.get('organization') ?? '').trim() : '',
+  const contact = { email: String(data.get('email') ?? '').trim(),
     contactName: String(data.get('contactName') ?? '').trim(),
-    plan: selectedPlan, requestedSeats: Number(data.get('requestedSeats')),
     website: String(data.get('website') ?? ''), consent: data.get('consent') === 'on' };
+  const body = support ? { ...contact, plan: 'support', message: String(data.get('message') ?? '').trim() }
+    : { ...contact, plan: selectedPlan, requestedSeats: Number(data.get('requestedSeats')),
+      organization: selectedPlan === 'commercial' ? String(data.get('organization') ?? '').trim() : '' };
   let message;
-  form.querySelectorAll('input').forEach(input => { input.disabled = true; });
+  const fields = form.querySelectorAll('input:not(:disabled), textarea:not(:disabled)');
+  fields.forEach(field => { field.disabled = true; });
   try {
     const protection = await protectRequest();
     status.textContent = 'Sending your request…';
@@ -76,11 +81,12 @@ form.addEventListener('submit', async event => {
       body: JSON.stringify({ ...body, ...protection }), credentials: 'same-origin' });
     if (response.status === 202) {
       form.reset();
-      form.querySelector(`[name="plan"][value="${selectedPlan}"]`).checked = true;
-      message = 'Request received. We’ll contact you about availability and next steps.';
+      if (!support) form.querySelector(`[name="plan"][value="${selectedPlan}"]`).checked = true;
+      message = support ? 'Message received. We’ll review it and reply by email.'
+        : 'Request received. We’ll contact you about availability and next steps.';
     } else message = response.status === 429 ? 'Too many requests. Please try again later.'
       : 'We could not accept your request. Check your details and try again.';
   } catch { message = 'We could not complete verification or send your request. Allow security cookies and browser verification, then try again. Your details are still here.'; }
-  form.querySelectorAll('input').forEach(input => { input.disabled = false; });
+  fields.forEach(field => { field.disabled = false; });
   submitting = false; updatePlan(); status.textContent = message;
 });

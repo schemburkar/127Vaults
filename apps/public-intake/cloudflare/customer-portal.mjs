@@ -77,7 +77,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     if (!await store.allow('portal-start-ip', ip, 20, 3600000) || !await store.allow('portal-start-email', email, 3, 3600000)) reject(429, 'rate_limited');
     const challengeId = token();
     const rows = await store.list();
-    const owned = rows.filter(row => normalize(row.contact?.email) === email);
+    const owned = rows.filter(row => row.contact?.plan !== 'support' && normalize(row.contact?.email) === email);
     if (owned.length) {
       const customer = owned.find(row => row.trial?.kind !== 'development') ?? owned[0];
       const internal = env.CUSTOMER_EMAIL_PROVIDER === 'resend' && (customer.trial?.kind === 'development' || !productionRecipient(email));
@@ -134,6 +134,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     const rows = await store.list();
     const requests = [];
     for (const row of rows) {
+      if (row.contact?.plan === 'support') continue;
       const owned = principal.kind === 'email' ? normalize(row.contact?.email) === principal.email
         : row.id === principal.requestId && row.trial?.state === 'approved' && await equal(principal.invitationHash, row.trial.tokenHash);
       if (!owned) continue;

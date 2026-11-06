@@ -14,17 +14,18 @@ export async function notifyNewAccessRequest(env, store, id, contact, at, { repl
   await store.save(row, { state: 'requested', ...row.trial, [prefix + 'Attempt']: attempt,
     [prefix + 'AttemptedAt']: new Date(at).toISOString(), [prefix + 'State']: 'sending' });
   let state = 'unconfirmed', timer;
+  const support = contact.plan === 'support';
   try {
     const result = await Promise.race([env.REQUEST_ALERTS.send({ from: env.REQUEST_ALERT_FROM, to: env.REQUEST_ALERT_TO,
-      subject: replacement ? '127Vaults replacement license requested' : 'New 127Vaults access request', text: [
-        replacement ? 'An existing customer requested a replacement installation license. Review and issue it without extending the original expiry.' : 'A new public access request is waiting for review.', '',
+      subject: support ? 'New 127Vaults support message' : replacement ? '127Vaults replacement license requested' : 'New 127Vaults access request', text: [
+        support ? 'A support message is waiting in the private access desk.' : replacement ? 'An existing customer requested a replacement installation license. Review and issue it without extending the original expiry.' : 'A new public access request is waiting for review.', '',
         `Email: ${contact.email}`, `Name: ${contact.contactName || 'Not supplied'}`,
         `Organization: ${contact.organization || 'Not supplied'}`, `Plan: ${contact.plan}`,
         `Requested users: ${contact.requestedSeats ?? 'Not supplied'}`, `Received: ${new Date(at).toISOString()}`, '',
         `Review this request: ${env.ADMIN_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/access-admin?request=${encodeURIComponent(id)}`,
         `Request reference: ${id}`,
         'Sign in to Admin to review this specific request. Opening this link does not approve or change anything.',
-        'Approval issues a private invitation; the customer is emailed automatically when customer email is enabled.',
+        support ? 'Read the message in the access desk and reply manually.' : 'Approval issues a private invitation; the customer is emailed automatically when customer email is enabled.',
       ].join('\n') }), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('alert deadline')), 15000); })]);
     if (typeof result?.messageId === 'string' && result.messageId) state = 'accepted';
   } catch { /* Ambiguous submissions are recorded, never automatically resent. */ }

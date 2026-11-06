@@ -17,10 +17,30 @@ import { handleBilling, syncSubscription, billingWebhook, reconcileBilling } fro
 import { verifyWebhook } from '../cloudflare/dodo.mjs';
 import { issuer, hash } from '../cloudflare/crypto.mjs';
 import { handleCustomerPortal } from '../cloudflare/customer-portal.mjs';
+import intake from '../cloudflare/intake-only.mjs';
+import { siteSecrets } from '../../../scripts/cloudflare/sites.mjs';
 
 const origin = 'https://trial.example.com';
 const admin = '/api/access-admin/requests';
 const root = fileURLToPath(new URL('../../../', import.meta.url));
+
+test('support submissions reach the private inbox and cannot be approved for access', async t => {
+  const f = await fixture(t);
+  const keys = await siteSecrets('intake', { INTAKE_KEY: f.intakeKey });
+  const input = { plan: 'support', email: 'visitor@example.com', contactName: 'Visitor',
+    message: 'How do I update my installation?', website: '', consent: true };
+  const submit = payload => intake.fetch(new Request(origin + '/api/waitlist', {
+    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), { ...f.env, ...keys });
+  assert.equal((await submit({ ...input, message: '' })).status, 400);
+  assert.equal((await submit(input)).status, 202);
+  assert.equal((await f.get(admin)).status, 401);
+  const { requests: [row] } = await (await f.get(admin, f.operatorToken)).json();
+  assert.equal(row.message, input.message);
+  assert.equal(row.plan, 'support');
+  assert.equal((await f.post(`${admin}/${row.id}/approve`, { maxUsers: 5 }, f.operatorToken)).status, 409);
+  assert.equal((await f.post(`${admin}/${row.id}/approve-development`, {}, f.operatorToken)).status, 409);
+});
 
 test('customer sign-in uses only mocked Resend while development-only identities retain manual delivery', { timeout: 15000 }, async t => {
   const messages = [];

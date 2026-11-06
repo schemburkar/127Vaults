@@ -11,6 +11,8 @@ const nav = [
   ['downloads.html', 'Downloads'],
   ['faq.html', 'FAQ'],
 ];
+const footerLinks = [...nav, ['terms.html', 'Terms of Service'], ['privacy.html', 'Privacy Policy'],
+  ['refunds.html', 'Refunds and Cancellation'], ['support.html', 'Support']];
 
 function page({ file, title, description, label, heading, intro, content }) {
   const links = nav.map(([href, text]) => `<a href="${href}"${(file === href || (file === 'security-technical.html' && href === 'security.html')) ? ' aria-current="page"' : ''}>${text}</a>`).join('');
@@ -23,7 +25,7 @@ function page({ file, title, description, label, heading, intro, content }) {
   <meta name="description" content="${description}">
   <title>${title} — 127 Vaults</title>
   <link rel="stylesheet" href="site.css?v=3">
-  <script src="theme.mjs?v=2" type="module"></script>${file === "product.html" ? '\n  <script src="tour.mjs?v=2" type="module"></script>' : ""}
+  <script src="theme.mjs?v=2" type="module"></script>${file === "support.html" ? '\n  <script src="access.mjs?v=4" type="module"></script>' : file === "product.html" ? '\n  <script src="tour.mjs?v=2" type="module"></script>' : ""}
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -37,12 +39,56 @@ function page({ file, title, description, label, heading, intro, content }) {
     <section class="page-hero"><div class="container"><span class="kicker">${label}</span><h1>${heading}</h1><p>${intro}</p></div></section>
     ${content}
   </main>
-  <footer><div class="container footer-inner"><a class="wordmark" href="index.html"><img class="brand-mark" src="brand-mark.svg" alt="" width="40" height="40"><img class="brand-wordmark" src="wordmark.svg" alt="127 Vaults" width="164" height="48"></a><p>Your vaults. Your devices. Your server or ours.</p><span>© 127Vaults</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" title="Switch theme"><svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z"/></svg></button></div><div class="container footer-links">${nav.map(([href, text]) => `<a href="${href}">${text}</a>`).join('')}</div></footer>
+  <footer><div class="container footer-inner"><a class="wordmark" href="index.html"><img class="brand-mark" src="brand-mark.svg" alt="" width="40" height="40"><img class="brand-wordmark" src="wordmark.svg" alt="127 Vaults" width="164" height="48"></a><p>Your vaults. Your devices. Your server or ours.</p><span>© 127Vaults</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" title="Switch theme"><svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z"/></svg></button></div><div class="container footer-links">${footerLinks.map(([href, text]) => `<a href="${href}">${text}</a>`).join('')}</div></footer>
 </body>
 </html>`;
 }
 
+const policy = content => `<section class="page-section"><div class="container faq-list">${content}</div></section>`;
 const pages = [
+  {
+    file: 'terms.html', title: 'Terms of Service', description: 'Terms for requesting access to and using 127Vaults Self-Hosted.',
+    label: 'POLICIES', heading: 'Terms of Service', intro: 'These terms cover the 127Vaults website and Self-Hosted access.',
+    content: policy(`
+      <article><h2>Requesting access</h2><p>Provide accurate contact details and keep invitation links private. Approved customers can activate a free 10-day trial on one self-hosted server. The trial starts when you activate the server.</p></article>
+      <article><h2>Operating your server</h2><p>You operate your infrastructure and are responsible for securing it, keeping backups, and protecting your credentials and recovery material. Use the software within the limits of your license and in accordance with applicable law.</p></article>
+      <article><h2>Paid offers</h2><p>When paid Commercial access is available, review the price, billing interval, license limits, commitment and cancellation terms in your offer before accepting it. Submitting an access request or activating a trial creates no purchase obligation. See our <a href="refunds.html">Refunds and Cancellation policy</a>.</p></article>
+      <article><h2>Questions</h2><p>Use the <a href="support.html">support form</a> for help with access, licensing or billing.</p></article>`)
+  },
+  {
+    file: 'privacy.html', title: 'Privacy Policy', description: 'How 127Vaults handles website, support, licensing and self-hosted vault data.',
+    label: 'POLICIES', heading: 'Privacy Policy', intro: 'How we handle your contact, installation and billing information.',
+    content: policy(`
+      <article><h2>Website, requests and support</h2><p>We use the contact details and information you submit to review access requests, provide downloads and licenses, and answer support questions. We store submissions encrypted and restrict access to authorized operators. We use security cookies and request information to protect forms against abuse.</p></article>
+      <article><h2>Self-hosted vaults</h2><p>Your devices encrypt vault contents before synchronization. Your server stores encrypted vault records and account, device and synchronization metadata. 127Vaults uses installation identifiers and license status to deliver and renew licenses. See our <a href="security.html">security page</a> for details.</p></article>
+      <article><h2>Service providers and billing</h2><p>Cloudflare hosts the website and access services and helps protect the forms. When Dodo Payments checkout is available and you use it, Dodo processes your payment and handles payment details. We use subscription and transaction status to manage your license and respond to billing questions.</p></article>
+      <article><h2>Retention and requests</h2><p>We retain contact and licensing records as needed to review requests and provide access or support. We may keep records longer for an active license, billing, disputes or legal obligations. To ask about your information or request access, correction or deletion, use our <a href="support.html">support form</a>.</p></article>`)
+  },
+  {
+    file: 'refunds.html', title: 'Refunds and Cancellation', description: 'How to request a refund or cancel a 127Vaults subscription.',
+    label: 'POLICIES', heading: 'Refunds and Cancellation', intro: 'How trials end and where to get help with a payment or renewal.',
+    content: policy(`
+      <article><h2>Free trials</h2><p>The 10-day self-hosted trial requires no payment method and ends automatically. To continue with an eligible paid offer, you must actively choose to subscribe.</p></article>
+      <article><h2>Stopping a renewal</h2><p>When paid subscriptions are available, use Manage subscription from your private invitation to stop automatic renewal before your next billing date. Access continues through the paid period. Review your offer for any separate contract commitments before subscribing. If you cannot access the subscription page, use our <a href="support.html">support form</a>.</p></article>
+      <article><h2>Requesting a refund</h2><p>Use the <a href="support.html">support form</a> with your purchase email, invoice reference and reason for the request. We review refund requests according to the terms shown with your purchase and applicable law. Cancelling renewal does not itself refund a payment.</p></article>`)
+  },
+  {
+    file: 'support.html', title: 'Contact Support', description: 'Contact 127Vaults about access, setup, privacy, licensing or billing.',
+    label: 'SUPPORT', heading: 'Contact support', intro: 'Send us a question about access, setup, privacy, licensing or billing. We’ll reply by email.',
+    content: `<section class="page-section"><div class="container access-grid"><div class="access-copy">
+      <h2>What to include</h2><p>Tell us what you need help with. For billing, include your invoice reference and use the email associated with your purchase. Keep vault contents, passwords, recovery keys, invitation links and card details out of your message.</p>
+      <p>Looking to try 127Vaults? <a href="get-started.html">Request access</a>.</p></div>
+      <div class="access-card"><h2>Send a message</h2><form id="waitlist-form" data-support novalidate>
+      <fieldset id="request-details" class="access-request-details">
+      <label class="access-field">Name<input name="contactName" autocomplete="name" maxlength="120" required></label>
+      <label class="access-field">Reply email<input name="email" type="email" autocomplete="email" maxlength="254" required></label>
+      <label class="access-field">Message <span>(up to 300 characters)</span><textarea name="message" rows="5" maxlength="300" required></textarea></label>
+      <div class="access-honeypot" aria-hidden="true"><label>Website<input name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
+      <label class="access-consent"><input type="checkbox" name="consent" required><span>I agree that 127Vaults may use these details to respond. See the <a href="privacy.html">Privacy Policy</a>.</span></label>
+      </fieldset><button class="button primary" type="submit" disabled>Send message</button>
+      <div id="access-verification" aria-label="Browser verification"></div><p class="access-status" id="access-status" role="status">Checking availability…</p>
+      </form></div></div></section>`
+  },
   {
     file: 'product.html', title: 'Product', description: 'Explore the offline-first, self-hosted design of 127Vaults and how private vaults are intended to work.',
     label: 'THE PRODUCT', heading: 'Passwords that stay close to you.',

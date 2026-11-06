@@ -99,7 +99,7 @@ async function refresh() {
     const email = cell(row.email); email.className = 'request-email';
     if (row.contactName) { const name = document.createElement('small'); name.textContent = row.contactName; email.append(name); }
     if (row.requestAlertState) { const note = document.createElement('small'); note.textContent = ({ sending: 'Email alert pending', accepted: 'Email alert submitted', unconfirmed: 'Email alert unconfirmed' })[row.requestAlertState] || 'Email alert unconfirmed'; email.append(note); }
-    cell(row.organization || '—'); cell(row.plan.charAt(0).toUpperCase() + row.plan.slice(1));
+    cell(row.message ?? (row.organization || '—')); cell(row.plan.charAt(0).toUpperCase() + row.plan.slice(1));
     const requested = cell(''); const time = document.createElement('time'); time.dateTime = row.receivedAt;
     time.textContent = new Date(row.receivedAt).toLocaleString(); requested.append(time);
     cell(row.requestedSeats ?? '—');
@@ -189,7 +189,7 @@ async function refresh() {
       });
       menuItems.append(button);
     };
-    if (row.state === 'requested') {
+    if (row.state === 'requested' && row.plan !== 'support') {
       const users = document.createElement('input'); users.type = 'number'; users.min = '1'; users.max = '100'; users.value = String(row.maxUsers ?? row.requestedSeats ?? 1);
       users.className = 'request-users'; users.setAttribute('aria-label', `Maximum vault users for ${row.email}`); usersCell.replaceChildren(users);
       if (['personal', 'commercial'].includes(row.plan)) act('Approve', 'approve', () => ({ maxUsers: Number(users.value) }), `Approve a 10-day trial for ${row.email}?`);
