@@ -9,10 +9,15 @@ import pg from 'pg';
 export const overlaySql = await readFile(new URL('./overlay.sql', import.meta.url), 'utf8');
 export const overlayChecksum = createHash('sha256').update(overlaySql.replaceAll('\r\n', '\n')).digest('hex');
 
-const invalid = message => { throw new Error(message); };
+export class CloudOperatorError extends Error {}
+const invalid = message => { throw new CloudOperatorError(message); };
 const regionValid = region => /^[a-z][a-z0-9-]{1,31}$/.test(region ?? '');
 const uuidValid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value ?? '');
 const validSeatLimit = value => Number.isInteger(value) && value >= 1 && value <= 2147483647;
+
+async function audit(client, actor, action, tenantId) {
+  if (actor !== undefined) await client.query('INSERT INTO cloud.operator_audit(actor,action,tenant_id) VALUES($1,$2,$3)', [actor, action, tenantId]);
+}
 
 const ownerEnrollmentReady = `EXISTS(SELECT 1 FROM vaults.opaque_server_setup s WHERE s.tenant_id=t.id)
   AND EXISTS(SELECT 1 FROM vaults.bootstrap_tokens b WHERE b.tenant_id=t.id AND b.consumed_at IS NOT NULL)
@@ -71,8 +76,8 @@ export async function verifyCloudDatabase(client, region) {
   }
   const roles = (await client.query(`SELECT r.rolname,r.rolcanlogin,r.rolbypassrls,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication,
     EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid) AS inherits_role
-    FROM pg_roles r WHERE r.rolname IN ('vaults_cloud_runtime','vaults_cloud_directory_owner')`)).rows;
-  if (roles.length !== 2 || roles.some(role => role.rolcanlogin || role.rolbypassrls || role.rolsuper ||
+    FROM pg_roles r WHERE r.rolname IN ('vaults_cloud_runtime','vaults_cloud_directory_owner','vaults_cloud_management')`)).rows;
+  if (roles.length !== 3 || roles.some(role => role.rolcanlogin || role.rolbypassrls || role.rolsuper ||
       role.rolcreatedb || role.rolcreaterole || role.rolreplication || role.inherits_role)) {
     invalid('Unsafe regional Cloud runtime role.');
   }
@@ -91,9 +96,10 @@ export async function verifyCloudDatabase(client, region) {
   return { region, schemaVersion, overlayChecksum };
 }
 
-export async function ensureCloudRuntimeLogin(client, { user, password }) {
-  if (!/^vaults_cloud_login_[a-z0-9_]{1,40}$/.test(user ?? '') || !/^[a-f0-9]{64}$/.test(password ?? '')) {
-    invalid('Dedicated Cloud runtime login and password required.');
+export async function ensureCloudRuntimeLogin(client, { user, password }, { management = false } = {}) {
+  const pattern = management ? /^vaults_cloud_manager_[a-z0-9_]{1,40}$/ : /^vaults_cloud_login_[a-z0-9_]{1,40}$/;
+  if (!pattern.test(user ?? '') || !/^[a-f0-9]{64}$/.test(password ?? '')) {
+    invalid('Dedicated Cloud database login and password required.');
   }
   return transaction(client, async () => {
     const exists = (await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [user])).rowCount > 0;
@@ -101,9 +107,21 @@ export async function ensureCloudRuntimeLogin(client, { user, password }) {
     const role = pg.escapeIdentifier(user);
     await client.query("SET LOCAL password_encryption = 'scram-sha-256'");
     await client.query(`CREATE ROLE ${role} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD ${pg.escapeLiteral(password)}`);
-    await client.query(`GRANT vaults_cloud_runtime TO ${role}`);
+    await client.query(`GRANT ${management ? 'vaults_cloud_management' : 'vaults_cloud_runtime'} TO ${role}`);
     return { runtimeUser: user, created: true };
   });
+}
+
+export async function verifyCloudManagementLogin(client) {
+  const result = await client.query(`SELECT r.rolcanlogin AND NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication)
+    AND current_user=session_user AND pg_has_role(current_user,'vaults_cloud_management','USAGE')
+    AND NOT EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles parent ON parent.oid=m.roleid
+      WHERE m.member=r.oid AND (parent.rolname<>'vaults_cloud_management' OR m.admin_option))
+    AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname IN ('cloud','vaults') AND n.nspowner=r.oid)
+    AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname IN ('cloud','vaults') AND c.relowner=r.oid) AS safe
+    FROM pg_roles r WHERE r.rolname=current_user`);
+  if (result.rows[0]?.safe !== true) throw new Error('Unsafe Cloud management database login.');
 }
 
 export async function reserveCloudTenant(client, { region, host, maxActiveUsers }) {
@@ -152,7 +170,7 @@ function validateOpaqueSetup(setupBytes) {
   }
 }
 
-export async function provisionCloudTenant(client, { region, host, maxActiveUsers, ownerIdentityId, ownerEmail, createOpaqueSetup }) {
+export async function provisionCloudTenant(client, { region, host, maxActiveUsers, ownerIdentityId, ownerEmail, createOpaqueSetup, actor }) {
   validateTenantHost(region, host);
   validateControlOwner(ownerIdentityId, ownerEmail);
   if (!validSeatLimit(maxActiveUsers)) invalid('Valid Cloud seat limit required.');
@@ -176,6 +194,7 @@ export async function provisionCloudTenant(client, { region, host, maxActiveUser
     await client.query(`INSERT INTO cloud.tenants(id,region,host,max_active_users,control_owner_id,control_owner_email,state)
       VALUES($1,$2,$3,$4,$5,$6,'prepared')`, [id, region, host, maxActiveUsers, ownerIdentityId, ownerEmail]);
     await client.query('INSERT INTO vaults.opaque_server_setup(tenant_id,setup_bytes) VALUES($1,$2)', [id, setupBytes]);
+    await audit(client, actor, 'provision', id);
     return { id, region, host, state: 'prepared', reused: false };
   });
 }
@@ -197,7 +216,7 @@ export async function prepareCloudTenant(client, { region, host, setupBytes }) {
   });
 }
 
-export async function issueCloudBootstrapToken(client, { region, host, tokenKey }) {
+export async function issueCloudBootstrapToken(client, { region, host, tokenKey, actor }) {
   if (!regionValid(region) || !Buffer.isBuffer(tokenKey) || tokenKey.length !== 32) invalid('Valid Cloud bootstrap key required.');
   cloudTenantDirectory([{ id: randomUUID(), host, region, state: 'reserved' }], region);
   return transaction(client, async () => {
@@ -211,14 +230,15 @@ export async function issueCloudBootstrapToken(client, { region, host, tokenKey 
     const raw = randomBytes(32);
     await client.query(`INSERT INTO vaults.bootstrap_tokens(tenant_id,token_digest,expires_at,consumed_at)
       VALUES($1,$2,now()+interval '60 minutes',NULL)
-      ON CONFLICT(tenant_id) DO UPDATE SET token_digest=excluded.token_digest,expires_at=excluded.expires_at,
+      ON CONFLICT(tenant_id) DO UPDATE SET token_digest=$2,expires_at=now()+interval '60 minutes',
         consumed_at=NULL,created_at=now()`, [tenant.id, tokenDigest(tokenKey, 'bootstrap', raw)]);
+    await audit(client, actor, 'issue-setup', tenant.id);
     const token = `127V-B1-${raw.toString('base64url')}`;
     return { id: tenant.id, host, region, token, setupUrl: `https://${host}/#ownerSetup=${token}` };
   });
 }
 
-export async function activateCloudTenant(client, { region, host }) {
+export async function activateCloudTenant(client, { region, host, actor }) {
   validateTenantHost(region, host);
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
@@ -227,7 +247,10 @@ export async function activateCloudTenant(client, { region, host }) {
     if (!tenant || !['prepared', 'active'].includes(tenant.state)) invalid('Tenant is not prepared for activation.');
     if (!tenant.control_owner_id) invalid('Verified Cloud control owner is required.');
     if (!tenant.owner_ready) invalid('Cloud tenant owner enrollment is incomplete.');
-    if (tenant.state === 'prepared') await client.query("UPDATE cloud.tenants SET state='active',activated_at=now() WHERE id=$1", [tenant.id]);
+    if (tenant.state === 'prepared') {
+      await client.query("UPDATE cloud.tenants SET state='active',activated_at=now() WHERE id=$1", [tenant.id]);
+      await audit(client, actor, 'activate', tenant.id);
+    }
     return { id: tenant.id, host, region, state: 'active', reused: tenant.state === 'active' };
   });
 }
@@ -246,7 +269,7 @@ export async function readCloudTenants(client, { region, host = null }) {
   return result.rows;
 }
 
-export async function setCloudTenantSuspension(client, { region, host, suspended }) {
+export async function setCloudTenantSuspension(client, { region, host, suspended, actor }) {
   validateTenantHost(region, host);
   if (typeof suspended !== 'boolean') invalid('Invalid Cloud suspension state.');
   return transaction(client, async () => {
@@ -256,12 +279,13 @@ export async function setCloudTenantSuspension(client, { region, host, suspended
     const state = suspended ? 'suspended' : 'active';
     if (tenant.state !== state) {
       await client.query("UPDATE cloud.tenants SET state=$2,suspended_at=CASE WHEN $2='suspended' THEN now() ELSE NULL END WHERE id=$1", [tenant.id, state]);
+      await audit(client, actor, suspended ? 'suspend' : 'resume', tenant.id);
     }
     return { id: tenant.id, region, host, state, reused: tenant.state === state };
   });
 }
 
-export async function setCloudTenantSeatLimit(client, { region, host, maxActiveUsers }) {
+export async function setCloudTenantSeatLimit(client, { region, host, maxActiveUsers, actor }) {
   validateTenantHost(region, host);
   if (!validSeatLimit(maxActiveUsers)) invalid('Valid Cloud seat limit required.');
   return transaction(client, async () => {
@@ -275,6 +299,7 @@ export async function setCloudTenantSeatLimit(client, { region, host, maxActiveU
     if (maxActiveUsers < activeUsers + reservedSeats) invalid('Seat limit is below current usage.');
     if (maxActiveUsers !== tenant.max_active_users) {
       await client.query('UPDATE cloud.tenants SET max_active_users=$2 WHERE id=$1', [tenant.id, maxActiveUsers]);
+      await audit(client, actor, 'set-seats', tenant.id);
     }
     return { id: tenant.id, region, host, maxActiveUsers, activeUsers, reservedSeats };
   });

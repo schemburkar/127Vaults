@@ -63,6 +63,14 @@ CREATE TABLE cloud.tenants (
 );
 CREATE INDEX cloud_tenants_region_state ON cloud.tenants(region,state);
 
+CREATE TABLE cloud.operator_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor text NOT NULL CHECK (char_length(actor) BETWEEN 1 AND 128),
+  action text NOT NULL CHECK (action IN ('provision','issue-setup','activate','suspend','resume','set-seats')),
+  tenant_id uuid NOT NULL REFERENCES cloud.tenants(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 DO $directory_role$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='vaults_cloud_directory_owner') THEN
@@ -184,3 +192,37 @@ BEGIN
 END $verify$;
 REVOKE ALL ON FUNCTION cloud.verify_rls() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION cloud.verify_rls() TO vaults_cloud_runtime;
+
+DO $management_role$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='vaults_cloud_management') THEN
+    CREATE ROLE vaults_cloud_management NOLOGIN NOBYPASSRLS;
+  END IF;
+END $management_role$;
+GRANT USAGE ON SCHEMA cloud, vaults TO vaults_cloud_management;
+GRANT SELECT ON cloud.schema_manifest, cloud.tenants, vaults.schema_version TO vaults_cloud_management;
+GRANT INSERT ON cloud.tenants TO vaults_cloud_management;
+GRANT UPDATE (state,activated_at,suspended_at,max_active_users) ON cloud.tenants TO vaults_cloud_management;
+GRANT INSERT (actor,action,tenant_id) ON cloud.operator_audit TO vaults_cloud_management;
+GRANT EXECUTE ON FUNCTION cloud.verify_rls() TO vaults_cloud_management;
+
+GRANT INSERT (id) ON vaults.installation TO vaults_cloud_management;
+CREATE POLICY cloud_management_install ON vaults.installation FOR INSERT TO vaults_cloud_management WITH CHECK (true);
+GRANT SELECT (tenant_id), INSERT (tenant_id,setup_bytes) ON vaults.opaque_server_setup TO vaults_cloud_management;
+CREATE POLICY cloud_management_setup_read ON vaults.opaque_server_setup FOR SELECT TO vaults_cloud_management USING (true);
+CREATE POLICY cloud_management_setup_insert ON vaults.opaque_server_setup FOR INSERT TO vaults_cloud_management WITH CHECK (true);
+GRANT SELECT (tenant_id,consumed_at), INSERT (tenant_id,token_digest,expires_at,consumed_at),
+  UPDATE (token_digest,expires_at,consumed_at,created_at) ON vaults.bootstrap_tokens TO vaults_cloud_management;
+CREATE POLICY cloud_management_bootstrap_read ON vaults.bootstrap_tokens FOR SELECT TO vaults_cloud_management USING (true);
+CREATE POLICY cloud_management_bootstrap_insert ON vaults.bootstrap_tokens FOR INSERT TO vaults_cloud_management WITH CHECK (true);
+CREATE POLICY cloud_management_bootstrap_update ON vaults.bootstrap_tokens FOR UPDATE TO vaults_cloud_management USING (true) WITH CHECK (true);
+GRANT SELECT (tenant_id,id,server_role,enrollment_state,suspended_at) ON vaults.accounts TO vaults_cloud_management;
+GRANT SELECT (tenant_id,account_id) ON vaults.authentication_credentials TO vaults_cloud_management;
+GRANT SELECT (tenant_id,account_id,active,lifecycle_status) ON vaults.devices TO vaults_cloud_management;
+GRANT SELECT (tenant_id,id,revoked_at,expires_at) ON vaults.invitation_records TO vaults_cloud_management;
+GRANT SELECT (tenant_id,id,redeemed_at) ON vaults.invitation_emails TO vaults_cloud_management;
+CREATE POLICY cloud_management_accounts ON vaults.accounts FOR SELECT TO vaults_cloud_management USING (true);
+CREATE POLICY cloud_management_credentials ON vaults.authentication_credentials FOR SELECT TO vaults_cloud_management USING (true);
+CREATE POLICY cloud_management_devices ON vaults.devices FOR SELECT TO vaults_cloud_management USING (true);
+CREATE POLICY cloud_management_invitations ON vaults.invitation_records FOR SELECT TO vaults_cloud_management USING (true);
+CREATE POLICY cloud_management_invitation_emails ON vaults.invitation_emails FOR SELECT TO vaults_cloud_management USING (true);

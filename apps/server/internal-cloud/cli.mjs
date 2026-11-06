@@ -4,7 +4,8 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { runtimeDatabaseConfig } from '../src/runtime-config.mjs';
 import { activateCloudTenant, ensureCloudRuntimeLogin, initializeCloudDatabase, issueCloudBootstrapToken, prepareCloudTenant,
-  provisionCloudTenant, readCloudTenants, reserveCloudTenant, setCloudTenantSeatLimit, setCloudTenantSuspension, verifyCloudDatabase } from './operator.mjs';
+  provisionCloudTenant, readCloudTenants, reserveCloudTenant, setCloudTenantSeatLimit, setCloudTenantSuspension, verifyCloudDatabase,
+  verifyCloudManagementLogin } from './operator.mjs';
 import { verifyCloudRuntimeRole } from './scoped-pool.mjs';
 
 const [command, ...args] = process.argv.slice(2);
@@ -17,10 +18,10 @@ if (process.env.VAULTS_CLOUD_REGION && process.env.VAULTS_CLOUD_REGION !== 'glob
   throw new Error('The first Cloud deployment uses the internal global location only.');
 }
 const region = 'global';
-const commandArity = new Map(Object.entries({ initialize: 0, deploy: 0, verify: 0, reserve: 2, prepare: 1, bootstrap: 1,
+const commandArity = new Map(Object.entries({ initialize: 0, deploy: 0, 'deploy-management': 0, verify: 0, reserve: 2, prepare: 1, bootstrap: 1,
   provision: 4, list: 0, inspect: 1, activate: 1, suspend: 1, resume: 1, 'set-seats': 2, 'setup-link': 1 }));
 if (commandArity.get(command) !== args.length) {
-  throw new Error('Use initialize, deploy, verify, list, inspect <host>, provision <host> <seat-limit> <owner-id> <owner-email>, reserve <host> <seat-limit>, prepare <host>, bootstrap <host>, setup-link <host>, activate <host>, suspend <host>, resume <host>, or set-seats <host> <seat-limit>.');
+  throw new Error(`Invalid arguments. Commands: ${[...commandArity.keys()].join(', ')}.`);
 }
 
 async function loadOpaqueSetupFactory() {
@@ -36,20 +37,23 @@ try {
   await client.connect();
   let result;
   if (command === 'initialize') result = await initializeCloudDatabase(client, region);
-  else if (command === 'deploy') {
+  else if (command === 'deploy' || command === 'deploy-management') {
+    const management = command === 'deploy-management';
+    const prefix = management ? 'VAULTS_CLOUD_MANAGEMENT_DATABASE' : 'VAULTS_CLOUD_RUNTIME_DATABASE';
+    const user = process.env[`${prefix}_USER`];
     const runtimeDatabase = { ...database, ...runtimeDatabaseConfig({ ...process.env,
-      VAULTS_DATABASE_USER: process.env.VAULTS_CLOUD_RUNTIME_DATABASE_USER,
-      VAULTS_DATABASE_PASSWORD_FILE: process.env.VAULTS_CLOUD_RUNTIME_DATABASE_PASSWORD_FILE
+      VAULTS_DATABASE_USER: user,
+      VAULTS_DATABASE_PASSWORD_FILE: process.env[`${prefix}_PASSWORD_FILE`]
     }) };
-    if (!process.env.VAULTS_CLOUD_RUNTIME_DATABASE_USER || runtimeDatabase.user === database.user) {
+    if (!user || runtimeDatabase.user === database.user) {
       throw new Error('Cloud operator and runtime logins must differ.');
     }
-    const schema = await initializeCloudDatabase(client, region, { allowInitialized: true });
-    const login = await ensureCloudRuntimeLogin(client, runtimeDatabase);
+    const schema = management ? await verifyCloudDatabase(client, region) : await initializeCloudDatabase(client, region, { allowInitialized: true });
+    const login = await ensureCloudRuntimeLogin(client, runtimeDatabase, { management });
     const runtime = new pg.Client(runtimeDatabase);
     try {
       await runtime.connect();
-      await verifyCloudRuntimeRole(runtime);
+      await (management ? verifyCloudManagementLogin(runtime) : verifyCloudRuntimeRole(runtime));
     } finally {
       await runtime.end();
     }

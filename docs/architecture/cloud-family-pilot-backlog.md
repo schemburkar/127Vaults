@@ -1,6 +1,6 @@
 # Cloud family pilot backlog
 
-Progress is **11 of 39**. Items 01–05 retain their original numbers. The original umbrella items are split below into code deliverables and environment work. Use these numbers for subsequent updates. Hosted verification and family handoff are separate from implementation.
+Progress is **15 of 39**. Items 01–05 retain their original numbers. The original umbrella items are split below into code deliverables and environment work. Use these numbers for subsequent updates. Hosted verification and family handoff are separate from implementation.
 
 Target one shared deployment in one location with private PostgreSQL. Use `cloud.127vaults.com` as the family-facing entry point and separate canonical origins for the family vaults. Use `admin.127vaults.com` for routine operator actions. The deployment initializes the database from within the hosting environment. The operator uses a browser. Public signup and checkout stay closed.
 
@@ -18,10 +18,10 @@ Target one shared deployment in one location with private PostgreSQL. Use `cloud
 - [x] **09. Activate, suspend, and resume tenants.** Activation requires completed owner enrollment. Suspension blocks new tenant requests and resumption restores routing.
 - [x] **10. Change a tenant seat cap.** Serialize with enrollment and reject reductions below active users plus reserved invitation seats.
 - [x] **11. Finish the browser owner setup handoff.** Open the Cloud setup form from the capability link and explain the pending activation state after registration.
-- [ ] **12. Define management API commands and errors.** Expose typed list, provision, issue setup link, activate, suspend, resume, and seat-change operations.
-- [ ] **13. Isolate the management service.** Use a dedicated listener and database grants for tenant metadata and lifecycle operations.
-- [ ] **14. Authenticate the Admin Worker.** Configure a scoped service credential and protect the management endpoint from browser and family traffic.
-- [ ] **15. Record operator actions.** Store attributable lifecycle and seat changes without logging setup capabilities or credentials.
+- [x] **12. Define management API commands and errors.** The private command API implements list, provision, issue setup link, activate, suspend, resume, and seat changes with bounded JSON and stable error codes.
+- [x] **13. Isolate the management service.** A separate HTTPS entry point uses a dedicated PostgreSQL login. The local rehearsal exercised all commands under that login and confirmed it cannot read OPAQUE setup bytes.
+- [x] **14. Implement management service authentication.** The listener requires a dedicated service token and operator identifier and rejects browser-origin requests. Steps 16–17 cover authenticating the operator and wiring the Admin Worker.
+- [x] **15. Record operator actions.** The management API records successful mutations in the same transaction as the change. The audit table contains action, tenant, actor, and timestamp. The family runtime cannot read it.
 - [ ] **16. Authorize named operators.** Implement identity verification, MFA enforcement, and a Cloud management permission for production actions.
 - [ ] **17. Connect the Admin Worker.** Register the deployment server-side, propagate verified operator identity, and translate management errors for the portal.
 - [ ] **18. Build the Cloud tenant directory page.** Show deployment, tenant URL, owner, state, readiness, and seat use in the admin portal.

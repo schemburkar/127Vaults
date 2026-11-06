@@ -12,7 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { activateCloudTenant, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
+import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
+import { createCloudManagementHandler } from '../../../apps/server/internal-cloud/management.mjs';
 import { requireSchema } from '../../../apps/server/src/schema.mjs';
 import { createTenantScopedPool, verifyCloudRuntimeRole } from '../../../apps/server/internal-cloud/scoped-pool.mjs';
 import { createInternalCloudEnrollmentBoundary, createInternalCloudRequestBoundary } from '../../../apps/server/internal-cloud/request-boundary.mjs';
@@ -322,6 +323,41 @@ try {
   assert.equal((await activateCloudTenant(admin, { region: 'global', host: carol.host })).state, 'active');
   await assert.rejects(enrollmentCall(carol, '/api/v1/ceremony'), /Unknown or inactive tenant/);
   assert.equal((await admin.query('SELECT state FROM cloud.tenants WHERE id=$1', [dave.id])).rows[0].state, 'prepared');
+  const manager = { user: 'vaults_cloud_manager_test', password: randomBytes(32).toString('hex') };
+  await ensureCloudRuntimeLogin(admin, manager, { management: true });
+  const managementPool = new pg.Pool({ ...manager, host: '127.0.0.1', port, database: 'vaults_cloud_test', max: 1 });
+  try {
+    const serviceToken = randomBytes(32).toString('hex');
+    const manage = await createCloudManagementHandler({ pool: managementPool, serviceToken, tokenKey: ownerKey,
+      createOpaqueSetup: () => Buffer.alloc(96), tenantSuffix: 'asia.example.com' });
+    const invoke = async (command, input, authorization = `Bearer ${serviceToken}`) => {
+      const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(input))]), {
+        url: `/internal/cloud/v1/${command}`, method: 'POST', socket: { encrypted: true },
+        headers: { authorization, 'x-127v-operator': 'pilot-operator', 'content-type': 'application/json' }
+      });
+      let status, body;
+      await manage(req, { writeHead(code) { status = code; }, end(value) { body = JSON.parse(value); } });
+      assert.equal(status, authorization === `Bearer ${serviceToken}` ? 200 : 401, JSON.stringify(body));
+      return body;
+    };
+    await invoke('list', {}, 'Bearer invalid');
+    const host = 'eve.asia.example.com';
+    const provisioned = await invoke('provision', { host, maxActiveUsers: 3, ownerIdentityId: randomUUID(), ownerEmail: 'eve@example.com' });
+    assert.equal(provisioned.state, 'prepared');
+    const firstLink = (await invoke('issue-setup', { host })).setupUrl;
+    assert.notEqual((await invoke('issue-setup', { host })).setupUrl, firstLink);
+    assert.equal((await invoke('list', {})).find(tenant => tenant.host === host).maxActiveUsers, 3);
+    assert.equal((await invoke('activate', { host: carol.host })).state, 'active');
+    assert.equal((await invoke('set-seats', { host: alice.host, maxActiveUsers: 4 })).maxActiveUsers, 4);
+    assert.equal((await invoke('suspend', { host: alice.host })).state, 'suspended');
+    assert.equal((await invoke('resume', { host: alice.host })).state, 'active');
+    await assert.rejects(managementPool.query('SELECT setup_bytes FROM vaults.opaque_server_setup'), /permission denied/);
+    await assert.rejects(runtimePool.query('SELECT actor FROM cloud.operator_audit'), /permission denied/);
+    assert.deepEqual((await admin.query('SELECT action FROM cloud.operator_audit WHERE tenant_id=$1 ORDER BY action', [provisioned.id])).rows,
+      [{ action: 'issue-setup' }, { action: 'issue-setup' }, { action: 'provision' }]);
+  } finally {
+    await managementPool.end();
+  }
   run('exec', name, 'openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
     '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com`,
     '-keyout', '/tmp/cloud-test.key', '-out', '/tmp/cloud-test.crt');
