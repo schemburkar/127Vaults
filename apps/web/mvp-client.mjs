@@ -445,6 +445,8 @@ async function registrationSignature(candidate, record, key) {
     await crypto.subtle.sign("Ed25519", key, cat(...parts)),
   );
 }
+let cloudOwnerSetup = false;
+
 async function setup() {
   let stage = "validating setup fields";
   setBusy(true);
@@ -552,7 +554,9 @@ async function setup() {
     showLoginPassword();
     status(
       "login-status",
-      "Account created. Enter your master password to log in.",
+      cloudOwnerSetup
+        ? "Account created. Sign in after your vault has been activated."
+        : "Account created. Enter your master password to log in.",
     );
     msg("Registration complete.", "success");
   } catch (e) {
@@ -2746,6 +2750,14 @@ try {
     setupState = { ownerRequired: false };
   }
   ownerSetupRequired = setupState.ownerRequired === true;
+  cloudOwnerSetup = setupState.deployment === "cloud" && ownerSetupRequired;
+  if (setupState.deployment === "cloud") {
+    const ownerSetupFragment = location.hash.match(/^#ownerSetup=(127V-B1-[A-Za-z0-9_-]{43})$/);
+    if (ownerSetupFragment) {
+      history.replaceState(history.state, "", location.pathname + location.search);
+      if (cloudOwnerSetup) $("bootstrap").value = ownerSetupFragment[1];
+    }
+  }
   $("show-registration").hidden = !ownerSetupRequired;
   if ($('register-browser-device')) $('register-browser-device').hidden = ownerSetupRequired || !!identity;
   $("registration-exit").hidden = ownerSetupRequired;

@@ -3,7 +3,8 @@ import pg from 'pg';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { runtimeDatabaseConfig } from '../src/runtime-config.mjs';
-import { ensureCloudRuntimeLogin, initializeCloudDatabase, issueCloudBootstrapToken, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from './operator.mjs';
+import { activateCloudTenant, ensureCloudRuntimeLogin, initializeCloudDatabase, issueCloudBootstrapToken, prepareCloudTenant,
+  provisionCloudTenant, readCloudTenants, reserveCloudTenant, setCloudTenantSeatLimit, setCloudTenantSuspension, verifyCloudDatabase } from './operator.mjs';
 import { verifyCloudRuntimeRole } from './scoped-pool.mjs';
 
 const [command, ...args] = process.argv.slice(2);
@@ -16,9 +17,18 @@ if (process.env.VAULTS_CLOUD_REGION && process.env.VAULTS_CLOUD_REGION !== 'glob
   throw new Error('The first Cloud deployment uses the internal global location only.');
 }
 const region = 'global';
-if (!['initialize', 'deploy', 'verify', 'reserve', 'prepare', 'bootstrap'].includes(command) ||
-    args.length !== ({ reserve: 2, prepare: 1, bootstrap: 1 }[command] ?? 0)) {
-  throw new Error('Use initialize, deploy, verify, reserve <canonical-host> <seat-limit>, prepare <canonical-host>, or bootstrap <canonical-host>.');
+const commandArity = new Map(Object.entries({ initialize: 0, deploy: 0, verify: 0, reserve: 2, prepare: 1, bootstrap: 1,
+  provision: 4, list: 0, inspect: 1, activate: 1, suspend: 1, resume: 1, 'set-seats': 2, 'setup-link': 1 }));
+if (commandArity.get(command) !== args.length) {
+  throw new Error('Use initialize, deploy, verify, list, inspect <host>, provision <host> <seat-limit> <owner-id> <owner-email>, reserve <host> <seat-limit>, prepare <host>, bootstrap <host>, setup-link <host>, activate <host>, suspend <host>, resume <host>, or set-seats <host> <seat-limit>.');
+}
+
+async function loadOpaqueSetupFactory() {
+  if (!process.env.VAULTS_OPAQUE_NODE_MODULE) throw new Error('Reviewed OPAQUE module required.');
+  const generated = await import(pathToFileURL(process.env.VAULTS_OPAQUE_NODE_MODULE).href);
+  if (typeof generated.default === 'function') await generated.default();
+  if (typeof generated.ExperimentalOpaqueBridge?.server_setup !== 'function') throw new Error('Reviewed OPAQUE setup unavailable.');
+  return () => Buffer.from(generated.ExperimentalOpaqueBridge.server_setup());
 }
 const database = { ...runtimeDatabaseConfig(process.env), connectionTimeoutMillis: 3000, statement_timeout: 30000 };
 const client = new pg.Client(database);
@@ -46,14 +56,21 @@ try {
     result = { ...schema, ...login };
   }
   else if (command === 'verify') result = await verifyCloudDatabase(client, region);
+  else if (command === 'list' || command === 'inspect') {
+    result = { tenants: await readCloudTenants(client, { region, host: args[0] ?? null }) };
+  } else if (command === 'provision') {
+    result = await provisionCloudTenant(client, { region, host: args[0], maxActiveUsers: Number(args[1]),
+      ownerIdentityId: args[2], ownerEmail: args[3], createOpaqueSetup: await loadOpaqueSetupFactory() });
+  } else if (command === 'activate') result = await activateCloudTenant(client, { region, host: args[0] });
+  else if (command === 'suspend' || command === 'resume') {
+    result = await setCloudTenantSuspension(client, { region, host: args[0], suspended: command === 'suspend' });
+  } else if (command === 'set-seats') {
+    result = await setCloudTenantSeatLimit(client, { region, host: args[0], maxActiveUsers: Number(args[1]) });
+  }
   else if (command === 'reserve') result = await reserveCloudTenant(client, { region, host: args[0], maxActiveUsers: Number(args[1]) });
   else if (command === 'prepare') {
-    if (!process.env.VAULTS_OPAQUE_NODE_MODULE) throw new Error('Reviewed OPAQUE module required.');
-    const generated = await import(pathToFileURL(process.env.VAULTS_OPAQUE_NODE_MODULE).href);
-    if (typeof generated.default === 'function') await generated.default();
-    if (!generated.ExperimentalOpaqueBridge?.server_setup) throw new Error('Reviewed OPAQUE setup unavailable.');
-    result = await prepareCloudTenant(client, { region, host: args[0],
-      setupBytes: Buffer.from(generated.ExperimentalOpaqueBridge.server_setup()) });
+    const createOpaqueSetup = await loadOpaqueSetupFactory();
+    result = await prepareCloudTenant(client, { region, host: args[0], setupBytes: createOpaqueSetup() });
   } else {
     const output = process.env.VAULTS_CLOUD_BOOTSTRAP_OUTPUT;
     const keyPath = process.env.VAULTS_TOKEN_KEY_FILE;
@@ -62,12 +79,13 @@ try {
     }
     const tokenKey = await readFile(keyPath);
     result = await issueCloudBootstrapToken(client, { region, host: args[0], tokenKey });
-    await writeFile(output, `${result.token}\n`, { encoding: 'ascii', mode: 0o600, flag: 'wx' });
+    const value = command === 'setup-link' ? result.setupUrl : result.token;
+    await writeFile(output, `${value}\n`, { encoding: 'ascii', mode: 0o600, flag: 'wx' });
     result = { id: result.id, region, host: result.host, bootstrapTokenWritten: true };
   }
   console.log(JSON.stringify({ internalCloud: true, command, ...result }));
 } catch {
-  console.error('Internal Cloud operation failed; no tenant has been activated.');
+  console.error('Internal Cloud operation failed.');
   process.exitCode = 1;
 } finally {
   await client.end().catch(() => {});
