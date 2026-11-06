@@ -2749,14 +2749,18 @@ try {
   $("show-registration").hidden = !ownerSetupRequired;
   if ($('register-browser-device')) $('register-browser-device').hidden = ownerSetupRequired || !!identity;
   $("registration-exit").hidden = ownerSetupRequired;
-  $("setup-guidance").textContent = setupState.licenseMode === "active"
+  $("setup-guidance").textContent = setupState.deployment === "cloud"
+    ? "Enter the one-time setup code you received for this vault."
+    : setupState.licenseMode === "active"
     ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."
     : "Install a signed license on the server, then run install bootstrap and enter its one-time code below.";
   startupReady = true;
   setBusy(false);
   if (ownerSetupRequired) showRegistration();
   else showLogin();
-  msg(ownerSetupRequired ? "Create the first owner for this server." : identity ? "Ready to sign in." : "This browser needs device enrollment from an existing user.");
+  msg(ownerSetupRequired ? "Create the first owner for this server." : setupState.activationPending
+    ? "Owner setup is complete. Reload this page after your vault is activated."
+    : identity ? "Ready to sign in." : "This browser needs device enrollment from an existing user.");
   $("state").textContent = ownerSetupRequired ? "First owner setup" : "Locked";
 } catch (e) {
   msg(

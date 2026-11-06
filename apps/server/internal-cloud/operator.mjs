@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { tokenDigest } from '../src/onboarding.mjs';
 import { cloudTenantDirectory } from '../src/tenant-context.mjs';
 import { schemaChecksum, schemaSql, schemaVersion } from '../src/schema.mjs';
+import pg from 'pg';
 
 export const overlaySql = await readFile(new URL('./overlay.sql', import.meta.url), 'utf8');
 export const overlayChecksum = createHash('sha256').update(overlaySql.replaceAll('\r\n', '\n')).digest('hex');
@@ -25,9 +26,12 @@ async function transaction(client, action) {
   }
 }
 
-export async function initializeCloudDatabase(client, region) {
+export async function initializeCloudDatabase(client, region, { allowInitialized = false } = {}) {
   if (!regionValid(region)) invalid('Invalid region.');
   return transaction(client, async () => {
+    if (allowInitialized && (await client.query("SELECT to_regclass('cloud.schema_manifest') AS manifest")).rows[0].manifest) {
+      return { ...(await verifyCloudDatabase(client, region)), initialized: false };
+    }
     const occupied = await client.query(`SELECT 1 FROM pg_namespace WHERE nspname NOT IN ('public', 'information_schema') AND nspname NOT LIKE 'pg_%'
       UNION ALL SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
       UNION ALL SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
@@ -38,7 +42,7 @@ export async function initializeCloudDatabase(client, region) {
     await client.query(overlaySql);
     await client.query('INSERT INTO cloud.schema_manifest(singleton,version,region,base_checksum,overlay_checksum) VALUES(true,1,$1,$2,$3)', [region, schemaChecksum, overlayChecksum]);
     await client.query('SELECT cloud.verify_rls()');
-    return { region, schemaVersion, overlayChecksum };
+    return { region, schemaVersion, overlayChecksum, initialized: true };
   });
 }
 
@@ -73,21 +77,37 @@ export async function verifyCloudDatabase(client, region) {
   return { region, schemaVersion, overlayChecksum };
 }
 
-export async function reserveCloudTenant(client, { region, host }) {
+export async function ensureCloudRuntimeLogin(client, { user, password }) {
+  if (!/^vaults_cloud_login_[a-z0-9_]{1,40}$/.test(user ?? '') || !/^[a-f0-9]{64}$/.test(password ?? '')) {
+    invalid('Dedicated Cloud runtime login and password required.');
+  }
+  return transaction(client, async () => {
+    const exists = (await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [user])).rowCount > 0;
+    if (exists) return { runtimeUser: user, created: false };
+    const role = pg.escapeIdentifier(user);
+    await client.query("SET LOCAL password_encryption = 'scram-sha-256'");
+    await client.query(`CREATE ROLE ${role} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD ${pg.escapeLiteral(password)}`);
+    await client.query(`GRANT vaults_cloud_runtime TO ${role}`);
+    return { runtimeUser: user, created: true };
+  });
+}
+
+export async function reserveCloudTenant(client, { region, host, maxActiveUsers }) {
   if (!regionValid(region) || typeof host !== 'string' || host !== host.toLowerCase()) invalid('Invalid tenant reservation.');
   // Reuse the request resolver's exact identity validation before any write.
   cloudTenantDirectory([{ id: randomUUID(), host, region, state: 'reserved' }], region);
+  if (!Number.isInteger(maxActiveUsers) || maxActiveUsers < 1 || maxActiveUsers > 2147483647) invalid('Valid Cloud seat limit required.');
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
-    const existing = (await client.query('SELECT id,region,host,state FROM cloud.tenants WHERE host=$1 FOR UPDATE', [host])).rows[0];
+    const existing = (await client.query('SELECT id,region,host,state,max_active_users FROM cloud.tenants WHERE host=$1 FOR UPDATE', [host])).rows[0];
     if (existing) {
-      if (existing.region !== region || existing.state !== 'reserved') invalid('Tenant reservation conflicts with existing state.');
-      return { id: existing.id, region, host, state: existing.state, reused: true };
+      if (existing.region !== region || existing.state !== 'reserved' || existing.max_active_users !== maxActiveUsers) invalid('Tenant reservation conflicts with existing state.');
+      return { id: existing.id, region, host, maxActiveUsers, state: existing.state, reused: true };
     }
     const id = randomUUID();
     await client.query('INSERT INTO vaults.installation(id) VALUES($1)', [id]);
-    await client.query('INSERT INTO cloud.tenants(id,region,host) VALUES($1,$2,$3)', [id, region, host]);
-    return { id, region, host, state: 'reserved', reused: false };
+    await client.query('INSERT INTO cloud.tenants(id,region,host,max_active_users) VALUES($1,$2,$3,$4)', [id, region, host, maxActiveUsers]);
+    return { id, region, host, maxActiveUsers, state: 'reserved', reused: false };
   });
 }
 

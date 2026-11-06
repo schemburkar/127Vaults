@@ -4,15 +4,22 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createCipheriv, createHmac, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
+import { once } from 'node:events';
+import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { request as httpsRequest } from 'node:https';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { activateCloudTenant, initializeCloudDatabase, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
+import { fileURLToPath } from 'node:url';
+import { activateCloudTenant, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
 import { requireSchema } from '../../../apps/server/src/schema.mjs';
 import { createTenantScopedPool, verifyCloudRuntimeRole } from '../../../apps/server/internal-cloud/scoped-pool.mjs';
 import { createInternalCloudEnrollmentBoundary, createInternalCloudRequestBoundary } from '../../../apps/server/internal-cloud/request-boundary.mjs';
 import { PgAuthStore } from '../../../apps/server/src/auth-pg.mjs';
 import { createInternalCloudEnrollmentHandlers, createInternalCloudTenantHandlers } from '../../../apps/server/internal-cloud/tenant-handlers.mjs';
 import { registrationActivationBytes } from '../../../apps/server/src/opaque-adapter.mjs';
+import { createCloudHttpsServer } from '../../../apps/server/internal-cloud/serve.mjs';
 const pg = createRequire(new URL('../../../apps/server/package.json', import.meta.url))('pg');
 
 if (process.env.VAULTS_INTERNAL_CLOUD_LIVE_TEST !== '1') throw new Error('Explicit disposable-test opt-in required.');
@@ -50,29 +57,54 @@ try {
     }
   }
   if (!admin) throw new Error('Disposable PostgreSQL TCP service did not stabilize.');
-  await initializeCloudDatabase(admin, 'asia');
-  await verifyCloudDatabase(admin, 'asia');
+  const runtimeUser = 'vaults_cloud_login_test';
+  const runtimePassword = randomBytes(32).toString('hex');
+  const deployDir = mkdtempSync(join(tmpdir(), 'vaults-cloud-deploy-'));
+  const operatorFile = join(deployDir, 'operator-password');
+  const runtimeFile = join(deployDir, 'runtime-password');
+  try {
+    writeFileSync(operatorFile, password, { mode: 0o600 });
+    writeFileSync(runtimeFile, runtimePassword, { mode: 0o600 });
+    const deploy = () => JSON.parse(execFileSync(process.execPath,
+      [fileURLToPath(new URL('../../../apps/server/internal-cloud/cli.mjs', import.meta.url)), 'deploy'],
+      { encoding: 'utf8', env: { ...process.env, VAULTS_INTERNAL_CLOUD_OPERATIONS: '1', VAULTS_CLOUD_REGION: 'global',
+        VAULTS_DATABASE_HOST: '127.0.0.1', VAULTS_DATABASE_PORT: String(port), VAULTS_DATABASE_NAME: 'vaults_cloud_test',
+        VAULTS_DATABASE_USER: 'cloud_operator', VAULTS_DATABASE_PASSWORD_FILE: operatorFile,
+        VAULTS_CLOUD_RUNTIME_DATABASE_USER: runtimeUser, VAULTS_CLOUD_RUNTIME_DATABASE_PASSWORD_FILE: runtimeFile } }));
+    const first = deploy();
+    assert.equal(first.initialized, true);
+    assert.equal(first.created, true);
+    const second = deploy();
+    assert.equal(second.initialized, false);
+    assert.equal(second.created, false);
+  } finally {
+    unlinkSync(operatorFile);
+    unlinkSync(runtimeFile);
+    rmdirSync(deployDir);
+  }
+  await verifyCloudDatabase(admin, 'global');
   await assert.rejects(requireSchema(admin), /Cloud database cannot be served/);
-  const alice = await reserveCloudTenant(admin, { region: 'asia', host: 'alice.asia.example.com' });
-  const bob = await reserveCloudTenant(admin, { region: 'asia', host: 'bob.asia.example.com' });
+  const alice = await reserveCloudTenant(admin, { region: 'global', host: 'alice.asia.example.com', maxActiveUsers: 1 });
+  const bob = await reserveCloudTenant(admin, { region: 'global', host: 'bob.asia.example.com', maxActiveUsers: 2 });
   assert.notEqual(alice.id, bob.id);
-  assert.equal((await reserveCloudTenant(admin, { region: 'asia', host: alice.host })).id, alice.id);
-  await assert.rejects(activateCloudTenant(admin, { region: 'asia', host: alice.host }), /not prepared/);
-  await prepareCloudTenant(admin, { region: 'asia', host: alice.host, setupBytes: Buffer.alloc(96) });
-  await prepareCloudTenant(admin, { region: 'asia', host: bob.host, setupBytes: Buffer.alloc(96) });
-  assert.equal((await prepareCloudTenant(admin, { region: 'asia', host: alice.host, setupBytes: Buffer.alloc(96) })).reused, true);
-  await assert.rejects(activateCloudTenant(admin, { region: 'asia', host: alice.host }), /control owner is required/);
+  assert.equal((await reserveCloudTenant(admin, { region: 'global', host: alice.host, maxActiveUsers: 1 })).id, alice.id);
+  await assert.rejects(reserveCloudTenant(admin, { region: 'global', host: alice.host, maxActiveUsers: 2 }), /conflicts/);
+  await assert.rejects(activateCloudTenant(admin, { region: 'global', host: alice.host }), /not prepared/);
+  await prepareCloudTenant(admin, { region: 'global', host: alice.host, setupBytes: Buffer.alloc(96) });
+  await prepareCloudTenant(admin, { region: 'global', host: bob.host, setupBytes: Buffer.alloc(96) });
+  assert.equal((await prepareCloudTenant(admin, { region: 'global', host: alice.host, setupBytes: Buffer.alloc(96) })).reused, true);
+  await assert.rejects(activateCloudTenant(admin, { region: 'global', host: alice.host }), /control owner is required/);
   const controlOwners = new Map();
   for (const tenant of [alice, bob]) {
     const ownerIdentityId = randomUUID(), ownerEmail = `admin-${tenant.host.split('.')[0]}@example.com`;
     controlOwners.set(tenant.id, { ownerIdentityId, ownerEmail });
-    await linkCloudControlOwner(admin, { region: 'asia', host: tenant.host, ownerIdentityId, ownerEmail });
+    await linkCloudControlOwner(admin, { region: 'global', host: tenant.host, ownerIdentityId, ownerEmail });
   }
-  assert.equal((await linkCloudControlOwner(admin, { region: 'asia', host: alice.host, ...controlOwners.get(alice.id) })).reused, true);
-  await assert.rejects(linkCloudControlOwner(admin, { region: 'asia', host: alice.host,
+  assert.equal((await linkCloudControlOwner(admin, { region: 'global', host: alice.host, ...controlOwners.get(alice.id) })).reused, true);
+  await assert.rejects(linkCloudControlOwner(admin, { region: 'global', host: alice.host,
     ownerIdentityId: randomUUID(), ownerEmail: 'other@example.com' }), /another identity/);
   assert.equal((await admin.query('SELECT count(*)::int n FROM vaults.accounts')).rows[0].n, 0);
-  await assert.rejects(activateCloudTenant(admin, { region: 'asia', host: alice.host }), /owner enrollment is incomplete/);
+  await assert.rejects(activateCloudTenant(admin, { region: 'global', host: alice.host }), /owner enrollment is incomplete/);
   await admin.query(`INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state)
     VALUES($1,$1,'alice1','Alice','alice@example.com','owner','active'),($2,$2,'bobby1','Bob','bob@example.com','owner','active')`, [alice.id, bob.id]);
   await admin.query(`INSERT INTO vaults.authentication_credentials(tenant_id,account_id,opaque_record,wrapped_root_descriptor,wrapped_root_envelope)
@@ -81,13 +113,15 @@ try {
     VALUES($1,$3,now()+interval '1 hour',now()),($2,$3,now()+interval '1 hour',now())`, [alice.id, bob.id, Buffer.alloc(32)]);
   await admin.query(`INSERT INTO vaults.devices(tenant_id,account_id,id,signing_public_key,credential_epoch,credential_epoch_seen)
     VALUES($1,$1,$2,$3,1,1)`, [alice.id, randomUUID(), Buffer.alloc(32)]);
-  assert.equal((await activateCloudTenant(admin, { region: 'asia', host: alice.host })).state, 'active');
-  assert.equal((await activateCloudTenant(admin, { region: 'asia', host: alice.host })).reused, true);
-  await admin.query(`CREATE ROLE cloud_test_login LOGIN PASSWORD '${password}'`);
-  await admin.query('GRANT vaults_cloud_runtime TO cloud_test_login');
-  runtimePool = new pg.Pool({ host: '127.0.0.1', port, user: 'cloud_test_login', password,
+  assert.equal((await activateCloudTenant(admin, { region: 'global', host: alice.host })).state, 'active');
+  assert.equal((await activateCloudTenant(admin, { region: 'global', host: alice.host })).reused, true);
+  runtimePool = new pg.Pool({ host: '127.0.0.1', port, user: runtimeUser, password: runtimePassword,
     database: 'vaults_cloud_test', max: 1 });
   await verifyCloudRuntimeRole(runtimePool);
+  const readSeatLimit = async (pool, tenantId) => (await pool.query('SELECT cloud.enrollment_seat_limit($1) AS seat_limit', [tenantId])).rows[0].seat_limit;
+  assert.equal(await readSeatLimit(runtimePool, alice.id), null);
+  assert.equal(await readSeatLimit(createTenantScopedPool(runtimePool, alice.id), bob.id), null);
+  assert.equal(await readSeatLimit(createTenantScopedPool(runtimePool, alice.id), alice.id), 1);
   assert.equal((await runtimePool.query('SELECT count(*)::int AS n FROM vaults.accounts')).rows[0].n, 0);
   assert.deepEqual((await createTenantScopedPool(runtimePool, alice.id).query('SELECT tenant_id FROM vaults.accounts')).rows.map(x => x.tenant_id), [alice.id]);
   assert.deepEqual((await createTenantScopedPool(runtimePool, bob.id).query('SELECT tenant_id FROM vaults.accounts')).rows.map(x => x.tenant_id), [bob.id]);
@@ -113,7 +147,7 @@ try {
   await admin.query('SET ROLE vaults_cloud_runtime');
   assert.equal((await admin.query('SELECT count(*)::int AS n FROM vaults.accounts')).rows[0].n, 0);
   await assert.rejects(admin.query('SELECT * FROM cloud.tenants'), /permission denied/);
-  assert.equal((await admin.query('SELECT cloud.resolve_tenant($1,$2) AS id', [bob.host, 'asia'])).rows[0].id, null);
+  assert.equal((await admin.query('SELECT cloud.resolve_tenant($1,$2) AS id', [bob.host, 'global'])).rows[0].id, null);
   await admin.query('BEGIN');
   await admin.query("SELECT set_config('vaults.tenant_id',$1,true)", [alice.id]);
   assert.deepEqual((await admin.query('SELECT tenant_id FROM vaults.accounts')).rows.map(x => x.tenant_id), [alice.id]);
@@ -130,14 +164,14 @@ try {
   await admin.query('ROLLBACK');
   await admin.query('RESET ROLE');
   await admin.query('BEGIN');
-  await activateCloudTenant(admin, { region: 'asia', host: alice.host });
+  await activateCloudTenant(admin, { region: 'global', host: alice.host });
   await admin.query('SET ROLE vaults_cloud_runtime');
-  assert.equal((await admin.query('SELECT cloud.resolve_tenant($1,$2) AS id', [alice.host, 'asia'])).rows[0].id, alice.id);
+  assert.equal((await admin.query('SELECT cloud.resolve_tenant($1,$2) AS id', [alice.host, 'global'])).rows[0].id, alice.id);
   assert.equal((await admin.query('SELECT cloud.resolve_tenant($1,$2) AS id', [alice.host, 'europe'])).rows[0].id, null);
   await admin.query('RESET ROLE');
   await admin.query('ROLLBACK');
   await admin.query("UPDATE cloud.tenants SET state='active',activated_at=now() WHERE id=$1", [alice.id]);
-  const boundary = await createInternalCloudRequestBoundary({ pool: runtimePool, region: 'asia',
+  const boundary = await createInternalCloudRequestBoundary({ pool: runtimePool, region: 'global',
     handle: async (_req, _res, context) => {
       const rows = (await context.pool.query('SELECT tenant_id FROM vaults.accounts')).rows;
       assert.deepEqual(rows.map(x => x.tenant_id), [alice.id]);
@@ -148,9 +182,9 @@ try {
   assert.equal(await boundary(request, {}), alice.id);
   await assert.rejects(boundary({ ...request, rawHeaders: ['Host', bob.host],
     headers: { host: bob.host, origin: `https://${bob.host}` }, socket: { encrypted: true, servername: bob.host } }, {}));
-  await activateCloudTenant(admin, { region: 'asia', host: bob.host });
+  await activateCloudTenant(admin, { region: 'global', host: bob.host });
   let deliveredCode;
-  const api = await createInternalCloudRequestBoundary({ pool: runtimePool, region: 'asia',
+  const api = await createInternalCloudRequestBoundary({ pool: runtimePool, region: 'global',
     handle: createInternalCloudTenantHandlers({ bridge: { server_public_key: () => Buffer.alloc(32),
       server_registration_start: () => Buffer.alloc(64), server_registration_finish: upload => upload },
       tokenKey, checkpointPrivateKey: {}, checkpointPublicKey: 'test-key',
@@ -167,7 +201,7 @@ try {
     assert.equal(result.status, 200);
     assert.equal(result.body.tenantId, tenant.id);
     assert.equal(result.body.canonicalOrigin, `https://${tenant.host}`);
-    assert.equal(result.body.region, 'asia');
+    assert.equal(result.body.region, 'global');
   }
   const callDevices = async (tenantHost) => {
     let status, body;
@@ -196,8 +230,9 @@ try {
   };
   const invited = await callInvite(bob.host);
   assert.equal(invited.status, 200);
+  assert.deepEqual(await callInvite(bob.host), { status: 409, body: { error: 'seat_limit_reached' } });
   assert.equal((await createTenantScopedPool(runtimePool, bob.id).query('SELECT count(*)::int n FROM vaults.invitation_records')).rows[0].n, 1);
-  assert.equal((await callInvite(alice.host)).status, 400);
+  assert.deepEqual(await callInvite(alice.host), { status: 401, body: { error: 'authentication_required' } });
   const apiCall = async (tenant, path, value, csrfValue) => {
     const headers = { host: tenant.host, origin: `https://${tenant.host}` };
     if (value) { headers['content-type'] = 'application/json'; headers['x-127v-csrf'] = csrfValue; headers.cookie = `__Host-127v-ceremony=${csrfValue}`; }
@@ -238,15 +273,15 @@ try {
   assert.equal(finishedInvitation.body.accountId, invitedAccountId);
   assert.equal((await createTenantScopedPool(runtimePool, bob.id).query('SELECT count(*)::int n FROM vaults.accounts')).rows[0].n, 2);
   const ownerKey = randomBytes(32);
-  const carol = await reserveCloudTenant(admin, { region: 'asia', host: 'carol.asia.example.com' });
-  const dave = await reserveCloudTenant(admin, { region: 'asia', host: 'dave.asia.example.com' });
-  for (const tenant of [carol, dave]) await linkCloudControlOwner(admin, { region: 'asia', host: tenant.host,
+  const carol = await reserveCloudTenant(admin, { region: 'global', host: 'carol.asia.example.com', maxActiveUsers: 1 });
+  const dave = await reserveCloudTenant(admin, { region: 'global', host: 'dave.asia.example.com', maxActiveUsers: 1 });
+  for (const tenant of [carol, dave]) await linkCloudControlOwner(admin, { region: 'global', host: tenant.host,
     ownerIdentityId: randomUUID(), ownerEmail: `admin-${tenant.host.split('.')[0]}@example.com` });
-  for (const tenant of [carol, dave]) await prepareCloudTenant(admin, { region: 'asia', host: tenant.host, setupBytes: Buffer.alloc(96) });
-  const carolToken = await issueCloudBootstrapToken(admin, { region: 'asia', host: carol.host, tokenKey: ownerKey });
-  const daveToken = await issueCloudBootstrapToken(admin, { region: 'asia', host: dave.host, tokenKey: ownerKey });
+  for (const tenant of [carol, dave]) await prepareCloudTenant(admin, { region: 'global', host: tenant.host, setupBytes: Buffer.alloc(96) });
+  const carolToken = await issueCloudBootstrapToken(admin, { region: 'global', host: carol.host, tokenKey: ownerKey });
+  const daveToken = await issueCloudBootstrapToken(admin, { region: 'global', host: dave.host, tokenKey: ownerKey });
   assert.notEqual(carolToken.token, daveToken.token);
-  const enrollment = await createInternalCloudEnrollmentBoundary({ pool: runtimePool, region: 'asia',
+  const enrollment = await createInternalCloudEnrollmentBoundary({ pool: runtimePool, region: 'global',
     handle: createInternalCloudEnrollmentHandlers({ tokenKey: ownerKey, bridge: {
       server_public_key: () => Buffer.alloc(32), server_registration_start: () => Buffer.alloc(64),
       server_registration_finish: upload => upload
@@ -284,19 +319,48 @@ try {
   const owner = await enrollmentCall(carol, '/api/v1/onboarding/register', { token: carolToken.token, candidate }, carolCeremony.body.csrf);
   assert.equal(owner.status, 200);
   assert.equal(owner.body.accountId, accountId);
-  assert.equal((await activateCloudTenant(admin, { region: 'asia', host: carol.host })).state, 'active');
+  assert.equal((await activateCloudTenant(admin, { region: 'global', host: carol.host })).state, 'active');
   await assert.rejects(enrollmentCall(carol, '/api/v1/ceremony'), /Unknown or inactive tenant/);
   assert.equal((await admin.query('SELECT state FROM cloud.tenants WHERE id=$1', [dave.id])).rows[0].state, 'prepared');
+  run('exec', name, 'openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
+    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com`,
+    '-keyout', '/tmp/cloud-test.key', '-out', '/tmp/cloud-test.crt');
+  const ca = run('exec', name, 'cat', '/tmp/cloud-test.crt');
+  const httpsServer = await createCloudHttpsServer({ pool: runtimePool,
+    tls: { cert: ca, key: run('exec', name, 'cat', '/tmp/cloud-test.key') },
+    bridge: { server_public_key: () => Buffer.alloc(32) }, tokenKey, checkpointPrivateKey: privateKey });
+  try {
+    httpsServer.listen(0, '127.0.0.1');
+    await once(httpsServer, 'listening');
+    const status = (host, path, servername = host) => new Promise((resolve, reject) => {
+      const req = httpsRequest({ hostname: '127.0.0.1', port: httpsServer.address().port, path,
+        servername, headers: { host }, ca, agent: false }, res => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(await status(alice.host, '/api/v1/cloud/discovery'), 200);
+    assert.equal(await status(alice.host, '/api/v1/setup'), 200);
+    assert.equal(await status(dave.host, '/api/v1/ceremony'), 200);
+    assert.equal(await status(dave.host, '/api/v1/setup'), 200);
+    assert.equal(await status(dave.host, '/api/v1/cloud/discovery'), 404);
+    assert.equal(await status('unknown.asia.example.com', '/api/v1/ceremony'), 404);
+    assert.equal(await status(alice.host, '/api/v1/ceremony', dave.host), 400);
+  } finally {
+    await new Promise(resolve => httpsServer.close(resolve));
+  }
   await admin.query('BEGIN');
   await admin.query('CREATE TABLE vaults.unscoped_cloud_probe(id integer)');
   await assert.rejects(admin.query('SELECT cloud.verify_rls()'), /policy inventory is incomplete/);
   await admin.query('ROLLBACK');
   await admin.query('BEGIN');
   await admin.query('GRANT pg_read_all_data TO vaults_cloud_runtime');
-  await assert.rejects(verifyCloudDatabase(admin, 'asia'), /Unsafe regional Cloud runtime role/);
+  await assert.rejects(verifyCloudDatabase(admin, 'global'), /Unsafe regional Cloud runtime role/);
   await admin.query('ROLLBACK');
   console.log(JSON.stringify({ ok: true, isolatedTenants: 4, ownerEnrolled: true,
-    invitedUserEnrolled: true, runtimeRole: 'no-login', selfHostedServerRejected: true }));
+    invitedUserEnrolled: true, httpsRouting: true, firstDeployAndRerun: true, runtimeRole: 'no-login', selfHostedServerRejected: true }));
 } catch (error) {
   if (started) try { console.error(run('logs', '--tail', '25', name)); } catch { /* unavailable */ }
   throw error;

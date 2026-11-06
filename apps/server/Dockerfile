@@ -32,16 +32,26 @@ COPY packages/ui/src packages/ui/src
 COPY apps/extension/src/passkeys.mjs apps/extension/src/passkeys.mjs
 RUN pnpm --filter @127vaults/web build
 
-FROM ${NODE_RUNTIME_IMAGE} AS runtime
+FROM ${NODE_RUNTIME_IMAGE} AS runtime-common
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=server-dependencies /runtime/node_modules /app/node_modules
 COPY apps/server/src apps/server/src
-COPY apps/server/admin apps/server/admin
 COPY packages/sync/src packages/sync/src
 COPY packages/domain/src packages/domain/src
 COPY apps/server/wasm-auth apps/server/wasm-auth
 COPY --from=web-build /app/apps/web/dist apps/web/dist
+
+FROM runtime-common AS cloud-runtime
+COPY apps/server/internal-cloud apps/server/internal-cloud
+ENV VAULTS_OPAQUE_NODE_MODULE=/app/apps/server/wasm-auth/vaults_browser_fixture.cjs
+ENV VAULTS_CLOUD_BIND=0.0.0.0
+USER node
+EXPOSE 8443
+CMD ["node", "apps/server/internal-cloud/serve.mjs"]
+
+FROM runtime-common AS runtime
+COPY apps/server/admin apps/server/admin
 COPY apps/web/mvp.html apps/web/mvp.html
 COPY apps/web/style.css apps/web/style.css
 COPY apps/web/src/private-vault-client.mjs apps/web/src/private-vault-client.mjs

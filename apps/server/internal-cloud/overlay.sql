@@ -50,6 +50,7 @@ CREATE TABLE cloud.tenants (
   region text COLLATE "C" NOT NULL REFERENCES cloud.schema_manifest(region),
   host text COLLATE "C" NOT NULL UNIQUE CHECK (char_length(host)<=253 AND host ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'),
   control_owner_id uuid,
+  max_active_users integer NOT NULL CHECK (max_active_users > 0),
   control_owner_email text COLLATE "C" CHECK (control_owner_email IS NULL OR (char_length(control_owner_email) BETWEEN 3 AND 254 AND control_owner_email = lower(control_owner_email))),
   state text COLLATE "C" NOT NULL DEFAULT 'reserved' CHECK (state IN ('reserved','prepared','active','suspended','deleting')),
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -97,6 +98,15 @@ $lookup$;
 ALTER FUNCTION cloud.resolve_prepared_tenant(text,text) OWNER TO vaults_cloud_directory_owner;
 REVOKE ALL ON FUNCTION cloud.resolve_prepared_tenant(text,text) FROM PUBLIC;
 
+CREATE FUNCTION cloud.enrollment_seat_limit(p_tenant uuid) RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $lookup$
+  SELECT t.max_active_users FROM cloud.tenants AS t
+  WHERE t.id=p_tenant AND t.id=nullif(current_setting('vaults.tenant_id', true), '')::uuid
+    AND t.state IN ('prepared', 'active')
+$lookup$;
+ALTER FUNCTION cloud.enrollment_seat_limit(uuid) OWNER TO vaults_cloud_directory_owner;
+REVOKE ALL ON FUNCTION cloud.enrollment_seat_limit(uuid) FROM PUBLIC;
+
 -- The role has no login credential. A future reviewed deployment must grant
 -- it to a separate, non-owner login role; never to the schema/migration owner.
 DO $cloud_role$
@@ -115,6 +125,7 @@ GRANT USAGE ON SCHEMA cloud TO vaults_cloud_runtime;
 GRANT SELECT ON cloud.schema_manifest TO vaults_cloud_runtime;
 GRANT EXECUTE ON FUNCTION cloud.resolve_tenant(text,text) TO vaults_cloud_runtime;
 GRANT EXECUTE ON FUNCTION cloud.resolve_prepared_tenant(text,text) TO vaults_cloud_runtime;
+GRANT EXECUTE ON FUNCTION cloud.enrollment_seat_limit(uuid) TO vaults_cloud_runtime;
 GRANT SELECT ON vaults.schema_version TO vaults_cloud_runtime;
 
 -- Every current base/migration table with tenant_id receives a fail-closed

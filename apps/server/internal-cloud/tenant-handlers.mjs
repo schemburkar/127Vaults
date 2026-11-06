@@ -20,6 +20,13 @@ import { createDeviceLifecycleHandler } from '../src/device-lifecycle-handler.mj
 import { createDeviceEnrollmentHandler } from '../src/device-enrollment-handler.mjs';
 import { writeError, writeJson } from '../src/http-boundary.mjs';
 
+async function loadEnrollmentEntitlement(tenantId, _now, transaction) {
+  const result = await transaction.query('SELECT cloud.enrollment_seat_limit($1) AS seat_limit', [tenantId]);
+  const maxActiveUsers = result.rows[0]?.seat_limit;
+  if (!Number.isInteger(maxActiveUsers) || maxActiveUsers < 1) throw new Error('Cloud seat limit unavailable.');
+  return { mode: 'active', maxActiveUsers };
+}
+
 export function createInternalCloudTenantHandlers({ bridge, tokenKey, checkpointPrivateKey, checkpointPublicKey, mailer }) {
   if (!bridge || !Buffer.isBuffer(tokenKey) || tokenKey.length !== 32 || !checkpointPrivateKey ||
       typeof checkpointPublicKey !== 'string') throw new Error('Cloud authentication and checkpoint keys required.');
@@ -38,14 +45,15 @@ export function createInternalCloudTenantHandlers({ bridge, tokenKey, checkpoint
     }
     const authService = new AuthService({ store: new PgAuthStore(pool, tokenKey, publicKey, { tenantId: tenant.id }), opaque });
     const authenticate = async token => context.requirePrincipal(await authService.authenticate(token));
-    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin, authorizeStart:input=>new OnboardingService({store:new PgOnboardingStore(pool,{tenantId:tenant.id}),tokenKey}).authorizeRegistration(input) });
+    const onboarding = new OnboardingService({
+      store: new PgOnboardingStore(pool, { tenantId: tenant.id, loadEntitlement: loadEnrollmentEntitlement }), mailer, tokenKey
+    });
+    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin, authorizeStart: input => onboarding.authorizeRegistration(input) });
     const syncStore = new PgSignedSyncStore(pool, checkpointPrivateKey);
     const deviceStore = new PgDeviceLifecycleStore(pool,{tenantId:tenant.id});
     const handlers = [
       createAuthHandler(authService, origin),
-      ...(mailer ? [createOnboardingHandler(new OnboardingService({
-        store: new PgOnboardingStore(pool, { tenantId: tenant.id }), mailer, tokenKey
-      }), createRegistrationCompletion(opaque, registration), origin, authenticate, registration)] : []),
+      ...(mailer ? [createOnboardingHandler(onboarding, createRegistrationCompletion(opaque, registration), origin, authenticate, registration)] : []),
       createDeviceEnrollmentHandler(deviceStore, authenticate, origin),
       createCredentialRotationHandler({store:new PgCredentialRotationStore(pool),authenticate,origin,registration,opaque}),
       createDeviceLifecycleHandler(deviceStore, authenticate, origin),
@@ -74,9 +82,9 @@ export function createInternalCloudEnrollmentHandlers({ bridge, tokenKey }) {
     if (!setup) throw new Error('Cloud tenant authentication setup is unavailable.');
     const publicKey = Buffer.from(bridge.server_public_key(setup));
     const service = new AuthService({ store: new PgAuthStore(pool, tokenKey, publicKey, { tenantId: tenant.id }), opaque });
-    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin, authorizeStart:input=>new OnboardingService({store:new PgOnboardingStore(pool,{tenantId:tenant.id}),tokenKey}).authorizeRegistration(input) });
-    const onboarding = new OnboardingService({ store: new PgOnboardingStore(pool, { tenantId: tenant.id }),
+    const onboarding = new OnboardingService({ store: new PgOnboardingStore(pool, { tenantId: tenant.id, loadEntitlement: loadEnrollmentEntitlement }),
       mailer: { sendCode: async () => { throw new Error('Cloud email is unavailable.'); } }, tokenKey });
+    const registration = new RegistrationAdapter({ opaque, setup, installation: tenant.id, serverPublicKey: publicKey, tokenKey, origin, authorizeStart: input => onboarding.authorizeRegistration(input) });
     const handlers = [createAuthHandler(service, origin),
       createOnboardingHandler(onboarding, createRegistrationCompletion(opaque, registration), origin,
         async () => { throw new Error('Authentication unavailable during Cloud owner enrollment.'); }, registration)];

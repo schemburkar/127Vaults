@@ -20,7 +20,7 @@ export async function readSeatUsage(client, tenantId, now) {
 export async function requireLicenseSeats(client, tenantId, additions, now, loadEntitlement) {
   if (!loadEntitlement) throw new OnboardingError('license_unavailable', 503);
   let entitlement;
-  try { entitlement = await loadEntitlement(tenantId, now); }
+  try { entitlement = await loadEntitlement(tenantId, now, client); }
   catch { throw new OnboardingError('license_unavailable', 503); }
   if (entitlement.mode !== 'active') throw new OnboardingError('license_inactive', 403);
   const usage = await readSeatUsage(client, tenantId, now);

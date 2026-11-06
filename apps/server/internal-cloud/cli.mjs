@@ -3,7 +3,8 @@ import pg from 'pg';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { runtimeDatabaseConfig } from '../src/runtime-config.mjs';
-import { initializeCloudDatabase, issueCloudBootstrapToken, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from './operator.mjs';
+import { ensureCloudRuntimeLogin, initializeCloudDatabase, issueCloudBootstrapToken, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from './operator.mjs';
+import { verifyCloudRuntimeRole } from './scoped-pool.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 if (process.env.VAULTS_INTERNAL_CLOUD_OPERATIONS !== '1' ||
@@ -15,17 +16,37 @@ if (process.env.VAULTS_CLOUD_REGION && process.env.VAULTS_CLOUD_REGION !== 'glob
   throw new Error('The first Cloud deployment uses the internal global location only.');
 }
 const region = 'global';
-if (!['initialize', 'verify', 'reserve', 'prepare', 'bootstrap'].includes(command) ||
-    (['reserve', 'prepare', 'bootstrap'].includes(command) ? args.length !== 1 : args.length !== 0)) {
-  throw new Error('Use initialize, verify, reserve, prepare, or bootstrap <canonical-host>.');
+if (!['initialize', 'deploy', 'verify', 'reserve', 'prepare', 'bootstrap'].includes(command) ||
+    args.length !== ({ reserve: 2, prepare: 1, bootstrap: 1 }[command] ?? 0)) {
+  throw new Error('Use initialize, deploy, verify, reserve <canonical-host> <seat-limit>, prepare <canonical-host>, or bootstrap <canonical-host>.');
 }
-const client = new pg.Client({ ...runtimeDatabaseConfig(process.env), connectionTimeoutMillis: 3000, statement_timeout: 30000 });
+const database = { ...runtimeDatabaseConfig(process.env), connectionTimeoutMillis: 3000, statement_timeout: 30000 };
+const client = new pg.Client(database);
 try {
   await client.connect();
   let result;
   if (command === 'initialize') result = await initializeCloudDatabase(client, region);
+  else if (command === 'deploy') {
+    const runtimeDatabase = { ...database, ...runtimeDatabaseConfig({ ...process.env,
+      VAULTS_DATABASE_USER: process.env.VAULTS_CLOUD_RUNTIME_DATABASE_USER,
+      VAULTS_DATABASE_PASSWORD_FILE: process.env.VAULTS_CLOUD_RUNTIME_DATABASE_PASSWORD_FILE
+    }) };
+    if (!process.env.VAULTS_CLOUD_RUNTIME_DATABASE_USER || runtimeDatabase.user === database.user) {
+      throw new Error('Cloud operator and runtime logins must differ.');
+    }
+    const schema = await initializeCloudDatabase(client, region, { allowInitialized: true });
+    const login = await ensureCloudRuntimeLogin(client, runtimeDatabase);
+    const runtime = new pg.Client(runtimeDatabase);
+    try {
+      await runtime.connect();
+      await verifyCloudRuntimeRole(runtime);
+    } finally {
+      await runtime.end();
+    }
+    result = { ...schema, ...login };
+  }
   else if (command === 'verify') result = await verifyCloudDatabase(client, region);
-  else if (command === 'reserve') result = await reserveCloudTenant(client, { region, host: args[0] });
+  else if (command === 'reserve') result = await reserveCloudTenant(client, { region, host: args[0], maxActiveUsers: Number(args[1]) });
   else if (command === 'prepare') {
     if (!process.env.VAULTS_OPAQUE_NODE_MODULE) throw new Error('Reviewed OPAQUE module required.');
     const generated = await import(pathToFileURL(process.env.VAULTS_OPAQUE_NODE_MODULE).href);
