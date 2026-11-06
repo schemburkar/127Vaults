@@ -8,7 +8,7 @@
   <title>Get access — 127 Vaults</title>
   <link rel="stylesheet" href="site.css?v=3">
   <script src="theme.mjs?v=2" type="module"></script>
-  <script src="access.mjs?v=4" type="module"></script>
+  <script src="access.mjs?v=5" type="module"></script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -33,9 +33,9 @@
     <label class="access-field" for="access-seats">Number of vault users<input id="access-seats" name="requestedSeats" type="number" min="1" max="100" step="1" value="1" required><span>How many people will use your server? Include yourself.</span></label>
     <div class="access-honeypot" aria-hidden="true"><label for="access-website">Website<input id="access-website" name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
     <label class="access-consent"><input type="checkbox" name="consent" required><span>I agree to receive emails about my access request and customer account.</span></label>
-    <p class="access-status">Your email is used for access updates and customer sign-in. When automatic delivery uses Resend, it processes the recipient address and message content. Your vault login and vault data stay on your own server. See the <a href="privacy.html">Privacy Policy</a>.</p>
+    <p class="access-status">We use your email for access updates and customer sign-in. See our <a href="privacy.html">Privacy Policy</a>.</p>
     <button class="button primary" type="submit" disabled>Request access</button>
-    <p class="access-status">Before sending, we check your browser and wait briefly to help prevent abuse. This uses a necessary security cookie and Cloudflare Turnstile. Please keep this page open until your request is confirmed.</p>
+    <p class="access-status">We check your browser to help prevent abuse.</p>
     <div id="access-verification" aria-label="Browser verification"></div>
     <p class="access-status" id="access-status" role="status" aria-live="polite">Checking availability…</p>
   </fieldset>

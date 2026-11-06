@@ -200,6 +200,13 @@ html[data-theme='light'] .theme-icon-moon { display: block; }
 .page-hero { padding-block: 100px 105px; border-bottom: 1px solid var(--border); }
 .page-hero h1 { max-width: 860px; font-size: clamp(44px, 6vw, 78px); }
 .page-hero p { max-width: 720px; color: var(--muted); font-size: 17px; }
+.page-hero.page-hero-compact { padding-block: clamp(36px, 6vw, 72px); }
+.page-hero-compact h1 { font-size: clamp(32px, 5vw, 56px); }
+.policy-text { max-width: 760px; }
+.policy-text h2 { font-size: clamp(24px, 4vw, 34px); }
+.policy-text section { margin-top: 28px; }
+.policy-text h3 { margin-bottom: 8px; font-size: 19px; }
+.policy-text p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.8; }
 .page-section { padding-block: 92px; }
 .page-section h2 { margin-bottom: 23px; }
 .prose { max-width: 570px; }

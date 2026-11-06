@@ -24,7 +24,7 @@ async function protectRequest() {
   if (!response.ok) throw Error('Request protection is temporarily unavailable. Please try again later.');
   const protection = await response.json();
   if (!protection.protected) return {};
-  status.textContent = 'Checking your browser. Please keep this page open; your request will be sent after a short security wait.';
+  status.textContent = 'Checking your browser…';
   const wait = new Promise(resolve => setTimeout(resolve, protection.waitMs));
   await loadTurnstile();
   let widget;
@@ -86,7 +86,7 @@ form.addEventListener('submit', async event => {
         : 'Request received. We’ll contact you about availability and next steps.';
     } else message = response.status === 429 ? 'Too many requests. Please try again later.'
       : 'We could not accept your request. Check your details and try again.';
-  } catch { message = 'We could not complete verification or send your request. Allow security cookies and browser verification, then try again. Your details are still here.'; }
+  } catch { message = 'We couldn’t send your request. Please try again. Your details are still here.'; }
   fields.forEach(field => { field.disabled = false; });
   submitting = false; updatePlan(); status.textContent = message;
 });
