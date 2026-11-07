@@ -30,6 +30,13 @@ entrypoint on Admin; it cannot invoke arbitrary operator APIs.
 Admin retains the operator credential. Manage does not receive it. Both private
 backends need existing record-encryption and license-signing capabilities for
 their respective operations. Only Admin schedules retention/billing maintenance.
+
+### Cloud tenant workspace
+
+The Admin Worker serves the Cloud commands under `/cloud-tenants/api/`. To enable the workspace in a hosted environment, create a dedicated Access application covering `/cloud-tenants` and `/cloud-tenants/*` on the admin hostname. Use a named identity provider with an MFA policy and configure the IdP's `amr` claim as a custom application-token claim. The Worker requires the signed `custom.amr` array to contain `mfa`. Configure this with an IdP that emits that value. The existing workspace operator key and release automation credentials do not grant Cloud permissions.
+
+Set `cloudAdmin` in the separated deployment configuration with `accessIssuer`, `accessAudience`, `managementOrigin`, and `operators` (lowercase allowed email addresses). The management origin is the dedicated HTTPS hostname for the private listener. Protect it with an Access service-token policy scoped to the Admin Worker. In the private secrets directory, provide `cloud-management-token` (matching the management listener), `cloud-management-access-id`, and `cloud-management-access-secret`. Only the Admin Worker receives these credentials. The management audit records the verified Access subject. For tenant creation, the operator supplies an already verified control owner UUID and email.
+
 All Workers disable workers.dev and preview URLs. Each site stages a fresh,
 allowlisted asset set with its own branding copies and cache-versioned assets.
 

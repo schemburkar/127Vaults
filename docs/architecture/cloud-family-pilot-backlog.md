@@ -1,6 +1,6 @@
 # Cloud family pilot backlog
 
-Progress is **15 of 39**. Items 01–05 retain their original numbers. The original umbrella items are split below into code deliverables and environment work. Use these numbers for subsequent updates. Hosted verification and family handoff are separate from implementation.
+Progress is **20 of 39**. Items 01–05 retain their original numbers. The original umbrella items are split below into code deliverables and environment work. Use these numbers for subsequent updates. Hosted verification and family handoff are separate from implementation.
 
 Target one shared deployment in one location with private PostgreSQL. Use `cloud.127vaults.com` as the family-facing entry point and separate canonical origins for the family vaults. Use `admin.127vaults.com` for routine operator actions. The deployment initializes the database from within the hosting environment. The operator uses a browser. Public signup and checkout stay closed.
 
@@ -22,11 +22,11 @@ Target one shared deployment in one location with private PostgreSQL. Use `cloud
 - [x] **13. Isolate the management service.** A separate HTTPS entry point uses a dedicated PostgreSQL login. The local rehearsal exercised all commands under that login and confirmed it cannot read OPAQUE setup bytes.
 - [x] **14. Implement management service authentication.** The listener requires a dedicated service token and operator identifier and rejects browser-origin requests. Steps 16–17 cover authenticating the operator and wiring the Admin Worker.
 - [x] **15. Record operator actions.** The management API records successful mutations in the same transaction as the change. The audit table contains action, tenant, actor, and timestamp. The family runtime cannot read it.
-- [ ] **16. Authorize named operators.** Implement identity verification, MFA enforcement, and a Cloud management permission for production actions.
-- [ ] **17. Connect the Admin Worker.** Register the deployment server-side, propagate verified operator identity, and translate management errors for the portal.
-- [ ] **18. Build the Cloud tenant directory page.** Show deployment, tenant URL, owner, state, readiness, and seat use in the admin portal.
-- [ ] **19. Build the tenant creation and setup actions.** Give operators browser controls for creation and privately copying or replacing the setup link.
-- [ ] **20. Build tenant lifecycle controls.** Give operators browser controls for activation, suspension, resumption, and seat changes.
+- [x] **16. Authorize named operators.** The Admin Worker requires a signed Access application token with the dedicated audience, an allowlisted named operator, and a signed IdP MFA claim. Live Access and IdP configuration belongs to step 33.
+- [x] **17. Connect the Admin Worker.** The configured deployment receives only allowlisted commands, the verified operator subject, and server-side service credentials. Live deployment registration belongs to step 34.
+- [x] **18. Build the Cloud tenant directory page.** The portal shows deployment, tenant URL, owner, lifecycle state, activation readiness, and seat usage.
+- [x] **19. Build the tenant creation and setup actions.** The portal creates a tenant for an already verified control owner and lets the operator issue, replace, and copy an owner setup link.
+- [x] **20. Build tenant lifecycle controls.** The portal exposes state-appropriate activation, suspension, resumption, and seat-cap actions.
 - [ ] **21. Build the family entry page.** Explain invite-only access and direct families to the tenant URL they received.
 - [ ] **22. Build member invitation creation and revocation.** Give family owners a tenant-scoped interface for both operations.
 - [ ] **23. Complete browser member enrollment.** Open invitation links on the correct tenant and complete account creation and verification.

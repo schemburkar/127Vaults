@@ -39,6 +39,13 @@ export function siteConfig(config, state, surface, assets) {
       CUSTOMER_EMAIL_MONTHLY_LIMIT: String(config.customerEmail.monthlyLimit ?? 2800),
     });
     if (surface === 'admin') common.triggers.crons = base.triggers.crons;
+    if (surface === 'admin') {
+      common.assets.run_worker_first = [...base.assets.run_worker_first, '/cloud-tenants/api/*'];
+      if (config.cloudAdmin) Object.assign(common.vars, {
+        CLOUD_ADMIN_ACCESS_ISSUER: config.cloudAdmin.accessIssuer, CLOUD_ADMIN_ACCESS_AUDIENCE: config.cloudAdmin.accessAudience,
+        CLOUD_ADMIN_OPERATORS: config.cloudAdmin.operators.join(','), CLOUD_MANAGEMENT_ORIGIN: config.cloudAdmin.managementOrigin
+      });
+    }
     if (surface === 'admin' && config.intakeProtection) Object.assign(common.vars, {
       INTAKE_PROTECTION: '1', INTAKE_VOLUME_THRESHOLD: String(config.intakeProtection.volumeThreshold),
       INTAKE_VOLUME_WINDOW_MS: String(config.intakeProtection.volumeWindowMs),
@@ -56,7 +63,8 @@ export async function siteSecrets(surface, secrets) {
     return { INTAKE_CONTACT_KEY: await derive('contacts'), INTAKE_LIMITER_KEY: await derive('request-limits'),
       ...(secrets.TURNSTILE_SECRET_KEY ? { TURNSTILE_SECRET_KEY: secrets.TURNSTILE_SECRET_KEY } : {}) };
   }
-  return Object.fromEntries(Object.entries(secrets).filter(([name]) => name !== 'TURNSTILE_SECRET_KEY' && (surface === 'admin' || name !== 'OPERATOR_TOKEN')));
+  return Object.fromEntries(Object.entries(secrets).filter(([name]) => name !== 'TURNSTILE_SECRET_KEY' &&
+    (surface === 'admin' || (name !== 'OPERATOR_TOKEN' && !name.startsWith('CLOUD_MANAGEMENT_')))));
 }
 export async function renderSites(config, state) {
   const root = await mkdtemp(join(config.stateDirectory, 'sites-')), files = {};

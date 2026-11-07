@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Cloud tenants — 127Vaults Admin</title>
+  <link rel="stylesheet" href="site.css">
+  <link rel="stylesheet" href="trial.css">
+  <link rel="stylesheet" href="admin.css">
+  <script src="theme.mjs" type="module"></script>
+  <script src="cloud-tenants.mjs" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <main class="container trial-main">
+    <span class="kicker">127VAULTS ADMIN</span>
+    <h1>Cloud tenants</h1>
+    <p>Manage invite-only family tenants in the configured Cloud deployment.</p>
+    <p id="cloud-status" role="status" aria-live="polite">Loading tenants…</p>
+    <button class="button" id="cloud-refresh" type="button">Refresh tenants</button>
+    <section class="access-card" id="cloud-setup" hidden>
+      <h2>One-time owner setup link</h2>
+      <p>Share this link privately with the family lead. Issuing another link replaces it.</p>
+      <label class="access-field">Setup link<input id="cloud-setup-link" type="text" readonly autocomplete="off"></label>
+      <button class="button" id="cloud-copy" type="button">Copy link</button>
+      <button class="button" id="cloud-clear" type="button">Hide link</button>
+    </section>
+    <form class="access-card" id="cloud-create" hidden>
+      <h2>Create tenant</h2>
+      <label class="access-field">Canonical vault hostname<input name="host" required autocapitalize="none" spellcheck="false" maxlength="253"></label>
+      <label class="access-field">Seat cap<input name="seats" type="number" min="1" max="2147483647" value="5" required></label>
+      <label class="access-field">Verified control owner ID<input name="owner" required spellcheck="false" maxlength="36"></label>
+      <label class="access-field">Verified control owner email<input name="email" type="email" required maxlength="254"></label>
+      <button class="button primary" type="submit">Create tenant</button>
+    </form>
+    <div id="cloud-directory"></div>
+  </main>
+</body>
+</html>

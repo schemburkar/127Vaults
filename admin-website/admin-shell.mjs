@@ -5,6 +5,7 @@ const pages = [
   ['coupons', 'Coupons', 'Private discounts', '04'],
   ['releases', 'Review releases', 'Packages and installers', '05'],
   ['customer-mail', 'Customer messages', 'Copy and send', '06'],
+  ['cloud-tenants', 'Cloud tenants', 'Family pilot', '07'],
 ];
 const page = location.pathname.split('/').pop().replace(/\.html$/, '') || 'access-admin';
 const current = pages.find(([id]) => id === page) || pages[0];
@@ -55,6 +56,10 @@ document.getElementById('admin-logout').addEventListener('click', async () => {
   } catch (error) { requireSignIn(error.message); }
 });
 export const adminReady = (async () => {
+  if (page === 'cloud-tenants') {
+    content.hidden = false;
+    return true;
+  }
   try {
     const response = await adminFetch('/api/access-admin/requests');
     if (!response.ok) { requireSignIn(response.status === 401 ? '' : 'The workspace could not be loaded. Try signing in again.'); return false; }

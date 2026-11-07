@@ -34,7 +34,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail', 'intakeProtection'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail', 'intakeProtection', 'cloudAdmin'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -81,6 +81,18 @@ export function validateConfig(value, file) {
     if (Object.keys(value.billing).some(key => !['mode', 'businessId', 'plans'].includes(key))) throw Error('Invalid billing configuration');
     billingConfig({ DODO_ENABLED: '1', DODO_MODE: value.billing.mode ?? 'test_mode', DODO_BUSINESS_ID: value.billing.businessId,
       DODO_PLANS: JSON.stringify(value.billing.plans), DODO_API_KEY: 'validate-only', DODO_WEBHOOK_SECRET: 'validate-only' });
+  }
+  if (value.cloudAdmin !== undefined) {
+    const cloud = value.cloudAdmin;
+    if (!value.sites || !cloud || Object.keys(cloud).sort().join(',') !== 'accessAudience,accessIssuer,managementOrigin,operators' ||
+        !/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(cloud.accessIssuer ?? '') ||
+        !/^[a-f0-9]{64}$/.test(cloud.accessAudience ?? '') || !validIntakeOrigin(cloud.managementOrigin) ||
+        !/^https:\/\/[a-z0-9.-]+$/.test(cloud.managementOrigin) ||
+        [value.origin, value.sites.adminOrigin, value.sites.customerOrigin].includes(cloud.managementOrigin) ||
+        !Array.isArray(cloud.operators) || !cloud.operators.length ||
+        cloud.operators.some(email => typeof email !== 'string' || !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+$/.test(email))) {
+      throw Error('Invalid Cloud admin deployment configuration');
+    }
   }
   const base = dirname(resolve(file));
   for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) {
@@ -149,6 +161,14 @@ export async function loadSecrets(config, catalogue) {
     values.DODO_WEBHOOK_SECRET = await read('dodo-webhook-secret');
     if (!/^[\x21-\x7e]{20,512}$/.test(values.DODO_API_KEY)
       || !/^(?:whsec_)?[A-Za-z0-9+/=_-]{20,512}$/.test(values.DODO_WEBHOOK_SECRET)) throw Error('Invalid billing secrets');
+  }
+  if (config.cloudAdmin) {
+    values.CLOUD_MANAGEMENT_TOKEN = await read('cloud-management-token');
+    values.CLOUD_MANAGEMENT_ACCESS_ID = await read('cloud-management-access-id');
+    values.CLOUD_MANAGEMENT_ACCESS_SECRET = await read('cloud-management-access-secret');
+    if (!/^[a-f0-9]{64}$/.test(values.CLOUD_MANAGEMENT_TOKEN) ||
+        !/^[a-z0-9]+\.access$/.test(values.CLOUD_MANAGEMENT_ACCESS_ID) ||
+        !/^[A-Za-z0-9_-]{20,200}$/.test(values.CLOUD_MANAGEMENT_ACCESS_SECRET)) throw Error('Invalid Cloud management secrets');
   }
   return values;
 }
