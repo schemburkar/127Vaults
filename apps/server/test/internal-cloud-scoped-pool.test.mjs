@@ -111,8 +111,8 @@ test('request boundary verifies TLS, SNI, host, and region before handing out a 
       ? { rows: [{ version: 1, region: 'asia', base_checksum: schemaChecksum, overlay_checksum: overlayChecksum }] }
       : sql.includes('verify_rls')
         ? { rows: [{ verify_rls: null }] }
-        : { rows: [{ id: values[0] === 'alice.asia.example.com' && values[1] === 'asia' ? alice : null }] };
-  const boundary = await createInternalCloudRequestBoundary({ pool: base, region: 'asia',
+        : { rows: [{ id: values[0] === 'alice' && values[1] === 'asia' ? alice : null }] };
+  const boundary = await createInternalCloudRequestBoundary({ pool: base, region: 'asia', publicOrigin: 'https://alice.asia.example.com',
     handle: async (_req, _res, context) => {
       assert.equal(context.tenant.id, alice);
       assert.equal(context.origin, 'https://alice.asia.example.com');
@@ -120,7 +120,7 @@ test('request boundary verifies TLS, SNI, host, and region before handing out a 
       await context.pool.query('SELECT 1');
       return true;
     } });
-  const req = { rawHeaders: ['Host', 'alice.asia.example.com'],
+  const req = { url: '/t/alice/api/v1/devices', rawHeaders: ['Host', 'alice.asia.example.com'],
     headers: { host: 'alice.asia.example.com', origin: 'https://alice.asia.example.com' },
     socket: { encrypted: true, servername: 'alice.asia.example.com' } };
   assert.equal(await boundary(req, {}), true);

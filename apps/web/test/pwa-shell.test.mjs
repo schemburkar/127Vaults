@@ -6,10 +6,10 @@ import vm from 'node:vm';
 import { pwaBuild, PWA_FILES } from '../pwa-build.mjs';
 
 const origin='https://vaults.example';
-async function worker() {
+async function worker(scope = '/') {
   const events={},network=[],cached=[],deleted=[];
   const cache={addAll:async requests=>cached.push(...requests.map(request=>new URL(request.url).pathname)),match:async path=>({cached:path})};
-  const self={location:{origin},clients:{get:async()=>({url:`${origin}/?pwa=1`}),claim:async()=>{}},addEventListener:(name,handler)=>events[name]=handler};
+  const self={location:{origin},registration:{scope:origin+scope},clients:{get:async()=>({url:`${origin}${scope}?pwa=1`}),claim:async()=>{}},addEventListener:(name,handler)=>events[name]=handler};
   const source=(await readFile(new URL('../service-worker.template.js',import.meta.url),'utf8')).replace('__SHELL_VERSION__','"test"').replace('__SHELL_ASSETS__',JSON.stringify(['/','/app/react-client.js','/wasm/core.wasm']));
   class OriginRequest extends Request {constructor(path,options){super(new URL(path,origin),options)}}
   vm.runInNewContext(source,{self,caches:{open:async()=>cache,keys:async()=>['127vaults-shell-old','unrelated-cache'],delete:async key=>deleted.push(key)},Request:OriginRequest,URL,Set,fetch:async request=>{network.push(request.url);return{network:true}}});
@@ -21,6 +21,15 @@ test('install caches the complete shell and activation only retires this app cac
   assert.deepEqual(w.cached,['/','/app/react-client.js','/wasm/core.wasm']);
   w.events.activate({waitUntil:promise=>work=promise});await work;
   assert.deepEqual(w.deleted,['127vaults-shell-old']);
+});
+test('the Cloud shell caches its own tenant entry and leaves other tenant routes alone', async () => {
+  const w = await worker('/t/family-one/');
+  let work;
+  w.events.install({ waitUntil: promise => work = promise });
+  await work;
+  assert.deepEqual(w.cached, ['/t/family-one/', '/app/react-client.js', '/wasm/core.wasm']);
+  w.events.fetch({ request: new Request(origin + '/t/family-two/?pwa=1'), respondWith: () => assert.fail('cross-tenant shell') });
+  w.events.fetch({ request: new Request(origin + '/t/family-one/api/v1/setup'), respondWith: () => assert.fail('tenant API') });
 });
 test('installed clients get cached shell; ordinary browser navigation uses the network',async()=>{
   const w=await worker();let response;

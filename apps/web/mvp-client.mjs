@@ -1,5 +1,6 @@
 import { createRemoteCall } from '/app/http-client.mjs';
 import { safeError } from '/app/client-errors.mjs';
+import { seatSummary } from '/app/shared/seat-summary.mjs';
 import init, {
   ExperimentalEcf1Core,
   ExperimentalOpaqueBridge,
@@ -11,6 +12,14 @@ import { requestBrowserEnrollment, finishBrowserEnrollment } from '/app/browser-
 import { VaultLifecycleClient } from '/app/vault-lifecycle.mjs';
 import { verifySyncHistory, verifyLatestPayload, verifyCheckpoints, checkpointHash, verifyQueuedOperation } from '/app/signed-sync.mjs';
 const installedApp = isInstalledApp();
+const tenantPath = /^\/t\/[a-z0-9-]+\/$/.test(location.pathname) ? location.pathname : '';
+const tenantUrl = tenantPath ? `${location.origin}${tenantPath}` : '';
+const cloudActiveKey = '127vaults:cloud-active-tenant';
+let cloudTenantId = null;
+const validTenantId = value => typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
+function assertActiveCloudTenant() {
+  if (cloudTenantId && localStorage.getItem(cloudActiveKey) !== cloudTenantId) throw Error('CLOUD_TENANT_SWITCHED');
+}
 let replica = null, reconnectCredentials = null, serverAuthenticated = false, snapshotBusy = false;
 let startupReady = false;
 let sessionGeneration = 0, lockDeadline = 0;
@@ -149,8 +158,13 @@ function equal(a, b) {
   for (let i = 0; i < a.length; i++) v |= a[i] ^ b[i];
   return v === 0;
 }
-const remoteCall = createRemoteCall({ installedApp, getCsrf: () => csrf });
+const sendRemote = createRemoteCall({ installedApp, getCsrf: () => csrf });
+const remoteCall = (path, options) => {
+  assertActiveCloudTenant();
+  return sendRemote(tenantPath ? `${tenantPath.slice(0, -1)}${path}` : path, options);
+};
 async function call(path, options = {}) {
+  assertActiveCloudTenant();
   const method = options.method || 'GET';
   if (root && (replicaRead(path) || path.startsWith('/api/v1/vaults'))) checkLicense(method !== 'GET');
   if (!installedApp || !replica || !root) return remoteCall(path, options);
@@ -311,6 +325,7 @@ async function db(mode = "readonly") {
   return d.transaction("identity", mode).objectStore("identity");
 }
 async function loadIdentity(key = "active") {
+  if (tenantPath) key = `${cloudTenantId}:${key}`;
   let s = await db();
   return new Promise((ok, no) => {
     let q = s.get(key);
@@ -320,6 +335,8 @@ async function loadIdentity(key = "active") {
   });
 }
 async function saveIdentity(v, key = "active") {
+  assertActiveCloudTenant();
+  if (tenantPath) key = `${cloudTenantId}:${key}`;
   let s = await db("readwrite");
   return new Promise((ok, no) => {
     if (v === null) s.delete(key); else s.put(v, key);
@@ -452,7 +469,7 @@ let memberAttempt = null;
 
 async function cloudDiscovery() {
   const value = await remoteCall("/api/v1/cloud/discovery");
-  if (value.version !== 1 || value.canonicalOrigin !== location.origin || value.protocolVersions?.api !== 1 || value.protocolVersions?.sync !== 1 ||
+  if (value.version !== 1 || value.canonicalOrigin !== location.origin || value.canonicalUrl !== tenantUrl || value.tenantId !== cloudTenantId || value.protocolVersions?.api !== 1 || value.protocolVersions?.sync !== 1 ||
       !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value.tenantId) ||
       !/^[A-Za-z0-9_-]{43}$/.test(value.serverPublicKey) || !/^[A-Za-z0-9_-]{43}$/.test(value.checkpointPublicKey)) {
     throw Error("SERVER_IDENTITY_CHANGED");
@@ -542,7 +559,8 @@ async function setup() {
       }),
       binding = un(server.binding),
       parts = bindingParts(binding);
-    if (parts.origin !== location.origin || parts.account !== accountId || parts.device !== deviceId) throw Error("SERVER_IDENTITY_CHANGED");
+    if (parts.origin !== location.origin || parts.account !== accountId || parts.device !== deviceId ||
+        (cloudTenantId && parts.installation !== cloudTenantId)) throw Error("SERVER_IDENTITY_CHANGED");
     const discovery = cloudMemberSetup ? await cloudDiscovery() : null;
     if (discovery && (discovery.tenantId !== parts.installation || discovery.serverPublicKey !== b64(parts.serverPublicKey))) throw Error("SERVER_IDENTITY_CHANGED");
     let upload = ExperimentalOpaqueBridge.client_registration_finish(
@@ -587,7 +605,7 @@ async function setup() {
       publicKey: b64(generated.publicRaw),
       installationId: parts.installation,
       serverPublicKey: b64(parts.serverPublicKey),
-      ...(cloudDeployment ? { cloudOrigin: location.origin, checkpointPublicKey: discovery?.checkpointPublicKey } : {}),
+      ...(cloudDeployment ? { cloudOrigin: tenantUrl, checkpointPublicKey: discovery?.checkpointPublicKey } : {}),
       secretEnvelope,
       secretExpiresAt: installedApp ? undefined : Date.now() + 30 * 24 * 60 * 60 * 1000,
     };
@@ -705,7 +723,7 @@ async function authenticateOnline(secret, password) {
     let start, finish, nextRoot, delivered = false;
     try {
     const discovery = cloudDeployment || identity.cloudOrigin ? await cloudDiscovery() : null;
-    if (discovery && ((identity.cloudOrigin && identity.cloudOrigin !== location.origin) ||
+    if (discovery && ((identity.cloudOrigin && identity.cloudOrigin !== tenantUrl) ||
         (identity.installationId && identity.installationId !== discovery.tenantId) ||
         (identity.serverPublicKey && identity.serverPublicKey !== discovery.serverPublicKey) ||
         (identity.checkpointPublicKey && identity.checkpointPublicKey !== discovery.checkpointPublicKey))) throw Error("SERVER_IDENTITY_CHANGED");
@@ -786,7 +804,7 @@ async function authenticateOnline(secret, password) {
     csrf = logged.csrf;
     serverAuthenticated = true;
     const nextIdentity = { ...identity, installationId: verified.p.installation, serverPublicKey: b64(verified.p.serverPublicKey),
-      ...(discovery ? { cloudOrigin: location.origin, checkpointPublicKey: discovery.checkpointPublicKey } : {}) };
+      ...(discovery ? { cloudOrigin: tenantUrl, checkpointPublicKey: discovery.checkpointPublicKey } : {}) };
     if (discovery && !identity.checkpointPublicKey) await saveIdentity(nextIdentity);
     if (generation !== sessionGeneration) throw Error("LOCKED");
     identity = nextIdentity;
@@ -817,7 +835,7 @@ async function refreshFamilySettings() {
   if (generation !== sessionGeneration || !$("settings").open) return;
   $("cloud-family").hidden = false;
   $("cloud-family-invite").hidden = !family.invitationsEnabled;
-  status("cloud-family-status", `${family.activeUsers} active · ${family.reservedSeats} reserved · ${family.maxActiveUsers} seats`);
+  status("cloud-family-status", seatSummary(family));
   function row(label, action, targetId, buttonText) {
     const item = document.createElement("li");
     item.textContent = label;
@@ -863,7 +881,7 @@ $("cloud-family-invite")?.addEventListener("submit", async event => {
       method: "POST", body: { emails: [$("cloud-family-email").value.trim()], expiresInHours: 48 },
     });
     if (generation !== sessionGeneration || !$("settings").open) return;
-    $("cloud-family-url").value = `${location.origin}/#memberInvite=${invitation.token}`;
+    $("cloud-family-url").value = `${tenantUrl}#memberInvite=${invitation.token}`;
     $("cloud-family-link").hidden = false;
     $("cloud-family-email").value = "";
     await refreshFamilySettings();
@@ -950,7 +968,8 @@ async function login() {
     stage = "verifying account credentials";
     status("login-status", "Verifying credentials…");
     if (installedApp) {
-      replica = await new PwaReplica({ scope: identity.deviceId, changed: replicaChanged, validateEntry: verifyPendingEntry }).load();
+      replica = await new PwaReplica({ scope: cloudTenantId ? `${cloudTenantId}:${identity.deviceId}` : identity.deviceId,
+        changed: replicaChanged, validateEntry: verifyPendingEntry }).load();
       replicaChanged();
       reconnectCredentials = { secret: secret.slice(), password: password.slice() };
     }
@@ -969,7 +988,7 @@ async function login() {
     } catch (error) {
       if (!replica || !networkUnavailable(error) || !replica.state.unlock || !replica.state.snapshotAt) throw error;
       if (replica.state.unlock.origin !== location.origin || replica.state.unlock.deviceId !== identity.deviceId || replica.state.unlock.accountId !== identity.accountId) throw Error('SERVER_IDENTITY_CHANGED');
-      if (identity.cloudOrigin && (identity.cloudOrigin !== location.origin || replica.state.unlock.authContext?.tenantId !== identity.installationId)) throw Error('SERVER_IDENTITY_CHANGED');
+      if (cloudTenantId && (identity.cloudOrigin !== tenantUrl || replica.state.unlock.authContext?.tenantId !== cloudTenantId)) throw Error('SERVER_IDENTITY_CHANGED');
       if (root) { core.release_root(root); root.free?.(); root = null; }
       root = core.unwrap_root(un(replica.state.unlock.envelope), un(replica.state.unlock.descriptor), password, secret);
       licenseEntitlement = JSON.parse(td.decode(core.decrypt_account_settings(root, un(replica.state.licenseEnvelope || ""))));
@@ -1004,6 +1023,14 @@ async function login() {
     else if (vaultSettings.default_view?.kind === 'vault') await selectVault(vaultSettings.default_view.id);
     applyDefaultView = false;
     if (!replica?.local) { await reloadDevices(); await reloadOwnershipRequests(); }
+    if (cloudTenantId && new URLSearchParams(location.search).get('settings') === 'family') {
+      if (serverAuthenticated && licenseEntitlement?.status.role === 'owner') {
+        $("settings-toggle").click();
+        showSettingsView("family");
+      } else {
+        toast("Family settings are unavailable", "Open this link while signed in online as a vault owner.", "info");
+      }
+    }
     queueMicrotask(openPendingDesktopEnrollment);
   } catch (e) {
     await lock(false);
@@ -2624,6 +2651,8 @@ function showSettingsView(name) {
   $("settings-devices").hidden = name !== "devices";
   $("settings-vaults").hidden = name !== "vaults";
   $("settings-preferences").hidden = name !== "preferences";
+  if ($("settings-family")) $("settings-family").hidden = name !== "family";
+  if (name === "family") void refreshFamilySettings().catch(error => toast("Family settings unavailable", safeError(error), "error"));
   if (name === "devices") reloadDevices();
 }
 function showDeviceRegistration(show) {
@@ -2826,7 +2855,8 @@ $("settings-toggle").onclick = () => {
   $("profile-secret-status").textContent = installedApp && reusableSecret(identity) ? "Remembered on this registered device" : reusableSecret(identity) ? `Remembered in this browser until ${new Date(identity.secretExpiresAt || Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}` : "Required at next unlock";
   showSettingsView("profile");
   $("settings").showModal();
-  void refreshFamilySettings().catch(error => toast("Family settings unavailable", safeError(error), "error"));
+  if ($("cloud-family-tab")) $("cloud-family-tab").hidden = !serverAuthenticated ||
+    licenseEntitlement?.status.scope !== "cloud-tenant" || licenseEntitlement.status.role !== "owner";
 };
 $("close-settings").onclick = () => $("settings").close();
 for (let button of document.querySelectorAll(".settings-tab"))
@@ -2913,13 +2943,36 @@ try {
     } catch (error) { event.detail.reject(error); }
   });
   core = new ExperimentalEcf1Core();
+  let setupState;
+  if (tenantPath) {
+    const mappingKey = `127vaults:cloud-tenant:${tenantPath}`;
+    try { setupState = await remoteCall('/api/v1/setup'); }
+    catch (error) {
+      if (!installedApp || !networkUnavailable(error)) throw error;
+      setupState = { deployment: 'cloud', canonicalUrl: tenantUrl, tenantId: localStorage.getItem(mappingKey) };
+    }
+    if (setupState.deployment !== 'cloud' || setupState.canonicalUrl !== tenantUrl || !validTenantId(setupState.tenantId)) {
+      throw Error('SERVER_IDENTITY_CHANGED');
+    }
+    cloudTenantId = setupState.tenantId;
+    localStorage.setItem(mappingKey, cloudTenantId);
+    localStorage.setItem(cloudActiveKey, cloudTenantId);
+    window.addEventListener('storage', event => {
+      if ((event.key === cloudActiveKey || event.key === null) && localStorage.getItem(cloudActiveKey) !== cloudTenantId) {
+        memberAttempt = null;
+        cloudMemberSetup = false;
+        pendingBrowserEnrollment = null;
+        void lock(false);
+        msg('Another Cloud tenant is active. Reopen this tenant to switch back.');
+      }
+    });
+  }
   identity = await loadIdentity();
   if (identity) {
     $("username").value = identity.username;
     $("device").value = identity.deviceId;
   }
-  let setupState;
-  try { setupState = await call("/api/v1/setup"); }
+  try { setupState ??= await call("/api/v1/setup"); }
   catch (error) {
     if (!installedApp || !identity || !networkUnavailable(error)) throw error;
     setupState = { ownerRequired: false };

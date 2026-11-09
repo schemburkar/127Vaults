@@ -24,6 +24,7 @@ export const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storag
     BASE_CHANGED: "This item changed on another device. Your queued edit is preserved. Choose Sync to review both versions.",
     VAULT_RETIRED: "This vault was removed on another device. Your offline changes are preserved for review.",
     SERVER_IDENTITY_CHANGED: "The server identity changed. Your local copy and pending changes are preserved; verify the server before registering again.",
+    CLOUD_TENANT_SWITCHED: "Another Cloud tenant is active. Reopen this tenant to switch back.",
     PENDING_REMOVAL: "Resume or cancel the pending vault removal before starting another.",
     REMOVAL_SOURCE_CHANGED: "The source vault changed. It remains available; cancel the pending move and start again after syncing.",
     REMOVAL_DESTINATION_CHANGED: "The destination copy changed. Both vaults remain available; review the copy before cancelling or restarting the move.",

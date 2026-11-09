@@ -480,7 +480,7 @@ pub fn unlock(
     let binding_raw = bytes(&begun, "binding")?;
     let (binding_origin, installation, account, device, epoch, attempt, server_public_key) =
         parse_binding(&binding_raw)?;
-    if binding_origin != origin || device != uuid_bytes(&device_id)? {
+    if binding_origin != crate::http_origin(&origin)? || device != uuid_bytes(&device_id)? {
         return Err("authentication binding mismatch".to_owned());
     }
     let trusted_tenant = TenantBinding {
@@ -2655,7 +2655,7 @@ impl Session {
         let r = self
             .client
             .request(method, format!("{}{}", self.origin, path))
-            .header("Origin", &self.origin)
+            .header("Origin", crate::http_origin(&self.origin)?)
             .header("X-127V-CSRF", &self.csrf)
             .header("Cookie", &self.cookie)
             .json(body)
@@ -3944,11 +3944,13 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if self.online {
+        if self.online
+            && let Ok(origin) = crate::http_origin(&self.origin)
+        {
             let _ = self
                 .client
                 .delete(format!("{}/api/v1/session", self.origin))
-                .header("Origin", &self.origin)
+                .header("Origin", origin)
                 .header("X-127V-CSRF", &self.csrf)
                 .header("Cookie", &self.cookie)
                 .send();

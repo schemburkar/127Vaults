@@ -183,7 +183,7 @@ impl HttpSyncTransport {
             .header("Cookie", &self.cookie);
         if method != Method::GET {
             request = request
-                .header("Origin", &self.origin)
+                .header("Origin", crate::http_origin(&self.origin)?)
                 .header("X-127V-CSRF", &self.csrf);
         }
         if let Some(body) = body {

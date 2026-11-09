@@ -924,7 +924,7 @@ function Vault() {
 
 function Settings() {
   const settingsTab = "settings-tab";
-  const [activeTab, setActiveTab] = useState<"profile" | "devices" | "vaults" | "preferences">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "devices" | "vaults" | "preferences" | "family">("profile");
   const [vaults, setVaults] = useState<WebVaultSummary[]>([]);
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
@@ -934,11 +934,11 @@ function Settings() {
       <div className="web-settings">
         <aside className="web-settings-nav">
           <h2 id="web-settings-title">Settings</h2>
-          <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} variant="ghost" className={`${settingsTab} ${activeTab === tab ? "active" : ""}`} aria-current={activeTab === tab ? "page" : undefined} aria-controls={`settings-${tab}`} data-settings-view={tab}>{tab === "profile" ? <KeyRound size={17} aria-hidden="true" /> : tab === "devices" ? <PanelsTopLeft size={17} aria-hidden="true" /> : tab === "vaults" ? <VaultIcon size={17} aria-hidden="true" /> : <SettingsIcon size={17} aria-hidden="true" />}<span>{tab[0].toUpperCase() + tab.slice(1)}</span></Button>)}</nav>
+          <nav aria-label="Settings sections">{(["profile", "devices", "vaults", "preferences"] as const).map((tab) => <Button key={tab} variant="ghost" className={`${settingsTab} ${activeTab === tab ? "active" : ""}`} aria-current={activeTab === tab ? "page" : undefined} aria-controls={`settings-${tab}`} data-settings-view={tab}>{tab === "profile" ? <KeyRound size={17} aria-hidden="true" /> : tab === "devices" ? <PanelsTopLeft size={17} aria-hidden="true" /> : tab === "vaults" ? <VaultIcon size={17} aria-hidden="true" /> : <SettingsIcon size={17} aria-hidden="true" />}<span>{tab[0].toUpperCase() + tab.slice(1)}</span></Button>)}<Button id="cloud-family-tab" variant="ghost" className={`${settingsTab} ${activeTab === "family" ? "active" : ""}`} hidden aria-current={activeTab === "family" ? "page" : undefined} aria-controls="settings-family" data-settings-view="family">Family members</Button></nav>
         </aside>
         <div className="web-settings-main">
           <header className="web-settings-header">
-            <div><h3 id="web-settings-panel-title">{activeTab[0].toUpperCase() + activeTab.slice(1)}</h3><p>{activeTab === "profile" ? "Your account and security in this browser." : activeTab === "devices" ? "Manage devices registered to your account." : activeTab === "vaults" ? "Manage your encrypted vaults." : "Choose how this browser handles your session and copied values."}</p></div>
+            <div><h3 id="web-settings-panel-title">{activeTab === "family" ? "Family members" : activeTab[0].toUpperCase() + activeTab.slice(1)}</h3><p>{activeTab === "family" ? "Manage people, invitations and seats for this vault." : activeTab === "profile" ? "Your account and security in this browser." : activeTab === "devices" ? "Manage devices registered to your account." : activeTab === "vaults" ? "Manage your encrypted vaults." : "Choose how this browser handles your session and copied values."}</p></div>
             <Button id="close-settings" variant="ghost" className="settings-close" aria-label="Close settings" title="Close settings"><X size={18} /></Button>
           </header>
           <div ref={bodyRef} className="web-settings-body text-sm">
@@ -950,6 +950,8 @@ function Settings() {
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Device ID</span><code id="profile-device" className="break-all text-xs" /></div>
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Account secret</span><span id="profile-secret-status" className="text-sm" /></div>
           <PwaControls />
+        </section>
+        <section className="web-settings-panel" id="settings-family" aria-labelledby="web-settings-panel-title" hidden={activeTab !== "family"}>
           <section id="cloud-family" className="mt-5 grid gap-3 rounded-xl border border-white/10 p-4" hidden>
             <h4 className="font-semibold">Family members</h4>
             <p id="cloud-family-status" role="status" />

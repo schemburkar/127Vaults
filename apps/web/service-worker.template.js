@@ -1,6 +1,8 @@
 /* The release build injects a complete, versioned, same-origin app shell. */
-const CACHE = '127vaults-shell-' + __SHELL_VERSION__;
-const ASSETS = __SHELL_ASSETS__;
+const scopePath = new URL(self.registration.scope).pathname;
+const prefix = scopePath === '/' ? '127vaults-shell-' : `127vaults-tenant-shell:${scopePath}:`;
+const CACHE = prefix + __SHELL_VERSION__;
+const ASSETS = __SHELL_ASSETS__.map(path => path === '/' ? scopePath : path === '/manifest.webmanifest' ? `${scopePath}manifest.webmanifest` : path);
 const allowed = new Set(ASSETS);
 const installedClients = new Set();
 self.addEventListener('install', event => {
@@ -12,7 +14,7 @@ self.addEventListener('install', event => {
 });
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (key.startsWith('127vaults-shell-') && key !== CACHE) await caches.delete(key);
+    for (const key of await caches.keys()) if (key.startsWith(prefix) && key !== CACHE) await caches.delete(key);
     await self.clients.claim();
   })());
 });
@@ -38,7 +40,7 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET' || url.origin !== self.location.origin || !allowed.has(url.pathname)) return;
   event.respondWith((async () => {
     const client = event.clientId && await self.clients.get(event.clientId);
-    const pwa = installedClients.has(event.clientId) || (client && new URL(client.url).searchParams.get('pwa') === '1') || (request.mode === 'navigate' && url.pathname === '/' && url.searchParams.get('pwa') === '1');
+    const pwa = installedClients.has(event.clientId) || (client && new URL(client.url).searchParams.get('pwa') === '1') || (request.mode === 'navigate' && url.pathname === scopePath && url.searchParams.get('pwa') === '1');
     if (!pwa) return fetch(request); // Ordinary browser use stays online-only.
     const cached = await (await caches.open(CACHE)).match(url.pathname);
     return cached || fetch(request);

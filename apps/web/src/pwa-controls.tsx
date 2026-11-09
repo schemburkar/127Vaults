@@ -31,7 +31,8 @@ export function PwaLifecycle() {
       let disposed = false;
       let stopUpdates: (() => void) | undefined;
       const notify = () => { if (installed()) navigator.serviceWorker.controller?.postMessage({ type: '127vaults-installed' }); };
-      navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).then(async registration => {
+      const scope = /^\/t\/[a-z0-9-]+\/$/.test(location.pathname) ? location.pathname : '/';
+      navigator.serviceWorker.register(`${scope}sw.js`, { scope, updateViaCache: 'none' }).then(async registration => {
         if (disposed) return;
         stopUpdates = watchPwaUpdate(registration, () => {
           updateReady = true;

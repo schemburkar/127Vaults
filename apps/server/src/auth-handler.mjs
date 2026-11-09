@@ -16,7 +16,9 @@ function cookie(req, name) {
 const ceremonyCookie = csrf => `${CEREMONY_COOKIE}=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=120`;
 
 /** HTTP-only orchestration. AuthService owns protocol verification and atomic storage. */
-export function createAuthHandler(service, configuredOrigin) {
+export function createAuthHandler(service, configuredOrigin, {
+  issueCeremony = () => randomBytes(32).toString('base64url'), readCeremony = value => value
+} = {}) {
   if (!service || typeof configuredOrigin !== 'string' || !configuredOrigin.startsWith('https://')) throw new Error('Reviewed authentication service and HTTPS origin are required.');
   return async function handle(req, res) {
     const url = new URL(req.url, configuredOrigin);
@@ -30,27 +32,27 @@ export function createAuthHandler(service, configuredOrigin) {
     try {
       if (v1Ceremony) {
         if (req.method !== 'GET') { writeError(res, 405, 'method_not_allowed'); return true; }
-        const csrf = randomBytes(32).toString('base64url');
+        const csrf = issueCeremony();
         reply(200, { csrf }, { 'Set-Cookie': ceremonyCookie(csrf) }); return true;
       }
       if (v1Start) {
         if (req.method !== 'POST') { writeError(res, 405, 'method_not_allowed'); return true; }
         if (req.headers.origin !== configuredOrigin) throw new AuthError(403);
         const value = strictJson(req, await readRequestBody(req), ['username', 'deviceId', 'request']);
-        const csrf = randomBytes(32).toString('base64url');
+        const csrf = issueCeremony();
         const result = await service.start({ ...value, origin: configuredOrigin, source: requestSource(req) });
         reply(200, { ...result, csrf }, { 'Set-Cookie': ceremonyCookie(csrf) }); return true;
       }
       if (passwordMatch) {
         if (req.method !== 'POST') { writeError(res, 405, 'method_not_allowed'); return true; }
-        requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], cookie(req, CEREMONY_COOKIE));
+        requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], readCeremony(cookie(req, CEREMONY_COOKIE)));
         const value = strictJson(req, await readRequestBody(req), ['finalization']);
         const password = await service.finishPassword({ attemptId: passwordMatch[1], ...value });
         reply(200, await service.consumeRoot({ attemptId: passwordMatch[1], capability: password.capability })); return true;
       }
       if (deviceMatch) {
         if (req.method !== 'POST') { writeError(res, 405, 'method_not_allowed'); return true; }
-        requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], cookie(req, CEREMONY_COOKIE));
+        requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], readCeremony(cookie(req, CEREMONY_COOKIE)));
         const value = strictJson(req, await readRequestBody(req), ['signature']);
         const result = await service.finishDevice({ attemptId: deviceMatch[1], ...value });
         reply(200, { csrf: result.csrf, expiresAt: result.expiresAt }, { 'Set-Cookie': sessionCookie(result.token) }); return true;

@@ -12,6 +12,7 @@ export const PWA_FILES = [
   ['app/private-vault-client.mjs', 'src/private-vault-client.mjs'],
   ['app/passkeys.mjs', '../extension/src/passkeys.mjs'],
   ['app/shared/passkey-metadata.mjs', '../../packages/domain/src/passkey-metadata.mjs'],
+  ['app/shared/seat-summary.mjs', '../../packages/domain/src/seat-summary.mjs'],
   ['wasm/vaults_browser_fixture.js', 'wasm/vaults_browser_fixture.js'],
   ['wasm/vaults_browser_fixture_bg.wasm', 'wasm/vaults_browser_fixture_bg.wasm'],
 ];

@@ -11,6 +11,25 @@ async function account() {
   const value = await portalApi('me');
   $('portal-login').hidden = true; $('portal-account').hidden = false;
   $('portal-identity').textContent = value.email ? `Signed in as ${value.email}` : value.scope === 'installer' ? 'Signed in with an installer invitation. This session opens installation downloads and licensing only.' : 'Signed in with an invitation. This session opens only that invitation.';
+  const cloud = $('portal-cloud');
+  const tenants = value.cloudTenants ?? [];
+  cloud.hidden = !tenants.length && !value.cloudUnavailable;
+  const cloudCards = $('portal-cloud-tenants');
+  cloudCards.replaceChildren();
+  if (value.cloudUnavailable) cloudCards.textContent = 'Cloud details are temporarily unavailable.';
+  for (const tenant of tenants) {
+    if (typeof tenant.slug !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(tenant.slug)) continue;
+    const canonicalUrl = `https://cloud.127vaults.com/t/${tenant.slug}/`;
+    if (tenant.canonicalUrl !== canonicalUrl) continue;
+    const card = document.createElement('article'); card.className = 'access-card portal-request';
+    const title = document.createElement('h3'); title.textContent = tenant.slug;
+    const summary = document.createElement('p');
+    summary.textContent = `${tenant.state} · ${tenant.maxActiveUsers} seats allocated by 127Vaults`;
+    const note = document.createElement('p'); note.textContent = 'Billing and seat purchases are arranged with 127Vaults during the pilot.';
+    card.append(title, summary, note);
+    if (tenant.state === 'active') card.append(link('Open family settings', `${canonicalUrl}?settings=family`));
+    cloudCards.append(card);
+  }
   $('portal-requests').replaceChildren();
   for (const row of value.requests) {
     const card = document.createElement('article'); card.className = 'access-card portal-request';
@@ -44,7 +63,7 @@ async function account() {
     } else { const note = document.createElement('p'); note.className = 'portal-request-note'; note.textContent = row.state === 'requested' ? 'Your request is waiting for review. Signing in does not approve access.' : 'This request is not currently approved. Contact your inviter if you need assistance.'; card.append(note); }
     $('portal-requests').append(card);
   }
-  $('portal-status').textContent = value.requests.length ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
+  $('portal-status').textContent = value.requests.length || !cloud.hidden ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
 }
 $('email-start').addEventListener('submit', event => { event.preventDefault(); run(async () => {
   const result = await portalApi('start', { email: $('email').value.trim() }); challengeId = result.challengeId;
@@ -59,6 +78,7 @@ $('invite-login').addEventListener('submit', event => { event.preventDefault(); 
 }); });
 $('portal-logout').addEventListener('click', () => run(async () => {
   await portalApi('logout', {}); $('portal-account').hidden = true; $('portal-login').hidden = false;
+  $('portal-cloud').hidden = true; $('portal-cloud-tenants').replaceChildren();
   $('portal-requests').replaceChildren(); $('portal-identity').textContent = ''; $('portal-status').textContent = 'Signed out.';
 }));
 account().catch(error => { $('portal-login').hidden = false; $('portal-status').textContent = error.status === 401 ? '' : error.message; });

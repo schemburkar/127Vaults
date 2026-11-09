@@ -48,8 +48,8 @@ function appendText(parent, tag, value) {
 function tenantCard(tenant) {
   const card = document.createElement('section');
   card.className = 'access-card';
-  appendText(card, 'h2', tenant.host);
-  appendText(card, 'p', `Vault URL: https://${tenant.host} · Deployment: ${tenant.region}`);
+  appendText(card, 'h2', tenant.slug);
+  appendText(card, 'p', `Vault URL: ${tenant.canonicalUrl} · Deployment: ${tenant.region}`);
   appendText(card, 'p', `Status: ${tenant.readyToActivate ? 'Ready to activate' : tenant.state} · Control owner: ${tenant.controlOwnerEmail ?? 'Unlinked'}`);
   appendText(card, 'p', `${tenant.activeUsers} active · ${tenant.reservedSeats} reserved · ${tenant.maxActiveUsers} seats allowed`);
   const action = (label, name, confirmation) => {
@@ -57,9 +57,9 @@ function tenantCard(tenant) {
     button.className = 'button';
     button.type = 'button';
     button.addEventListener('click', () => run(async () => {
-      if (confirmation && !window.confirm(`${confirmation} ${tenant.host}?`)) return;
+      if (confirmation && !window.confirm(`${confirmation} ${tenant.slug}?`)) return;
       clearLink();
-      const result = await command(name, { host: tenant.host });
+      const result = await command(name, { slug: tenant.slug });
       if (name === 'issue-setup') {
         link.value = result.setupUrl;
         setup.hidden = false;
@@ -83,7 +83,7 @@ function tenantCard(tenant) {
       event.preventDefault();
       void run(async () => {
         clearLink();
-        await command('set-seats', { host: tenant.host, maxActiveUsers: seats.valueAsNumber });
+        await command('set-seats', { slug: tenant.slug, maxActiveUsers: seats.valueAsNumber });
         await refresh();
       });
     });
@@ -104,7 +104,7 @@ create.addEventListener('submit', event => {
   const fields = new FormData(create);
   void run(async () => {
     clearLink();
-    await command('provision', { host: fields.get('host').trim().toLowerCase(), maxActiveUsers: Number(fields.get('seats')),
+    await command('provision', { slug: fields.get('slug').trim().toLowerCase(), maxActiveUsers: Number(fields.get('seats')),
       ownerIdentityId: fields.get('owner').trim().toLowerCase(), ownerEmail: fields.get('email').trim().toLowerCase() });
     create.reset();
     await refresh();

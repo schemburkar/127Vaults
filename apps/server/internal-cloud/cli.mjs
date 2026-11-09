@@ -62,20 +62,20 @@ try {
   }
   else if (command === 'verify') result = await verifyCloudDatabase(client, region);
   else if (command === 'list' || command === 'inspect') {
-    result = { tenants: await readCloudTenants(client, { region, host: args[0] ?? null }) };
+    result = { tenants: await readCloudTenants(client, { region, slug: args[0] ?? null }) };
   } else if (command === 'provision') {
-    result = await provisionCloudTenant(client, { region, host: args[0], maxActiveUsers: Number(args[1]),
+    result = await provisionCloudTenant(client, { region, slug: args[0], maxActiveUsers: Number(args[1]),
       ownerIdentityId: args[2], ownerEmail: args[3], createOpaqueSetup: await loadOpaqueSetupFactory() });
-  } else if (command === 'activate') result = await activateCloudTenant(client, { region, host: args[0] });
+  } else if (command === 'activate') result = await activateCloudTenant(client, { region, slug: args[0] });
   else if (command === 'suspend' || command === 'resume') {
-    result = await setCloudTenantSuspension(client, { region, host: args[0], suspended: command === 'suspend' });
+    result = await setCloudTenantSuspension(client, { region, slug: args[0], suspended: command === 'suspend' });
   } else if (command === 'set-seats') {
-    result = await setCloudTenantSeatLimit(client, { region, host: args[0], maxActiveUsers: Number(args[1]) });
+    result = await setCloudTenantSeatLimit(client, { region, slug: args[0], maxActiveUsers: Number(args[1]) });
   }
-  else if (command === 'reserve') result = await reserveCloudTenant(client, { region, host: args[0], maxActiveUsers: Number(args[1]) });
+  else if (command === 'reserve') result = await reserveCloudTenant(client, { region, slug: args[0], maxActiveUsers: Number(args[1]) });
   else if (command === 'prepare') {
     const createOpaqueSetup = await loadOpaqueSetupFactory();
-    result = await prepareCloudTenant(client, { region, host: args[0], setupBytes: createOpaqueSetup() });
+    result = await prepareCloudTenant(client, { region, slug: args[0], setupBytes: createOpaqueSetup() });
   } else {
     const output = process.env.VAULTS_CLOUD_BOOTSTRAP_OUTPUT;
     const keyPath = process.env.VAULTS_TOKEN_KEY_FILE;
@@ -83,10 +83,10 @@ try {
       throw new Error('New restricted bootstrap output and token key paths required.');
     }
     const tokenKey = await readFile(keyPath);
-    result = await issueCloudBootstrapToken(client, { region, host: args[0], tokenKey });
+    result = await issueCloudBootstrapToken(client, { region, slug: args[0], tokenKey });
     const value = command === 'setup-link' ? result.setupUrl : result.token;
     await writeFile(output, `${value}\n`, { encoding: 'ascii', mode: 0o600, flag: 'wx' });
-    result = { id: result.id, region, host: result.host, bootstrapTokenWritten: true };
+    result = { id: result.id, region, slug: result.slug, bootstrapTokenWritten: true };
   }
   console.log(JSON.stringify({ internalCloud: true, command, ...result }));
 } catch {

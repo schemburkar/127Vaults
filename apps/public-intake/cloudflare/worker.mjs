@@ -527,7 +527,8 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(rows.length<100)break;
   }
   await store.pruneLimits();
-  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(), env.CUSTOMER_MANUAL_MAIL === '1' || env.CUSTOMER_EMAIL_PROVIDER === 'resend');
+  if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(),
+    env.CUSTOMER_MANUAL_MAIL === '1' || env.CUSTOMER_EMAIL_PROVIDER === 'resend' || env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1');
   await pruneCustomerEmail(env, store, now());
   if (env.INTAKE_PROTECTION === '1') await store.db.batch([
     store.db.prepare('DELETE FROM intake_challenges WHERE expires_at <= ?').bind(now()),

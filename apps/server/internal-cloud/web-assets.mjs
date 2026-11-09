@@ -14,8 +14,11 @@ export const cloudWebAssets = {
     if (!/^\/(?:brand-mark\.svg|wordmark\.svg|manifest\.webmanifest|sw\.js|icons\/[\w-]+\.png|(?:app|wasm)\/(?:[\w-]+\/)*[\w-]+\.(?:js|mjs|css|wasm))$/.test(path ?? '')) return null;
     return path.slice(1);
   },
-  async serve(req, res, asset) {
-    const data = await readFile(new URL(`../../web/dist/${asset}`, import.meta.url));
+  async serve(req, res, asset, tenantPath) {
+    let data = await readFile(new URL(`../../web/dist/${asset}`, import.meta.url));
+    if (tenantPath && asset === 'manifest.webmanifest') {
+      data = JSON.stringify({ ...JSON.parse(data), id: tenantPath, scope: tenantPath, start_url: `${tenantPath}?pwa=1` });
+    }
     res.writeHead(200, {
       'Content-Type': contentTypes.get(asset.split('.').at(-1)),
       'Cache-Control': 'no-store',

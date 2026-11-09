@@ -1,10 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { tokenDigest } from '../src/onboarding.mjs';
-import { cloudTenantDirectory } from '../src/tenant-context.mjs';
 import { schemaChecksum, schemaSql, schemaVersion } from '../src/schema.mjs';
 import { readSeatUsage } from '../src/license-seats.mjs';
-import { cloudLandingHost } from './landing.mjs';
+import { cloudTenantUrl, validCloudSlug } from './tenant-url.mjs';
 import pg from 'pg';
 
 export const overlaySql = await readFile(new URL('./overlay.sql', import.meta.url), 'utf8');
@@ -27,10 +26,8 @@ const ownerEnrollmentReady = `EXISTS(SELECT 1 FROM vaults.opaque_server_setup s 
     JOIN vaults.devices d ON d.tenant_id=a.tenant_id AND d.account_id=a.id AND d.active AND d.lifecycle_status='active'
     WHERE a.tenant_id=t.id AND a.server_role='owner' AND a.enrollment_state='active' AND a.suspended_at IS NULL)`;
 
-function validateTenantHost(region, host) {
-  if (!regionValid(region) || typeof host !== 'string' || host !== host.toLowerCase()) invalid('Invalid Cloud tenant host.');
-  if (host === cloudLandingHost) invalid('The Cloud landing hostname is reserved.');
-  cloudTenantDirectory([{ id: randomUUID(), host, region, state: 'reserved' }], region);
+function validateTenantSlug(region, slug) {
+  if (!regionValid(region) || !validCloudSlug(slug)) invalid('Invalid Cloud tenant slug.');
 }
 
 async function transaction(client, action) {
@@ -126,20 +123,20 @@ export async function verifyCloudManagementLogin(client) {
   if (result.rows[0]?.safe !== true) throw new Error('Unsafe Cloud management database login.');
 }
 
-export async function reserveCloudTenant(client, { region, host, maxActiveUsers }) {
-  validateTenantHost(region, host);
+export async function reserveCloudTenant(client, { region, slug, maxActiveUsers }) {
+  validateTenantSlug(region, slug);
   if (!validSeatLimit(maxActiveUsers)) invalid('Valid Cloud seat limit required.');
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
-    const existing = (await client.query('SELECT id,region,host,state,max_active_users FROM cloud.tenants WHERE host=$1 FOR UPDATE', [host])).rows[0];
+    const existing = (await client.query('SELECT id,region,slug,state,max_active_users FROM cloud.tenants WHERE slug=$1 FOR UPDATE', [slug])).rows[0];
     if (existing) {
       if (existing.region !== region || existing.state !== 'reserved' || existing.max_active_users !== maxActiveUsers) invalid('Tenant reservation conflicts with existing state.');
-      return { id: existing.id, region, host, maxActiveUsers, state: existing.state, reused: true };
+      return { id: existing.id, region, slug, maxActiveUsers, state: existing.state, reused: true };
     }
     const id = randomUUID();
     await client.query('INSERT INTO vaults.installation(id) VALUES($1)', [id]);
-    await client.query('INSERT INTO cloud.tenants(id,region,host,max_active_users) VALUES($1,$2,$3,$4)', [id, region, host, maxActiveUsers]);
-    return { id, region, host, maxActiveUsers, state: 'reserved', reused: false };
+    await client.query('INSERT INTO cloud.tenants(id,region,slug,max_active_users) VALUES($1,$2,$3,$4)', [id, region, slug, maxActiveUsers]);
+    return { id, region, slug, maxActiveUsers, state: 'reserved', reused: false };
   });
 }
 
@@ -150,19 +147,19 @@ function validateControlOwner(ownerIdentityId, ownerEmail) {
 }
 
 // The caller supplies the identity already verified by the customer control plane.
-export async function linkCloudControlOwner(client, { region, host, ownerIdentityId, ownerEmail }) {
-  validateTenantHost(region, host);
+export async function linkCloudControlOwner(client, { region, slug, ownerIdentityId, ownerEmail }) {
+  validateTenantSlug(region, slug);
   validateControlOwner(ownerIdentityId, ownerEmail);
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
-    const tenant = (await client.query('SELECT id,state,control_owner_id,control_owner_email FROM cloud.tenants WHERE region=$1 AND host=$2 FOR UPDATE', [region, host])).rows[0];
+    const tenant = (await client.query('SELECT id,state,control_owner_id,control_owner_email FROM cloud.tenants WHERE region=$1 AND slug=$2 FOR UPDATE', [region, slug])).rows[0];
     if (!tenant || !['reserved', 'prepared'].includes(tenant.state)) invalid('Cloud control owner cannot be linked in this state.');
     if (tenant.control_owner_id && (tenant.control_owner_id !== ownerIdentityId || tenant.control_owner_email !== ownerEmail)) {
       invalid('Cloud control owner already linked to another identity.');
     }
     if (!tenant.control_owner_id) await client.query('UPDATE cloud.tenants SET control_owner_id=$2,control_owner_email=$3 WHERE id=$1',
       [tenant.id, ownerIdentityId, ownerEmail]);
-    return { id: tenant.id, region, host, controlOwnerId: ownerIdentityId, reused: Boolean(tenant.control_owner_id) };
+    return { id: tenant.id, region, slug, controlOwnerId: ownerIdentityId, reused: Boolean(tenant.control_owner_id) };
   });
 }
 
@@ -172,8 +169,8 @@ function validateOpaqueSetup(setupBytes) {
   }
 }
 
-export async function provisionCloudTenant(client, { region, host, maxActiveUsers, ownerIdentityId, ownerEmail, createOpaqueSetup, actor }) {
-  validateTenantHost(region, host);
+export async function provisionCloudTenant(client, { region, slug, maxActiveUsers, ownerIdentityId, ownerEmail, createOpaqueSetup, actor }) {
+  validateTenantSlug(region, slug);
   validateControlOwner(ownerIdentityId, ownerEmail);
   if (!validSeatLimit(maxActiveUsers)) invalid('Valid Cloud seat limit required.');
   if (typeof createOpaqueSetup !== 'function') invalid('Cloud OPAQUE setup is required.');
@@ -181,50 +178,50 @@ export async function provisionCloudTenant(client, { region, host, maxActiveUser
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
     const existing = (await client.query(`SELECT id,region,state,max_active_users,control_owner_id,control_owner_email
-      FROM cloud.tenants WHERE host=$1 FOR UPDATE`, [host])).rows[0];
+      FROM cloud.tenants WHERE slug=$1 FOR UPDATE`, [slug])).rows[0];
     if (existing) {
       if (existing.region !== region || existing.state !== 'prepared' || existing.max_active_users !== maxActiveUsers ||
           existing.control_owner_id !== ownerIdentityId || existing.control_owner_email !== ownerEmail) {
         invalid('Tenant provisioning conflicts with existing state.');
       }
-      return { id: existing.id, region, host, state: 'prepared', reused: true };
+      return { id: existing.id, region, slug, state: 'prepared', reused: true };
     }
     const setupBytes = createOpaqueSetup();
     validateOpaqueSetup(setupBytes);
     const id = randomUUID();
     await client.query('INSERT INTO vaults.installation(id) VALUES($1)', [id]);
-    await client.query(`INSERT INTO cloud.tenants(id,region,host,max_active_users,control_owner_id,control_owner_email,state)
-      VALUES($1,$2,$3,$4,$5,$6,'prepared')`, [id, region, host, maxActiveUsers, ownerIdentityId, ownerEmail]);
+    await client.query(`INSERT INTO cloud.tenants(id,region,slug,max_active_users,control_owner_id,control_owner_email,state)
+      VALUES($1,$2,$3,$4,$5,$6,'prepared')`, [id, region, slug, maxActiveUsers, ownerIdentityId, ownerEmail]);
     await client.query('INSERT INTO vaults.opaque_server_setup(tenant_id,setup_bytes) VALUES($1,$2)', [id, setupBytes]);
     await audit(client, actor, 'provision', id);
-    return { id, region, host, state: 'prepared', reused: false };
+    return { id, region, slug, state: 'prepared', reused: false };
   });
 }
 
 // Operator-only lifecycle. The database transaction makes each transition
 // atomic; the API role has no grant on the directory or these writes.
-export async function prepareCloudTenant(client, { region, host, setupBytes }) {
-  validateTenantHost(region, host);
+export async function prepareCloudTenant(client, { region, slug, setupBytes }) {
+  validateTenantSlug(region, slug);
   validateOpaqueSetup(setupBytes);
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
-    const tenant = (await client.query('SELECT id,state FROM cloud.tenants WHERE region=$1 AND host=$2 FOR UPDATE', [region, host])).rows[0];
+    const tenant = (await client.query('SELECT id,state FROM cloud.tenants WHERE region=$1 AND slug=$2 FOR UPDATE', [region, slug])).rows[0];
     if (!tenant || !['reserved', 'prepared'].includes(tenant.state)) invalid('Tenant is not reservable for preparation.');
     const existing = (await client.query('SELECT setup_bytes FROM vaults.opaque_server_setup WHERE tenant_id=$1', [tenant.id])).rows[0];
     if (existing && !existing.setup_bytes.equals(setupBytes)) invalid('Cloud tenant setup already exists with different identity.');
     if (!existing) await client.query('INSERT INTO vaults.opaque_server_setup(tenant_id,setup_bytes) VALUES($1,$2)', [tenant.id, setupBytes]);
     if (tenant.state === 'reserved') await client.query("UPDATE cloud.tenants SET state='prepared' WHERE id=$1", [tenant.id]);
-    return { id: tenant.id, host, region, state: 'prepared', reused: Boolean(existing) };
+    return { id: tenant.id, slug, region, state: 'prepared', reused: Boolean(existing) };
   });
 }
 
-export async function issueCloudBootstrapToken(client, { region, host, tokenKey, actor }) {
-  validateTenantHost(region, host);
+export async function issueCloudBootstrapToken(client, { region, slug, tokenKey, actor, publicOrigin }) {
+  validateTenantSlug(region, slug);
   if (!Buffer.isBuffer(tokenKey) || tokenKey.length !== 32) invalid('Valid Cloud bootstrap key required.');
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
     await client.query('SELECT pg_advisory_xact_lock(127,6)');
-    const tenant = (await client.query('SELECT id,state FROM cloud.tenants WHERE region=$1 AND host=$2 FOR UPDATE', [region, host])).rows[0];
+    const tenant = (await client.query('SELECT id,state FROM cloud.tenants WHERE region=$1 AND slug=$2 FOR UPDATE', [region, slug])).rows[0];
     if (!tenant || tenant.state !== 'prepared') invalid('Cloud tenant must be prepared before owner bootstrap.');
     if ((await client.query("SELECT 1 FROM vaults.accounts WHERE tenant_id=$1 AND server_role='owner'", [tenant.id])).rowCount) {
       invalid('Cloud tenant owner already exists.');
@@ -236,16 +233,16 @@ export async function issueCloudBootstrapToken(client, { region, host, tokenKey,
         consumed_at=NULL,created_at=now()`, [tenant.id, tokenDigest(tokenKey, 'bootstrap', raw)]);
     await audit(client, actor, 'issue-setup', tenant.id);
     const token = `127V-B1-${raw.toString('base64url')}`;
-    return { id: tenant.id, host, region, token, setupUrl: `https://${host}/#ownerSetup=${token}` };
+    return { id: tenant.id, slug, region, token, setupUrl: `${cloudTenantUrl(slug, publicOrigin)}#ownerSetup=${token}` };
   });
 }
 
-export async function activateCloudTenant(client, { region, host, actor }) {
-  validateTenantHost(region, host);
+export async function activateCloudTenant(client, { region, slug, actor }) {
+  validateTenantSlug(region, slug);
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
     const tenant = (await client.query(`SELECT t.id,t.state,t.control_owner_id,(${ownerEnrollmentReady}) AS owner_ready
-      FROM cloud.tenants t WHERE t.region=$1 AND t.host=$2 FOR UPDATE OF t`, [region, host])).rows[0];
+      FROM cloud.tenants t WHERE t.region=$1 AND t.slug=$2 FOR UPDATE OF t`, [region, slug])).rows[0];
     if (!tenant || !['prepared', 'active'].includes(tenant.state)) invalid('Tenant is not prepared for activation.');
     if (!tenant.control_owner_id) invalid('Verified Cloud control owner is required.');
     if (!tenant.owner_ready) invalid('Cloud tenant owner enrollment is incomplete.');
@@ -253,49 +250,49 @@ export async function activateCloudTenant(client, { region, host, actor }) {
       await client.query("UPDATE cloud.tenants SET state='active',activated_at=now() WHERE id=$1", [tenant.id]);
       await audit(client, actor, 'activate', tenant.id);
     }
-    return { id: tenant.id, host, region, state: 'active', reused: tenant.state === 'active' };
+    return { id: tenant.id, slug, region, state: 'active', reused: tenant.state === 'active' };
   });
 }
 
-export async function readCloudTenants(client, { region, host = null }) {
+export async function readCloudTenants(client, { region, slug = null, publicOrigin }) {
   if (!regionValid(region)) invalid('Invalid region.');
-  if (host !== null) validateTenantHost(region, host);
+  if (slug !== null) validateTenantSlug(region, slug);
   await verifyCloudDatabase(client, region);
-  const result = await client.query(`SELECT t.id,t.host,t.region,t.state,t.control_owner_id AS "controlOwnerId",
+  const result = await client.query(`SELECT t.id,t.slug,t.region,t.state,t.control_owner_id AS "controlOwnerId",
     t.control_owner_email AS "controlOwnerEmail",t.max_active_users AS "maxActiveUsers",
     (t.state='prepared' AND t.control_owner_id IS NOT NULL AND (${ownerEnrollmentReady})) AS "readyToActivate",
     (SELECT count(*)::int FROM vaults.accounts a WHERE a.tenant_id=t.id AND a.enrollment_state='active' AND a.suspended_at IS NULL) AS "activeUsers",
     (SELECT count(*)::int FROM vaults.invitation_emails e JOIN vaults.invitation_records i USING (tenant_id,id)
       WHERE e.tenant_id=t.id AND e.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>now()) AS "reservedSeats"
-    FROM cloud.tenants t WHERE t.region=$1 AND ($2::text IS NULL OR t.host=$2) ORDER BY t.host`, [region, host]);
-  return result.rows;
+    FROM cloud.tenants t WHERE t.region=$1 AND ($2::text IS NULL OR t.slug=$2) ORDER BY t.slug`, [region, slug]);
+  return result.rows.map(tenant => ({ ...tenant, canonicalUrl: cloudTenantUrl(tenant.slug, publicOrigin) }));
 }
 
-export async function setCloudTenantSuspension(client, { region, host, suspended, actor }) {
-  validateTenantHost(region, host);
+export async function setCloudTenantSuspension(client, { region, slug, suspended, actor }) {
+  validateTenantSlug(region, slug);
   if (typeof suspended !== 'boolean') invalid('Invalid Cloud suspension state.');
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
-    const tenant = (await client.query('SELECT id,state FROM cloud.tenants WHERE region=$1 AND host=$2 FOR UPDATE', [region, host])).rows[0];
+    const tenant = (await client.query('SELECT id,state FROM cloud.tenants WHERE region=$1 AND slug=$2 FOR UPDATE', [region, slug])).rows[0];
     if (!tenant || !['active', 'suspended'].includes(tenant.state)) invalid('Tenant has not been activated.');
     const state = suspended ? 'suspended' : 'active';
     if (tenant.state !== state) {
       await client.query("UPDATE cloud.tenants SET state=$2,suspended_at=CASE WHEN $2='suspended' THEN now() ELSE NULL END WHERE id=$1", [tenant.id, state]);
       await audit(client, actor, suspended ? 'suspend' : 'resume', tenant.id);
     }
-    return { id: tenant.id, region, host, state, reused: tenant.state === state };
+    return { id: tenant.id, region, slug, state, reused: tenant.state === state };
   });
 }
 
-export async function setCloudTenantSeatLimit(client, { region, host, maxActiveUsers, actor }) {
-  validateTenantHost(region, host);
+export async function setCloudTenantSeatLimit(client, { region, slug, maxActiveUsers, actor }) {
+  validateTenantSlug(region, slug);
   if (!validSeatLimit(maxActiveUsers)) invalid('Valid Cloud seat limit required.');
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
     // Serialize with owner registration and invitation seat accounting.
     await client.query('SELECT pg_advisory_xact_lock(127,6)');
     await client.query('SELECT pg_advisory_xact_lock(127,7)');
-    const tenant = (await client.query('SELECT id,state,max_active_users FROM cloud.tenants WHERE region=$1 AND host=$2 FOR UPDATE', [region, host])).rows[0];
+    const tenant = (await client.query('SELECT id,state,max_active_users FROM cloud.tenants WHERE region=$1 AND slug=$2 FOR UPDATE', [region, slug])).rows[0];
     if (!tenant || tenant.state === 'deleting') invalid('Tenant is unavailable for seat changes.');
     const { activeUsers, reservedSeats } = await readSeatUsage(client, tenant.id, new Date());
     if (maxActiveUsers < activeUsers + reservedSeats) invalid('Seat limit is below current usage.');
@@ -303,6 +300,6 @@ export async function setCloudTenantSeatLimit(client, { region, host, maxActiveU
       await client.query('UPDATE cloud.tenants SET max_active_users=$2 WHERE id=$1', [tenant.id, maxActiveUsers]);
       await audit(client, actor, 'set-seats', tenant.id);
     }
-    return { id: tenant.id, region, host, maxActiveUsers, activeUsers, reservedSeats };
+    return { id: tenant.id, region, slug, maxActiveUsers, activeUsers, reservedSeats };
   });
 }

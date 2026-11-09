@@ -50,7 +50,11 @@ export function siteConfig(config, state, surface, assets) {
       INTAKE_PROTECTION: '1', INTAKE_VOLUME_THRESHOLD: String(config.intakeProtection.volumeThreshold),
       INTAKE_VOLUME_WINDOW_MS: String(config.intakeProtection.volumeWindowMs),
     });
-    if (surface === 'customer') delete common.send_email;
+    if (surface === 'customer') {
+      delete common.send_email;
+      if (config.cloudCustomerDirectory) common.vars.CLOUD_CUSTOMER_DIRECTORY_ORIGIN = config.cloudCustomerDirectory.origin;
+    }
+    if (config.cloudCustomerDirectory?.pilotManualLogin) common.vars.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN = '1';
   }
   return common;
 }
@@ -64,6 +68,7 @@ export async function siteSecrets(surface, secrets) {
       ...(secrets.TURNSTILE_SECRET_KEY ? { TURNSTILE_SECRET_KEY: secrets.TURNSTILE_SECRET_KEY } : {}) };
   }
   return Object.fromEntries(Object.entries(secrets).filter(([name]) => name !== 'TURNSTILE_SECRET_KEY' &&
+    (surface === 'customer' || name !== 'CLOUD_CUSTOMER_DIRECTORY_TOKEN') &&
     (surface === 'admin' || (name !== 'OPERATOR_TOKEN' && !name.startsWith('CLOUD_MANAGEMENT_')))));
 }
 export async function renderSites(config, state) {

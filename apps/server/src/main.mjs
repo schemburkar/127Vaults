@@ -111,7 +111,7 @@ const credentialRotationHandler=createCredentialRotationHandler({store:new PgCre
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
 const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
 const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
-const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion,management:adminManagement});
+const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion,management:adminManagement,loadEntitlement});
 const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
   publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,
@@ -141,6 +141,7 @@ const webFiles=new Map([
   ['/app/signed-sync.mjs',['../../web/src/signed-sync.mjs','text/javascript; charset=utf-8']],
   ['/app/passkeys.mjs',['../../extension/src/passkeys.mjs','text/javascript; charset=utf-8']],
   ['/app/shared/passkey-metadata.mjs',['../../../packages/domain/src/passkey-metadata.mjs','text/javascript; charset=utf-8']],
+  ['/app/shared/seat-summary.mjs',['../../../packages/domain/src/seat-summary.mjs','text/javascript; charset=utf-8']],
   ['/app/private-vault-client.mjs',['../../web/src/private-vault-client.mjs','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture.js',['../../web/wasm/vaults_browser_fixture.js','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture_bg.wasm',['../../web/wasm/vaults_browser_fixture_bg.wasm','application/wasm']]

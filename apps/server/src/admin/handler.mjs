@@ -6,6 +6,7 @@ import { verifyPassword } from './credentials.mjs';
 import { directoryInput, DirectoryInputError, readDirectory } from './directory.mjs';
 import { AdminManagementError } from './management.mjs';
 import { parseJsonObject, readRequestBody, HttpBoundaryError } from '../http-boundary.mjs';
+import { readSeatUsage } from '../license-seats.mjs';
 
 const assets = new Map([
   ['/admin', ['../../admin/index.html', 'text/html; charset=utf-8']],
@@ -19,7 +20,8 @@ const assets = new Map([
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
-export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, management = null, backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
+export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, management = null, loadEntitlement,
+  backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
   const attempts = new Map();
   const byName = new Map(operators.map(operator => [operator.username, operator]));
@@ -112,6 +114,18 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
     if (req.method !== 'GET') { json(res, 405, { error: 'read_only' }); return true; }
     try {
       if (path === '/api/admin/overview') {
+        const checkedAt = new Date(now());
+        let license = null;
+        if (loadEntitlement) {
+          try {
+            const { rows } = await pool.query('SELECT id FROM vaults.installation WHERE singleton=true');
+            const installation = rows[0]?.id;
+            if (installation) {
+              const [status, usage] = await Promise.all([loadEntitlement(installation, checkedAt), readSeatUsage(pool, installation, checkedAt)]);
+              license = { mode: status.mode, plan: status.plan, maxActiveUsers: status.maxActiveUsers, ...usage };
+            }
+          } catch { /* The health overview remains available when license status cannot be read. */ }
+        }
         const version = await pool.query('SELECT version FROM vaults.schema_version WHERE singleton=true');
         const counts = await pool.query("SELECT count(*)::int AS users, count(*) FILTER (WHERE enrollment_state='active')::int AS active_users FROM vaults.accounts");
         const devices = await pool.query(`SELECT count(*)::int AS devices,
@@ -124,7 +138,7 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
           FROM vaults.invitation_records r JOIN vaults.invitation_emails e ON e.tenant_id=r.tenant_id AND e.id=r.id
           WHERE r.revoked_at IS NULL AND e.redeemed_at IS NULL`);
         const deviceCounts = devices.rows[0];
-        json(res, 200, { status: 'online', checkedAt: new Date(now()).toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: deviceCounts?.devices ?? 0,
+        json(res, 200, { status: 'online', checkedAt: checkedAt.toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: deviceCounts?.devices ?? 0, license,
           devices: { rotationRequired: deviceCounts?.rotation_required ?? 0, stale: deviceCounts?.stale ?? 0, unknownProtection: deviceCounts?.unknown_protection ?? 0 },
           invitations: { pending: invitations.rows[0]?.pending_invitations ?? 0, expired: invitations.rows[0]?.expired_invitations ?? 0 }, backup: backupStatus() }); return true;
       }

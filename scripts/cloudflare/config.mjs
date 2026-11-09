@@ -34,7 +34,7 @@ function deploymentPath(path, label) {
 }
 export function validateConfig(value, file) {
   const allowed = ['schemaVersion', 'accountId', 'origin', 'workerName', 'databaseName', 'bucketName', 'releaseId',
-    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail', 'intakeProtection', 'cloudAdmin'];
+    'catalogueFile', 'secretsDirectory', 'stateDirectory', 'issuerKeyId', 'location', 'emailFrom', 'requestAlertTo', 'requestAlertFrom', 'minimumInstallerVersion', 'billing', 'sites', 'customerEmail', 'intakeProtection', 'cloudAdmin', 'cloudCustomerDirectory'];
   if (!value || Object.keys(value).some(key => !allowed.includes(key)) || value.schemaVersion !== 1
     || !/^[a-f0-9]{32}$/.test(value.accountId) || !validIntakeOrigin(value.origin)
     || new URL(value.origin).port || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(new URL(value.origin).hostname)
@@ -93,6 +93,13 @@ export function validateConfig(value, file) {
         cloud.operators.some(email => typeof email !== 'string' || !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+$/.test(email))) {
       throw Error('Invalid Cloud admin deployment configuration');
     }
+  }
+  if (value.cloudCustomerDirectory !== undefined) {
+    const directory = value.cloudCustomerDirectory;
+    if (!value.sites || !directory || Object.keys(directory).sort().join(',') !== 'origin,pilotManualLogin' ||
+        !/^https:\/\/[a-z0-9.-]+$/.test(directory.origin ?? '') || !validIntakeOrigin(directory.origin) ||
+        [value.origin, value.sites.adminOrigin, value.sites.customerOrigin, 'https://cloud.127vaults.com'].includes(directory.origin) ||
+        typeof directory.pilotManualLogin !== 'boolean') throw Error('Invalid Cloud customer directory configuration');
   }
   const base = dirname(resolve(file));
   for (const name of ['catalogueFile', 'secretsDirectory', 'stateDirectory']) {
@@ -169,6 +176,11 @@ export async function loadSecrets(config, catalogue) {
     if (!/^[a-f0-9]{64}$/.test(values.CLOUD_MANAGEMENT_TOKEN) ||
         !/^[a-z0-9]+\.access$/.test(values.CLOUD_MANAGEMENT_ACCESS_ID) ||
         !/^[A-Za-z0-9_-]{20,200}$/.test(values.CLOUD_MANAGEMENT_ACCESS_SECRET)) throw Error('Invalid Cloud management secrets');
+  }
+  if (config.cloudCustomerDirectory) {
+    values.CLOUD_CUSTOMER_DIRECTORY_TOKEN = await read('cloud-customer-directory-token');
+    if (!/^[a-f0-9]{64}$/.test(values.CLOUD_CUSTOMER_DIRECTORY_TOKEN) ||
+        values.CLOUD_CUSTOMER_DIRECTORY_TOKEN === values.CLOUD_MANAGEMENT_TOKEN) throw Error('Invalid Cloud customer directory token');
   }
   return values;
 }

@@ -48,7 +48,7 @@ END $reserve$;
 CREATE TABLE cloud.tenants (
   id uuid PRIMARY KEY REFERENCES vaults.installation(id) ON DELETE RESTRICT,
   region text COLLATE "C" NOT NULL REFERENCES cloud.schema_manifest(region),
-  host text COLLATE "C" NOT NULL UNIQUE CHECK (char_length(host)<=253 AND host ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'),
+  slug text COLLATE "C" NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'),
   control_owner_id uuid,
   max_active_users integer NOT NULL CHECK (max_active_users > 0),
   control_owner_email text COLLATE "C" CHECK (control_owner_email IS NULL OR (char_length(control_owner_email) BETWEEN 3 AND 254 AND control_owner_email = lower(control_owner_email))),
@@ -85,23 +85,23 @@ END $directory_role$;
 GRANT USAGE ON SCHEMA cloud TO vaults_cloud_directory_owner;
 GRANT SELECT ON cloud.tenants TO vaults_cloud_directory_owner;
 
--- The future API role can resolve an active canonical hostname, but cannot
+-- The future API role can resolve an active canonical tenant slug, but cannot
 -- enumerate or modify the operator catalog. The fixed search path prevents a
 -- caller from replacing objects used by this SECURITY DEFINER function.
-CREATE FUNCTION cloud.resolve_tenant(p_host text,p_region text) RETURNS uuid
+CREATE FUNCTION cloud.resolve_tenant(p_slug text,p_region text) RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $lookup$
   SELECT t.id FROM cloud.tenants AS t
-  WHERE t.host=p_host AND t.region=p_region AND t.state='active'
+  WHERE t.slug=p_slug AND t.region=p_region AND t.state='active'
 $lookup$;
 ALTER FUNCTION cloud.resolve_tenant(text,text) OWNER TO vaults_cloud_directory_owner;
 REVOKE ALL ON FUNCTION cloud.resolve_tenant(text,text) FROM PUBLIC;
 
 -- First-owner registration is allowed while the tenant remains invisible to
 -- ordinary API traffic. Its caller must restrict the HTTP path to registration.
-CREATE FUNCTION cloud.resolve_prepared_tenant(p_host text,p_region text) RETURNS uuid
+CREATE FUNCTION cloud.resolve_prepared_tenant(p_slug text,p_region text) RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $lookup$
   SELECT t.id FROM cloud.tenants AS t
-  WHERE t.host=p_host AND t.region=p_region AND t.state='prepared'
+  WHERE t.slug=p_slug AND t.region=p_region AND t.state='prepared'
 $lookup$;
 ALTER FUNCTION cloud.resolve_prepared_tenant(text,text) OWNER TO vaults_cloud_directory_owner;
 REVOKE ALL ON FUNCTION cloud.resolve_prepared_tenant(text,text) FROM PUBLIC;

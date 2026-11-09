@@ -161,6 +161,38 @@ test('Dodo customer portal sessions can manage billing and cancel only their own
   await assert.rejects(handleBilling(request('portal'), env, f.store, f.release, now, false, provider), /access_required/);
 });
 
+test('Cloud-only control owners can use manual Manage sign-in and see only their Cloud directory', async t => {
+  const f = await billingFixture(t);
+  const now = Date.now();
+  const env = { ...f.env, CUSTOMER_PORTAL_ENABLED: '1', CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN: '1',
+    CLOUD_CUSTOMER_DIRECTORY_ORIGIN: 'https://directory.example.com', CLOUD_CUSTOMER_DIRECTORY_TOKEN: 'a'.repeat(64) };
+  const email = 'cloud-only@example.com';
+  const tenant = { slug: 'family', state: 'active', maxActiveUsers: 3, canonicalUrl: 'https://cloud.127vaults.com/t/family/' };
+  const fetch = t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, env.CLOUD_CUSTOMER_DIRECTORY_ORIGIN + '/internal/cloud/v1/customer-tenants');
+    assert.equal(options.headers.Authorization, 'Bearer ' + env.CLOUD_CUSTOMER_DIRECTORY_TOKEN);
+    assert.deepEqual(JSON.parse(options.body), { email });
+    return Response.json({ tenants: [tenant] });
+  });
+  const request = (path, input, cookie) => handleCustomerPortal(new Request(origin + '/api/customer/' + path, {
+    method: input ? 'POST' : 'GET', headers: cookie ? { Cookie: cookie } : {},
+    body: input && JSON.stringify(input)
+  }), env, f.store, now);
+  const invitation = await request('invitation', { requestId: f.id, token: f.a.token });
+  const invitationAccount = await (await request('me', null, invitation.headers.get('set-cookie'))).json();
+  assert.deepEqual(invitationAccount.cloudTenants, []);
+  assert.equal(fetch.mock.callCount(), 0);
+  const started = await (await request('start', { email })).json();
+  const message = await f.db.prepare('SELECT payload FROM customer_manual_mail WHERE id=?').bind(started.challengeId).first();
+  const mail = await unseal(message.payload, await encryptionKey(env.INTAKE_KEY, 'customer-portal'), `manual-customer-mail:${started.challengeId}`);
+  const code = /code is (\d{6})/.exec(mail.text)[1];
+  const verified = await request('complete', { challengeId: started.challengeId, code });
+  const account = await (await request('me', null, verified.headers.get('set-cookie'))).json();
+  assert.deepEqual(account.cloudTenants, [tenant]);
+  assert.deepEqual(account.requests, []);
+  assert.equal(fetch.mock.callCount(), 2);
+});
+
 test('Dodo confirmed renewal issues a higher signed license; failure never extends expiry and grace ends in cancellation', async t => {
   const f = await billingFixture(t); let cancels = 0;
   const provider = async (_url, options) => { if (options.method === 'PATCH') cancels++; return Response.json(f.sub); };

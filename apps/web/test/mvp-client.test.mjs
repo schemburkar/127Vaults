@@ -250,7 +250,7 @@ test("opening an item does not disable and repaint every button", async () => {
     new URL("../mvp-client.mjs", import.meta.url),
     "utf8",
   );
-  assert.doesNotMatch(source, /querySelectorAll\("button"\)/);
+  assert.doesNotMatch(source, /document\.querySelectorAll\("button"\)/);
   assert.match(source, /#save,#new-item,#create-vault/);
 });
 

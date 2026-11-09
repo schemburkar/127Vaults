@@ -11,11 +11,11 @@ import { cloudWebAssets } from './web-assets.mjs';
 import { cloudInvitationMailer } from './invitation-mailer.mjs';
 import { applyCloudTunnelIngress } from './tunnel-ingress.mjs';
 
-export async function createCloudHttpsServer({ pool, tls, bridge, tokenKey, checkpointPrivateKey, mailer, tunnelIngress = false, onError }) {
+export async function createCloudHttpsServer({ pool, tls, bridge, tokenKey, checkpointPrivateKey, mailer, tunnelIngress = false, publicOrigin, onError }) {
   const checkpointPublicKey = createPublicKey(checkpointPrivateKey)
     .export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url');
   const dispatch = await createInternalCloudRuntimeBoundary({
-    pool, region: 'global', webAssets: cloudWebAssets,
+    pool, region: 'global', publicOrigin, webAssets: cloudWebAssets,
     handle: createInternalCloudTenantHandlers({ bridge, tokenKey, checkpointPrivateKey, checkpointPublicKey, mailer }),
     handleEnrollment: createInternalCloudEnrollmentHandlers({ bridge, tokenKey })
   });

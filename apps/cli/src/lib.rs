@@ -875,25 +875,48 @@ pub(crate) fn cloud_http_builder() -> reqwest::blocking::ClientBuilder {
         .timeout(std::time::Duration::from_secs(30))
 }
 
-fn cloud_origin(input: &str) -> Result<String, String> {
+fn cloud_endpoint(input: &str) -> Result<String, String> {
     let url = Url::parse(input).map_err(|_| "invalid Cloud vault URL")?;
+    let slug = url
+        .path()
+        .strip_prefix("/t/")
+        .unwrap_or_default()
+        .trim_end_matches('/');
     if url.scheme() != "https"
         || url.port().is_some()
         || !url.username().is_empty()
         || url.password().is_some()
-        || url.path() != "/"
+        || slug.is_empty()
+        || slug.len() > 63
+        || slug.starts_with('-')
+        || slug.ends_with('-')
+        || !slug
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        || (url.path() != format!("/t/{slug}") && url.path() != format!("/t/{slug}/"))
         || url.query().is_some()
         || url.fragment().is_some()
         || !matches!(url.host(), Some(url::Host::Domain(host)) if host.contains('.') && !host.ends_with('.'))
     {
         return Err("enter the HTTPS address of your family vault".to_owned());
     }
-    Ok(url.origin().ascii_serialization())
+    let endpoint = format!("{}/t/{slug}", url.origin().ascii_serialization());
+    if input.strip_suffix('/').unwrap_or(input) != endpoint {
+        return Err("enter the canonical HTTPS address of your family vault".to_owned());
+    }
+    Ok(endpoint)
+}
+
+pub(crate) fn http_origin(endpoint: &str) -> Result<String, String> {
+    Url::parse(endpoint)
+        .map(|url| url.origin().ascii_serialization())
+        .map_err(|_| "invalid trusted endpoint".to_owned())
 }
 
 fn parse_cloud_discovery(value: &serde_json::Value, origin: &str) -> Result<CloudTrust, String> {
     if value["version"] != 1
-        || value["canonicalOrigin"] != origin
+        || value["canonicalOrigin"] != http_origin(origin)?
+        || value["canonicalUrl"] != format!("{origin}/")
         || value["protocolVersions"]["api"] != 1
         || value["protocolVersions"]["sync"] != 1
     {
@@ -929,9 +952,10 @@ fn parse_cloud_discovery(value: &serde_json::Value, origin: &str) -> Result<Clou
 #[cfg(test)]
 #[test]
 fn cloud_discovery_pins_only_the_requested_https_tenant_origin() {
-    let origin = cloud_origin("https://family.example.com/").unwrap();
+    let origin = cloud_endpoint("https://cloud.example.com/t/family/").unwrap();
+    assert_eq!(http_origin(&origin).unwrap(), "https://cloud.example.com");
     let key = URL_SAFE_NO_PAD.encode([7; 32]);
-    let mut response = serde_json::json!({ "version": 1, "canonicalOrigin": origin,
+    let mut response = serde_json::json!({ "version": 1, "canonicalOrigin": "https://cloud.example.com", "canonicalUrl": format!("{origin}/"),
         "protocolVersions": { "api": 1, "sync": 1 }, "tenantId": "11111111-1111-4111-8111-111111111111",
         "serverPublicKey": key, "checkpointPublicKey": key });
     assert_eq!(
@@ -940,15 +964,18 @@ fn cloud_discovery_pins_only_the_requested_https_tenant_origin() {
             .server_key,
         key
     );
-    assert!(parse_cloud_discovery(&response, "https://another.example.com").is_err());
+    assert!(parse_cloud_discovery(&response, "https://cloud.example.com/t/another").is_err());
     response["checkpointPublicKey"] = serde_json::json!("bad");
     assert!(parse_cloud_discovery(&response, &origin).is_err());
     for invalid in [
         "http://family.example.com",
         "https://127.0.0.1",
         "https://family.example.com/#invitation",
+        "https://cloud.example.com/t/one/../family",
+        "https://cloud.example.com/t/family//",
+        "https://cloud.example.com:443/t/family/",
     ] {
-        assert!(cloud_origin(invalid).is_err());
+        assert!(cloud_endpoint(invalid).is_err());
     }
 }
 
@@ -986,7 +1013,7 @@ pub(crate) fn configured_cloud_trust(
 /// # Errors
 /// Returns an error for invalid discovery or conflicting local trust.
 pub fn establish_cloud_trust(config_dir: &std::path::Path, url: &str) -> Result<String, String> {
-    let origin = cloud_origin(url)?;
+    let origin = cloud_endpoint(url)?;
     let client = cloud_http_builder()
         .build()
         .map_err(|_| "could not initialize Cloud HTTPS client")?;

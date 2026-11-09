@@ -29,7 +29,7 @@ pub(super) fn post(
 ) -> Result<reqwest::blocking::Response, String> {
     let response = client
         .post(format!("{origin}{path}"))
-        .header("Origin", origin)
+        .header("Origin", crate::http_origin(origin)?)
         .header("X-127V-CSRF", csrf)
         .header("Cookie", cookie)
         .json(body)

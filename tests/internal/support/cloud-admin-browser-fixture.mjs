@@ -25,7 +25,7 @@ export async function localCloudAdmin({ tls, pool, tokenKey, bridge }) {
     aud: [env.CLOUD_ADMIN_ACCESS_AUDIENCE], email: env.CLOUD_ADMIN_OPERATORS, sub: localOperator,
     exp: Math.floor(Date.now() / 1000) + 600, custom: { amr: ['mfa'] } })}`;
   const assertion = `${message}.${sign('sha256', Buffer.from(message), privateKey).toString('base64url')}`;
-  const management = await createCloudManagementHttpsServer({ tls, pool, serviceToken, tokenKey, tenantSuffix: 'asia.example.com',
+  const management = await createCloudManagementHttpsServer({ tls, pool, serviceToken, tokenKey,
     createOpaqueSetup: () => Buffer.from(bridge.server_setup()) });
   const localFetch = async (url, options) => {
     if (url === `${env.CLOUD_ADMIN_ACCESS_ISSUER}/cdn-cgi/access/certs`) {

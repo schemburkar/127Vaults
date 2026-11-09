@@ -50,7 +50,7 @@ test('signed license grace blocks writes and renewal reopens them', async () => 
   const url = `http://127.0.0.1:${server.address().port}`;
   const headers = { cookie: `${AUTH_COOKIE}=${'A'.repeat(43)}` };
   try {
-    await issue('2026-10-01T00:00:00.000Z');
+    await issue(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
     const blocked = await fetch(`${url}/api/v1/vaults`, { method: 'POST', headers });
     assert.equal(blocked.status, 423);
     assert.deepEqual(await blocked.json(), { error: 'license_read_only' });

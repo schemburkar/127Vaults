@@ -18,6 +18,23 @@ async function body(request, fields) {
 }
 const portalKey = env => encryptionKey(env.INTAKE_KEY, 'customer-portal');
 const identity = (request, value) => hash(`${new URL(request.url).origin}\0${value}`);
+async function cloudCustomerTenants(env, email) {
+  if (!env.CLOUD_CUSTOMER_DIRECTORY_ORIGIN) return { tenants: [], unavailable: false };
+  if (!/^[a-f0-9]{64}$/.test(env.CLOUD_CUSTOMER_DIRECTORY_TOKEN ?? '')) return { tenants: [], unavailable: true };
+  try {
+    const response = await fetch(`${env.CLOUD_CUSTOMER_DIRECTORY_ORIGIN}/internal/cloud/v1/customer-tenants`, {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(3000),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.CLOUD_CUSTOMER_DIRECTORY_TOKEN}` },
+      body: JSON.stringify({ email })
+    });
+    if (!response.ok) throw Error('cloud_directory_unavailable');
+    const { tenants } = await response.json();
+    if (!Array.isArray(tenants)) throw Error('cloud_directory_unavailable');
+    return { tenants, unavailable: false };
+  } catch {
+    return { tenants: [], unavailable: true };
+  }
+}
 export async function customerPrincipal(request, env, store, now) {
   if (env.CUSTOMER_PORTAL_ENABLED !== '1') return null;
   const value = (request.headers.get('cookie') ?? '').split(';').map(v => v.trim()).find(v => v.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
@@ -78,20 +95,22 @@ export async function handleCustomerPortal(request, env, store, now) {
     const challengeId = token();
     const rows = await store.list();
     const owned = rows.filter(row => row.contact?.plan !== 'support' && normalize(row.contact?.email) === email);
-    if (owned.length) {
-      const customer = owned.find(row => row.trial?.kind !== 'development') ?? owned[0];
-      const internal = env.CUSTOMER_EMAIL_PROVIDER === 'resend' && (customer.trial?.kind === 'development' || !productionRecipient(email));
+    const customer = owned.find(row => row.trial?.kind !== 'development') ?? owned[0];
+    const cloudPilot = !customer && env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1' &&
+      (await cloudCustomerTenants(env, email)).tenants.length > 0;
+    if (customer || cloudPilot) {
+      const internal = cloudPilot || (env.CUSTOMER_EMAIL_PROVIDER === 'resend' && (customer.trial?.kind === 'development' || !productionRecipient(email)));
       let random; do { random = crypto.getRandomValues(new Uint32Array(1))[0]; } while (random >= 4294000000);
       const code = String(random % 1000000).padStart(6, '0');
       const codeHash = await limitIdentity(store.limiterKey, `portal-code:${challengeId}:${code}`);
       await store.db.prepare('INSERT INTO customer_challenges (id, payload, expires_at) VALUES (?, ?, ?)')
         .bind(challengeId, await seal({ email, codeHash }, await portalKey(env), `customer-challenge:${challengeId}`), now + 600000).run();
       try { await deliver(env, { to: email, subject: 'Your 127Vaults customer portal sign-in code',
-        text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nOpen ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/ and enter the code in the browser where you requested it.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }, store, challengeId, now, customer.id, internal); }
+        text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nOpen ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/ and enter the code in the browser where you requested it.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }, store, challengeId, now, customer?.id, internal); }
       catch { await store.db.prepare('DELETE FROM customer_challenges WHERE id = ?').bind(challengeId).run(); }
     }
-    return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1'
-      ? 'If this email has an access request or invitation, an operator can send your sign-in code. Delivery is manual; contact your operator.'
+    return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1' || env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1'
+      ? 'If this email is eligible, check your inbox or contact your operator for a sign-in code.'
       : 'If this email has an access request or invitation, a sign-in code will be sent.' });
   }
   if (path === '/api/customer/complete' && request.method === 'POST') {
@@ -143,7 +162,9 @@ export async function handleCustomerPortal(request, env, store, now) {
         billingStatus: row.trial?.billing?.status ?? null, paidThrough: row.trial?.billing?.paidThrough ?? null,
         cancelAtPeriodEnd: Boolean(row.trial?.billing?.cancelAtPeriodEnd), maxUsers: row.trial?.maxUsers ?? null });
     }
-    return json(200, { scope: principal.installationOnly ? 'installer' : principal.kind, email: principal.kind === 'email' ? principal.email : null, requests });
+    const cloud = principal.kind === 'email' ? await cloudCustomerTenants(env, principal.email) : { tenants: [], unavailable: false };
+    return json(200, { scope: principal.installationOnly ? 'installer' : principal.kind, email: principal.kind === 'email' ? principal.email : null,
+      requests, cloudTenants: cloud.tenants, cloudUnavailable: cloud.unavailable });
   }
   if (path === '/api/customer/logout' && request.method === 'POST') {
     await body(request, []);
@@ -154,7 +175,8 @@ export async function handleCustomerPortal(request, env, store, now) {
   reject(404, 'not_found');
 }
 export async function manualCustomerMail(env, store, now) {
-  if (env.CUSTOMER_MANUAL_MAIL !== '1' && env.CUSTOMER_EMAIL_PROVIDER !== 'resend') return { messages: [] };
+  if (env.CUSTOMER_MANUAL_MAIL !== '1' && env.CUSTOMER_EMAIL_PROVIDER !== 'resend' &&
+      env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN !== '1') return { messages: [] };
   const { results } = await store.db.prepare(`SELECT m.id, m.payload, m.expires_at FROM customer_manual_mail m
     JOIN customer_challenges c ON c.id = m.id WHERE m.expires_at > ? AND c.expires_at > ? AND c.attempts < 5
     ORDER BY m.expires_at LIMIT 50`).bind(now, now).all();

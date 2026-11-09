@@ -6,7 +6,8 @@ import { HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJ
 const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const cookie = (req, name) => String(req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1);
 
-export function createOnboardingHandler(service, completeRegistration, configuredOrigin, authenticate = async () => { throw new OnboardingError('forbidden', 403); }, registration) {
+export function createOnboardingHandler(service, completeRegistration, configuredOrigin,
+  authenticate = async () => { throw new OnboardingError('forbidden', 403); }, registration, { readCeremony = value => value } = {}) {
   if (typeof completeRegistration !== 'function') throw new Error('The reviewed OPAQUE registration/device-proof completion adapter is required.');
   if (typeof configuredOrigin !== 'string' || !configuredOrigin.startsWith('https://')) throw new Error('Configured HTTPS origin is required.');
   return async function handle(req, res, suppliedAuth) {
@@ -29,7 +30,7 @@ export function createOnboardingHandler(service, completeRegistration, configure
         const value = strictJson(req, bytes, ['emails', 'expiresInHours']);
         writeJson(res, 200, await service.createInvitation({ ownerAccountId: auth.accountId, ...value, auth })); return true;
       }
-      requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], ceremony);
+      requireUnsafeRequest(req, configuredOrigin, req.headers['x-127v-csrf'], readCeremony(ceremony));
       if (v1Register) {
         const untyped = parseJsonObject(req, bytes);
         const fields = Object.keys(untyped).sort().join(',');
