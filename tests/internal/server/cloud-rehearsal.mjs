@@ -14,6 +14,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
 import { createCloudManagementHandler } from '../../../apps/server/internal-cloud/management.mjs';
+import { cloudLandingHost } from '../../../apps/server/internal-cloud/landing.mjs';
 import { requireSchema } from '../../../apps/server/src/schema.mjs';
 import { createTenantScopedPool, verifyCloudRuntimeRole } from '../../../apps/server/internal-cloud/scoped-pool.mjs';
 import { createInternalCloudEnrollmentBoundary, createInternalCloudRequestBoundary } from '../../../apps/server/internal-cloud/request-boundary.mjs';
@@ -359,7 +360,7 @@ try {
     await managementPool.end();
   }
   run('exec', name, 'openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
-    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com`,
+    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com,DNS:${cloudLandingHost}`,
     '-keyout', '/tmp/cloud-test.key', '-out', '/tmp/cloud-test.crt');
   const ca = run('exec', name, 'cat', '/tmp/cloud-test.crt');
   const httpsServer = await createCloudHttpsServer({ pool: runtimePool,
@@ -384,6 +385,11 @@ try {
     assert.equal(await status(dave.host, '/api/v1/cloud/discovery'), 404);
     assert.equal(await status('unknown.asia.example.com', '/api/v1/ceremony'), 404);
     assert.equal(await status(alice.host, '/api/v1/ceremony', dave.host), 400);
+    assert.equal(await status(cloudLandingHost, '/'), 200);
+    assert.equal(await status(cloudLandingHost, '/landing.css'), 200);
+    assert.equal(await status(cloudLandingHost, '/api/v1/setup'), 404);
+    assert.equal(await status(cloudLandingHost, '/', alice.host), 400);
+    await assert.rejects(reserveCloudTenant(admin, { region: 'global', host: cloudLandingHost, maxActiveUsers: 1 }), /hostname is reserved/);
   } finally {
     await new Promise(resolve => httpsServer.close(resolve));
   }

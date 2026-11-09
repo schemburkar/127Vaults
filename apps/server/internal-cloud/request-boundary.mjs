@@ -3,6 +3,7 @@ import { schemaChecksum } from '../src/schema.mjs';
 import { overlayChecksum } from './operator.mjs';
 import { createTenantScopedPool, verifyCloudRuntimeRole } from './scoped-pool.mjs';
 import { HttpBoundaryError, writeJson } from '../src/http-boundary.mjs';
+import { cloudLandingHost, serveCloudLanding } from './landing.mjs';
 
 // No listener is created here. Both boundaries remain internal until every
 // mounted route and operational dependency has passed Cloud release gates.
@@ -21,6 +22,7 @@ async function createBoundary({ pool, region, handle, enrollmentOnly, handleEnro
     try { host = cloudRequestHost(req); }
     catch { throw new HttpBoundaryError(); }
     if (req.socket.servername !== host) throw new HttpBoundaryError();
+    if (handleEnrollment && host === cloudLandingHost) return serveCloudLanding(req, res);
     const asset = webAssets?.match(req);
     const setupStatus = handleEnrollment && req.method === 'GET' && req.url === '/api/v1/setup';
     const enrollmentRoute = asset || setupStatus || (req.method === 'GET' && req.url === '/api/v1/ceremony') ||

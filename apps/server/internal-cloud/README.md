@@ -16,6 +16,8 @@ Run `node apps/server/internal-cloud/cli.mjs deploy` as the one-time initializat
 
 The active path mounts authentication, device, sync, vault, and settings handlers. Tenant-scoped invitations mount when a mailer is explicitly supplied to the server factory. Ingress integration, the admin portal connection, and pilot invitation delivery are tracked separately.
 
+The runtime reserves `cloud.127vaults.com` for the static family entry page. Configure that hostname in the Cloud ingress certificate and routing when the pilot is deployed. Families follow their own setup or invitation link to their tenant origin. The landing hostname serves guidance and its stylesheet only.
+
 ### Private management API
 
 After `deploy`, run `node apps/server/internal-cloud/cli.mjs deploy-management` with the deployment operator's database configuration, `VAULTS_CLOUD_MANAGEMENT_DATABASE_USER` set to a dedicated `vaults_cloud_manager_` login, and `VAULTS_CLOUD_MANAGEMENT_DATABASE_PASSWORD_FILE` set to its credential file. The job verifies the existing schema and authenticates separately with the management login. Use a newly initialized internal database for this overlay revision.

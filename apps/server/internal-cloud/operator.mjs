@@ -4,6 +4,7 @@ import { tokenDigest } from '../src/onboarding.mjs';
 import { cloudTenantDirectory } from '../src/tenant-context.mjs';
 import { schemaChecksum, schemaSql, schemaVersion } from '../src/schema.mjs';
 import { readSeatUsage } from '../src/license-seats.mjs';
+import { cloudLandingHost } from './landing.mjs';
 import pg from 'pg';
 
 export const overlaySql = await readFile(new URL('./overlay.sql', import.meta.url), 'utf8');
@@ -28,6 +29,7 @@ const ownerEnrollmentReady = `EXISTS(SELECT 1 FROM vaults.opaque_server_setup s 
 
 function validateTenantHost(region, host) {
   if (!regionValid(region) || typeof host !== 'string' || host !== host.toLowerCase()) invalid('Invalid Cloud tenant host.');
+  if (host === cloudLandingHost) invalid('The Cloud landing hostname is reserved.');
   cloudTenantDirectory([{ id: randomUUID(), host, region, state: 'reserved' }], region);
 }
 
@@ -217,8 +219,8 @@ export async function prepareCloudTenant(client, { region, host, setupBytes }) {
 }
 
 export async function issueCloudBootstrapToken(client, { region, host, tokenKey, actor }) {
-  if (!regionValid(region) || !Buffer.isBuffer(tokenKey) || tokenKey.length !== 32) invalid('Valid Cloud bootstrap key required.');
-  cloudTenantDirectory([{ id: randomUUID(), host, region, state: 'reserved' }], region);
+  validateTenantHost(region, host);
+  if (!Buffer.isBuffer(tokenKey) || tokenKey.length !== 32) invalid('Valid Cloud bootstrap key required.');
   return transaction(client, async () => {
     await verifyCloudDatabase(client, region);
     await client.query('SELECT pg_advisory_xact_lock(127,6)');

@@ -1,0 +1,16 @@
+:root {
+  color-scheme: dark;
+  background: #151819;
+  color: #f4f1e8;
+  font: 1rem/1.6 system-ui, sans-serif;
+}
+
+body { margin: 0; padding: clamp(1.25rem, 7vw, 5rem); }
+main { max-width: 40rem; margin-inline: auto; }
+header { display: flex; align-items: center; gap: .75rem; font-weight: 650; }
+header span { border: 1px solid #d9bf88; border-radius: .5rem; color: #d9bf88; padding: .15rem .45rem; }
+h1 { font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1.1; margin: 2.5rem 0 1rem; }
+h2 { font-size: 1.2rem; margin: 0; }
+p { color: #dad5c8; }
+section { border-block-start: 1px solid #43433c; margin-top: 1.5rem; padding-top: 1.25rem; }
+a { color: #f0d299; text-underline-offset: .2em; }
