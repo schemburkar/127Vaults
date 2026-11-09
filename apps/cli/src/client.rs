@@ -489,6 +489,14 @@ pub fn unlock(
         server_id: server_id.clone(),
         tenant_id: uuid::Uuid::from_bytes(installation).to_string(),
     };
+    if let Some(cloud) = crate::configured_cloud_trust(config_dir)?
+        && (cloud.tenant != trusted_tenant.tenant_id
+            || cloud.server_key != URL_SAFE_NO_PAD.encode(server_public_key))
+    {
+        return Err(
+            "Cloud authentication identity changed; local replica was preserved".to_owned(),
+        );
+    }
     check_tenant_binding(config_dir, &trusted_tenant)?;
     let binding = Binding {
         origin: binding_origin.as_bytes(),
@@ -2334,6 +2342,14 @@ impl Session {
                 .as_str()
                 .ok_or("checkpoint verification key is missing")?
                 .to_owned();
+            if let Some(cloud) = crate::configured_cloud_trust(&self.profile_dir)?
+                && (cloud.tenant != self.tenant_id || cloud.checkpoint_key != checkpoint_key)
+            {
+                return Err(
+                    "Cloud checkpoint verification key changed; local replica was preserved"
+                        .to_owned(),
+                );
+            }
             let raw_key = URL_SAFE_NO_PAD
                 .decode(&checkpoint_key)
                 .map_err(|_| "checkpoint verification key is invalid")?;

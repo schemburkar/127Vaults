@@ -1236,18 +1236,19 @@ function DesktopApp() {
     };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   });
-  const configureTrust = async () => {
+  const configureTrust = async (cloud = false) => {
     if (trustBusy) return;
     setTrustBusy(true);
-    setStatus("Checking the private server and CA fingerprint…");
+    setStatus(cloud ? "Checking your family vault’s Cloud identity…" : "Checking the private server and CA fingerprint…");
     try {
-      await invoke<string>("configure_server_trust", {
+      if (cloud) await invoke<string>("configure_cloud_trust", { url: trustUrl.trim() });
+      else await invoke<string>("configure_server_trust", {
         url: trustUrl.trim(), caPath: trustCaPath.trim(), serverId: trustServerId.trim(),
         expectedFingerprint: trustFingerprint.trim(),
       });
       const info = await invoke<DesktopInfo>("desktop_info");
       setDesktopInfo(info);
-      setStatus("Server trust saved. Continue with owner setup or device enrollment.");
+      setStatus(cloud ? "Cloud vault identity saved. Enroll this device using your existing family vault account." : "Server trust saved. Continue with owner setup or device enrollment.");
     } catch (error) { setStatus(friendlyError(error)); }
     finally { setTrustBusy(false); }
   };
@@ -1417,6 +1418,8 @@ function DesktopApp() {
                     <Input aria-label="Expected CA SHA-256 fingerprint" placeholder="64-character SHA-256 fingerprint" value={trustFingerprint} onChange={event => setTrustFingerprint(event.target.value)} />
                   </div>
                   <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button>
+                  <p className="mt-4 text-sm text-slate-400">For a Cloud family vault, enter its HTTPS address in the server URL field and connect using Cloud discovery.</p>
+                  <Button variant="secondary" className="mt-2 w-full" disabled={trustBusy || !trustUrl} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button>
                 </section>}
                 <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <h2 className="font-bold">I already have an account</h2>

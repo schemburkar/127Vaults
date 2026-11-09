@@ -514,7 +514,7 @@ function Registration() {
       <Button id="registration-exit" variant="ghost" className={backButton}>
         ← Back to login
       </Button>
-      <p className={eyebrow}>FIRST USER REGISTRATION</p>
+      <p id="registration-label" className={eyebrow}>FIRST USER REGISTRATION</p>
       <h1 className="mb-2 text-[2rem] font-bold tracking-[-0.025em]">Create your account</h1>
       <p id="setup-guidance" className={muted}>Get the one-time bootstrap code from your server operator.</p>
       <div
@@ -530,7 +530,7 @@ function Registration() {
         <Field label="Username">
           <Input id="registration-username" autoComplete="username" />
         </Field>
-        <Field label="Bootstrap code">
+        <Field label="Setup or invitation code">
           <Input id="bootstrap" type="password" autoComplete="off" />
         </Field>
         <Button className="registration-next mt-2 w-full">Next</Button>
@@ -590,6 +590,11 @@ function Registration() {
           <Button id="setup">Create account</Button>
         </div>
       </div>
+      <form id="cloud-member-verification" className="grid gap-4" hidden>
+        <Field label="Email verification code"><Input id="cloud-member-code" inputMode="numeric" pattern="[0-9]{8}" autoComplete="one-time-code" required /></Field>
+        <Button type="submit">Verify and create account</Button>
+        <Button type="button" variant="secondary" id="cloud-member-resend">Send another code</Button>
+      </form>
       <span id="setup-status" className={`inline-status ${inlineStatus}`} role="status" />
     </div>
   );
@@ -945,6 +950,20 @@ function Settings() {
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Device ID</span><code id="profile-device" className="break-all text-xs" /></div>
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Account secret</span><span id="profile-secret-status" className="text-sm" /></div>
           <PwaControls />
+          <section id="cloud-family" className="mt-5 grid gap-3 rounded-xl border border-white/10 p-4" hidden>
+            <h4 className="font-semibold">Family members</h4>
+            <p id="cloud-family-status" role="status" />
+            <form id="cloud-family-invite" className="grid gap-2" hidden>
+              <Field label="Member email"><Input id="cloud-family-email" type="email" required /></Field>
+              <Button type="submit">Create invitation</Button>
+            </form>
+            <div id="cloud-family-link" className="grid gap-2" hidden>
+              <Field label="Private invitation link"><Input id="cloud-family-url" readOnly /></Field>
+              <Button id="cloud-family-copy" type="button" variant="secondary">Copy invitation link</Button>
+            </div>
+            <ul id="cloud-family-members" className="grid gap-2" />
+            <ul id="cloud-family-invitations" className="grid gap-2" />
+          </section>
         </section>
         <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-preferences" hidden={activeTab !== "preferences"}>
           <KeyboardHelp />

@@ -69,8 +69,11 @@ export class PgOnboardingStore {
     });
   }
   async stageEmail(input) { return this.#tx(async c => {
-    const row = (await c.query(`SELECT tenant_id,email,email_generation,email_sent_at,email_send_count,email_window_started FROM vaults.onboarding_attempts
-      WHERE id=$1 AND capability_digest=$2 AND expires_at>$3 AND committed_at IS NULL FOR UPDATE`, [input.attemptId,input.capabilityDigest,input.now])).rows[0];
+    const row = (await c.query(`SELECT a.tenant_id,a.email,a.email_generation,a.email_sent_at,a.email_send_count,a.email_window_started
+      FROM vaults.onboarding_attempts a JOIN vaults.invitation_records i ON i.tenant_id=a.tenant_id AND i.id=a.invitation_id
+      JOIN vaults.invitation_emails e ON e.tenant_id=i.tenant_id AND e.id=i.id AND e.email=a.email
+      WHERE a.id=$1 AND a.capability_digest=$2 AND a.expires_at>$3 AND a.committed_at IS NULL
+        AND i.revoked_at IS NULL AND i.expires_at>$3 AND e.redeemed_at IS NULL FOR UPDATE OF a`, [input.attemptId,input.capabilityDigest,input.now])).rows[0];
     if (!row) throw new OnboardingError();
     if (row.email_sent_at && input.now - row.email_sent_at < 60_000) throw new OnboardingError('rate_limited',429);
     const reset = !row.email_window_started || input.now - row.email_window_started >= 3_600_000;

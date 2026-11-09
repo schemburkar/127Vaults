@@ -6,8 +6,14 @@ export const normalizeAddress=value=>typeof value==='string'&&value.startsWith('
 const incomingKey=socket=>[socket.remoteAddress,socket.remotePort,socket.localAddress,socket.localPort].join('|');
 const outgoingKey=socket=>[socket.localAddress,socket.localPort,socket.remoteAddress,socket.remotePort].join('|');
 
-// Only populated by this private ingress, never by HTTP headers. The tuple is
-// the loopback connection into the HTTPS listener, not a caller-selected ID.
+// The private ingress records the connection tuple. A verified Cloud ingress
+// can also attach a source before any handler reads it.
+export function setVerifiedRequestSource(req, address) {
+  const source = normalizeAddress(address);
+  if (!isIP(source) || requests.has(req)) throw new Error('Invalid verified request source.');
+  requests.set(req, source);
+}
+
 export function requestSource(req) {
   if(requests.has(req))return requests.get(req);
   if(!req.socket)return 'unknown';

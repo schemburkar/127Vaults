@@ -5,6 +5,8 @@ export const safeError = (e) => e.name === 'QuotaExceededError' ? 'Device storag
     INVALID_MASTER_PASSWORD:
       "Master password must contain at least 20 characters.",
     rate_limited: "Too many attempts. Wait before retrying.",
+    seat_limit_reached: "All seats are in use or reserved for existing invitations.",
+    email_unavailable: "The verification code could not be sent. Wait a minute before trying again.",
     SERVER_TIMEOUT: "The server did not respond within 30 seconds.",
     SERVER_UNREACHABLE:
       "The server could not be reached. Check that the MVP stack is running.",

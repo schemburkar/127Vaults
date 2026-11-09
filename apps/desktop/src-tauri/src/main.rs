@@ -106,7 +106,10 @@ const PROFILE_FILES: [&str; 5] = [
 ];
 
 fn is_profile(path: &Path) -> bool {
-    path.join("trust.conf").is_file() && path.join("installation-ca.pem").is_file()
+    let trust = path.join("trust.conf");
+    trust.is_file()
+        && (path.join("installation-ca.pem").is_file()
+            || profile(&trust, "mode").as_deref() == Some("cloud"))
 }
 
 fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
@@ -169,6 +172,16 @@ fn config_directory() -> Result<PathBuf, String> {
         adopt_cli_profile(&destination)?;
     }
     Ok(destination)
+}
+
+#[tauri::command]
+async fn configure_cloud_trust(url: String) -> Result<String, String> {
+    let directory = config_directory()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        vaults_cli::establish_cloud_trust(&directory, &url)
+    })
+    .await
+    .map_err(|_| "Cloud vault verification did not complete".to_owned())?
 }
 
 #[tauri::command]
@@ -310,7 +323,7 @@ fn desktop_info() -> Result<Value, String> {
     Ok(json!({
         "configured": config.join("trust.conf").is_file() && config.join("device.conf").is_file(),
         "configurationPath": config,
-        "registrationUrl": origin.map(|url| format!("{url}/?register=1")),
+        "registrationUrl": origin.map(|url| format!("{}/?register=1", url.trim_end_matches('/'))),
         "cachedUsername": cached_username(&config),
         "hasCachedSecret": cached_username(&config).and_then(|username| cached_account_secret(&config, &username)).is_some(),
         "deviceId": profile(&config.join("device.conf"), "device_id"),
@@ -777,7 +790,9 @@ fn item_get(
     item_id: String,
 ) -> Result<Value, String> {
     with_session(&state, |session| {
-        session.item_get(&vault_id, &item_id, None).map(renderer_boundary::public_value)
+        session
+            .item_get(&vault_id, &item_id, None)
+            .map(renderer_boundary::public_value)
     })
 }
 
@@ -1316,6 +1331,7 @@ fn main() {
             begin_device_enrollment,
             device_enrollment_status,
             configure_server_trust,
+            configure_cloud_trust,
             tailscale_peers
         ])
         .run(tauri::generate_context!())

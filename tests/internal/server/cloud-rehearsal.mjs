@@ -5,16 +5,17 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createCipheriv, createHmac, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
+import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, provisionCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
 import { createCloudManagementHandler } from '../../../apps/server/internal-cloud/management.mjs';
 import { cloudLandingHost } from '../../../apps/server/internal-cloud/landing.mjs';
+import { cloudInvitationMailer } from '../../../apps/server/internal-cloud/invitation-mailer.mjs';
 import { requireSchema } from '../../../apps/server/src/schema.mjs';
 import { createTenantScopedPool, verifyCloudRuntimeRole } from '../../../apps/server/internal-cloud/scoped-pool.mjs';
 import { createInternalCloudEnrollmentBoundary, createInternalCloudRequestBoundary } from '../../../apps/server/internal-cloud/request-boundary.mjs';
@@ -31,6 +32,7 @@ const run = (...args) => execFileSync('podman', args, { encoding: 'utf8', stdio:
 let started = false;
 let admin;
 let runtimePool;
+let mailCapture;
 try {
   run('run', '-d', '--rm', '--name', name, '-p', '127.0.0.1::5432', '-e', `POSTGRES_PASSWORD=${password}`,
     '-e', 'POSTGRES_USER=cloud_operator', '-e', 'POSTGRES_DB=vaults_cloud_test', 'postgres:17-bookworm');
@@ -185,12 +187,13 @@ try {
   await assert.rejects(boundary({ ...request, rawHeaders: ['Host', bob.host],
     headers: { host: bob.host, origin: `https://${bob.host}` }, socket: { encrypted: true, servername: bob.host } }, {}));
   await activateCloudTenant(admin, { region: 'global', host: bob.host });
-  let deliveredCode;
+  mailCapture = mkdtempSync(join(tmpdir(), 'vaults-cloud-mail-'));
+  const mailer = await cloudInvitationMailer({ VAULTS_CLOUD_INVITATION_MAIL: 'capture', VAULTS_CLOUD_MAIL_CAPTURE_DIR: mailCapture });
   const api = await createInternalCloudRequestBoundary({ pool: runtimePool, region: 'global',
     handle: createInternalCloudTenantHandlers({ bridge: { server_public_key: () => Buffer.alloc(32),
       server_registration_start: () => Buffer.alloc(64), server_registration_finish: upload => upload },
       tokenKey, checkpointPrivateKey: {}, checkpointPublicKey: 'test-key',
-      mailer: { sendCode: async ({ code }) => { deliveredCode = code; } } }) });
+      mailer }) });
   const discover = async tenant => {
     let status, body;
     await api({ method: 'GET', url: '/api/v1/cloud/discovery', rawHeaders: ['Host', tenant.host],
@@ -218,8 +221,8 @@ try {
   assert.equal(ownDevices.status, 200);
   assert.deepEqual(ownDevices.body.devices.map(x => x.deviceId), [bobDevice]);
   assert.deepEqual(await callDevices(alice.host), { status: 401, body: { error: 'authentication_required' } });
-  const callInvite = async tenantHost => {
-    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ emails: ['new@example.com'], expiresInHours: 24 }))]), {
+  const callInvite = async (tenantHost, email = 'new@example.com') => {
+    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ emails: [email], expiresInHours: 24 }))]), {
       method: 'POST', url: '/api/v1/invitations', rawHeaders: ['Host', tenantHost],
       headers: { host: tenantHost, origin: `https://${tenantHost}`, 'content-type': 'application/json',
         'x-127v-csrf': csrf.toString('base64url'), cookie: `__Host-127v-session=${sessionToken.toString('base64url')}` },
@@ -268,11 +271,49 @@ try {
   assert.equal(begunInvitation.status, 200);
   const { attemptId, capability } = begunInvitation.body;
   assert.equal((await apiCall(bob, `/api/v1/onboarding/invitation/${attemptId}/email`, { capability }, inviteCeremony.body.csrf)).status, 200);
+  const [capture] = readdirSync(mailCapture);
+  const { to, code: deliveredCode } = JSON.parse(readFileSync(join(mailCapture, capture), 'utf8'));
+  assert.equal(to, 'new@example.com');
   assert.match(deliveredCode, /^\d{8}$/);
   const finishedInvitation = await apiCall(bob, `/api/v1/onboarding/invitation/${attemptId}/complete`,
     { capability, code: deliveredCode }, inviteCeremony.body.csrf);
   assert.equal(finishedInvitation.status, 200);
   assert.equal(finishedInvitation.body.accountId, invitedAccountId);
+  const ownerApi = async (path, payload, tenantHost = bob.host) => {
+    const req = Object.assign(Readable.from(payload ? [Buffer.from(JSON.stringify(payload))] : []), {
+      method: payload ? 'POST' : 'GET', url: path, rawHeaders: ['Host', tenantHost],
+      headers: { host: tenantHost, origin: `https://${tenantHost}`, 'content-type': 'application/json',
+        'x-127v-csrf': csrf.toString('base64url'), cookie: `__Host-127v-session=${sessionToken.toString('base64url')}` },
+      socket: { encrypted: true, servername: tenantHost }
+    });
+    let status, body;
+    await api(req, { writeHead(code) { status = code; }, end(value) { body = JSON.parse(value); } });
+    return { status, body };
+  };
+  const familyPath = '/api/v1/cloud/family';
+  const roster = await ownerApi(familyPath);
+  assert.equal(roster.status, 200);
+  assert.equal(roster.body.activeUsers, 2);
+  assert.equal(roster.body.members.find(member => member.id === invitedAccountId).role, 'user');
+  assert.equal((await ownerApi('/api/v1/license')).body.scope, 'cloud-tenant');
+  assert.equal((await ownerApi(familyPath, undefined, alice.host)).status, 401);
+  assert.equal((await ownerApi(`${familyPath}/suspend-member`, { targetId: alice.id })).status, 404);
+  assert.equal((await ownerApi(`${familyPath}/suspend-member`, { targetId: bob.id })).status, 404);
+  const memberToken = randomBytes(32);
+  const memberDigest = createHmac('sha256', tokenKey).update('session').update('\0').update(memberToken).digest();
+  await admin.query(`INSERT INTO vaults.sessions(tenant_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at)
+    VALUES($1,$2,$3,$4,1,$5,$6,now()+interval '1 hour')`, [bob.id, memberDigest, invitedAccountId, invitedDeviceId, csrfDigest, csrfCipher]);
+  assert.equal((await bobAuth.authenticate({ token: memberToken, now: new Date() })).role, 'user');
+  assert.deepEqual(await ownerApi(`${familyPath}/suspend-member`, { targetId: invitedAccountId }), { status: 200, body: { suspended: true } });
+  await assert.rejects(bobAuth.authenticate({ token: memberToken, now: new Date() }));
+  const replacement = await callInvite(bob.host);
+  assert.equal(replacement.status, 400); // The original recipient already has an account.
+  const nextInvitation = await callInvite(bob.host, 'another@example.com');
+  assert.equal(nextInvitation.status, 200);
+  assert.equal((await ownerApi(`${familyPath}/reactivate-member`, { targetId: invitedAccountId })).status, 409);
+  assert.equal((await ownerApi(`${familyPath}/revoke-invitation`, { targetId: nextInvitation.body.invitationId })).status, 200);
+  assert.deepEqual(await ownerApi(`${familyPath}/reactivate-member`, { targetId: invitedAccountId }), { status: 200, body: { suspended: false } });
+  await assert.rejects(bobAuth.authenticate({ token: memberToken, now: new Date() }));
   assert.equal((await createTenantScopedPool(runtimePool, bob.id).query('SELECT count(*)::int n FROM vaults.accounts')).rows[0].n, 2);
   const ownerKey = randomBytes(32);
   const carol = await reserveCloudTenant(admin, { region: 'global', host: 'carol.asia.example.com', maxActiveUsers: 1 });
@@ -360,7 +401,7 @@ try {
     await managementPool.end();
   }
   run('exec', name, 'openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
-    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com,DNS:${cloudLandingHost}`,
+    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com,DNS:${cloudLandingHost},DNS:browser.asia.example.com`,
     '-keyout', '/tmp/cloud-test.key', '-out', '/tmp/cloud-test.crt');
   const ca = run('exec', name, 'cat', '/tmp/cloud-test.crt');
   const httpsServer = await createCloudHttpsServer({ pool: runtimePool,
@@ -387,11 +428,85 @@ try {
     assert.equal(await status(alice.host, '/api/v1/ceremony', dave.host), 400);
     assert.equal(await status(cloudLandingHost, '/'), 200);
     assert.equal(await status(cloudLandingHost, '/landing.css'), 200);
+    assert.equal(await status(cloudLandingHost, '/healthz'), 200);
     assert.equal(await status(cloudLandingHost, '/api/v1/setup'), 404);
     assert.equal(await status(cloudLandingHost, '/', alice.host), 400);
     await assert.rejects(reserveCloudTenant(admin, { region: 'global', host: cloudLandingHost, maxActiveUsers: 1 }), /hostname is reserved/);
   } finally {
     await new Promise(resolve => httpsServer.close(resolve));
+  }
+  if (process.env.VAULTS_PLAYWRIGHT_MODULE && process.env.VAULTS_BROWSER_EXECUTABLE) {
+    const host = 'browser.asia.example.com';
+    const load = createRequire(import.meta.url);
+    const { chromium } = load(process.env.VAULTS_PLAYWRIGHT_MODULE);
+    const { ExperimentalOpaqueBridge: bridge } = load('../../../apps/server/wasm-auth/vaults_browser_fixture.cjs');
+    await provisionCloudTenant(admin, { region: 'global', host, maxActiveUsers: 2, ownerIdentityId: randomUUID(),
+      ownerEmail: 'browser-owner@example.com', createOpaqueSetup: () => Buffer.from(bridge.server_setup()) });
+    const { setupUrl } = await issueCloudBootstrapToken(admin, { region: 'global', host, tokenKey });
+    const realServer = await createCloudHttpsServer({ pool: runtimePool, tls: { cert: ca, key: run('exec', name, 'cat', '/tmp/cloud-test.key') },
+      bridge, tokenKey, checkpointPrivateKey: privateKey, mailer, onError: error => console.error('Browser fixture server error', error.code ?? error.name) });
+    let browser;
+    try {
+      realServer.listen(0, '127.0.0.1');
+      await once(realServer, 'listening');
+      browser = await chromium.launch({ executablePath: process.env.VAULTS_BROWSER_EXECUTABLE, args: ['--no-proxy-server',
+        `--host-resolver-rules=MAP ${host} 127.0.0.1:${realServer.address().port}`] });
+      const password = 'Local synthetic master password only';
+      const form = async (page, url, username, email) => {
+        await page.goto(url);
+        await page.locator('#registration-username').fill(username);
+        await page.locator('.registration-step[data-registration-step="0"] .registration-next').click();
+        await page.locator('#display').fill(username);
+        await page.locator('#email').fill(email);
+        await page.locator('.registration-step[data-registration-step="1"] .registration-next').click();
+        await page.locator('.registration-step[data-registration-step="2"] .registration-next').click();
+        await page.locator('#registration-master').fill(password);
+        await page.locator('#registration-master-confirm').fill(password);
+        await page.locator('#setup').click();
+      };
+      const unlock = async page => {
+        await page.locator('#master').fill(password);
+        await page.locator('#login').click();
+        await page.locator('#vault').waitFor({ state: 'visible' });
+      };
+      const owner = await browser.newPage({ ignoreHTTPSErrors: true, serviceWorkers: 'block' });
+      await form(owner, setupUrl, 'browserowner', 'browser-owner@example.com');
+      await owner.locator('#master').waitFor({ state: 'visible' });
+      await activateCloudTenant(admin, { region: 'global', host });
+      await unlock(owner);
+      await owner.locator('#settings-toggle').click();
+      await owner.locator('#cloud-family-email').fill('browser-member@example.com');
+      await owner.locator('#cloud-family-invite button').click();
+      await owner.locator('#cloud-family-url').waitFor({ state: 'visible' });
+      const member = await browser.newPage({ ignoreHTTPSErrors: true, serviceWorkers: 'block' });
+      await form(member, await owner.locator('#cloud-family-url').inputValue(), 'browsermember', 'browser-member@example.com');
+      await member.waitForFunction(() => document.querySelector('#setup-status')?.textContent.includes('sent to your invited email'));
+      const captured = readdirSync(mailCapture).map(file => JSON.parse(readFileSync(join(mailCapture, file), 'utf8')))
+        .find(message => message.to === 'browser-member@example.com');
+      assert.ok(captured);
+      await member.locator('#cloud-member-code').fill(captured.code);
+      await member.locator('#cloud-member-verification button[type="submit"]').click();
+      await unlock(member);
+      await member.locator('#create-vault').click();
+      await member.locator('#web-vault-name').fill('Synthetic family vault');
+      await member.locator('#web-create-vault-submit').click();
+      await member.locator('#web-create-vault-dialog').waitFor({ state: 'hidden' });
+      await member.locator('#new-item').click();
+      await member.locator('#title').fill('Synthetic Cloud sync item');
+      await member.locator('#save').click();
+      const savedItem = member.locator('#items [data-item-id]').filter({ hasText: 'Synthetic Cloud sync item' });
+      await savedItem.waitFor({ state: 'visible' });
+      await member.reload();
+      await member.waitForFunction(() => document.querySelector('#username')?.value === 'browsermember' &&
+        document.body.getAttribute('aria-busy') === 'false');
+      await member.locator('#login-next').click();
+      await unlock(member);
+      await savedItem.waitFor({ state: 'visible' });
+      console.log('Browser Cloud owner and member enrolled with real OPAQUE, and the member recovered a synced item after sign-in.');
+    } finally {
+      await browser?.close();
+      await new Promise(resolve => realServer.close(resolve));
+    }
   }
   await admin.query('BEGIN');
   await admin.query('CREATE TABLE vaults.unscoped_cloud_probe(id integer)');
@@ -407,6 +522,10 @@ try {
   if (started) try { console.error(run('logs', '--tail', '25', name)); } catch { /* unavailable */ }
   throw error;
 } finally {
+  if (mailCapture) {
+    for (const file of readdirSync(mailCapture)) unlinkSync(join(mailCapture, file));
+    rmdirSync(mailCapture);
+  }
   if (runtimePool) await runtimePool.end().catch(() => {});
   if (admin) await admin.end().catch(() => {});
   if (started) try { run('rm', '-f', name); } catch { /* already removed */ }

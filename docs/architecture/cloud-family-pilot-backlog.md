@@ -1,6 +1,6 @@
 # Cloud family pilot backlog
 
-Progress is **21 of 39**. Items 01–05 retain their original numbers. The original umbrella items are split below into code deliverables and environment work. Use these numbers for subsequent updates. Hosted verification and family handoff are separate from implementation.
+Progress is **31 of 39**. The local implementation steps are complete. Items 32–39 require the hosted environment or the approved family handoff.
 
 Target one shared deployment in one location with private PostgreSQL. Use `cloud.127vaults.com` as the family-facing entry point and separate canonical origins for the family vaults. Use `admin.127vaults.com` for routine operator actions. The deployment initializes the database from within the hosting environment. The operator uses a browser. Public signup and checkout stay closed.
 
@@ -28,16 +28,16 @@ Target one shared deployment in one location with private PostgreSQL. Use `cloud
 - [x] **19. Build the tenant creation and setup actions.** The portal creates a tenant for an already verified control owner and lets the operator issue, replace, and copy an owner setup link.
 - [x] **20. Build tenant lifecycle controls.** The portal exposes state-appropriate activation, suspension, resumption, and seat-cap actions.
 - [x] **21. Build the family entry page.** The Cloud runtime serves invitation-only guidance on the reserved `cloud.127vaults.com` hostname. Setup and invitation links go directly to the tenant origin. HTTPS routing checks cover the landing assets, the host boundary, and the absence of vault API routes on the landing host.
-- [ ] **22. Build member invitation creation and revocation.** Give family owners a tenant-scoped interface for both operations.
-- [ ] **23. Complete browser member enrollment.** Open invitation links on the correct tenant and complete account creation and verification.
-- [ ] **24. Wire the invitation verification transport.** Support private delivery and local capture with distinct configuration.
-- [ ] **25. Build the family roster.** Show members, invitation state, and seat usage to authorized family owners.
-- [ ] **26. Implement family member suspension and reactivation.** Enforce tenant scope and seat availability, and invalidate suspended member sessions.
-- [ ] **27. Complete web client tenant binding.** Use the canonical origin and tenant identity through enrollment, local storage, and sync.
-- [ ] **28. Complete desktop client tenant binding.** Support Cloud discovery and enrollment, preserve tenant identity locally, and define pilot client coverage.
-- [ ] **29. Implement trusted Cloudflare ingress handling.** Preserve canonical authority and TLS checks and accept client metadata only through the configured trusted ingress.
-- [ ] **30. Add deployment status and restart procedures.** Surface useful internal health and document the upgrade and rollback path.
-- [ ] **31. Script encrypted pilot backups.** Capture PostgreSQL and required key material and document the restore procedure.
+- [x] **22. Build member invitation creation and revocation.** Owners create, copy, and revoke private tenant invitations from the web vault.
+- [x] **23. Complete browser member enrollment.** A real OPAQUE browser rehearsal enrolled the first owner and an invited member using captured verification mail.
+- [x] **24. Wire the invitation verification transport.** The runtime supports explicit private SMTP and loopback file capture. The local rehearsal reads a captured code without calling an email provider.
+- [x] **25. Build the family roster.** Owners see tenant members, invitation state, and seat usage. The local PostgreSQL rehearsal rejects cross-tenant access.
+- [x] **26. Implement family member suspension and reactivation.** The PostgreSQL rehearsal verifies session invalidation, seat enforcement, and that a revoked session stays revoked after reactivation.
+- [x] **27. Complete web client tenant binding.** Browser enrollment and unlock pin the canonical origin, tenant, and authentication identity. Sync checks the pinned checkpoint key. The local browser rehearsal covers sign-in and a persisted vault item.
+- [x] **28. Complete desktop client tenant binding.** Desktop connects to a tenant through HTTPS discovery, then enrolls through the existing trusted-device approval flow. The native client pins tenant and protocol keys. Local native tests and the Desktop build passed. Hosted native enrollment remains part of step 37.
+- [x] **29. Implement trusted Cloudflare ingress handling.** The optional loopback Tunnel adapter preserves Host and TLS SNI and validates client source metadata. Hosted certificate and route configuration belongs to step 33.
+- [x] **30. Add deployment status and restart procedures.** `/healthz` checks readiness on the Cloud landing host. The Cloud runbook documents restart and rollback.
+- [x] **31. Script encrypted pilot backups.** A disposable Linux/PostgreSQL rehearsal restored the authenticated database dump and both runtime keys. Live backup scheduling belongs to step 35.
 
 ## Hosted environment and handoff
 

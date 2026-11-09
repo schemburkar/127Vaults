@@ -3,6 +3,7 @@ import pg from 'pg';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { runtimeDatabaseConfig } from '../src/runtime-config.mjs';
+import { cloudDatabaseConfig } from './database-config.mjs';
 import { activateCloudTenant, ensureCloudRuntimeLogin, initializeCloudDatabase, issueCloudBootstrapToken, prepareCloudTenant,
   provisionCloudTenant, readCloudTenants, reserveCloudTenant, setCloudTenantSeatLimit, setCloudTenantSuspension, verifyCloudDatabase,
   verifyCloudManagementLogin } from './operator.mjs';
@@ -31,7 +32,7 @@ async function loadOpaqueSetupFactory() {
   if (typeof generated.ExperimentalOpaqueBridge?.server_setup !== 'function') throw new Error('Reviewed OPAQUE setup unavailable.');
   return () => Buffer.from(generated.ExperimentalOpaqueBridge.server_setup());
 }
-const database = { ...runtimeDatabaseConfig(process.env), connectionTimeoutMillis: 3000, statement_timeout: 30000 };
+const database = { ...await cloudDatabaseConfig(process.env), connectionTimeoutMillis: 3000, statement_timeout: 30000 };
 const client = new pg.Client(database);
 try {
   await client.connect();

@@ -4,7 +4,8 @@ import { createServer } from 'node:https';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 import { containRequestErrors, HttpBoundaryError, parseJsonObject, readRequestBody, writeError, writeJson } from '../src/http-boundary.mjs';
-import { readSecretFile, runtimeDatabaseConfig } from '../src/runtime-config.mjs';
+import { readSecretFile } from '../src/runtime-config.mjs';
+import { cloudDatabaseConfig } from './database-config.mjs';
 import { activateCloudTenant, CloudOperatorError, issueCloudBootstrapToken, provisionCloudTenant, readCloudTenants,
   setCloudTenantSeatLimit, setCloudTenantSuspension, verifyCloudDatabase, verifyCloudManagementLogin } from './operator.mjs';
 
@@ -68,7 +69,7 @@ async function serve(env) {
   if (typeof bridge?.server_setup !== 'function') throw new Error('Cloud OPAQUE setup is unavailable.');
   const port = Number(env.VAULTS_CLOUD_MANAGEMENT_PORT ?? 8444);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid management HTTPS port.');
-  const pool = new pg.Pool({ ...runtimeDatabaseConfig(env), max: 2, connectionTimeoutMillis: 2000, statement_timeout: 10000 });
+  const pool = new pg.Pool({ ...await cloudDatabaseConfig(env), max: 2, connectionTimeoutMillis: 2000, statement_timeout: 10000 });
   pool.on('error', () => console.error('Cloud management database pool error.'));
   try {
     const handler = await createCloudManagementHandler({ pool, serviceToken, tokenKey,

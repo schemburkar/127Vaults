@@ -22,7 +22,14 @@ async function createBoundary({ pool, region, handle, enrollmentOnly, handleEnro
     try { host = cloudRequestHost(req); }
     catch { throw new HttpBoundaryError(); }
     if (req.socket.servername !== host) throw new HttpBoundaryError();
-    if (handleEnrollment && host === cloudLandingHost) return serveCloudLanding(req, res);
+    if (handleEnrollment && host === cloudLandingHost) {
+      if (req.method === 'GET' && req.url === '/healthz') {
+        await pool.query('SELECT 1');
+        writeJson(res, 200, { status: 'ready' });
+        return true;
+      }
+      return serveCloudLanding(req, res);
+    }
     const asset = webAssets?.match(req);
     const setupStatus = handleEnrollment && req.method === 'GET' && req.url === '/api/v1/setup';
     const enrollmentRoute = asset || setupStatus || (req.method === 'GET' && req.url === '/api/v1/ceremony') ||

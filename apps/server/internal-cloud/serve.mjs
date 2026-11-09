@@ -4,12 +4,14 @@ import { createServer } from 'node:https';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 import { containRequestErrors, HttpBoundaryError, writeError } from '../src/http-boundary.mjs';
-import { runtimeDatabaseConfig } from '../src/runtime-config.mjs';
+import { cloudDatabaseConfig } from './database-config.mjs';
 import { createInternalCloudRuntimeBoundary } from './request-boundary.mjs';
 import { createInternalCloudEnrollmentHandlers, createInternalCloudTenantHandlers } from './tenant-handlers.mjs';
 import { cloudWebAssets } from './web-assets.mjs';
+import { cloudInvitationMailer } from './invitation-mailer.mjs';
+import { applyCloudTunnelIngress } from './tunnel-ingress.mjs';
 
-export async function createCloudHttpsServer({ pool, tls, bridge, tokenKey, checkpointPrivateKey, mailer, onError }) {
+export async function createCloudHttpsServer({ pool, tls, bridge, tokenKey, checkpointPrivateKey, mailer, tunnelIngress = false, onError }) {
   const checkpointPublicKey = createPublicKey(checkpointPrivateKey)
     .export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url');
   const dispatch = await createInternalCloudRuntimeBoundary({
@@ -18,7 +20,10 @@ export async function createCloudHttpsServer({ pool, tls, bridge, tokenKey, chec
     handleEnrollment: createInternalCloudEnrollmentHandlers({ bridge, tokenKey })
   });
   const server = createServer({ ...tls, minVersion: 'TLSv1.2', maxHeaderSize: 8192 }, containRequestErrors(async (req, res) => {
-    try { await dispatch(req, res); }
+    try {
+      if (tunnelIngress) applyCloudTunnelIngress(req);
+      await dispatch(req, res);
+    }
     catch (error) {
       if (!(error instanceof HttpBoundaryError)) throw error;
       writeError(res, error.status, error.code);
@@ -55,17 +60,25 @@ async function serve(env) {
 
   const port = Number(env.VAULTS_CLOUD_PORT ?? 8443);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid Cloud HTTPS port.');
-  const pool = new pg.Pool({ ...runtimeDatabaseConfig(env), max: 4,
+  const bind = env.VAULTS_CLOUD_BIND ?? '127.0.0.1';
+  const ingress = env.VAULTS_CLOUD_INGRESS ?? 'direct';
+  if (!['direct', 'cloudflare-tunnel'].includes(ingress) || (ingress === 'cloudflare-tunnel' && bind !== '127.0.0.1')) {
+    throw new Error('Cloudflare Tunnel ingress requires a private loopback listener.');
+  }
+  if (ingress !== 'direct' && env.VAULTS_CLOUD_INVITATION_MAIL === 'capture') throw new Error('Cloud mail capture requires direct local access.');
+  const mailer = await cloudInvitationMailer(env);
+  const pool = new pg.Pool({ ...await cloudDatabaseConfig(env), max: 4,
     connectionTimeoutMillis: 2000, statement_timeout: 2000 });
   pool.on('error', () => console.error('Cloud database pool error.'));
   try {
-    const server = await createCloudHttpsServer({ pool, tls: { cert, key }, bridge, tokenKey, checkpointPrivateKey,
+    const server = await createCloudHttpsServer({ pool, tls: { cert, key }, bridge, tokenKey, checkpointPrivateKey, mailer,
+      tunnelIngress: ingress === 'cloudflare-tunnel',
       onError: () => console.error('Cloud request failed.') });
     server.on('error', () => { console.error('Cloud listener failed.'); process.exitCode = 1; void pool.end(); });
     for (const signal of ['SIGINT', 'SIGTERM']) {
       process.once(signal, () => server.close(() => void pool.end()));
     }
-    server.listen(port, env.VAULTS_CLOUD_BIND ?? '127.0.0.1', () => console.log('Internal Cloud HTTPS listener ready.'));
+    server.listen(port, bind, () => console.log('Internal Cloud HTTPS listener ready.'));
   } catch (error) {
     await pool.end();
     throw error;

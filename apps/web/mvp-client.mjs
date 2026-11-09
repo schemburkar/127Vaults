@@ -446,6 +446,55 @@ async function registrationSignature(candidate, record, key) {
   );
 }
 let cloudOwnerSetup = false;
+let cloudMemberSetup = false;
+let cloudDeployment = false;
+let memberAttempt = null;
+
+async function cloudDiscovery() {
+  const value = await remoteCall("/api/v1/cloud/discovery");
+  if (value.version !== 1 || value.canonicalOrigin !== location.origin || value.protocolVersions?.api !== 1 || value.protocolVersions?.sync !== 1 ||
+      !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value.tenantId) ||
+      !/^[A-Za-z0-9_-]{43}$/.test(value.serverPublicKey) || !/^[A-Za-z0-9_-]{43}$/.test(value.checkpointPublicKey)) {
+    throw Error("SERVER_IDENTITY_CHANGED");
+  }
+  return value;
+}
+
+async function sendMemberCode() {
+  await call(`/api/v1/onboarding/invitation/${memberAttempt.attemptId}/email`, {
+    method: "POST", body: { capability: memberAttempt.capability },
+  });
+  status("setup-status", "Enter the verification code sent to your invited email address.");
+}
+
+async function finishMemberSetup(event) {
+  event.preventDefault();
+  if (!memberAttempt) return;
+  const buttons = [...$("cloud-member-verification").querySelectorAll("button")];
+  for (const button of buttons) button.disabled = true;
+  try {
+    const { attemptId, capability, browserIdentity } = memberAttempt;
+    if (!memberAttempt.completed) {
+      const result = await call(`/api/v1/onboarding/invitation/${attemptId}/complete`, {
+        method: "POST", body: { capability, code: $("cloud-member-code").value.trim() },
+      });
+      if (result.accountId !== browserIdentity.accountId || result.deviceId !== browserIdentity.deviceId) throw Error("SERVER_IDENTITY_CHANGED");
+      memberAttempt.completed = true;
+    }
+    await saveIdentity(browserIdentity);
+    identity = await loadIdentity();
+    $("device").value = identity.deviceId;
+    $("cloud-member-code").value = "";
+    $("cloud-member-verification").hidden = true;
+    memberAttempt = null;
+    cloudMemberSetup = false;
+    wipeInputs();
+    showLogin();
+    showLoginPassword();
+    status("login-status", "Account created. Enter your master password to sign in.");
+  } catch (error) { status("setup-status", safeError(error), "error"); }
+  finally { for (const button of buttons) button.disabled = false; }
+}
 
 async function setup() {
   let stage = "validating setup fields";
@@ -464,7 +513,7 @@ async function setup() {
     $("secret").value = generatedAccountSecret;
     if (!token) {
       $("bootstrap").focus();
-      throw Error("Enter the one-time bootstrap code.");
+      throw Error("Enter the one-time setup or invitation code.");
     }
     if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{4,63}$/.test(username)) {
       $("registration-username").focus();
@@ -492,8 +541,11 @@ async function setup() {
         body: { accountId, deviceId, request: b64(start.message()), token, email },
       }),
       binding = un(server.binding),
-      parts = bindingParts(binding),
-      upload = ExperimentalOpaqueBridge.client_registration_finish(
+      parts = bindingParts(binding);
+    if (parts.origin !== location.origin || parts.account !== accountId || parts.device !== deviceId) throw Error("SERVER_IDENTITY_CHANGED");
+    const discovery = cloudMemberSetup ? await cloudDiscovery() : null;
+    if (discovery && (discovery.tenantId !== parts.installation || discovery.serverPublicKey !== b64(parts.serverPublicKey))) throw Error("SERVER_IDENTITY_CHANGED");
+    let upload = ExperimentalOpaqueBridge.client_registration_finish(
         start.state(),
         secret,
         password,
@@ -523,25 +575,40 @@ async function setup() {
     candidate.activationSignature = b64(
       await registrationSignature(candidate, upload, generated.keys.privateKey),
     );
-    stage = "activating first owner";
-    await call("/api/v1/onboarding/register", {
-      method: "POST",
-      body: { token, candidate },
-    });
-    stage = "saving this browser identity";
     let secretEnvelope = await protectAccountSecret(
       generatedAccountSecret,
       master,
     );
-    await saveIdentity({
+    const browserIdentity = {
       accountId,
       deviceId,
       username: candidate.username,
       privateKey: generated.keys.privateKey,
       publicKey: b64(generated.publicRaw),
+      installationId: parts.installation,
+      serverPublicKey: b64(parts.serverPublicKey),
+      ...(cloudDeployment ? { cloudOrigin: location.origin, checkpointPublicKey: discovery?.checkpointPublicKey } : {}),
       secretEnvelope,
       secretExpiresAt: installedApp ? undefined : Date.now() + 30 * 24 * 60 * 60 * 1000,
-    });
+    };
+    if (cloudMemberSetup) {
+      stage = "starting email verification";
+      const attempt = await call("/api/v1/onboarding/invitation", { method: "POST", body: { token, email, candidate } });
+      memberAttempt = { ...attempt, browserIdentity };
+      $("bootstrap").value = "";
+      wipeInputs();
+      core.lock();
+      for (const step of document.querySelectorAll(".registration-step")) step.hidden = true;
+      $("registration-progress").hidden = true;
+      $("cloud-member-verification").hidden = false;
+      $("cloud-member-code").focus();
+      await sendMemberCode();
+      return;
+    }
+    stage = "activating first owner";
+    await call("/api/v1/onboarding/register", { method: "POST", body: { token, candidate } });
+    stage = "saving this browser identity";
+    await saveIdentity(browserIdentity);
     identity = await loadIdentity();
     $("device").value = deviceId;
     $("bootstrap").value = "";
@@ -637,6 +704,12 @@ async function authenticateOnline(secret, password) {
     const generation = sessionGeneration;
     let start, finish, nextRoot, delivered = false;
     try {
+    const discovery = cloudDeployment || identity.cloudOrigin ? await cloudDiscovery() : null;
+    if (discovery && ((identity.cloudOrigin && identity.cloudOrigin !== location.origin) ||
+        (identity.installationId && identity.installationId !== discovery.tenantId) ||
+        (identity.serverPublicKey && identity.serverPublicKey !== discovery.serverPublicKey) ||
+        (identity.checkpointPublicKey && identity.checkpointPublicKey !== discovery.checkpointPublicKey))) throw Error("SERVER_IDENTITY_CHANGED");
+    if (generation !== sessionGeneration) throw Error("LOCKED");
     start = ExperimentalOpaqueBridge.client_login_start(secret, password);
     let
       request = start.message(),
@@ -650,6 +723,12 @@ async function authenticateOnline(secret, password) {
       });
     if (generation !== sessionGeneration) throw Error("LOCKED");
     csrf = begun.csrf;
+    if (discovery) {
+      const parts = bindingParts(un(begun.binding));
+      if (parts.origin !== discovery.canonicalOrigin || parts.installation !== discovery.tenantId || b64(parts.serverPublicKey) !== discovery.serverPublicKey) {
+        throw Error("SERVER_IDENTITY_CHANGED");
+      }
+    }
     let binding = un(begun.binding),
       challenge = un(begun.challenge),
       finishStep = ExperimentalOpaqueBridge.client_login_finish(
@@ -706,7 +785,11 @@ async function authenticateOnline(secret, password) {
     if (generation !== sessionGeneration) throw Error("LOCKED");
     csrf = logged.csrf;
     serverAuthenticated = true;
-    identity = { ...identity, installationId: verified.p.installation, serverPublicKey: b64(verified.p.serverPublicKey) };
+    const nextIdentity = { ...identity, installationId: verified.p.installation, serverPublicKey: b64(verified.p.serverPublicKey),
+      ...(discovery ? { cloudOrigin: location.origin, checkpointPublicKey: discovery.checkpointPublicKey } : {}) };
+    if (discovery && !identity.checkpointPublicKey) await saveIdentity(nextIdentity);
+    if (generation !== sessionGeneration) throw Error("LOCKED");
+    identity = nextIdentity;
     delivered = true;
     return { root: nextRoot, unlock: { descriptor: wrapped.descriptor, envelope: wrapped.envelope, authContext, origin: location.origin, deviceId: identity.deviceId, accountId: identity.accountId } };
     } finally {
@@ -715,6 +798,84 @@ async function authenticateOnline(secret, password) {
     }
 }
 let licenseEntitlement = null;
+function clearFamilySettings() {
+  if (!$("cloud-family")) return;
+  $("cloud-family").hidden = true;
+  $("cloud-family-invite").hidden = true;
+  $("cloud-family-link").hidden = true;
+  $("cloud-family-url").value = "";
+  $("cloud-family-email").value = "";
+  $("cloud-family-members").replaceChildren();
+  $("cloud-family-invitations").replaceChildren();
+}
+
+async function refreshFamilySettings() {
+  if (!$("cloud-family") || !serverAuthenticated || licenseEntitlement?.status.scope !== "cloud-tenant" ||
+      licenseEntitlement.status.role !== "owner") return;
+  const generation = sessionGeneration;
+  const family = await remoteCall("/api/v1/cloud/family");
+  if (generation !== sessionGeneration || !$("settings").open) return;
+  $("cloud-family").hidden = false;
+  $("cloud-family-invite").hidden = !family.invitationsEnabled;
+  status("cloud-family-status", `${family.activeUsers} active · ${family.reservedSeats} reserved · ${family.maxActiveUsers} seats`);
+  function row(label, action, targetId, buttonText) {
+    const item = document.createElement("li");
+    item.textContent = label;
+    if (action) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ml-2 underline";
+      button.textContent = buttonText;
+      button.onclick = async () => {
+        if (generation !== sessionGeneration || !window.confirm(`${buttonText}?`)) return;
+        button.disabled = true;
+        try {
+          await remoteCall(`/api/v1/cloud/family/${action}`, { method: "POST", body: { targetId } });
+          await refreshFamilySettings();
+        } catch (error) { if (generation === sessionGeneration) status("cloud-family-status", safeError(error), "error"); }
+        finally { button.disabled = false; }
+      };
+      item.append(button);
+    }
+    return item;
+  }
+  $("cloud-family-members").replaceChildren(...family.members.map(member => row(
+    `${member.displayName} · ${member.email} · ${member.role === "owner" ? "Owner" : member.suspendedAt ? "Suspended" : "Active"}`,
+    member.role === "owner" ? null : member.suspendedAt ? "reactivate-member" : "suspend-member", member.id,
+    member.suspendedAt ? "Reactivate member" : "Suspend member",
+  )));
+  $("cloud-family-invitations").replaceChildren(...family.invitations.map(invitation => {
+    const pending = !invitation.revokedAt && invitation.recipients.some(recipient => !recipient.redeemedAt);
+    const label = invitation.recipients.map(recipient => `${recipient.email} · ${recipient.redeemedAt ? "Accepted" : invitation.revokedAt ? "Revoked" : "Invited"}`).join(", ");
+    return row(label, pending ? "revoke-invitation" : null, invitation.id, "Revoke invitation");
+  }));
+}
+
+$("cloud-family-invite")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const generation = sessionGeneration;
+  const button = event.currentTarget.querySelector("button");
+  button.disabled = true;
+  $("cloud-family-url").value = "";
+  $("cloud-family-link").hidden = true;
+  try {
+    const invitation = await remoteCall("/api/v1/invitations", {
+      method: "POST", body: { emails: [$("cloud-family-email").value.trim()], expiresInHours: 48 },
+    });
+    if (generation !== sessionGeneration || !$("settings").open) return;
+    $("cloud-family-url").value = `${location.origin}/#memberInvite=${invitation.token}`;
+    $("cloud-family-link").hidden = false;
+    $("cloud-family-email").value = "";
+    await refreshFamilySettings();
+  } catch (error) { if (generation === sessionGeneration) status("cloud-family-status", safeError(error), "error"); }
+  finally { button.disabled = false; }
+});
+$("cloud-family-copy")?.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("cloud-family-url").value); status("cloud-family-status", "Invitation link copied. Share it privately."); }
+  catch { $("cloud-family-url").select(); }
+});
+$("settings").addEventListener("close", clearFamilySettings);
+
 function checkLicense(write = false) {
   return requireEntitlement(licenseEntitlement, { origin: location.origin, device: identity?.deviceId, installation: identity?.installationId, write });
 }
@@ -742,7 +903,8 @@ function monitorLicenseStatus() {
       const license = serverAuthenticated ? await refreshEntitlement() : checkLicense();
       if (!disposed && generation === sessionGeneration && serverAuthenticated && !$("vault").hidden) {
         if (!['active', 'read-only'].includes(license.mode)) { await lock(); $("state").textContent = 'A valid license or trial is required. Ask your operator for a replacement license.'; return; }
-        const guidance = license.mode === 'read-only' ? 'Expired: vault and invitation writes are blocked during the 30-day read-only period.'
+        const guidance = license.scope === 'cloud-tenant' ? 'Connected to your family vault.'
+          : license.mode === 'read-only' ? 'Expired: vault and invitation writes are blocked during the 30-day read-only period.'
           : license.mode === 'revoked' ? 'Revoked: server writes are blocked. Ask the operator for a replacement license.'
             : license.mode === 'locked' ? 'Locked: server writes are blocked. Check expiry and the server clock.'
               : license.mode === 'active' ? `Active${license.expiresAt ? ` until ${license.expiresAt.slice(0, 10)}` : ''}.`
@@ -807,6 +969,7 @@ async function login() {
     } catch (error) {
       if (!replica || !networkUnavailable(error) || !replica.state.unlock || !replica.state.snapshotAt) throw error;
       if (replica.state.unlock.origin !== location.origin || replica.state.unlock.deviceId !== identity.deviceId || replica.state.unlock.accountId !== identity.accountId) throw Error('SERVER_IDENTITY_CHANGED');
+      if (identity.cloudOrigin && (identity.cloudOrigin !== location.origin || replica.state.unlock.authContext?.tenantId !== identity.installationId)) throw Error('SERVER_IDENTITY_CHANGED');
       if (root) { core.release_root(root); root.free?.(); root = null; }
       root = core.unwrap_root(un(replica.state.unlock.envelope), un(replica.state.unlock.descriptor), password, secret);
       licenseEntitlement = JSON.parse(td.decode(core.decrypt_account_settings(root, un(replica.state.licenseEnvelope || ""))));
@@ -894,7 +1057,8 @@ async function verifyOfflineHistory() {
     const history = await operationHistory(row.vaultId, call), latest = history.operations.at(-1)?.operation;
     if (generation !== sessionGeneration || replica !== activeReplica) throw Error('LOCKED');
     const checkpoints = activeReplica.state.records[`/api/v1/vaults/${row.vaultId}/checkpoint`];
-    if (checkpoints) await verifyCheckpoints(checkpoints.checkpoints, history, { tenantId: authContext.tenantId, vaultId: row.vaultId, publicKey: checkpoints.checkpointPublicKey });
+    if (checkpoints) await verifyCheckpoints(checkpoints.checkpoints, history, { tenantId: authContext.tenantId, vaultId: row.vaultId,
+      publicKey: checkpoints.checkpointPublicKey, pinnedKey: identity.checkpointPublicKey });
     if (latest?.kind === 'item.delete') {
       await verifyLatestPayload(history, listed.catalogue);
     } else if (latest) {
@@ -919,7 +1083,8 @@ async function verifyPendingEntry(entry) {
 async function downloadCheckpoints(vaultId, history) {
   const saved = replica?.state.records[`/api/v1/vaults/${vaultId}/checkpoint`];
   const checkpoints = structuredClone(saved?.checkpoints || []);
-  let publicKey = saved?.checkpointPublicKey || null;
+  let publicKey = identity.checkpointPublicKey || saved?.checkpointPublicKey || null;
+  if (saved?.checkpointPublicKey && publicKey !== saved.checkpointPublicKey) throw Error('SYNC_CHECKPOINT_KEY_CHANGED');
   for (;;) {
     const after = checkpoints.length ? `&after=${await checkpointHash(checkpoints.at(-1))}` : '';
     const page = await remoteCall(`/api/v1/vaults/${vaultId}/checkpoint?history=1&limit=500${after}`);
@@ -2432,7 +2597,7 @@ function advanceRegistration() {
       return;
     }
     if (!$("bootstrap").value.trim()) {
-      status("setup-status", "Enter the bootstrap code.", "error");
+      status("setup-status", "Enter the setup or invitation code.", "error");
       return;
     }
   }
@@ -2557,6 +2722,15 @@ window.__vaultsActions = {
   },
 };
 $("setup").onclick = setup;
+$("cloud-member-verification")?.addEventListener("submit", finishMemberSetup);
+$("cloud-member-resend")?.addEventListener("click", async event => {
+  if (!memberAttempt || memberAttempt.completed) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try { await sendMemberCode(); }
+  catch (error) { status("setup-status", safeError(error), "error"); }
+  finally { button.disabled = false; }
+});
 $("login-next").onclick = showLoginPassword;
 $("login-back").onclick = showLogin;
 $("show-registration").onclick = showRegistration;
@@ -2652,6 +2826,7 @@ $("settings-toggle").onclick = () => {
   $("profile-secret-status").textContent = installedApp && reusableSecret(identity) ? "Remembered on this registered device" : reusableSecret(identity) ? `Remembered in this browser until ${new Date(identity.secretExpiresAt || Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}` : "Required at next unlock";
   showSettingsView("profile");
   $("settings").showModal();
+  void refreshFamilySettings().catch(error => toast("Family settings unavailable", safeError(error), "error"));
 };
 $("close-settings").onclick = () => $("settings").close();
 for (let button of document.querySelectorAll(".settings-tab"))
@@ -2750,27 +2925,36 @@ try {
     setupState = { ownerRequired: false };
   }
   ownerSetupRequired = setupState.ownerRequired === true;
+  cloudDeployment = setupState.deployment === "cloud" || Boolean(identity?.cloudOrigin);
   cloudOwnerSetup = setupState.deployment === "cloud" && ownerSetupRequired;
   if (setupState.deployment === "cloud") {
     const ownerSetupFragment = location.hash.match(/^#ownerSetup=(127V-B1-[A-Za-z0-9_-]{43})$/);
-    if (ownerSetupFragment) {
+    const invitationFragment = location.hash.match(/^#memberInvite=(127V-I1-[A-Za-z0-9_-]{43})$/);
+    if (ownerSetupFragment || invitationFragment) {
       history.replaceState(history.state, "", location.pathname + location.search);
-      if (cloudOwnerSetup) $("bootstrap").value = ownerSetupFragment[1];
+      if (cloudOwnerSetup && ownerSetupFragment) $("bootstrap").value = ownerSetupFragment[1];
+      if (invitationFragment && !identity && !ownerSetupRequired && !setupState.activationPending && $("cloud-member-verification")) {
+        cloudMemberSetup = true;
+        $("bootstrap").value = invitationFragment[1];
+        $("registration-label").textContent = "FAMILY INVITATION";
+      }
     }
   }
   $("show-registration").hidden = !ownerSetupRequired;
   if ($('register-browser-device')) $('register-browser-device').hidden = ownerSetupRequired || !!identity;
-  $("registration-exit").hidden = ownerSetupRequired;
-  $("setup-guidance").textContent = setupState.deployment === "cloud"
+  $("registration-exit").hidden = ownerSetupRequired || cloudMemberSetup;
+  if ($("setup-guidance")) $("setup-guidance").textContent = cloudMemberSetup
+    ? "Create your account using the email address your family’s vault owner invited."
+    : setupState.deployment === "cloud"
     ? "Enter the one-time setup code you received for this vault."
     : setupState.licenseMode === "active"
     ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."
     : "Install a signed license on the server, then run install bootstrap and enter its one-time code below.";
   startupReady = true;
   setBusy(false);
-  if (ownerSetupRequired) showRegistration();
+  if (ownerSetupRequired || cloudMemberSetup) showRegistration();
   else showLogin();
-  msg(ownerSetupRequired ? "Create the first owner for this server." : setupState.activationPending
+  msg(cloudMemberSetup ? "Set up your family vault account." : ownerSetupRequired ? "Create the first owner for this server." : setupState.activationPending
     ? "Owner setup is complete. Reload this page after your vault is activated."
     : identity ? "Ready to sign in." : "This browser needs device enrollment from an existing user.");
   $("state").textContent = ownerSetupRequired ? "First owner setup" : "Locked";

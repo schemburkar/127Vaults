@@ -1,7 +1,7 @@
 use super::profile;
 use reqwest::blocking::Client;
 use serde_json::Value;
-use std::{fs, path::Path};
+use std::path::Path;
 
 /// Receives an authenticated license response away from the desktop command thread.
 pub fn fetch_license_status(request: reqwest::blocking::RequestBuilder) -> Result<Value, String> {
@@ -50,18 +50,7 @@ pub(super) fn http_client(config_dir: &Path) -> Result<(Client, String, String, 
         .to_owned();
     let server_id = profile(&config_dir.join("trust.conf"), "server_id")?;
     let device_id = profile(&config_dir.join("device.conf"), "device_id")?;
-    let ca = fs::read(config_dir.join("installation-ca.pem"))
-        .map_err(|_| "installation CA is missing".to_owned())?;
-    let cert =
-        reqwest::Certificate::from_pem(&ca).map_err(|_| "installation CA is invalid".to_owned())?;
-    let client = Client::builder()
-        .https_only(true)
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(cert)
-        .redirect(reqwest::redirect::Policy::none())
-        .pool_max_idle_per_host(0)
-        .connect_timeout(std::time::Duration::from_secs(3))
-        .timeout(std::time::Duration::from_secs(30))
+    let client = crate::trusted_http_builder(config_dir)?
         .build()
         .map_err(|_| "could not initialize HTTPS client".to_owned())?;
     Ok((client, origin, server_id, device_id))

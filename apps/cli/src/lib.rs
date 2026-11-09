@@ -859,10 +859,154 @@ pub fn establish_trust(args: &TrustArgs) -> Result<String, String> {
     ))
 }
 
+#[derive(PartialEq, Eq)]
+pub(crate) struct CloudTrust {
+    pub tenant: String,
+    pub server_key: String,
+    pub checkpoint_key: String,
+}
+
+pub(crate) fn cloud_http_builder() -> reqwest::blocking::ClientBuilder {
+    reqwest::blocking::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .pool_max_idle_per_host(0)
+        .connect_timeout(std::time::Duration::from_secs(3))
+        .timeout(std::time::Duration::from_secs(30))
+}
+
+fn cloud_origin(input: &str) -> Result<String, String> {
+    let url = Url::parse(input).map_err(|_| "invalid Cloud vault URL")?;
+    if url.scheme() != "https"
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !matches!(url.host(), Some(url::Host::Domain(host)) if host.contains('.') && !host.ends_with('.'))
+    {
+        return Err("enter the HTTPS address of your family vault".to_owned());
+    }
+    Ok(url.origin().ascii_serialization())
+}
+
+fn parse_cloud_discovery(value: &serde_json::Value, origin: &str) -> Result<CloudTrust, String> {
+    if value["version"] != 1
+        || value["canonicalOrigin"] != origin
+        || value["protocolVersions"]["api"] != 1
+        || value["protocolVersions"]["sync"] != 1
+    {
+        return Err("Cloud discovery identity or protocol does not match".to_owned());
+    }
+    let tenant = value["tenantId"]
+        .as_str()
+        .ok_or("Cloud tenant identity is missing")?;
+    if uuid::Uuid::parse_str(tenant).is_err() || devices::device_id(tenant)? != tenant {
+        return Err("Cloud tenant identity is invalid".to_owned());
+    }
+    let key = |name: &str| -> Result<String, String> {
+        let encoded = value[name]
+            .as_str()
+            .ok_or("Cloud verification key is missing")?;
+        if URL_SAFE_NO_PAD
+            .decode(encoded)
+            .map_err(|_| "Cloud verification key is invalid")?
+            .len()
+            != 32
+        {
+            return Err("Cloud verification key is invalid".to_owned());
+        }
+        Ok(encoded.to_owned())
+    };
+    Ok(CloudTrust {
+        tenant: tenant.to_owned(),
+        server_key: key("serverPublicKey")?,
+        checkpoint_key: key("checkpointPublicKey")?,
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn cloud_discovery_pins_only_the_requested_https_tenant_origin() {
+    let origin = cloud_origin("https://family.example.com/").unwrap();
+    let key = URL_SAFE_NO_PAD.encode([7; 32]);
+    let mut response = serde_json::json!({ "version": 1, "canonicalOrigin": origin,
+        "protocolVersions": { "api": 1, "sync": 1 }, "tenantId": "11111111-1111-4111-8111-111111111111",
+        "serverPublicKey": key, "checkpointPublicKey": key });
+    assert_eq!(
+        parse_cloud_discovery(&response, &origin)
+            .unwrap()
+            .server_key,
+        key
+    );
+    assert!(parse_cloud_discovery(&response, "https://another.example.com").is_err());
+    response["checkpointPublicKey"] = serde_json::json!("bad");
+    assert!(parse_cloud_discovery(&response, &origin).is_err());
+    for invalid in [
+        "http://family.example.com",
+        "https://127.0.0.1",
+        "https://family.example.com/#invitation",
+    ] {
+        assert!(cloud_origin(invalid).is_err());
+    }
+}
+
+fn discover_cloud(client: &reqwest::blocking::Client, origin: &str) -> Result<CloudTrust, String> {
+    let response = client
+        .get(format!("{origin}/api/v1/cloud/discovery"))
+        .send()
+        .map_err(|_| "Cloud vault discovery is unavailable or its TLS certificate is untrusted")?;
+    if response.status() != reqwest::StatusCode::OK {
+        return Err("Cloud vault discovery was rejected".to_owned());
+    }
+    parse_cloud_discovery(
+        &response
+            .json()
+            .map_err(|_| "invalid Cloud discovery response")?,
+        origin,
+    )
+}
+
+pub(crate) fn configured_cloud_trust(
+    config_dir: &std::path::Path,
+) -> Result<Option<CloudTrust>, String> {
+    if profile_value(config_dir, "mode").as_deref() != Ok("cloud") {
+        return Ok(None);
+    }
+    Ok(Some(CloudTrust {
+        tenant: profile_value(config_dir, "server_id")?,
+        server_key: profile_value(config_dir, "cloud_server_key")?,
+        checkpoint_key: profile_value(config_dir, "cloud_checkpoint_key")?,
+    }))
+}
+
+/// Pins a Cloud tenant and its protocol keys after HTTPS discovery.
+///
+/// # Errors
+/// Returns an error for invalid discovery or conflicting local trust.
+pub fn establish_cloud_trust(config_dir: &std::path::Path, url: &str) -> Result<String, String> {
+    let origin = cloud_origin(url)?;
+    let client = cloud_http_builder()
+        .build()
+        .map_err(|_| "could not initialize Cloud HTTPS client")?;
+    let discovered = discover_cloud(&client, &origin)?;
+    fs::create_dir_all(config_dir).map_err(|_| "could not create trust profile directory")?;
+    let profile = format!(
+        "version=1\nmode=cloud\nurl={origin}\nserver_id={}\ncloud_server_key={}\ncloud_checkpoint_key={}\n",
+        discovered.tenant, discovered.server_key, discovered.checkpoint_key
+    );
+    write_new_or_equal(&config_dir.join("trust.conf"), profile.as_bytes())?;
+    Ok("Cloud vault identity verified and saved".to_owned())
+}
+
 fn configured(config_dir: &std::path::Path) -> bool {
     let Ok(profile) = fs::read_to_string(config_dir.join("trust.conf")) else {
         return false;
     };
+    if profile.lines().any(|line| line == "mode=cloud") {
+        return configured_cloud_trust(config_dir).is_ok_and(|value| value.is_some());
+    }
     let Ok(ca) = fs::read(config_dir.join("installation-ca.pem")) else {
         return false;
     };
@@ -1152,21 +1296,16 @@ fn enroll_device_with_identity(
     let origin = profile_value(config_dir, "url")?
         .trim_end_matches('/')
         .to_owned();
-    let ca = fs::read(config_dir.join("installation-ca.pem"))
-        .map_err(|_| "installation CA is missing".to_owned())?;
-    let certificate =
-        reqwest::Certificate::from_pem(&ca).map_err(|_| "installation CA is invalid".to_owned())?;
-    let client = reqwest::blocking::Client::builder()
-        .https_only(true)
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(certificate)
-        .redirect(reqwest::redirect::Policy::none())
-        // Do not reuse a socket after the experimental Node server closes it
-        // without a TLS close_notify between short polling requests.
-        .pool_max_idle_per_host(0)
-        .timeout(std::time::Duration::from_secs(30))
+    let cloud_trust = configured_cloud_trust(config_dir)?;
+    let client = trusted_http_builder(config_dir)?
+        .connect_timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|_| "could not initialize HTTPS client".to_owned())?;
+    if let Some(expected) = &cloud_trust
+        && &discover_cloud(&client, &origin)? != expected
+    {
+        return Err("Cloud vault identity changed; enrollment was stopped".to_owned());
+    }
     let device_id = uuid::Uuid::new_v4().to_string();
     let signing = SigningKey::generate(&mut OsRng);
     let public_key = URL_SAFE_NO_PAD.encode(signing.verifying_key().to_bytes());
@@ -1285,6 +1424,11 @@ fn enroll_device_with_identity(
     if receipt["deviceId"] != device_id {
         return Err("server receipt does not match this CLI device".to_owned());
     }
+    if let Some(expected) = &cloud_trust
+        && &discover_cloud(&client, &origin)? != expected
+    {
+        return Err("Cloud vault identity changed; enrollment was stopped".to_owned());
+    }
     store_device_key(&server_id, &device_id, signing.as_bytes())?;
     let profile =
         format!("version=1\ndevice_id={device_id}\nserver_id={server_id}\nusername={username}\n");
@@ -1292,6 +1436,22 @@ fn enroll_device_with_identity(
     Ok(format!(
         "device enrolled\ndevice_id={device_id}\nkey_storage=os"
     ))
+}
+
+pub(crate) fn trusted_http_builder(
+    config_dir: &std::path::Path,
+) -> Result<reqwest::blocking::ClientBuilder, String> {
+    let builder = cloud_http_builder();
+    if configured_cloud_trust(config_dir)?.is_some() {
+        return Ok(builder);
+    }
+    let ca = fs::read(config_dir.join("installation-ca.pem"))
+        .map_err(|_| "installation CA is missing".to_owned())?;
+    let certificate =
+        reqwest::Certificate::from_pem(&ca).map_err(|_| "installation CA is invalid".to_owned())?;
+    Ok(builder
+        .tls_built_in_root_certs(false)
+        .add_root_certificate(certificate))
 }
 
 fn enroll_device(config_dir: &std::path::Path, username: &str) -> Result<String, String> {

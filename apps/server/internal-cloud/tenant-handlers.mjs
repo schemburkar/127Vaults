@@ -19,6 +19,7 @@ import { PgCredentialRotationStore, createCredentialRotationHandler } from '../s
 import { createDeviceLifecycleHandler } from '../src/device-lifecycle-handler.mjs';
 import { createDeviceEnrollmentHandler } from '../src/device-enrollment-handler.mjs';
 import { writeError, writeJson } from '../src/http-boundary.mjs';
+import { createCloudFamilyHandler } from './family-handler.mjs';
 
 async function loadEnrollmentEntitlement(tenantId, _now, transaction) {
   const result = await transaction.query('SELECT cloud.enrollment_seat_limit($1) AS seat_limit', [tenantId]);
@@ -53,6 +54,8 @@ export function createInternalCloudTenantHandlers({ bridge, tokenKey, checkpoint
     const deviceStore = new PgDeviceLifecycleStore(pool,{tenantId:tenant.id});
     const handlers = [
       createAuthHandler(authService, origin),
+      createCloudFamilyHandler({ pool, tenantId: tenant.id, origin, authenticate, loadEntitlement: loadEnrollmentEntitlement,
+        invitationsEnabled: Boolean(mailer) }),
       ...(mailer ? [createOnboardingHandler(onboarding, createRegistrationCompletion(opaque, registration), origin, authenticate, registration)] : []),
       createDeviceEnrollmentHandler(deviceStore, authenticate, origin),
       createCredentialRotationHandler({store:new PgCredentialRotationStore(pool),authenticate,origin,registration,opaque}),
