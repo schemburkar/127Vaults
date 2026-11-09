@@ -23,7 +23,7 @@ async function cloudCustomerTenants(env, email) {
   if (!/^[a-f0-9]{64}$/.test(env.CLOUD_CUSTOMER_DIRECTORY_TOKEN ?? '')) return { tenants: [], unavailable: true };
   try {
     const response = await fetch(`${env.CLOUD_CUSTOMER_DIRECTORY_ORIGIN}/internal/cloud/v1/customer-tenants`, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(3000),
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(3000),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.CLOUD_CUSTOMER_DIRECTORY_TOKEN}` },
       body: JSON.stringify({ email })
     });

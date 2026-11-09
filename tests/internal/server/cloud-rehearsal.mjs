@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
-import { createCloudManagementHandler } from '../../../apps/server/internal-cloud/management.mjs';
+import { createCloudManagementHandler, createCloudCustomerDirectoryHandler } from '../../../apps/server/internal-cloud/management.mjs';
 import { cloudLandingHost } from '../../../apps/server/internal-cloud/landing.mjs';
 const cloudOrigin = `https://${cloudLandingHost}`;
 const tenantRequest = (slug, path, headers = {}) => ({
@@ -29,7 +29,7 @@ import { PgAuthStore } from '../../../apps/server/src/auth-pg.mjs';
 import { createInternalCloudEnrollmentHandlers, createInternalCloudTenantHandlers } from '../../../apps/server/internal-cloud/tenant-handlers.mjs';
 import { registrationActivationBytes } from '../../../apps/server/src/opaque-adapter.mjs';
 import { createCloudHttpsServer } from '../../../apps/server/internal-cloud/serve.mjs';
-import { adminHost, localCloudAdmin, localOperator, managementHost } from '../support/cloud-admin-browser-fixture.mjs';
+import { adminHost, customerHost, directoryHost, localCloudAdmin, localCloudManage, localOperator, managementHost } from '../support/cloud-admin-browser-fixture.mjs';
 const pg = createRequire(new URL('../../../apps/server/package.json', import.meta.url))('pg');
 
 if (process.env.VAULTS_INTERNAL_CLOUD_LIVE_TEST !== '1') throw new Error('Explicit disposable-test opt-in required.');
@@ -375,15 +375,16 @@ try {
   try {
     const serviceToken = randomBytes(32).toString('hex');
     const customerDirectoryToken = randomBytes(32).toString('hex');
-    const manage = await createCloudManagementHandler({ pool: managementPool, serviceToken, customerDirectoryToken, tokenKey: ownerKey,
+    const manage = await createCloudManagementHandler({ pool: managementPool, serviceToken, tokenKey: ownerKey,
       createOpaqueSetup: () => Buffer.alloc(96) });
-    const invoke = async (command, input, authorization = `Bearer ${serviceToken}`, expectedStatus = 200) => {
+    const directory = createCloudCustomerDirectoryHandler({ pool: managementPool, customerDirectoryToken });
+    const invoke = async (command, input, authorization = `Bearer ${serviceToken}`, expectedStatus = 200, handler = manage) => {
       const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(input))]), {
         url: `/internal/cloud/v1/${command}`, method: 'POST', socket: { encrypted: true },
         headers: { authorization, 'x-127v-operator': 'pilot-operator', 'content-type': 'application/json' }
       });
       let status, body;
-      await manage(req, { writeHead(code) { status = code; }, end(value) { body = JSON.parse(value); } });
+      await handler(req, { writeHead(code) { status = code; }, end(value) { body = JSON.parse(value); } });
       assert.equal(status, expectedStatus, JSON.stringify(body));
       return body;
     };
@@ -392,11 +393,13 @@ try {
     const provisioned = await invoke('provision', { slug, maxActiveUsers: 3, ownerIdentityId: randomUUID(), ownerEmail: 'eve@example.com' });
     assert.equal(provisioned.state, 'prepared');
     const directoryBearer = `Bearer ${customerDirectoryToken}`;
-    await invoke('customer-tenants', { email: 'eve@example.com' }, `Bearer ${serviceToken}`, 401);
+    await invoke('customer-tenants', { email: 'eve@example.com' }, `Bearer ${serviceToken}`, 401, directory);
+    await invoke('customer-tenants', { email: 'eve@example.com' }, directoryBearer, 404);
     await invoke('set-seats', { slug, maxActiveUsers: 4 }, directoryBearer, 401);
-    assert.deepEqual(await invoke('customer-tenants', { email: 'eve@example.com' }, directoryBearer),
+    await invoke('set-seats', { slug, maxActiveUsers: 4 }, directoryBearer, 404, directory);
+    assert.deepEqual(await invoke('customer-tenants', { email: 'eve@example.com' }, directoryBearer, 200, directory),
       { tenants: [{ slug, state: 'prepared', maxActiveUsers: 3, canonicalUrl: `${cloudOrigin}/t/${slug}/` }] });
-    assert.deepEqual(await invoke('customer-tenants', { email: 'unrelated@example.com' }, directoryBearer), { tenants: [] });
+    assert.deepEqual(await invoke('customer-tenants', { email: 'unrelated@example.com' }, directoryBearer, 200, directory), { tenants: [] });
     const firstLink = (await invoke('issue-setup', { slug })).setupUrl;
     assert.notEqual((await invoke('issue-setup', { slug })).setupUrl, firstLink);
     assert.equal((await invoke('list', {})).find(tenant => tenant.slug === slug).maxActiveUsers, 3);
@@ -412,7 +415,7 @@ try {
     await managementPool.end();
   }
   run('exec', name, 'openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
-    '-days', '1', '-subj', `/CN=${cloudLandingHost}`, '-addext', `subjectAltName=DNS:${cloudLandingHost},DNS:unknown.asia.example.com,DNS:${adminHost},DNS:${managementHost}`,
+    '-days', '1', '-subj', `/CN=${cloudLandingHost}`, '-addext', `subjectAltName=DNS:${cloudLandingHost},DNS:unknown.asia.example.com,DNS:${adminHost},DNS:${managementHost},DNS:${customerHost},DNS:${directoryHost}`,
     '-keyout', '/tmp/cloud-test.key', '-out', '/tmp/cloud-test.crt');
   const ca = run('exec', name, 'cat', '/tmp/cloud-test.crt');
   const httpsServer = await createCloudHttpsServer({ pool: runtimePool,
@@ -455,13 +458,18 @@ try {
     const browserManagementPool = new pg.Pool({ ...manager, host: '127.0.0.1', port, database: 'vaults_cloud_test', max: 1 });
     const realServer = await createCloudHttpsServer({ pool: runtimePool, tls,
       bridge, tokenKey, checkpointPrivateKey: privateKey, mailer, onError: error => console.error('Browser fixture server error', error.code ?? error.name) });
-    let browser, operatorFixture;
+    let browser, operatorFixture, customerFixture;
     try {
       realServer.listen(0, '127.0.0.1');
       await once(realServer, 'listening');
       operatorFixture = await localCloudAdmin({ tls, pool: browserManagementPool, tokenKey, bridge });
+      customerFixture = await localCloudManage({ tls, pool: browserManagementPool });
+      const directoryProbe = await customerFixture.start('eve@example.com');
+      assert.equal(directoryProbe.status, 202);
+      assert.ok(await customerFixture.manualMail('eve@example.com'), customerFixture.directoryResult());
       const routes = [...[cloudLandingHost].map(host => `MAP ${host} 127.0.0.1:${realServer.address().port}`),
-        `MAP ${adminHost} 127.0.0.1:${operatorFixture.port}`];
+        `MAP ${adminHost} 127.0.0.1:${operatorFixture.port}`,
+        `MAP ${customerHost} 127.0.0.1:${customerFixture.port}`];
       browser = await chromium.launch({ executablePath: process.env.VAULTS_BROWSER_EXECUTABLE, args: ['--no-proxy-server',
         `--host-resolver-rules=${routes.join(', ')}`] });
       const pageOptions = { ignoreHTTPSErrors: true, serviceWorkers: 'block' };
@@ -614,12 +622,32 @@ try {
         return Boolean(await finishBrowserEnrollment(window.fixtureEnrollment, window.fixtureEnrollmentCall));
       });
       assert.equal(enrolled, true);
+      const customer = await browser.newPage(pageOptions);
+      await customer.goto(customerFixture.origin);
+      const customerEmail = 'browser-owner-0@example.com';
+      await customer.locator('#email').fill(customerEmail);
+      await customer.getByRole('button', { name: 'Request sign-in code' }).click();
+      await customer.locator('#code').waitFor();
+      const message = await customerFixture.manualMail(customerEmail);
+      assert.ok(message, 'The Cloud-only control owner must get an operator-assisted sign-in code');
+      await customer.locator('#code').fill(/code is (\d{6})/.exec(message.text)[1]);
+      await customer.getByRole('button', { name: 'Verify and sign in' }).click();
+      const ownFamily = customer.locator('#portal-cloud-tenants article');
+      await ownFamily.filter({ hasText: slugs[0] }).waitFor();
+      assert.equal(await ownFamily.count(), 1);
+      assert.match(await ownFamily.innerText(), /2 seats allocated/);
+      await customer.getByRole('link', { name: 'Open family settings' }).click();
+      await customer.locator('#login-flow').waitFor();
+      assert.equal(customer.url(), `${familyUrl}?settings=family`);
+      assert.equal(await customer.locator('#vault').isVisible(), false);
+      assert.equal((await customer.context().cookies(familyUrl)).some(cookie => cookie.name === '__Host-127v-session'), false);
       const operatorActions = await admin.query('SELECT action,count(*)::int AS count FROM cloud.operator_audit WHERE actor=$1 GROUP BY action ORDER BY action', [localOperator]);
       assert.deepEqual(operatorActions.rows, ['activate', 'issue-setup', 'provision'].map(action => ({ action, count: 2 })));
-      console.log('Local Admin portal provisioned and activated two isolated families. Both enrolled and synced with real OPAQUE.');
+      console.log('Local Admin provisioned two isolated families. Both enrolled and synced with real OPAQUE. Manage listed only the signed-in control owner’s family through the HTTPS directory.');
     } finally {
       await browser?.close();
       await operatorFixture?.close();
+      await customerFixture?.close();
       await new Promise(resolve => realServer.close(resolve));
       await browserManagementPool.end();
     }

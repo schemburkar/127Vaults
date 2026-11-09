@@ -99,8 +99,8 @@ test('customer approval and access notices use mocked Resend once; development i
   assert.equal(messages.length, 2);
 });
 
-async function billingFixture(t) {
-  const f = await fixture(t, { bindings: { DODO_ENABLED: '1', DODO_MODE: 'test_mode', DODO_API_KEY: 'test-key',
+async function billingFixture(t, outboundService) {
+  const f = await fixture(t, { outboundService, bindings: { DODO_ENABLED: '1', DODO_MODE: 'test_mode', DODO_API_KEY: 'test-key',
     DODO_WEBHOOK_SECRET: 'whsec_' + Buffer.alloc(32, 7).toString('base64'), DODO_BUSINESS_ID: 'biz_test',
     DODO_PLANS: JSON.stringify({ 'commercial-monthly': { productId: 'pdt_test', plan: 'commercial', maxUsers: 8 } }) } });
   const id = await f.submit(), a = await f.approve(id), installationId = randomUUID();
@@ -285,6 +285,21 @@ test('Dodo Worker HTTP boundary keeps checkout private, rejects cross-origin cha
   assert.equal(accepted.status, 200, await accepted.clone().text());
   assert.equal((await f.post(`${admin}/${f.id}/extend`, { days: 1 }, f.operatorToken)).status, 409);
   assert.equal((await f.get(f.a.base, f.a.token)).status, 200);
+});
+
+test('Dodo checkout calls the mock provider from the Worker runtime', async t => {
+  let calls = 0;
+  const checkoutUrl = 'https://checkout.dodopayments.com/buy/fixture';
+  const f = await billingFixture(t, async request => {
+    calls++;
+    assert.equal(request.url, 'https://test.dodopayments.com/checkouts');
+    assert.equal(request.headers.get('authorization'), 'Bearer test-key');
+    return Response.json({ checkout_url: checkoutUrl, session_id: 'cks_fixture' });
+  });
+  const response = await f.post(`/api/billing/${f.id}/checkout`, {}, f.a.token);
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal((await response.json()).checkoutUrl, checkoutUrl);
+  assert.equal(calls, 1);
 });
 
 test('Dodo definite checkout rejection permits correction, while an ambiguous timeout preserves the reserved order', async t => {

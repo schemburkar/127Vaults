@@ -4,6 +4,15 @@ Progress is **42 of 52**. The original 39 items remain numbered, with 13 follow-
 
 Target one deployment in one location with private PostgreSQL. Use `https://cloud.127vaults.com/` for the public invitation-only landing page and `/t/<slug>/` for each family. Use `admin.127vaults.com` for platform operations, `manage.127vaults.com` for customer accounts, and local `/admin` for self-hosted administration. The deployment initializes the database inside the hosting environment. Public signup and Cloud checkout stay closed.
 
+## Admin surface handoff
+
+| Surface | Intended user and work | Pilot status |
+| --- | --- | --- |
+| Self-hosted server `/admin` | The installation's operator manages that server and can view its installed license and seats. | Local implementation complete. This surface does not take part in Cloud provisioning. |
+| `admin.127vaults.com/cloud-tenants` | Named platform operators provision, activate, suspend and resume tenants, set seat caps and issue setup links. | Local operator-to-runtime workflow complete. Live operator authorization and the management endpoint still need configuration. |
+| `manage.127vaults.com` | A verified control owner sees their Cloud tenant status and allocated seats. Self-hosted customers manage downloads, licenses and billing here. | The local Manage Worker and HTTPS directory listed only the verified owner's tenant. Live routing and credential setup are pending. Cloud checkout is deferred. |
+| `cloud.127vaults.com/t/<slug>/` → Settings → Family members | The vault owner manages the family roster and invitations. | Local workflow complete. Live family enrollment and private handoff are pending. |
+
 - [x] **01. Record the pilot backlog.** Define the target, completion criteria, and progress count in this file.
 - [x] **02. Enforce fixed enrollment seats.** Verified owner enrollment, invitation creation and redemption, over-cap rejection, and scoped seat lookup in the disposable PostgreSQL rehearsal.
 - [x] **03. Compose the Cloud runtime.** Verified the standalone HTTPS listener against disposable PostgreSQL for active, prepared and unknown tenant paths, and mismatched TLS names. The transport rehearsal uses stub OPAQUE. The image check below verifies the real bridge loads.
@@ -61,9 +70,9 @@ Local rehearsals cover the database and role setup for step 32, the HTTPS and ma
 - [x] **44. Support one active Cloud tenant per browser profile.** Changing tenants locks other tenant tabs. Browser device identity and queued operations stay associated with their tenant UUID.
 - [x] **45. Record simultaneous sessions as future work.** Independent sessions and an explicit tenant switcher are outside the two-family pilot.
 - [x] **46. Put Cloud family administration inside the vault.** Settings → Family members shows the roster, invitations, seat usage and vault-owner controls.
-- [ ] **47. Complete Cloud account and billing in Manage.** Read-only tenant state, allocated seats and the family settings link are implemented. A Cloud-only control owner can use the operator-assisted sign-in flow when enabled. Connect live directory ingress and add billing records for a future paid offering. Customer checkout and seat purchases stay deferred.
+- [ ] **47. Complete Cloud account and billing in Manage.** Read-only tenant state, allocated seats, operator-assisted sign-in and the link to family settings are implemented. Manage has its own HTTPS directory listener and credential. Connect the live directory ingress and add billing records for a future paid offering. Customer checkout and seat purchases stay deferred.
 - [x] **48. Show self-hosted license and seats in local Admin.** The server overview reports the installed license and links to Manage subscriptions.
 - [x] **49. Preserve local Admin.** Keep the installation-specific operator login, health and administration.
 - [x] **50. Reuse People, Invitations and Seats presentation.** Cloud family settings and self-hosted Admin share status labels, status styles and the seat summary. Each surface keeps its existing layout, actions and backend authorization.
 - [x] **51. Keep central Admin for platform operators.** Use it to provision, activate, suspend and resume tenants and set pilot seat limits.
-- [ ] **52. Finish end-to-end pilot verification.** Local two-family checks cover real OPAQUE enrollment and sync, cross-path rejection, tab locking, tenant-specific replay of queued writes and customer-directory credential separation. The local browser also opened the approval link on the family path and completed a real new-device request through the server. Finish packaged Desktop enrollment and sync against the deployed HTTPS hostname and verify hosted Manage.
+- [ ] **52. Finish end-to-end pilot verification.** Local two-family checks cover real OPAQUE enrollment and sync, cross-path rejection, tab locking, tenant-specific replay of queued writes and customer-directory credential separation. The local browser completed a new-device request through the family approval link. The Manage Worker signed in a Cloud-only contact through the HTTPS directory and opened family settings with no vault session. Finish packaged Desktop enrollment and sync against the deployed HTTPS hostname and verify hosted Manage.

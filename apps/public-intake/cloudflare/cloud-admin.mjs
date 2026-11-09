@@ -24,7 +24,7 @@ async function verifyOperator(request, env, fetchImpl) {
       !/^[A-Za-z0-9][A-Za-z0-9_:@.-]{0,127}$/.test(claims.sub ?? '') || typeof claims.sub !== 'string') return null;
 
   const response = await fetchImpl(`${env.CLOUD_ADMIN_ACCESS_ISSUER}/cdn-cgi/access/certs`, {
-    redirect: 'error', signal: AbortSignal.timeout(5000), cf: { cacheEverything: true, cacheTtl: 60 }
+    redirect: 'manual', signal: AbortSignal.timeout(5000), cf: { cacheEverything: true, cacheTtl: 60 }
   });
   if (!response.ok) return null;
   const { keys } = await response.json();
@@ -53,7 +53,7 @@ export async function handleCloudAdmin(request, env, fetchImpl = fetch) {
   if (!actor) return reply(403, { error: 'cloud_operator_required' });
   try {
     const upstream = await fetchImpl(`${env.CLOUD_MANAGEMENT_ORIGIN}/internal/cloud/v1/${command}`, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12000), body: request.body,
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(12000), body: request.body,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.CLOUD_MANAGEMENT_TOKEN}`, 'X-127V-Operator': actor,
         'CF-Access-Client-Id': env.CLOUD_MANAGEMENT_ACCESS_ID, 'CF-Access-Client-Secret': env.CLOUD_MANAGEMENT_ACCESS_SECRET }
     });

@@ -22,7 +22,7 @@ export function billingConfig(env) {
 }
 export async function dodo(env, path, method = 'GET', value, fetcher = fetch) {
   const { base } = billingConfig(env);
-  const response = await fetcher(base + path, { method, redirect: 'error', signal: AbortSignal.timeout(15000),
+  const response = await fetcher(base + path, { method, redirect: 'manual', signal: AbortSignal.timeout(15000),
     headers: { Authorization: `Bearer ${env.DODO_API_KEY}`, 'Content-Type': 'application/json' },
     ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
   if (!response.ok) throw new DodoError(response.status);

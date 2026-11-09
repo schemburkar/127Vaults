@@ -98,7 +98,8 @@ export function validateConfig(value, file) {
     const directory = value.cloudCustomerDirectory;
     if (!value.sites || !directory || Object.keys(directory).sort().join(',') !== 'origin,pilotManualLogin' ||
         !/^https:\/\/[a-z0-9.-]+$/.test(directory.origin ?? '') || !validIntakeOrigin(directory.origin) ||
-        [value.origin, value.sites.adminOrigin, value.sites.customerOrigin, 'https://cloud.127vaults.com'].includes(directory.origin) ||
+        [value.origin, value.sites.adminOrigin, value.sites.customerOrigin, value.cloudAdmin?.managementOrigin,
+          'https://cloud.127vaults.com'].includes(directory.origin) ||
         typeof directory.pilotManualLogin !== 'boolean') throw Error('Invalid Cloud customer directory configuration');
   }
   const base = dirname(resolve(file));

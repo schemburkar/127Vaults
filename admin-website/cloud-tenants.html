@@ -28,10 +28,12 @@
     </section>
     <form class="access-card" id="cloud-create" hidden>
       <h2>Create tenant</h2>
+      <p>The slug becomes the family's address under <code>cloud.127vaults.com/t/</code>. Confirm the control owner's email before provisioning. That email is used in Manage.</p>
       <label class="access-field">Tenant URL slug<input name="slug" required autocapitalize="none" spellcheck="false" maxlength="63"></label>
       <label class="access-field">Seat cap<input name="seats" type="number" min="1" max="2147483647" value="5" required></label>
       <label class="access-field">Verified control owner ID<input name="owner" required spellcheck="false" maxlength="36"></label>
       <label class="access-field">Verified control owner email<input name="email" type="email" required maxlength="254"></label>
+      <p>The person who completes the owner setup link becomes the vault owner. A control owner's Manage access is separate from vault ownership.</p>
       <button class="button primary" type="submit">Create tenant</button>
     </form>
     <div id="cloud-directory"></div>

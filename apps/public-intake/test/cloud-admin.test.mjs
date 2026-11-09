@@ -31,7 +31,7 @@ test('Cloud admin uses the signed named identity and keeps its service credentia
   const response = await handleCloudAdmin(request(assertion()), env, async (url, options) => {
     if (url.endsWith('/certs')) return Response.json({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test' }] });
     assert.equal(url, `${env.CLOUD_MANAGEMENT_ORIGIN}/internal/cloud/v1/list`);
-    assert.equal(options.redirect, 'error');
+    assert.equal(options.redirect, 'manual');
     assert.equal(options.headers['X-127V-Operator'], 'named-operator');
     assert.equal(options.headers.Authorization, `Bearer ${env.CLOUD_MANAGEMENT_TOKEN}`);
     assert.equal(options.headers['CF-Access-Client-Id'], env.CLOUD_MANAGEMENT_ACCESS_ID);
@@ -56,4 +56,13 @@ test('Cloud admin rejects legacy credentials, missing MFA, other audiences, expi
     assert.equal(response.status, 403);
   }
   assert.equal((await handleCloudAdmin(request(valid, 'https://foreign.example.test'), env)).status, 403);
+});
+
+test('Cloud admin rejects an upstream redirect without forwarding credentials', async () => {
+  const response = await handleCloudAdmin(request(assertion()), env, async (url, options) => {
+    assert.equal(options.redirect, 'manual');
+    if (url.endsWith('/certs')) return Response.json({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test' }] });
+    return Response.redirect('https://unexpected.example.test/', 307);
+  });
+  assert.equal(response.status, 503);
 });

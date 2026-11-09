@@ -60,6 +60,27 @@ test('deployed bindings and secrets enforce each site role and retain existing D
   assert.deepEqual(customer.triggers.crons, []);
   assert.equal(siteConfig(config, state, 'admin', 'assets').triggers.crons.length, 1);
 });
+test('Cloud customer directory origin and credentials stay separate from operator commands', async () => {
+  const cloudAdmin = { accessIssuer: 'https://fixture.cloudflareaccess.com', accessAudience: 'b'.repeat(64),
+    managementOrigin: 'https://operator-origin.127vaults.example', operators: ['owner@example.com'] };
+  const cloudCustomerDirectory = { origin: 'https://directory-origin.127vaults.example', pilotManualLogin: true };
+  const file = join(tmpdir(), 'settings.json');
+  const settings = { ...config, cloudAdmin, cloudCustomerDirectory, catalogueFile: join(tmpdir(), 'catalogue.json'),
+    secretsDirectory: join(tmpdir(), 'vaults-secrets'), stateDirectory: join(tmpdir(), 'vaults-state') };
+  assert.ok(validateConfig(settings, file));
+  assert.throws(() => validateConfig({ ...settings, cloudCustomerDirectory: {
+    ...cloudCustomerDirectory, origin: cloudAdmin.managementOrigin
+  } }, file), /customer directory configuration/);
+  const secrets = { INTAKE_KEY: 'a'.repeat(64), CLOUD_MANAGEMENT_TOKEN: 'b'.repeat(64), CLOUD_CUSTOMER_DIRECTORY_TOKEN: 'c'.repeat(64) };
+  for (const surface of siteOrder) {
+    const credentials = await siteSecrets(surface, secrets);
+    const { vars } = siteConfig(settings, state, surface, 'assets');
+    assert.equal(credentials.CLOUD_CUSTOMER_DIRECTORY_TOKEN, surface === 'customer' ? secrets.CLOUD_CUSTOMER_DIRECTORY_TOKEN : undefined);
+    assert.equal(credentials.CLOUD_MANAGEMENT_TOKEN, surface === 'admin' ? secrets.CLOUD_MANAGEMENT_TOKEN : undefined);
+    assert.equal(vars.CLOUD_CUSTOMER_DIRECTORY_ORIGIN, surface === 'customer' ? cloudCustomerDirectory.origin : undefined);
+    assert.equal(vars.CLOUD_MANAGEMENT_ORIGIN, surface === 'admin' ? cloudAdmin.managementOrigin : undefined);
+  }
+});
 test('all four separated Workers compile with real Wrangler and role-specific static assets', { timeout: 60000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), '127v-separated-build-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const settings = { ...config, stateDirectory: directory };

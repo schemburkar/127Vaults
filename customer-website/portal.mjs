@@ -24,10 +24,15 @@ async function account() {
     const card = document.createElement('article'); card.className = 'access-card portal-request';
     const title = document.createElement('h3'); title.textContent = tenant.slug;
     const summary = document.createElement('p');
-    summary.textContent = `${tenant.state} · ${tenant.maxActiveUsers} seats allocated by 127Vaults`;
+    const state = { reserved: 'Reserved', prepared: 'Awaiting activation', active: 'Active', suspended: 'Suspended' }[tenant.state] ?? tenant.state;
+    summary.textContent = `${state} · ${tenant.maxActiveUsers} seats allocated by 127Vaults`;
     const note = document.createElement('p'); note.textContent = 'Billing and seat purchases are arranged with 127Vaults during the pilot.';
     card.append(title, summary, note);
-    if (tenant.state === 'active') card.append(link('Open family settings', `${canonicalUrl}?settings=family`));
+    if (tenant.state === 'active') {
+      const signIn = document.createElement('p');
+      signIn.textContent = 'Family settings require a separate vault-owner sign-in.';
+      card.append(link('Open family settings', `${canonicalUrl}?settings=family`), signIn);
+    }
     cloudCards.append(card);
   }
   $('portal-requests').replaceChildren();
