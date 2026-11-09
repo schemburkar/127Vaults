@@ -3,7 +3,7 @@
 // installation or an existing volume.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { createCipheriv, createHmac, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
+import { createCipheriv, createHash, createHmac, createPublicKey, generateKeyPairSync, randomBytes, randomUUID, sign, X509Certificate } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtempSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
@@ -29,11 +29,15 @@ import { PgAuthStore } from '../../../apps/server/src/auth-pg.mjs';
 import { createInternalCloudEnrollmentHandlers, createInternalCloudTenantHandlers } from '../../../apps/server/internal-cloud/tenant-handlers.mjs';
 import { registrationActivationBytes } from '../../../apps/server/src/opaque-adapter.mjs';
 import { createCloudHttpsServer } from '../../../apps/server/internal-cloud/serve.mjs';
+import { verifyCheckpoint } from '../../../packages/sync/src/index.mjs';
+import { localCloudVaultWorker } from '../support/cloud-vault-worker-fixture.mjs';
 import { adminHost, customerHost, directoryHost, localCloudAdmin, localCloudManage, localOperator, managementHost } from '../support/cloud-admin-browser-fixture.mjs';
 const pg = createRequire(new URL('../../../apps/server/package.json', import.meta.url))('pg');
 
 if (process.env.VAULTS_INTERNAL_CLOUD_LIVE_TEST !== '1') throw new Error('Explicit disposable-test opt-in required.');
 const browserEnabled = Boolean(process.env.VAULTS_PLAYWRIGHT_MODULE && process.env.VAULTS_BROWSER_EXECUTABLE);
+const workerEnabled = process.env.VAULTS_CLOUD_REHEARSE_WORKER === '1';
+if (workerEnabled && !browserEnabled) throw Error('The Cloud Worker rehearsal requires the browser fixture.');
 if (!browserEnabled && (process.env.VAULTS_PLAYWRIGHT_MODULE || process.env.VAULTS_BROWSER_EXECUTABLE)) {
   throw new Error('Provide both VAULTS_PLAYWRIGHT_MODULE and VAULTS_BROWSER_EXECUTABLE for the browser rehearsal.');
 }
@@ -138,6 +142,27 @@ try {
   assert.equal(await readSeatLimit(createTenantScopedPool(runtimePool, alice.id), bob.id), null);
   assert.equal(await readSeatLimit(createTenantScopedPool(runtimePool, alice.id), alice.id), 1);
   assert.equal((await runtimePool.query('SELECT count(*)::int AS n FROM vaults.accounts')).rows[0].n, 0);
+  const scopedConnection = await createTenantScopedPool(runtimePool, alice.id).connect();
+  let backend;
+  try {
+    await scopedConnection.query('BEGIN');
+    await scopedConnection.query('SELECT pg_advisory_xact_lock(127, 99)');
+    const { rows: [state] } = await scopedConnection.query(`SELECT pg_backend_pid() AS pid,
+      current_setting('vaults.tenant_id', true) AS tenant,
+      EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid()) AS locked`);
+    assert.equal(state.tenant, alice.id);
+    assert.equal(state.locked, true);
+    backend = state.pid;
+    await scopedConnection.query('COMMIT');
+    await scopedConnection.query('BEGIN');
+    assert.equal((await scopedConnection.query('SELECT pg_backend_pid() AS pid')).rows[0].pid, backend);
+    await assert.rejects(scopedConnection.query('SELECT 1/0'), /division by zero/);
+    await scopedConnection.query('ROLLBACK');
+  } finally { scopedConnection.release(); }
+  const { rows: [cleanConnection] } = await runtimePool.query(`SELECT pg_backend_pid() AS pid,
+    NULLIF(current_setting('vaults.tenant_id', true), '') AS tenant,
+    EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid()) AS locked`);
+  assert.deepEqual(cleanConnection, { pid: backend, tenant: null, locked: false });
   assert.deepEqual((await createTenantScopedPool(runtimePool, alice.id).query('SELECT tenant_id FROM vaults.accounts')).rows.map(x => x.tenant_id), [alice.id]);
   assert.deepEqual((await createTenantScopedPool(runtimePool, bob.id).query('SELECT tenant_id FROM vaults.accounts')).rows.map(x => x.tenant_id), [bob.id]);
   assert.equal((await runtimePool.query('SELECT count(*)::int AS n FROM vaults.accounts')).rows[0].n, 0);
@@ -456,12 +481,33 @@ try {
     const { ExperimentalOpaqueBridge: bridge } = load('../../../apps/server/wasm-auth/vaults_browser_fixture.cjs');
     const tls = { cert: ca, key: run('exec', name, 'cat', '/tmp/cloud-test.key') };
     const browserManagementPool = new pg.Pool({ ...manager, host: '127.0.0.1', port, database: 'vaults_cloud_test', max: 1 });
-    const realServer = await createCloudHttpsServer({ pool: runtimePool, tls,
+    const worker = workerEnabled ? localCloudVaultWorker({ tls, tokenKey, checkpointPrivateKey: privateKey, mailer,
+      databaseUrl: `postgres://${runtimeUser}:${runtimePassword}@127.0.0.1:${port}/vaults_cloud_test` }) : null;
+    const realServer = worker?.server ?? await createCloudHttpsServer({ pool: runtimePool, tls,
       bridge, tokenKey, checkpointPrivateKey: privateKey, mailer, onError: error => console.error('Browser fixture server error', error.code ?? error.name) });
     let browser, operatorFixture, customerFixture;
     try {
+      const coldAt = performance.now();
       realServer.listen(0, '127.0.0.1');
       await once(realServer, 'listening');
+      const readyStatus = worker ? (await worker.dispatch(`${cloudOrigin}/healthz`)).status :
+        await new Promise((resolve, reject) => {
+          const probe = httpsRequest({ hostname: '127.0.0.1', port: realServer.address().port,
+            servername: cloudLandingHost, headers: { Host: cloudLandingHost }, ca, path: '/healthz' },
+          response => { response.resume(); resolve(response.statusCode); });
+          probe.once('error', reject);
+          probe.end();
+        });
+      assert.equal(readyStatus, 200);
+      const timings = { firstReadyMs: Math.round(performance.now() - coldAt), unlockMs: [], signedWriteMs: [], readBackMs: [] };
+      if (worker) {
+        assert.equal((await worker.dispatch('https://wrong.example.com/')).status, 404);
+        assert.equal((await worker.dispatch(`${cloudOrigin}/t/alice%2Fbob/`)).status, 404);
+        assert.equal((await worker.dispatch(`${cloudOrigin}/`)).status, 200);
+        const manifest = await worker.dispatch(`${cloudOrigin}/t/alice/manifest.webmanifest`);
+        assert.equal(manifest.status, 200);
+        assert.equal((await manifest.json()).scope, '/t/alice/');
+      }
       operatorFixture = await localCloudAdmin({ tls, pool: browserManagementPool, tokenKey, bridge });
       customerFixture = await localCloudManage({ tls, pool: browserManagementPool });
       const directoryProbe = await customerFixture.start('eve@example.com');
@@ -470,7 +516,9 @@ try {
       const routes = [...[cloudLandingHost].map(host => `MAP ${host} 127.0.0.1:${realServer.address().port}`),
         `MAP ${adminHost} 127.0.0.1:${operatorFixture.port}`,
         `MAP ${customerHost} 127.0.0.1:${customerFixture.port}`];
+      const fixtureSpki = createHash('sha256').update(new X509Certificate(ca).publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
       browser = await chromium.launch({ executablePath: process.env.VAULTS_BROWSER_EXECUTABLE, args: ['--no-proxy-server',
+        `--ignore-certificate-errors-spki-list=${fixtureSpki}`,
         `--host-resolver-rules=${routes.join(', ')}`] });
       const pageOptions = { ignoreHTTPSErrors: true, serviceWorkers: 'block' };
       const portal = await browser.newPage(pageOptions);
@@ -500,14 +548,22 @@ try {
       };
       const unlock = async page => {
         await page.locator('#master').fill(password);
-        await page.locator('#login').click();
+        const startedAt = performance.now();
+        const [proof] = await Promise.all([
+          page.waitForResponse(response => response.status() === 200 && new URL(response.url()).pathname.endsWith('/device-proof')),
+          page.locator('#login').click()
+        ]);
         await page.locator('#vault').waitFor({ state: 'visible' });
+        timings.unlockMs.push(Math.round(performance.now() - startedAt));
+        return (await proof.json()).csrf;
       };
       const members = [];
+      const writes = [];
+      let liveInvitation;
       for (const [index, slug] of slugs.entries()) {
         const create = portal.locator('#cloud-create');
         await create.locator('[name="slug"]').fill(slug);
-        await create.locator('[name="seats"]').fill('2');
+        await create.locator('[name="seats"]').fill(worker && index === 0 ? '3' : '2');
         await create.locator('[name="owner"]').fill(randomUUID());
         await create.locator('[name="email"]').fill(`browser-owner-${index}@example.com`);
         await create.getByRole('button', { name: 'Create tenant' }).click();
@@ -531,6 +587,13 @@ try {
         await owner.locator('#cloud-family-invite button').click();
         await owner.locator('#cloud-family-url').waitFor({ state: 'visible' });
         const member = await (await browser.newContext(pageOptions)).newPage();
+        let registration, signedWrite;
+        member.on('request', request => {
+          const path = new URL(request.url()).pathname;
+          if (request.method() !== 'POST') return;
+          if (path.endsWith('/api/v1/onboarding/register') && !registration) registration = request;
+          if (/\/vaults\/[^/]+\/items$/.test(path) && !signedWrite) signedWrite = request;
+        });
         await form(member, await owner.locator('#cloud-family-url').inputValue(), 'browsermember', email);
         await member.waitForFunction(() => document.querySelector('#setup-status')?.textContent.includes('sent to your invited email'));
         const captured = readdirSync(mailCapture).map(file => JSON.parse(readFileSync(join(mailCapture, file), 'utf8')))
@@ -538,7 +601,7 @@ try {
         assert.ok(captured);
         await member.locator('#cloud-member-code').fill(captured.code);
         await member.locator('#cloud-member-verification button[type="submit"]').click();
-        await unlock(member);
+        const currentCsrf = await unlock(member);
         await member.locator('#create-vault').click();
         await member.locator('#web-vault-name').fill('Synthetic family vault');
         await member.locator('#web-create-vault-submit').click();
@@ -546,22 +609,129 @@ try {
         await member.locator('#new-item').click();
         const title = `Synthetic Cloud sync item ${index}`;
         await member.locator('#title').fill(title);
+        const writeAt = performance.now();
         await member.locator('#save').click();
         const savedItem = member.locator('#items [data-item-id]').filter({ hasText: title });
         await savedItem.waitFor({ state: 'visible' });
+        timings.signedWriteMs.push(Math.round(performance.now() - writeAt));
+        const write = signedWrite;
+        writes.push({ url: write.url(), body: write.postDataJSON(), csrf: currentCsrf });
+        const operation = writes[index].body.signedOperation;
+        const checkpointUrl = write.url().replace(/\/items$/, '/checkpoint');
+        const checkpointHistory = await member.evaluate(async ({ url, csrf }) => {
+          const created = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-127V-CSRF': csrf }, body: '{}' });
+          if (!created.ok) throw Error(`Checkpoint generation returned ${created.status}`);
+          const history = await fetch(url + '?history=1');
+          if (!history.ok) throw Error(`Checkpoint history returned ${history.status}`);
+          return (await history.json()).checkpoints;
+        }, { url: checkpointUrl, csrf: currentCsrf });
+        assert.ok(checkpointHistory.length > 0);
+        let previousCheckpoint;
+        for (const checkpoint of checkpointHistory) {
+          verifyCheckpoint(checkpoint, { tenantId: operation.tenantId, vaultId: operation.vaultId, epoch: operation.epoch,
+            publicKey: createPublicKey(privateKey), previousCheckpoint });
+          previousCheckpoint = checkpoint;
+        }
         await member.reload();
         await member.waitForFunction(() => document.querySelector('#username')?.value === 'browsermember' &&
           document.body.getAttribute('aria-busy') === 'false');
         await member.locator('#login-next').click();
-        await unlock(member);
+        const readAt = performance.now();
+        writes[index].csrf = await unlock(member);
         await savedItem.waitFor({ state: 'visible' });
+        timings.readBackMs.push(Math.round(performance.now() - readAt));
         members.push(member);
+        if (worker && index === 0) {
+          const inviteEmail = 'unused-cloud-invite@example.com';
+          const previousLink = await owner.locator('#cloud-family-url').inputValue();
+          await owner.locator('#cloud-family-email').fill(inviteEmail);
+          await owner.locator('#cloud-family-invite button').click();
+          await owner.waitForFunction(previous => {
+            const value = document.querySelector('#cloud-family-url')?.value;
+            return value && value !== previous;
+          }, previousLink);
+          const url = new URL(await owner.locator('#cloud-family-url').inputValue());
+          liveInvitation = { ...registration.postDataJSON(), email: inviteEmail, accountId: randomUUID(), deviceId: randomUUID(),
+            token: url.hash.slice('#memberInvite='.length) };
+        }
       }
       for (const [index, member] of members.entries()) {
         assert.equal(await member.locator('#items [data-item-id]').filter({ hasText: `Synthetic Cloud sync item ${1 - index}` }).count(), 0);
       }
+      if (worker) {
+        const familyB = `${cloudOrigin}/t/${slugs[1]}`;
+        const tenantB = writes[1].body.signedOperation.tenantId;
+        const tenantState = async () => (await admin.query(`SELECT
+          (SELECT count(*)::int FROM vaults.accounts WHERE tenant_id=$1) AS accounts,
+          (SELECT count(*)::int FROM vaults.private_items WHERE tenant_id=$1) AS items,
+          (SELECT count(*)::int FROM vaults.sync_operations WHERE tenant_id=$1) AS operations`, [tenantB])).rows[0];
+        const before = await tenantState();
+        const sessionA = (await members[0].context().cookies(cloudOrigin)).find(cookie => cookie.name === '__Host-127v-session');
+        const crossSession = await worker.dispatch(`${familyB}/api/v1/vaults`, {
+          headers: { Cookie: `${sessionA.name}=${sessionA.value}` }
+        });
+        assert.equal(crossSession.status, 401);
+        const tryInvitation = async tenant => {
+          const ceremony = await worker.dispatch(`${tenant}/api/v1/ceremony`);
+          const { csrf: inviteCsrf } = await ceremony.json();
+          return worker.dispatch(`${tenant}/api/v1/onboarding/register`, {
+            method: 'POST', headers: { Origin: cloudOrigin, 'Content-Type': 'application/json', 'X-127V-CSRF': inviteCsrf,
+              Cookie: ceremony.headers.get('set-cookie').split(';')[0] }, body: JSON.stringify(liveInvitation)
+          });
+        };
+        const crossInvite = await tryInvitation(familyB);
+        assert.equal(crossInvite.status, 400);
+        assert.equal((await tryInvitation(`${cloudOrigin}/t/${slugs[0]}`)).status, 200);
+        const crossWrite = await members[1].evaluate(async ({ url, body, csrf }) => {
+          const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-127V-CSRF': csrf }, body: JSON.stringify(body) });
+          return response.status;
+        }, { ...writes[1], body: writes[0].body });
+        assert.ok([400, 403, 404, 409].includes(crossWrite), `Wrong-tenant write returned ${crossWrite}`);
+        const crossOperation = await members[1].evaluate(async ({ url, operation, csrf }) => {
+          const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-127V-CSRF': csrf },
+            body: JSON.stringify({ operation }) });
+          return response.status;
+        }, { url: writes[1].url.replace(/\/items$/, '/operations'), operation: writes[0].body.signedOperation, csrf: writes[1].csrf });
+        assert.ok([403, 404].includes(crossOperation), `Wrong-tenant operation returned ${crossOperation}`);
+        assert.deepEqual(await tenantState(), before);
+        const manifest = await worker.dispatch(`${familyB}/manifest.webmanifest`);
+        assert.equal((await manifest.json()).scope, `/t/${slugs[1]}/`);
+        assert.equal(crossSession.headers.get('cache-control'), 'no-store');
+        const pwaContext = await browser.newContext();
+        try {
+          for (const slug of slugs) {
+            const pwa = await pwaContext.newPage();
+            await pwa.goto(`${cloudOrigin}/t/${slug}/?pwa=1`);
+            const scope = await pwa.evaluate(async () => {
+              let timer;
+              try {
+                const registration = await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => {
+                  timer = setTimeout(() => reject(Error('Tenant service worker did not become ready')), 15000);
+                })]);
+                return new URL(registration.scope).pathname;
+              } finally { clearTimeout(timer); }
+            });
+            assert.equal(scope, `/t/${slug}/`);
+          }
+          for (const slug of slugs) {
+            const serviceWorker = pwaContext.serviceWorkers().find(worker => new URL(worker.url()).pathname === `/t/${slug}/sw.js`);
+            assert.ok(serviceWorker, 'A tenant-scoped service worker must be running');
+            const paths = await serviceWorker.evaluate(async prefix => {
+              const keys = await caches.keys();
+              const key = keys.find(name => name.startsWith(prefix));
+              if (!key) throw Error(`Missing tenant shell cache; found ${JSON.stringify(keys)}`);
+              return (await (await caches.open(key)).keys()).map(request => new URL(request.url).pathname);
+            }, `127vaults-tenant-shell:/t/${slug}/:`);
+            assert.deepEqual(paths.filter(path => path.startsWith('/t/')).sort(),
+              [`/t/${slug}/`, `/t/${slug}/manifest.webmanifest`]);
+          }
+        } finally { await pwaContext.close(); }
+      }
+      console.log(JSON.stringify({ localTimingOnly: true, vaultRuntime: worker ? 'workerd' : 'node', ...timings }));
       const original = members[0];
       await original.addInitScript(() => {
+        window.fixtureToasts = [];
+        window.addEventListener('vaults:toast', event => window.fixtureToasts.push(event.detail.title + ': ' + event.detail.detail));
         const media = window.matchMedia.bind(window);
         window.matchMedia = query => {
           const result = media(query);
@@ -571,7 +741,12 @@ try {
       });
       await original.reload();
       await unlock(original);
-      await original.waitForFunction(() => window.__vaultsSyncState?.at && !window.__vaultsSyncState.syncing);
+      try {
+        await original.waitForFunction(() => window.__vaultsSyncState?.at && document.body.getAttribute('aria-busy') === 'false');
+      } catch (error) {
+        const diagnostics = await original.evaluate(() => ({ sync: window.__vaultsSyncState, toasts: window.fixtureToasts }));
+        throw Error(`Initial offline replica was unavailable: ${JSON.stringify(diagnostics)}`, { cause: error });
+      }
       const mutation = '**/t/family-one/api/v1/vaults/*/items';
       await original.route(mutation, route => route.request().method() === 'POST' ? route.abort('internetdisconnected') : route.continue());
       const queuedTitle = 'Synthetic Cloud queued item';
@@ -610,6 +785,8 @@ try {
       });
       const approval = await original.context().newPage();
       await approval.goto(`${familyUrl}#enrollDevice=${code}`);
+      await approval.waitForFunction(() => document.querySelector('#username')?.value === 'browsermember' &&
+        document.body.getAttribute('aria-busy') === 'false');
       await approval.locator('#login-next').click();
       await unlock(approval);
       await approval.locator('#enrollment-request').waitFor();
@@ -635,7 +812,7 @@ try {
       const ownFamily = customer.locator('#portal-cloud-tenants article');
       await ownFamily.filter({ hasText: slugs[0] }).waitFor();
       assert.equal(await ownFamily.count(), 1);
-      assert.match(await ownFamily.innerText(), /2 seats allocated/);
+      assert.match(await ownFamily.innerText(), worker ? /3 seats allocated/ : /2 seats allocated/);
       await customer.getByRole('link', { name: 'Open family settings' }).click();
       await customer.locator('#login-flow').waitFor();
       assert.equal(customer.url(), `${familyUrl}?settings=family`);
@@ -649,6 +826,7 @@ try {
       await operatorFixture?.close();
       await customerFixture?.close();
       await new Promise(resolve => realServer.close(resolve));
+      await worker?.dispose();
       await browserManagementPool.end();
     }
   }
@@ -662,7 +840,7 @@ try {
   await admin.query('ROLLBACK');
   console.log(JSON.stringify({ ok: true, isolatedTenants: 4, ownerEnrolled: true,
     invitedUserEnrolled: true, httpsRouting: true, firstDeployAndRerun: true, runtimeRole: 'no-login', selfHostedServerRejected: true,
-    localBrowserTenants: browserEnabled ? 2 : 0 }));
+    localBrowserTenants: browserEnabled ? 2 : 0, vaultRuntime: workerEnabled ? 'workerd' : 'node' }));
 } catch (error) {
   if (started) try { console.error(run('logs', '--tail', '25', name)); } catch { /* unavailable */ }
   throw error;

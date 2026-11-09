@@ -1,6 +1,6 @@
 # Cloud family pilot backlog
 
-Progress is **42 of 52**. The original 39 items remain numbered, with 13 follow-up items for the shared-host handoff. Items 32–39 require the hosted environment or the approved family handoff.
+Progress is **49 of 64**. Items 1–52 retain their original numbers. Items 53–64 track the native Worker candidate and its hosted gates.
 
 Target one deployment in one location with private PostgreSQL. Use `https://cloud.127vaults.com/` for the public invitation-only landing page and `/t/<slug>/` for each family. Use `admin.127vaults.com` for platform operations, `manage.127vaults.com` for customer accounts, and local `/admin` for self-hosted administration. The deployment initializes the database inside the hosting environment. Public signup and Cloud checkout stay closed.
 
@@ -76,3 +76,25 @@ Local rehearsals cover the database and role setup for step 32, the HTTPS and ma
 - [x] **50. Reuse People, Invitations and Seats presentation.** Cloud family settings and self-hosted Admin share status labels, status styles and the seat summary. Each surface keeps its existing layout, actions and backend authorization.
 - [x] **51. Keep central Admin for platform operators.** Use it to provision, activate, suspend and resume tenants and set pilot seat limits.
 - [ ] **52. Finish end-to-end pilot verification.** Local two-family checks cover real OPAQUE enrollment and sync, cross-path rejection, tab locking, tenant-specific replay of queued writes and customer-directory credential separation. The local browser completed a new-device request through the family approval link. The Manage Worker signed in a Cloud-only contact through the HTTPS directory and opened family settings with no vault session. Finish packaged Desktop enrollment and sync against the deployed HTTPS hostname and verify hosted Manage.
+
+## Native vault Worker candidate
+
+The native Worker keeps the shared vault hostname, tenant UUIDs and the existing Admin and Manage split. Keep the Cloud Node image available as the baseline and Tunnel fallback. The self-hosted image and its local `/admin` remain a separate product.
+
+### Local implementation and checks
+
+- [x] **53. Build the native vault Worker.** Wrangler dry-runs the generated bundle. The Worker validates canonical HTTPS authority and reuses tenant path routing. Node and self-hosted retain their transport checks.
+- [x] **54. Bind PostgreSQL using the vault runtime role.** The local Worker uses a Hyperdrive binding in direct database mode. The local single-connection PostgreSQL fixture checked the backend ID, tenant context, advisory lock release and cleanup after rollback. Hosted pool behavior remains part of step 62.
+- [x] **55. Run real OPAQUE and signing in the Worker.** The two-family browser run completed owner and member enrollment, unlock, and signed sync. The fixture verified checkpoint signatures against the same key used by the Node baseline.
+- [x] **56. Serve the vault web build through Worker assets.** The two-family browser run verified tenant manifests and separate service-worker shell caches, with no tenant API paths cached. Switching tenants locked the prior tab, and the queued write synced after returning to its original tenant.
+- [x] **57. Exercise two tenants on the native runtime.** The local Worker rejected a foreign session, unused invitation and signed write. The unused invitation still worked on its original path, and account, item and operation counts in the target tenant stayed unchanged.
+- [ ] **58. Verify packaged Desktop through a tenant path.** Complete trusted-device approval, unlock and sync against the Worker with a saved full tenant URL.
+- [x] **59. Verify Node and self-hosted compatibility.** The Node Cloud rehearsal, both container builds and the self-hosted Admin browser smoke passed.
+- [x] **60. Record local Node and Worker timing.** The same synthetic family workflow recorded first readiness, unlock, signed write and read-back on both runtimes. The runbook records the samples and their limits.
+
+### Cloudflare infrastructure and pilot selection
+
+- [ ] **61. Configure and verify a private, cache-disabled Hyperdrive binding.** Use the restricted vault role and verify the deployed configuration's cache setting and database reachability.
+- [ ] **62. Prove isolation through real Hyperdrive.** Verify tenant context and advisory locks on the same backend for the full transaction, including forced failure, rollback and pooled backend reuse. Repeat the two-tenant replays.
+- [ ] **63. Measure hosted CPU, memory, cold start, unlock and sync.** Compare the native candidate to the Node baseline under representative payloads and record plan limits and headroom.
+- [ ] **64. Select the pilot runtime after the gates.** Use the Worker only after real authentication, tenant isolation, Desktop and runtime checks pass. Keep the Cloud Node image available behind Tunnel.

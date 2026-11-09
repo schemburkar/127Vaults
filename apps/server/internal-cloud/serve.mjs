@@ -7,7 +7,7 @@ import { containRequestErrors, HttpBoundaryError, writeError } from '../src/http
 import { cloudDatabaseConfig } from './database-config.mjs';
 import { createInternalCloudRuntimeBoundary } from './request-boundary.mjs';
 import { createInternalCloudEnrollmentHandlers, createInternalCloudTenantHandlers } from './tenant-handlers.mjs';
-import { cloudWebAssets } from './web-assets.mjs';
+import { cloudWebAssets } from './node-assets.mjs';
 import { cloudInvitationMailer } from './invitation-mailer.mjs';
 import { applyCloudTunnelIngress } from './tunnel-ingress.mjs';
 

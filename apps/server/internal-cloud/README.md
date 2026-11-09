@@ -55,3 +55,24 @@ The active boundary serves `GET /api/v1/cloud/discovery` as a versioned, no-stor
 Run the disposable PostgreSQL rehearsal with `VAULTS_INTERNAL_CLOUD_LIVE_TEST=1 node tests/internal/server/cloud-rehearsal.mjs` on a host with Podman and the PostgreSQL 17 image. It creates a randomly named ephemeral container with no persistent volume, verifies four-tenant reads/writes, connection context reset, tenant-bound login material, first-owner registration, a second user's invitation enrollment, and cross-path rejection through real HTTP handlers, then removes it. OPAQUE cryptography in this rehearsal uses a stub bridge; separate protocol tests cover the adapter. This rehearsal does not establish complete HTTP coverage, backup/restore, or production readiness.
 
 For the full local browser rehearsal, build the WASM fixture and web vault with `pnpm fixture:build` and `pnpm --filter @127vaults/web build`. Set `VAULTS_INTERNAL_CLOUD_LIVE_TEST=1` and point `VAULTS_PLAYWRIGHT_MODULE` and `VAULTS_BROWSER_EXECUTABLE` to locally installed Playwright and Chromium-based browser paths. Run `pnpm cloud:rehearse`. The real Admin page and Worker handler provision and activate two synthetic families through the management HTTPS listener. The fixture supplies a locally signed Access assertion and fake service credentials. Both families enroll with real OPAQUE, redeem captured verification mail, and recover separate synced items after signing in again. All listeners and data stay on the local fixture.
+
+### Native vault Worker candidate
+
+`pnpm cloud:worker:build` builds the real OPAQUE Wasm module and web vault, stages the landing and web assets, and produces a Wrangler dry-run bundle. The generated configuration under `apps/server/wasm-auth/` has no routes, development hostname or preview URLs. Set `VAULTS_WORKER_HYPERDRIVE_ID` only to render a candidate configuration for a reviewed environment.
+
+The Worker takes `CLOUD_TOKEN_KEY` and `CLOUD_CHECKPOINT_SEED` as Worker secrets, each canonical unpadded base64url for the same 32 bytes used by the Node runtime. `VAULT_DB` is a dedicated Hyperdrive binding. For the hosted check, use `wrangler hyperdrive create` with `--caching-disabled` and the restricted Cloud runtime login. Confirm caching is disabled in the Hyperdrive configuration before supplying its ID. The Worker gets its database connection only through the binding. Each request owns a one-connection driver pool and ends it before returning. Tenant context and advisory locks still run inside explicit transactions. An optional private `INVITATION_MAIL` service binding receives enrollment codes. Local runs send only to the existing capture fixture.
+
+Run the browser rehearsal described above with `VAULTS_CLOUD_REHEARSE_WORKER=1` after building. It runs the bundled Worker in workerd, with a local Hyperdrive binding connected directly to disposable PostgreSQL. The local binding does not exercise Cloudflare's hosted pool or query cache. The same rehearsal without that flag runs the Node baseline. Compare the timing receipts only as local wall-clock measurements. Hosted CPU, memory, cold starts and Hyperdrive pooling are separate gates. [Hyperdrive local development](https://developers.cloudflare.com/hyperdrive/configuration/local-development/)
+
+Budget the hosted run against 128 MB of memory, six simultaneous outbound connections per request, and the one-second Worker startup limit. The free plan allows 10 ms of CPU per HTTP request. The paid plan defaults to 30 seconds and allows a configured limit up to five minutes. The local browser timings include database wait and browser work, so they cannot establish Worker CPU headroom. [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
+
+Local Windows fixture samples from the two-family run, in milliseconds:
+
+| Wall-clock measure | Node | Native Worker in workerd |
+| --- | ---: | ---: |
+| First health response after listener start | 6 | 377 |
+| Unlock, median of six | 871 | 4,394 |
+| Signed item write, median of two | 222 | 2,893 |
+| Unlock and read the item back, median of two | 971 | 4,445 |
+
+These are small samples of the browser workflow on disposable local PostgreSQL. First health includes lazy startup and database work. The Worker also verifies the database role and schema per request, while Node verifies them when constructing its listener. The comparison does not establish production latency, Worker CPU time, memory use, or hosted cold-start overhead.

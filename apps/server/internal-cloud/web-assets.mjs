@@ -1,12 +1,10 @@
-import { readFile } from 'node:fs/promises';
-
 const contentTypes = new Map([
   ['html', 'text/html; charset=utf-8'], ['css', 'text/css; charset=utf-8'],
   ['js', 'text/javascript; charset=utf-8'], ['mjs', 'text/javascript; charset=utf-8'],
   ['svg', 'image/svg+xml'], ['png', 'image/png'], ['webmanifest', 'application/manifest+json'], ['wasm', 'application/wasm']
 ]);
 
-export const cloudWebAssets = {
+export const createCloudWebAssets = readAsset => ({
   match(req) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return null;
     const path = req.url?.split('?')[0];
@@ -15,7 +13,7 @@ export const cloudWebAssets = {
     return path.slice(1);
   },
   async serve(req, res, asset, tenantPath) {
-    let data = await readFile(new URL(`../../web/dist/${asset}`, import.meta.url));
+    let data = await readAsset(asset);
     if (tenantPath && asset === 'manifest.webmanifest') {
       data = JSON.stringify({ ...JSON.parse(data), id: tenantPath, scope: tenantPath, start_url: `${tenantPath}?pwa=1` });
     }
@@ -29,4 +27,4 @@ export const cloudWebAssets = {
     });
     res.end(req.method === 'HEAD' ? undefined : data);
   }
-};
+});

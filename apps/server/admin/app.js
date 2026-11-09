@@ -1,7 +1,7 @@
 import { escapeHtml, date, badge, newDirectory, directoryQuery, directoryView, detailsView, reviewQueue } from './directory.js';
 import { requestAdmin as api, errorMessage as message } from './api.js';
 import { accountActions, showManagementAction } from './management.js';
-import { seatSummary } from '/app/shared/seat-summary.mjs';
+import { seatSummary } from './seat-summary.mjs';
 
 const root = document.querySelector('#app');
 const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
