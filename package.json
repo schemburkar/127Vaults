@@ -15,6 +15,7 @@
     "server": "node server.mjs",
     "fixture:build": "node scripts/build-fixture.mjs",
     "cloud:build": "node scripts/build-fixture.mjs && podman build --target cloud-runtime -t localhost/127vaults-cloud:internal -f apps/server/Dockerfile .",
+    "cloud:rehearse": "node tests/internal/server/cloud-rehearsal.mjs",
     "fixture:serve": "node apps/web/fixture-server.mjs",
     "fixture:dev": "node scripts/build-fixture.mjs && node apps/web/fixture-server.mjs",
     "dev:up": "node scripts/dev.mjs up",

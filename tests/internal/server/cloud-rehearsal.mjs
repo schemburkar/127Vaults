@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, provisionCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
+import { activateCloudTenant, ensureCloudRuntimeLogin, issueCloudBootstrapToken, linkCloudControlOwner, prepareCloudTenant, reserveCloudTenant, verifyCloudDatabase } from '../../../apps/server/internal-cloud/operator.mjs';
 import { createCloudManagementHandler } from '../../../apps/server/internal-cloud/management.mjs';
 import { cloudLandingHost } from '../../../apps/server/internal-cloud/landing.mjs';
 import { cloudInvitationMailer } from '../../../apps/server/internal-cloud/invitation-mailer.mjs';
@@ -23,9 +23,14 @@ import { PgAuthStore } from '../../../apps/server/src/auth-pg.mjs';
 import { createInternalCloudEnrollmentHandlers, createInternalCloudTenantHandlers } from '../../../apps/server/internal-cloud/tenant-handlers.mjs';
 import { registrationActivationBytes } from '../../../apps/server/src/opaque-adapter.mjs';
 import { createCloudHttpsServer } from '../../../apps/server/internal-cloud/serve.mjs';
+import { adminHost, localCloudAdmin, localOperator, managementHost } from '../support/cloud-admin-browser-fixture.mjs';
 const pg = createRequire(new URL('../../../apps/server/package.json', import.meta.url))('pg');
 
 if (process.env.VAULTS_INTERNAL_CLOUD_LIVE_TEST !== '1') throw new Error('Explicit disposable-test opt-in required.');
+const browserEnabled = Boolean(process.env.VAULTS_PLAYWRIGHT_MODULE && process.env.VAULTS_BROWSER_EXECUTABLE);
+if (!browserEnabled && (process.env.VAULTS_PLAYWRIGHT_MODULE || process.env.VAULTS_BROWSER_EXECUTABLE)) {
+  throw new Error('Provide both VAULTS_PLAYWRIGHT_MODULE and VAULTS_BROWSER_EXECUTABLE for the browser rehearsal.');
+}
 const name = `vaults-cloud-test-${randomBytes(5).toString('hex')}`;
 const password = randomBytes(32).toString('hex');
 const run = (...args) => execFileSync('podman', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 }).trim();
@@ -401,7 +406,7 @@ try {
     await managementPool.end();
   }
   run('exec', name, 'openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
-    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com,DNS:${cloudLandingHost},DNS:browser.asia.example.com`,
+    '-days', '1', '-subj', `/CN=${alice.host}`, '-addext', `subjectAltName=DNS:${alice.host},DNS:${dave.host},DNS:unknown.asia.example.com,DNS:${cloudLandingHost},DNS:family-one.asia.example.com,DNS:family-two.asia.example.com,DNS:${adminHost},DNS:${managementHost}`,
     '-keyout', '/tmp/cloud-test.key', '-out', '/tmp/cloud-test.crt');
   const ca = run('exec', name, 'cat', '/tmp/cloud-test.crt');
   const httpsServer = await createCloudHttpsServer({ pool: runtimePool,
@@ -435,25 +440,40 @@ try {
   } finally {
     await new Promise(resolve => httpsServer.close(resolve));
   }
-  if (process.env.VAULTS_PLAYWRIGHT_MODULE && process.env.VAULTS_BROWSER_EXECUTABLE) {
-    const host = 'browser.asia.example.com';
+  if (browserEnabled) {
+    const hosts = ['family-one.asia.example.com', 'family-two.asia.example.com'];
     const load = createRequire(import.meta.url);
     const { chromium } = load(process.env.VAULTS_PLAYWRIGHT_MODULE);
     const { ExperimentalOpaqueBridge: bridge } = load('../../../apps/server/wasm-auth/vaults_browser_fixture.cjs');
-    await provisionCloudTenant(admin, { region: 'global', host, maxActiveUsers: 2, ownerIdentityId: randomUUID(),
-      ownerEmail: 'browser-owner@example.com', createOpaqueSetup: () => Buffer.from(bridge.server_setup()) });
-    const { setupUrl } = await issueCloudBootstrapToken(admin, { region: 'global', host, tokenKey });
-    const realServer = await createCloudHttpsServer({ pool: runtimePool, tls: { cert: ca, key: run('exec', name, 'cat', '/tmp/cloud-test.key') },
+    const tls = { cert: ca, key: run('exec', name, 'cat', '/tmp/cloud-test.key') };
+    const browserManagementPool = new pg.Pool({ ...manager, host: '127.0.0.1', port, database: 'vaults_cloud_test', max: 1 });
+    const realServer = await createCloudHttpsServer({ pool: runtimePool, tls,
       bridge, tokenKey, checkpointPrivateKey: privateKey, mailer, onError: error => console.error('Browser fixture server error', error.code ?? error.name) });
-    let browser;
+    let browser, operatorFixture;
     try {
       realServer.listen(0, '127.0.0.1');
       await once(realServer, 'listening');
+      operatorFixture = await localCloudAdmin({ tls, pool: browserManagementPool, tokenKey, bridge });
+      const routes = [...hosts.map(host => `MAP ${host} 127.0.0.1:${realServer.address().port}`),
+        `MAP ${adminHost} 127.0.0.1:${operatorFixture.port}`];
       browser = await chromium.launch({ executablePath: process.env.VAULTS_BROWSER_EXECUTABLE, args: ['--no-proxy-server',
-        `--host-resolver-rules=MAP ${host} 127.0.0.1:${realServer.address().port}`] });
+        `--host-resolver-rules=${routes.join(', ')}`] });
+      const pageOptions = { ignoreHTTPSErrors: true, serviceWorkers: 'block' };
+      const portal = await browser.newPage(pageOptions);
+      const portalUrl = `${operatorFixture.origin}/cloud-tenants`;
+      await portal.goto(portalUrl);
+      await portal.getByRole('status').filter({ hasText: 'authorized Cloud operator' }).waitFor();
+      await portal.route('**/cloud-tenants/api/**', route => route.continue({ headers: { ...route.request().headers(),
+        'cf-access-jwt-assertion': operatorFixture.assertion } }));
+      portal.on('dialog', dialog => dialog.accept());
+      await portal.reload();
       const password = 'Local synthetic master password only';
       const form = async (page, url, username, email) => {
+        const setupResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/setup');
         await page.goto(url);
+        const state = await setupResponse;
+        assert.equal(state.status(), 200, 'Cloud setup status should be reachable on the canonical browser origin');
+        assert.equal((await state.json()).ownerRequired, username === 'browserowner');
         await page.locator('#registration-username').fill(username);
         await page.locator('.registration-step[data-registration-step="0"] .registration-next').click();
         await page.locator('#display').fill(username);
@@ -469,43 +489,70 @@ try {
         await page.locator('#login').click();
         await page.locator('#vault').waitFor({ state: 'visible' });
       };
-      const owner = await browser.newPage({ ignoreHTTPSErrors: true, serviceWorkers: 'block' });
-      await form(owner, setupUrl, 'browserowner', 'browser-owner@example.com');
-      await owner.locator('#master').waitFor({ state: 'visible' });
-      await activateCloudTenant(admin, { region: 'global', host });
-      await unlock(owner);
-      await owner.locator('#settings-toggle').click();
-      await owner.locator('#cloud-family-email').fill('browser-member@example.com');
-      await owner.locator('#cloud-family-invite button').click();
-      await owner.locator('#cloud-family-url').waitFor({ state: 'visible' });
-      const member = await browser.newPage({ ignoreHTTPSErrors: true, serviceWorkers: 'block' });
-      await form(member, await owner.locator('#cloud-family-url').inputValue(), 'browsermember', 'browser-member@example.com');
-      await member.waitForFunction(() => document.querySelector('#setup-status')?.textContent.includes('sent to your invited email'));
-      const captured = readdirSync(mailCapture).map(file => JSON.parse(readFileSync(join(mailCapture, file), 'utf8')))
-        .find(message => message.to === 'browser-member@example.com');
-      assert.ok(captured);
-      await member.locator('#cloud-member-code').fill(captured.code);
-      await member.locator('#cloud-member-verification button[type="submit"]').click();
-      await unlock(member);
-      await member.locator('#create-vault').click();
-      await member.locator('#web-vault-name').fill('Synthetic family vault');
-      await member.locator('#web-create-vault-submit').click();
-      await member.locator('#web-create-vault-dialog').waitFor({ state: 'hidden' });
-      await member.locator('#new-item').click();
-      await member.locator('#title').fill('Synthetic Cloud sync item');
-      await member.locator('#save').click();
-      const savedItem = member.locator('#items [data-item-id]').filter({ hasText: 'Synthetic Cloud sync item' });
-      await savedItem.waitFor({ state: 'visible' });
-      await member.reload();
-      await member.waitForFunction(() => document.querySelector('#username')?.value === 'browsermember' &&
-        document.body.getAttribute('aria-busy') === 'false');
-      await member.locator('#login-next').click();
-      await unlock(member);
-      await savedItem.waitFor({ state: 'visible' });
-      console.log('Browser Cloud owner and member enrolled with real OPAQUE, and the member recovered a synced item after sign-in.');
+      const members = [];
+      for (const [index, host] of hosts.entries()) {
+        const create = portal.locator('#cloud-create');
+        await create.locator('[name="host"]').fill(host);
+        await create.locator('[name="seats"]').fill('2');
+        await create.locator('[name="owner"]').fill(randomUUID());
+        await create.locator('[name="email"]').fill(`browser-owner-${index}@example.com`);
+        await create.getByRole('button', { name: 'Create tenant' }).click();
+        const tenant = portal.locator('#cloud-directory section').filter({ has: portal.getByRole('heading', { name: host, exact: true }) });
+        await tenant.getByRole('button', { name: 'Issue or replace setup link' }).click();
+        const setupLink = portal.locator('#cloud-setup-link');
+        await setupLink.waitFor({ state: 'visible' });
+        const setupUrl = await setupLink.inputValue();
+        assert.equal(new URL(setupUrl).hostname, host);
+        const owner = await browser.newPage(pageOptions);
+        await form(owner, setupUrl, 'browserowner', 'browser-owner@example.com');
+        await owner.locator('#master').waitFor({ state: 'visible' });
+        await portal.getByRole('button', { name: 'Refresh tenants' }).click();
+        await tenant.getByRole('button', { name: 'Activate tenant' }).click();
+        await tenant.getByRole('button', { name: 'Suspend tenant' }).waitFor();
+        await unlock(owner);
+        await owner.locator('#settings-toggle').click();
+        const email = `browser-member-${index}@example.com`;
+        await owner.locator('#cloud-family-email').fill(email);
+        await owner.locator('#cloud-family-invite button').click();
+        await owner.locator('#cloud-family-url').waitFor({ state: 'visible' });
+        const member = await browser.newPage(pageOptions);
+        await form(member, await owner.locator('#cloud-family-url').inputValue(), 'browsermember', email);
+        await member.waitForFunction(() => document.querySelector('#setup-status')?.textContent.includes('sent to your invited email'));
+        const captured = readdirSync(mailCapture).map(file => JSON.parse(readFileSync(join(mailCapture, file), 'utf8')))
+          .find(message => message.to === email);
+        assert.ok(captured);
+        await member.locator('#cloud-member-code').fill(captured.code);
+        await member.locator('#cloud-member-verification button[type="submit"]').click();
+        await unlock(member);
+        await member.locator('#create-vault').click();
+        await member.locator('#web-vault-name').fill('Synthetic family vault');
+        await member.locator('#web-create-vault-submit').click();
+        await member.locator('#web-create-vault-dialog').waitFor({ state: 'hidden' });
+        await member.locator('#new-item').click();
+        const title = `Synthetic Cloud sync item ${index}`;
+        await member.locator('#title').fill(title);
+        await member.locator('#save').click();
+        const savedItem = member.locator('#items [data-item-id]').filter({ hasText: title });
+        await savedItem.waitFor({ state: 'visible' });
+        await member.reload();
+        await member.waitForFunction(() => document.querySelector('#username')?.value === 'browsermember' &&
+          document.body.getAttribute('aria-busy') === 'false');
+        await member.locator('#login-next').click();
+        await unlock(member);
+        await savedItem.waitFor({ state: 'visible' });
+        members.push(member);
+      }
+      for (const [index, member] of members.entries()) {
+        assert.equal(await member.locator('#items [data-item-id]').filter({ hasText: `Synthetic Cloud sync item ${1 - index}` }).count(), 0);
+      }
+      const operatorActions = await admin.query('SELECT action,count(*)::int AS count FROM cloud.operator_audit WHERE actor=$1 GROUP BY action ORDER BY action', [localOperator]);
+      assert.deepEqual(operatorActions.rows, ['activate', 'issue-setup', 'provision'].map(action => ({ action, count: 2 })));
+      console.log('Local Admin portal provisioned and activated two isolated families. Both enrolled and synced with real OPAQUE.');
     } finally {
       await browser?.close();
+      await operatorFixture?.close();
       await new Promise(resolve => realServer.close(resolve));
+      await browserManagementPool.end();
     }
   }
   await admin.query('BEGIN');
@@ -517,7 +564,8 @@ try {
   await assert.rejects(verifyCloudDatabase(admin, 'global'), /Unsafe regional Cloud runtime role/);
   await admin.query('ROLLBACK');
   console.log(JSON.stringify({ ok: true, isolatedTenants: 4, ownerEnrolled: true,
-    invitedUserEnrolled: true, httpsRouting: true, firstDeployAndRerun: true, runtimeRole: 'no-login', selfHostedServerRejected: true }));
+    invitedUserEnrolled: true, httpsRouting: true, firstDeployAndRerun: true, runtimeRole: 'no-login', selfHostedServerRejected: true,
+    localBrowserTenants: browserEnabled ? 2 : 0 }));
 } catch (error) {
   if (started) try { console.error(run('logs', '--tail', '25', name)); } catch { /* unavailable */ }
   throw error;

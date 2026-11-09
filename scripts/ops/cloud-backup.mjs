@@ -55,7 +55,19 @@ async function backup(env, output) {
 }
 
 try {
-  await backup(process.env, process.argv[2]);
+  const [destination, ...extra] = process.argv.slice(2);
+  if (extra.length) throw new Error('Provide one absolute backup output path or --scheduled.');
+  let output = destination;
+  if (destination === '--scheduled') {
+    const directory = process.env.VAULTS_CLOUD_BACKUP_OUTPUT_DIR;
+    if (!directory || !isAbsolute(directory)) throw new Error('Scheduled Cloud backups require an absolute output directory.');
+    const info = await lstat(directory);
+    if (!info.isDirectory() || (info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()) {
+      throw new Error('Scheduled Cloud backup output must be a private directory owned by the backup operator.');
+    }
+    output = join(directory, `cloud-global-${new Date().toISOString().replaceAll(':', '-')}.vbak`);
+  }
+  await backup(process.env, output);
 } catch (error) {
   // Child process errors can contain database configuration and private paths.
   console.error(error.cmd ? 'Cloud backup subprocess failed.' : error.message);

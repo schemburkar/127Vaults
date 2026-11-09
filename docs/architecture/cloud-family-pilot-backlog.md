@@ -41,6 +41,8 @@ Target one shared deployment in one location with private PostgreSQL. Use `cloud
 
 ## Hosted environment and handoff
 
+Local rehearsals cover the database and role setup for step 32, the HTTPS and management boundaries for steps 33–34, the scheduled backup entry point for step 35, and the two-family operator and browser journeys for steps 36–37. The Admin browser rehearsal uses a locally signed Access assertion, the real Worker handler, and a separate HTTPS management listener. A live Access policy, deployed Worker, and packaged Desktop enrollment still need hosted verification. Keep the hosted checkboxes open until those actions happen in the pilot environment.
+
 - [ ] **32. Provision the single hosting location and private PostgreSQL.** Record the deployment identity and configure production secrets.
 - [ ] **33. Configure Cloudflare DNS and HTTPS.** Set up the landing and tenant routes, edge and origin certificates, and the protected management route.
 - [ ] **34. Deploy the runtime and Admin Worker configuration.** Initialize production and register the Cloud deployment in the admin backend.

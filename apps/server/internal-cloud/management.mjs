@@ -56,6 +56,15 @@ export async function createCloudManagementHandler({ pool, serviceToken, tokenKe
   };
 }
 
+export async function createCloudManagementHttpsServer({ tls, onError, ...options }) {
+  const handler = await createCloudManagementHandler(options);
+  const server = createServer({ ...tls, minVersion: 'TLSv1.2', maxHeaderSize: 8192 }, containRequestErrors(handler, onError));
+  server.requestTimeout = 5000;
+  server.headersTimeout = 5000;
+  server.on('upgrade', (_req, socket) => socket.destroy());
+  return server;
+}
+
 async function serve(env) {
   if (env.VAULTS_INTERNAL_CLOUD_OPERATIONS !== '1' || !env.VAULTS_DATABASE_HOST || !env.VAULTS_DATABASE_NAME ||
       env.VAULTS_DATABASE_NAME === 'vaults_experimental' || !env.VAULTS_DATABASE_USER) throw new Error('Dedicated Cloud management configuration is required.');
@@ -72,13 +81,9 @@ async function serve(env) {
   const pool = new pg.Pool({ ...await cloudDatabaseConfig(env), max: 2, connectionTimeoutMillis: 2000, statement_timeout: 10000 });
   pool.on('error', () => console.error('Cloud management database pool error.'));
   try {
-    const handler = await createCloudManagementHandler({ pool, serviceToken, tokenKey,
-      createOpaqueSetup: () => Buffer.from(bridge.server_setup()), tenantSuffix: env.VAULTS_CLOUD_TENANT_SUFFIX });
-    const server = createServer({ cert, key, minVersion: 'TLSv1.2', maxHeaderSize: 8192 },
-      containRequestErrors(handler, () => console.error('Cloud management request failed.')));
-    server.requestTimeout = 5000;
-    server.headersTimeout = 5000;
-    server.on('upgrade', (_req, socket) => socket.destroy());
+    const server = await createCloudManagementHttpsServer({ tls: { cert, key }, pool, serviceToken, tokenKey,
+      createOpaqueSetup: () => Buffer.from(bridge.server_setup()), tenantSuffix: env.VAULTS_CLOUD_TENANT_SUFFIX,
+      onError: () => console.error('Cloud management request failed.') });
     server.on('error', () => { console.error('Cloud management listener failed.'); process.exitCode = 1; void pool.end(); });
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(() => void pool.end()));
     server.listen(port, env.VAULTS_CLOUD_MANAGEMENT_BIND ?? '127.0.0.1');
