@@ -27,6 +27,7 @@ COPY apps/web/src/client-errors.mjs apps/web/src/client-errors.mjs
 COPY apps/web/wasm apps/web/wasm
 COPY apps/web/style.css apps/web/style.css
 COPY apps/web/src apps/web/src
+COPY apps/server/admin/directory-presentation.mjs apps/server/admin/directory-presentation.mjs
 COPY packages/domain/src packages/domain/src
 COPY packages/ui/src packages/ui/src
 COPY apps/extension/src/passkeys.mjs apps/extension/src/passkeys.mjs

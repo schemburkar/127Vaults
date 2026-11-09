@@ -52,6 +52,7 @@ export default defineConfig(({ command, mode }) => {
     ['/app/passkeys.mjs', join(webRoot, '..', 'extension', 'src', 'passkeys.mjs')],
     ['/app/shared/passkey-metadata.mjs', join(webRoot, '..', '..', 'packages', 'domain', 'src', 'passkey-metadata.mjs')],
     ['/app/shared/seat-summary.mjs', join(webRoot, '..', '..', 'packages', 'domain', 'src', 'seat-summary.mjs')],
+    ['/app/shared/directory-presentation.mjs', join(webRoot, '..', 'server', 'admin', 'directory-presentation.mjs')],
     ['/wasm/vaults_browser_fixture.js', join(webRoot, 'wasm', 'vaults_browser_fixture.js')],
     ['/wasm/vaults_browser_fixture_bg.wasm', join(webRoot, 'wasm', 'vaults_browser_fixture_bg.wasm')],
   ]);

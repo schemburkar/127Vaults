@@ -963,7 +963,9 @@ function Settings() {
               <Field label="Private invitation link"><Input id="cloud-family-url" readOnly /></Field>
               <Button id="cloud-family-copy" type="button" variant="secondary">Copy invitation link</Button>
             </div>
+            <h4 className="font-semibold">People</h4>
             <ul id="cloud-family-members" className="grid gap-2" />
+            <h4 className="font-semibold">Invitations</h4>
             <ul id="cloud-family-invitations" className="grid gap-2" />
           </section>
         </section>
@@ -975,6 +977,11 @@ function Settings() {
         <section className="web-settings-panel" aria-labelledby="web-settings-panel-title" id="settings-devices" hidden={activeTab !== "devices"}>
           <div id="devices-list-page">
             <OwnershipRequests />
+            <section id="desktop-cloud-address" className="mb-4 rounded-xl border border-white/10 p-3" hidden>
+              <p className="mb-2 text-sm">Use this address when connecting a new Desktop device to your family vault.</p>
+              <Field label="Family vault address"><Input id="desktop-cloud-url" readOnly /></Field>
+              <Button id="desktop-cloud-copy" type="button" variant="secondary" className="mt-2">Copy vault address</Button>
+            </section>
             <Button id="show-device-registration">Register a device</Button>
             <div id="device-status" className={`inline-status ${inlineStatus}`} role="status" />
             <DeviceList />
@@ -992,8 +999,7 @@ function Settings() {
             </Button>
             <h2>Register a CLI device</h2>
             <p className={muted}>
-              Run CLI login with <code>--enroll</code>, then enter its
-              8-character code.
+              Start registration on Desktop or run CLI login with <code>--enroll</code>, then confirm the 8-character code.
             </p>
             <label className={fieldLabel}>
               Enrollment code

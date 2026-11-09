@@ -1,6 +1,6 @@
 # Cloud family pilot backlog
 
-Progress is **41 of 52**. The original 39 items remain numbered, with 13 follow-up items for the shared-host handoff. Items 32–39 require the hosted environment or the approved family handoff.
+Progress is **42 of 52**. The original 39 items remain numbered, with 13 follow-up items for the shared-host handoff. Items 32–39 require the hosted environment or the approved family handoff.
 
 Target one deployment in one location with private PostgreSQL. Use `https://cloud.127vaults.com/` for the public invitation-only landing page and `/t/<slug>/` for each family. Use `admin.127vaults.com` for platform operations, `manage.127vaults.com` for customer accounts, and local `/admin` for self-hosted administration. The deployment initializes the database inside the hosting environment. Public signup and Cloud checkout stay closed.
 
@@ -45,7 +45,7 @@ Local rehearsals cover the database and role setup for step 32, the HTTPS and ma
 
 - [ ] **32. Provision the single hosting location and private PostgreSQL.** Record the deployment identity and configure production secrets.
 - [ ] **33. Configure DNS and HTTPS.** Route one public vault hostname and certificate to the deployment. Keep the platform management route independently protected. Cloudflare Tunnel is optional for vault ingress.
-- [ ] **34. Deploy the runtime and Admin Worker configuration.** Initialize production and register the Cloud deployment in the admin backend.
+- [ ] **34. Deploy the runtime and Admin Worker configuration.** Initialize production and register the Cloud deployment in the admin backend. If Cloudflare Containers is selected, prepare and exercise a trusted Worker-to-container ingress locally first. Keep PostgreSQL outside the container and confirm where the database and container run.
 - [ ] **35. Enable production backup scheduling.** Configure the encrypted destination and run schedule.
 - [ ] **36. Verify hosted operator provisioning.** Create and activate two synthetic tenants from the production portal.
 - [ ] **37. Verify hosted family enrollment and sync.** Exercise real owner and member enrollment, tenant separation, and sync.
@@ -56,7 +56,7 @@ Local rehearsals cover the database and role setup for step 32, the HTTPS and ma
 
 - [x] **40. Replace tenant subdomains with tenant paths.** Route `/t/<slug>/` through the standalone HTTPS server. Keep the root invitation-only.
 - [x] **41. Keep tenant identity stable.** The slug resolves to an immutable tenant UUID for authorization, PostgreSQL scoping, browser identities and replicas. The overlay requires a fresh database for the first hosted deployment. A database made by the earlier hostname prototype fails the checksum check and must be preserved separately.
-- [x] **42. Carry the tenant URL through provisioning and clients.** Operator actions use slugs, setup and invitation links contain the path, and discovery and Desktop trust preserve it.
+- [x] **42. Carry the tenant URL through provisioning and clients.** Operator actions use slugs, setup and invitation links contain the path, and discovery and Desktop trust preserve it. Web vault Settings → Devices offers a copyable family address. Desktop has a dedicated Cloud address field and opens the tenant's approval page with a manual retry.
 - [x] **43. Enforce same-origin tenant boundaries.** Keep server sessions and enrollment scoped to the tenant UUID. Scope the PWA shell to its tenant path and keep API responses out of that cache.
 - [x] **44. Support one active Cloud tenant per browser profile.** Changing tenants locks other tenant tabs. Browser device identity and queued operations stay associated with their tenant UUID.
 - [x] **45. Record simultaneous sessions as future work.** Independent sessions and an explicit tenant switcher are outside the two-family pilot.
@@ -64,6 +64,6 @@ Local rehearsals cover the database and role setup for step 32, the HTTPS and ma
 - [ ] **47. Complete Cloud account and billing in Manage.** Read-only tenant state, allocated seats and the family settings link are implemented. A Cloud-only control owner can use the operator-assisted sign-in flow when enabled. Connect live directory ingress and add billing records for a future paid offering. Customer checkout and seat purchases stay deferred.
 - [x] **48. Show self-hosted license and seats in local Admin.** The server overview reports the installed license and links to Manage subscriptions.
 - [x] **49. Preserve local Admin.** Keep the installation-specific operator login, health and administration.
-- [ ] **50. Reuse People, Invitations and Seats presentation.** Cloud and local Admin share the seat summary. People and invitation presentation still use their existing separate UI.
+- [x] **50. Reuse People, Invitations and Seats presentation.** Cloud family settings and self-hosted Admin share status labels, status styles and the seat summary. Each surface keeps its existing layout, actions and backend authorization.
 - [x] **51. Keep central Admin for platform operators.** Use it to provision, activate, suspend and resume tenants and set pilot seat limits.
-- [ ] **52. Finish end-to-end pilot verification.** Local two-family checks cover real OPAQUE enrollment and sync, cross-path rejection, tab locking, replay of a queued write only after returning to its original tenant, and customer-directory credential separation. Finish packaged Desktop enrollment and sync against the deployed HTTPS hostname and verify hosted Manage.
+- [ ] **52. Finish end-to-end pilot verification.** Local two-family checks cover real OPAQUE enrollment and sync, cross-path rejection, tab locking, tenant-specific replay of queued writes and customer-directory credential separation. The local browser also opened the approval link on the family path and completed a real new-device request through the server. Finish packaged Desktop enrollment and sync against the deployed HTTPS hostname and verify hosted Manage.

@@ -1,6 +1,7 @@
 import { createRemoteCall } from '/app/http-client.mjs';
 import { safeError } from '/app/client-errors.mjs';
 import { seatSummary } from '/app/shared/seat-summary.mjs';
+import { directoryStatus, invitationRecipientStatus } from '/app/shared/directory-presentation.mjs';
 import init, {
   ExperimentalEcf1Core,
   ExperimentalOpaqueBridge,
@@ -836,9 +837,19 @@ async function refreshFamilySettings() {
   $("cloud-family").hidden = false;
   $("cloud-family-invite").hidden = !family.invitationsEnabled;
   status("cloud-family-status", seatSummary(family));
-  function row(label, action, targetId, buttonText) {
+  function entry(label, state) {
+    const { label: caption, tone } = directoryStatus(state);
+    const text = document.createElement("span");
+    const badge = document.createElement("span");
+    badge.className = tone === "good" ? "ml-2 text-emerald-300" : tone === "warn" ? "ml-2 text-amber-300" : "ml-2 text-slate-400";
+    badge.textContent = caption;
+    text.append(label, badge);
+    return text;
+  }
+  function row(entries, action, targetId, buttonText) {
     const item = document.createElement("li");
-    item.textContent = label;
+    item.className = "flex flex-wrap gap-2";
+    item.append(...entries);
     if (action) {
       const button = document.createElement("button");
       button.type = "button";
@@ -858,14 +869,14 @@ async function refreshFamilySettings() {
     return item;
   }
   $("cloud-family-members").replaceChildren(...family.members.map(member => row(
-    `${member.displayName} · ${member.email} · ${member.role === "owner" ? "Owner" : member.suspendedAt ? "Suspended" : "Active"}`,
+    [entry(`${member.displayName} · ${member.email} · ${directoryStatus(member.role).label}`, member.suspendedAt ? "suspended" : "active")],
     member.role === "owner" ? null : member.suspendedAt ? "reactivate-member" : "suspend-member", member.id,
     member.suspendedAt ? "Reactivate member" : "Suspend member",
   )));
   $("cloud-family-invitations").replaceChildren(...family.invitations.map(invitation => {
-    const pending = !invitation.revokedAt && invitation.recipients.some(recipient => !recipient.redeemedAt);
-    const label = invitation.recipients.map(recipient => `${recipient.email} · ${recipient.redeemedAt ? "Accepted" : invitation.revokedAt ? "Revoked" : "Invited"}`).join(", ");
-    return row(label, pending ? "revoke-invitation" : null, invitation.id, "Revoke invitation");
+    const recipients = invitation.recipients.map(recipient => ({ ...recipient, state: invitationRecipientStatus(invitation, recipient) }));
+    return row(recipients.map(recipient => entry(recipient.email, recipient.state)),
+      recipients.some(recipient => recipient.state === "pending") ? "revoke-invitation" : null, invitation.id, "Revoke invitation");
   }));
 }
 
@@ -1697,7 +1708,7 @@ async function beginEnrollment() {
     $("enrollment-request").value = "";
     status(
       "enrollment-status",
-      `Approved CLI device ${binding.newDeviceId.slice(0, 8)}. The CLI will finish automatically.`,
+      `Approved device ${binding.newDeviceId.slice(0, 8)}. Return to the app to finish registration.`,
     );
   } catch (e) {
     status(
@@ -2661,8 +2672,12 @@ function showDeviceRegistration(show) {
   if (show) $("enrollment-request").focus();
 }
 function openPendingDesktopEnrollment() {
-  let code = new URLSearchParams(location.search).get("enrollDevice");
+  const approval = new URL(location.href);
+  const code = new URLSearchParams(approval.hash.slice(1)).get("enrollDevice") ?? approval.searchParams.get("enrollDevice");
   if (!root || !/^[A-HJ-NP-Z2-9]{8}$/.test(code || "")) return false;
+  if (approval.hash.startsWith("#enrollDevice=")) approval.hash = "";
+  approval.searchParams.delete("enrollDevice");
+  history.replaceState(history.state, "", approval.pathname + approval.search + approval.hash);
   $("profile-username").textContent = identity?.username || "";
   showSettingsView("devices");
   showDeviceRegistration(true);
@@ -2857,7 +2872,17 @@ $("settings-toggle").onclick = () => {
   $("settings").showModal();
   if ($("cloud-family-tab")) $("cloud-family-tab").hidden = !serverAuthenticated ||
     licenseEntitlement?.status.scope !== "cloud-tenant" || licenseEntitlement.status.role !== "owner";
+  if ($("desktop-cloud-address")) {
+    $("desktop-cloud-address").hidden = !tenantUrl;
+    $("desktop-cloud-url").value = tenantUrl;
+  }
 };
+$("desktop-cloud-copy")?.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(tenantUrl);
+    status("device-status", "Family vault address copied.");
+  } catch { $("desktop-cloud-url").select(); }
+});
 $("close-settings").onclick = () => $("settings").close();
 for (let button of document.querySelectorAll(".settings-tab"))
   button.onclick = () => showSettingsView(button.dataset.settingsView);

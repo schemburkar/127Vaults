@@ -142,6 +142,7 @@ const webFiles=new Map([
   ['/app/passkeys.mjs',['../../extension/src/passkeys.mjs','text/javascript; charset=utf-8']],
   ['/app/shared/passkey-metadata.mjs',['../../../packages/domain/src/passkey-metadata.mjs','text/javascript; charset=utf-8']],
   ['/app/shared/seat-summary.mjs',['../../../packages/domain/src/seat-summary.mjs','text/javascript; charset=utf-8']],
+  ['/app/shared/directory-presentation.mjs',['../admin/directory-presentation.mjs','text/javascript; charset=utf-8']],
   ['/app/private-vault-client.mjs',['../../web/src/private-vault-client.mjs','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture.js',['../../web/wasm/vaults_browser_fixture.js','text/javascript; charset=utf-8']],
   ['/wasm/vaults_browser_fixture_bg.wasm',['../../web/wasm/vaults_browser_fixture_bg.wasm','application/wasm']]

@@ -1,11 +1,13 @@
+import { directoryStatus } from './directory-presentation.mjs';
+
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 export const date = value => {
   const parsed = value ? new Date(value) : null;
   return parsed && Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : 'Not available';
 };
-export const label = value => ({ rotation_required: 'Rotation required', unknown: 'Unknown', current: 'Current', pending: 'Pending', active: 'Active', revoked: 'Revoked', replaced: 'Replaced', expired: 'Expired', redeemed: 'Redeemed', stale: 'Stale', platform: 'Platform', software: 'Software', hardware: 'Hardware', owner: 'Owner', admin: 'Admin', user: 'User', online: 'Online' })[value] ?? String(value ?? 'Unknown');
+export const label = value => ({ rotation_required: 'Rotation required', unknown: 'Unknown', current: 'Current', replaced: 'Replaced', stale: 'Stale', platform: 'Platform', software: 'Software', hardware: 'Hardware', online: 'Online' })[value] ?? directoryStatus(value).label;
 export function badge(value) {
-  const tone = ['active', 'owner', 'online', 'current', 'hardware', 'platform', 'redeemed'].includes(value) ? 'good' : ['unknown', 'pending', 'rotation_required', 'stale', 'expired'].includes(value) ? 'warn' : '';
+  const tone = ['online', 'current', 'hardware', 'platform'].includes(value) ? 'good' : ['unknown', 'rotation_required', 'stale'].includes(value) ? 'warn' : directoryStatus(value).tone;
   return `<span class="pill ${tone}">${escapeHtml(label(value))}</span>`;
 }
 export function newDirectory() {

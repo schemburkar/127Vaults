@@ -75,7 +75,7 @@ try {
   await page.locator('#show-device-registration').click();
   await page.locator('#enrollment-request').fill(enrollment.code);
   await page.locator('#begin-enrollment').click();
-  await page.waitForFunction(prefix=>document.querySelector('#enrollment-status')?.textContent.includes('Approved CLI device '+prefix),enrollment.device.slice(0,8));
+  await page.waitForFunction(prefix=>document.querySelector('#enrollment-status')?.textContent.includes('Approved device '+prefix),enrollment.device.slice(0,8));
   assert.equal(inspected,true);assert.equal(await page.locator('#enrollment-request').inputValue(),'');
   await page.locator('#close-settings').click();await page.locator('#lock-app').click();
   await page.waitForFunction(()=>document.querySelector('#state')?.textContent==='Locked');

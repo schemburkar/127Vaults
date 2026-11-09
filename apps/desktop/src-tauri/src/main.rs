@@ -319,11 +319,14 @@ fn remember_account_secret(_config: &Path, _username: &str, _secret: &str) -> Re
 #[tauri::command]
 fn desktop_info() -> Result<Value, String> {
     let config = config_directory()?;
-    let origin = profile(&config.join("trust.conf"), "url");
+    let trust = config.join("trust.conf");
+    let origin = profile(&trust, "url");
+    let cloud = profile(&trust, "mode").as_deref() == Some("cloud");
     Ok(json!({
         "configured": config.join("trust.conf").is_file() && config.join("device.conf").is_file(),
         "configurationPath": config,
-        "registrationUrl": origin.map(|url| format!("{}/?register=1", url.trim_end_matches('/'))),
+        "registrationUrl": origin.as_ref().map(|url| format!("{}/?register=1", url.trim_end_matches('/'))),
+        "cloudVaultUrl": origin.filter(|_| cloud).map(|url| format!("{}/", url.trim_end_matches('/'))),
         "cachedUsername": cached_username(&config),
         "hasCachedSecret": cached_username(&config).and_then(|username| cached_account_secret(&config, &username)).is_some(),
         "deviceId": profile(&config.join("device.conf"), "device_id"),
@@ -1149,9 +1152,15 @@ fn begin_device_enrollment(
         let status = enrollment.clone();
         let callback_config = config.clone();
         let result = enroll_device_with_status(&config, username.trim(), move |code| {
-            let origin = profile(&callback_config.join("trust.conf"), "url").unwrap_or_default();
+            let trust = callback_config.join("trust.conf");
+            let origin = profile(&trust, "url").unwrap_or_default();
+            let separator = if profile(&trust, "mode").as_deref() == Some("cloud") {
+                '#'
+            } else {
+                '?'
+            };
             if let Ok(mut value) = status.lock() {
-                *value = json!({"state":"approval","code":code,"approvalUrl":format!("{origin}/?enrollDevice={code}")});
+                *value = json!({"state":"approval","code":code,"approvalUrl":format!("{}/{separator}enrollDevice={code}", origin.trim_end_matches('/'))});
             }
         });
         match result {

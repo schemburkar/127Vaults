@@ -14,6 +14,7 @@ const assets = new Map([
   ['/admin/app.js', ['../../admin/app.js', 'text/javascript; charset=utf-8']],
   ['/admin/style.css', ['../../admin/style.css', 'text/css; charset=utf-8']],
   ['/admin/directory.js', ['../../admin/directory.js', 'text/javascript; charset=utf-8']],
+  ['/admin/directory-presentation.mjs', ['../../admin/directory-presentation.mjs', 'text/javascript; charset=utf-8']],
   ['/admin/api.js', ['../../admin/api.js', 'text/javascript; charset=utf-8']],
   ['/admin/management.js', ['../../admin/management.js', 'text/javascript; charset=utf-8']],
 ]);

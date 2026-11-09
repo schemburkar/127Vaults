@@ -584,6 +584,36 @@ try {
       await original.locator('#items [data-item-id]').filter({ hasText: queuedTitle }).waitFor();
       await original.waitForFunction(() => window.__vaultsSyncState?.at && window.__vaultsSyncState.pending === 0);
       assert.equal(await members[1].locator('#items [data-item-id]').filter({ hasText: queuedTitle }).count(), 0);
+      const familyUrl = `${cloudOrigin}/t/${slugs[0]}/`;
+      await original.locator('#settings-toggle').click();
+      await original.locator('[data-settings-view="devices"]').click();
+      assert.equal(await original.locator('#desktop-cloud-url').inputValue(), familyUrl);
+      const code = await original.evaluate(async () => {
+        const { requestBrowserEnrollment } = await import('/app/browser-enrollment.mjs');
+        window.fixtureEnrollmentCall = async (path, options) => {
+          const response = await fetch(location.pathname.slice(0, -1) + path, {
+            method: options.method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.body)
+          });
+          if (!response.ok) throw Error(`Enrollment request failed (${response.status})`);
+          return response.json();
+        };
+        window.fixtureEnrollment = await requestBrowserEnrollment('browsermember', window.fixtureEnrollmentCall);
+        return window.fixtureEnrollment.code;
+      });
+      const approval = await original.context().newPage();
+      await approval.goto(`${familyUrl}#enrollDevice=${code}`);
+      await approval.locator('#login-next').click();
+      await unlock(approval);
+      await approval.locator('#enrollment-request').waitFor();
+      assert.equal(await approval.locator('#enrollment-request').inputValue(), code);
+      assert.equal(new URL(approval.url()).hash, '');
+      await approval.locator('#begin-enrollment').click();
+      await approval.locator('#enrollment-status').filter({ hasText: 'Approved device' }).waitFor();
+      const enrolled = await original.evaluate(async () => {
+        const { finishBrowserEnrollment } = await import('/app/browser-enrollment.mjs');
+        return Boolean(await finishBrowserEnrollment(window.fixtureEnrollment, window.fixtureEnrollmentCall));
+      });
+      assert.equal(enrolled, true);
       const operatorActions = await admin.query('SELECT action,count(*)::int AS count FROM cloud.operator_audit WHERE actor=$1 GROUP BY action ORDER BY action', [localOperator]);
       assert.deepEqual(operatorActions.rows, ['activate', 'issue-setup', 'provision'].map(action => ({ action, count: 2 })));
       console.log('Local Admin portal provisioned and activated two isolated families. Both enrolled and synced with real OPAQUE.');

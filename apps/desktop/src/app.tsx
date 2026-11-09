@@ -63,6 +63,7 @@ type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
   registrationUrl: string | null;
+  cloudVaultUrl: string | null;
   cachedUsername: string | null;
   hasCachedSecret: boolean;
   deviceId: string | null;
@@ -126,6 +127,7 @@ function DesktopApp() {
   const dirtyRef = useRef(false);
   const [enrolling, setEnrolling] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [approvalLink, setApprovalLink] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false),
     [registrationUsername, setRegistrationUsername] = useState("");
   const [vaultId, setVaultId] = useState(""),
@@ -158,6 +160,7 @@ function DesktopApp() {
   const [expandedRelatedId, setExpandedRelatedId] = useState<string | null>(null);
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null),
     [trustUrl, setTrustUrl] = useState(""),
+    [cloudUrl, setCloudUrl] = useState(""),
     [trustCaPath, setTrustCaPath] = useState(""),
     [trustServerId, setTrustServerId] = useState(""),
     [trustFingerprint, setTrustFingerprint] = useState(""),
@@ -1241,7 +1244,7 @@ function DesktopApp() {
     setTrustBusy(true);
     setStatus(cloud ? "Checking your family vault’s Cloud identity…" : "Checking the private server and CA fingerprint…");
     try {
-      if (cloud) await invoke<string>("configure_cloud_trust", { url: trustUrl.trim() });
+      if (cloud) await invoke<string>("configure_cloud_trust", { url: cloudUrl.trim() });
       else await invoke<string>("configure_server_trust", {
         url: trustUrl.trim(), caPath: trustCaPath.trim(), serverId: trustServerId.trim(),
         expectedFingerprint: trustFingerprint.trim(),
@@ -1275,7 +1278,9 @@ function DesktopApp() {
           );
           if (!browserOpened && progress.approvalUrl) {
             browserOpened = true;
-            await openUrl(progress.approvalUrl);
+            setApprovalLink(progress.approvalUrl);
+            try { await openUrl(progress.approvalUrl); }
+            catch { /* Keep waiting and leave the manual browser button available. */ }
           }
         } else if (progress.state === "complete") {
           setUsername(enrolledUsername);
@@ -1288,6 +1293,7 @@ function DesktopApp() {
     } catch (e) {
       setStatus(String(e));
     } finally {
+      setApprovalLink(null);
       setEnrolling(false);
     }
   };
@@ -1406,6 +1412,12 @@ function DesktopApp() {
                 </p>
               </div>
               <div className="grid gap-5">
+                {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
+                  <h2 className="font-bold">Connect to a Cloud family vault</h2>
+                  <p className="mb-3 mt-1 text-sm text-slate-400">Copy the address from Settings → Devices in your web vault. It includes your family name after /t/.</p>
+                  <Input aria-label="Cloud family vault address" placeholder="https://cloud.127vaults.com/t/your-family/" value={cloudUrl} onChange={event => setCloudUrl(event.target.value)} />
+                  <Button className="mt-3 w-full" disabled={trustBusy || !cloudUrl.trim()} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button>
+                </section>}
                 {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-5">
                   <h2 className="font-bold">Connect to your private server</h2>
                   <p className="mb-3 mt-1 text-sm text-slate-400">Get the exact HTTPS address, installation ID, public CA certificate file, and SHA-256 CA fingerprint from your server operator. The certificate must match before trust is saved.</p>
@@ -1418,11 +1430,10 @@ function DesktopApp() {
                     <Input aria-label="Expected CA SHA-256 fingerprint" placeholder="64-character SHA-256 fingerprint" value={trustFingerprint} onChange={event => setTrustFingerprint(event.target.value)} />
                   </div>
                   <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button>
-                  <p className="mt-4 text-sm text-slate-400">For a Cloud family vault, enter its HTTPS address in the server URL field and connect using Cloud discovery.</p>
-                  <Button variant="secondary" className="mt-2 w-full" disabled={trustBusy || !trustUrl} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button>
                 </section>}
                 <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <h2 className="font-bold">I already have an account</h2>
+                  {desktopInfo?.cloudVaultUrl && <p className="mt-1 break-all text-xs text-slate-400">{desktopInfo.cloudVaultUrl}</p>}
                   <p className="mb-4 mt-1 text-sm text-slate-400">
                     Enroll this computer as a trusted device. You’ll approve a
                     one-time code after signing in on the web.
@@ -1443,8 +1454,10 @@ function DesktopApp() {
                       ? "Waiting for web approval…"
                       : "Register this desktop"}
                   </Button>
+                  {approvalLink && <Button className="mt-2 w-full" variant="secondary" onClick={() => void openUrl(approvalLink).catch(() =>
+                    setStatus("Open your web vault and enter the approval code under Settings → Devices."))}>Open browser approval</Button>}
                 </section>
-                <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
+                {!desktopInfo?.cloudVaultUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <h2 className="font-bold">This is my first device</h2>
                   <p className="mb-4 mt-1 text-sm text-slate-400">
                     Create the first owner account using the server’s secure
@@ -1469,7 +1482,7 @@ function DesktopApp() {
                     Account creation currently completes in the server-hosted
                     setup screen; return here afterward to enroll this desktop.
                   </p>
-                </section>
+                </section>}
               </div>
               <p
                 className="mt-5 min-h-5 text-xs text-slate-400"
