@@ -8,6 +8,7 @@ mod transport;
 
 use atomic_write_file::AtomicWriteFile;
 use clap::Parser;
+use discovery::BoundedOutput;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -761,6 +762,15 @@ fn execute(mut args: Args) -> Result<()> {
         state.save(&root)?;
         cliclack::log::success(format!("{} package installed", product.name()))?;
     }
+    if let Some(directory) = server_directory {
+        guide_server_owner(
+            node.as_ref().ok_or("Server runtime unavailable")?,
+            &directory,
+            &args,
+            &engine,
+            interactive && !args.yes,
+        )?;
+    }
     if args.components.contains(&Product::Extension) {
         let index = state
             .records
@@ -786,20 +796,6 @@ fn execute(mut args: Args) -> Result<()> {
         )?;
         state.records[index].complete = true;
         state.save(&root)?;
-    }
-    if let Some(directory) = server_directory {
-        let mut bootstrap = Command::new(node.as_ref().ok_or("Server runtime unavailable")?);
-        bootstrap.args(["server.mjs", "install", "bootstrap"]);
-        add_options(&mut bootstrap, &args, &engine, false);
-        existing_identity_options(&mut bootstrap, &directory)?;
-        let command = render_command(&bootstrap);
-        cliclack::note(
-            "Server next steps",
-            format!(
-                "Server bundle: {}\nVerify and trust its CA, then run this command from that folder to enroll the owner:\n{command}\nUse the server's reported HTTPS address for clients.",
-                directory.display(),
-            ),
-        )?;
     }
     if args.components.contains(&Product::Pwa) {
         cliclack::note(
@@ -1000,6 +996,191 @@ fn existing_identity_options(command: &mut Command, directory: &Path) -> Result<
     Ok(())
 }
 
+fn guide_server_owner(
+    node: &Path,
+    directory: &Path,
+    args: &Args,
+    engine: &str,
+    interactive: bool,
+) -> Result<()> {
+    let config = fs::read_to_string(directory.join(".env"))?;
+    let field = |prefix| config.lines().find_map(|line| line.strip_prefix(prefix));
+    let endpoint = field("VAULTS_ENDPOINT_HOST=").ok_or("Missing server address")?;
+    let port = field("VAULTS_PUBLISH_PORT=")
+        .unwrap_or("12780")
+        .parse::<u16>()?;
+    let origin = url::Url::parse(&format!("https://{endpoint}:{port}/"))?;
+    if origin.host_str() != Some(endpoint)
+        || origin.path() != "/"
+        || origin.query().is_some()
+        || origin.fragment().is_some()
+        || !origin.username().is_empty()
+        || origin.password().is_some()
+        || origin.port_or_known_default() != Some(port)
+    {
+        return Err("Invalid configured server address".into());
+    }
+    let private_dir = field("VAULTS_TLS_DIR=").ok_or("Missing private identity directory")?;
+    let ca = directory.join(private_dir).join("ca").join("ca.crt");
+    let fingerprint = transport::file_hash(&ca)?;
+    let installation = fs::read_to_string(directory.join(private_dir).join("installation-id"))
+        .ok()
+        .and_then(|value| uuid::Uuid::parse_str(value.trim()).ok())
+        .map_or_else(String::new, |id| format!("Installation ID: {id}\n"));
+    cliclack::note(
+        "Connect to your server",
+        format!(
+            "Server address: {origin}\n{installation}Public CA certificate: {}\nCA file SHA-256: {fingerprint}\nVerify this file and add it to your operating system or browser trust store. Open the server address after your browser trusts it.",
+            ca.display()
+        ),
+    )?;
+    if field("VAULTS_ACCESS_MODE=") == Some("loopback") {
+        let operator_file = directory
+            .join(private_dir)
+            .join("runtime")
+            .join("admin-operators.json");
+        guide_local_admin(node, directory, args, engine, interactive, &operator_file)?;
+        cliclack::note(
+            "Local administration",
+            if operator_file.is_file() {
+                format!(
+                    "Open {} on this computer after trusting the CA. Use your local operator credentials to manage users, invitations and devices.",
+                    origin.join("admin/")?
+                )
+            } else {
+                "To set up a local operator later, rerun the installer interactively and select Server.".to_owned()
+            },
+        )?;
+    }
+    let mut bootstrap = Command::new(node);
+    bootstrap
+        .current_dir(directory)
+        .args(["server.mjs", "install", "bootstrap"]);
+    add_options(&mut bootstrap, args, engine, false);
+    existing_identity_options(&mut bootstrap, directory)?;
+    if interactive
+        && cliclack::confirm("Generate a first-owner setup code if this server still needs one?")
+            .interact()?
+    {
+        if let Ok(output) = bootstrap.bounded_output()
+            && output.status.success()
+            && let Ok(text) = String::from_utf8(output.stdout)
+        {
+            if text
+                .lines()
+                .any(|line| line == "Owner already exists; bootstrap is closed.")
+            {
+                cliclack::log::info(
+                    "An owner is already enrolled. Open the server address to sign in.",
+                )?;
+                return Ok(());
+            }
+            if let Some(code) = owner_setup_code(&text) {
+                let mut setup_url = origin.clone();
+                setup_url.set_fragment(Some(&format!("ownerSetup={code}")));
+                cliclack::note(
+                    "Create your vault owner",
+                    format!(
+                        "After trusting the CA, open this private setup link within 60 minutes:\n{setup_url}\nIf the vault asks for a code, enter {code}. Keep the link and code private."
+                    ),
+                )?;
+                return Ok(());
+            }
+        }
+        cliclack::log::warning(
+            "Owner setup code was unavailable. Check that the server is running and the license is active.",
+        )?;
+    }
+    let command = render_command(&bootstrap);
+    cliclack::note(
+        "Finish first-owner setup later",
+        format!(
+            "Rerun the installer interactively and select Server, or run this command from {}:\n{command}",
+            directory.display()
+        ),
+    )?;
+    Ok(())
+}
+
+fn guide_local_admin(
+    node: &Path,
+    directory: &Path,
+    args: &Args,
+    engine: &str,
+    interactive: bool,
+    operator_file: &Path,
+) -> Result<()> {
+    if operator_file.try_exists()?
+        || !interactive
+        || !cliclack::confirm("Set up the local administration console on this computer?")
+            .interact()?
+    {
+        return Ok(());
+    }
+    let username: String = cliclack::input("Local operator username")
+        .default_input("localowner")
+        .validate(|value: &String| {
+            if (3..=40).contains(&value.len())
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            {
+                Ok(())
+            } else {
+                Err("Use 3–40 letters, digits, hyphens or underscores.")
+            }
+        })
+        .interact()?;
+    let password =
+        cliclack::password("Choose a separate local operator password (16–256 characters)")
+            .validate(|value: &String| {
+                if (16..=256).contains(&value.encode_utf16().count()) {
+                    Ok(())
+                } else {
+                    Err("Use 16–256 characters.")
+                }
+            })
+            .interact()?;
+    let confirmed_password = cliclack::password("Confirm the local operator password")
+        .validate(move |value: &String| {
+            if value == &password {
+                Ok(())
+            } else {
+                Err("The passwords do not match.")
+            }
+        })
+        .interact()?;
+    prerequisites::run(
+        Command::new(node)
+            .current_dir(directory)
+            .args(["server.mjs", "admin", "init", &username])
+            .arg(operator_file)
+            .env("VAULTS_ADMIN_SETUP_PASSWORD", confirmed_password),
+    )?;
+    for action in ["stop", "start"] {
+        let mut server = Command::new(node);
+        server
+            .current_dir(directory)
+            .args(["server.mjs", "install", action]);
+        add_options(&mut server, args, engine, false);
+        existing_identity_options(&mut server, directory)?;
+        prerequisites::run(&mut server)?;
+    }
+    Ok(())
+}
+
+fn owner_setup_code(output: &str) -> Option<&str> {
+    let code = output.lines().find_map(|line| {
+        line.strip_prefix("One-time owner setup code (expires in 60 minutes): ")
+    })?;
+    let secret = code.strip_prefix("127V-B1-")?;
+    (secret.len() == 43
+        && secret
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')))
+    .then_some(code)
+}
+
 fn render_command(command: &Command) -> String {
     let quote = |value: &std::ffi::OsStr| {
         let value = value.to_string_lossy();
@@ -1052,6 +1233,20 @@ fn replace_staged(staged: &Path, previous: &Path, root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn owner_setup_output_accepts_only_the_expected_capability() {
+        let code = format!("127V-B1-{}", "a".repeat(43));
+        let output = format!("One-time owner setup code (expires in 60 minutes): {code}\r\n");
+        assert_eq!(owner_setup_code(&output), Some(code.as_str()));
+        assert_eq!(
+            owner_setup_code("Owner already exists; bootstrap is closed."),
+            None
+        );
+        assert_eq!(
+            owner_setup_code(&format!("{output}more").replace(&code, "127V-B1-invalid")),
+            None
+        );
+    }
     #[test]
     fn network_selection_keeps_same_mode_resumable_and_rejects_silent_migration() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

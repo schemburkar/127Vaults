@@ -133,6 +133,7 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
         const version = await pool.query('SELECT version FROM vaults.schema_version WHERE singleton=true');
         const counts = await pool.query(`SELECT count(*)::int AS users,
           count(*) FILTER (WHERE a.enrollment_state='active' AND a.suspended_at IS NULL)::int AS active_users,
+          count(*) FILTER (WHERE a.enrollment_state='active' AND a.suspended_at IS NULL AND a.server_role='owner')::int AS active_owners,
           count(*) FILTER (WHERE f.admin_locked OR f.delayed_until > now())::int AS sign_in_blocked
           FROM vaults.accounts a LEFT JOIN vaults.authentication_failures f ON f.tenant_id=a.tenant_id AND f.account_id=a.id`);
         const devices = await pool.query(`SELECT count(*)::int AS devices,

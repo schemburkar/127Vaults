@@ -181,11 +181,17 @@ async function browserManagement(pool, management) {
     await page.getByLabel('Confirm your operator password').fill(password); await page.locator('#management-submit').click();
     await page.getByLabel('Invitation code').waitFor();
     assert.match(await page.getByLabel('Invitation code').inputValue(), /^127V-I1-/);
+    const setupLink = new URL(await page.getByLabel('Private setup link').inputValue());
+    assert.equal(setupLink.origin, origin);
+    assert.equal(setupLink.pathname, '/');
+    assert.equal(setupLink.search, '');
+    assert.equal(setupLink.hash, '#memberInvite=' + await page.getByLabel('Invitation code').inputValue());
     assert.equal(await page.getByLabel('Confirm your operator password').inputValue(), '');
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.locator('#management-close').click();
     assert.equal(await page.getByLabel('Invitation code').count(), 0);
+    assert.equal(await page.getByLabel('Private setup link').count(), 0);
     await page.getByRole('button', { name: 'Audit', exact: true }).click();
     await page.getByRole('cell', { name: 'invitation.create', exact: true }).first().waitFor();
     await page.getByLabel('Outcome', { exact: true }).selectOption('denied');

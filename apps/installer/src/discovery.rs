@@ -10,7 +10,7 @@ use std::{
 };
 use vaults_installer::Result;
 
-trait BoundedOutput {
+pub(crate) trait BoundedOutput {
     fn bounded_output(&mut self) -> io::Result<Output>;
 }
 impl BoundedOutput for Command {

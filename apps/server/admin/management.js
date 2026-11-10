@@ -44,9 +44,17 @@ export function showManagementAction(root, session, descriptor, targetId, comple
       if (!dialog.isConnected) return;
       if (result.token) {
         const output = dialog.querySelector('#management-result'); output.hidden = false;
-        const note = document.createElement('p'); note.textContent = 'Invitation created. Share this code through your chosen trusted channel. It disappears when this dialog closes.';
+        const note = document.createElement('p'); note.textContent = 'Share the private setup link with the invited people. They open it on a device that can reach and trust this server, then verify their invited email address. The link disappears when this dialog closes.';
         const code = document.createElement('textarea'); code.readOnly = true; code.value = result.token; code.setAttribute('aria-label', 'Invitation code');
-        output.replaceChildren(note, code);
+        const link = new URL('/', location.origin);
+        link.hash = `memberInvite=${result.token}`;
+        const address = document.createElement('textarea'); address.readOnly = true; address.value = link.href; address.setAttribute('aria-label', 'Private setup link');
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'button'; copy.textContent = 'Copy setup link';
+        copy.onclick = async () => {
+          try { await navigator.clipboard.writeText(address.value); status.textContent = 'Private setup link copied.'; }
+          catch { address.focus(); address.select(); status.textContent = 'Copy the selected setup link.'; }
+        };
+        output.replaceChildren(note, address, copy, code);
       }
       status.textContent = result.acceptanceRequired ? 'Ownership request created. The recipient must accept in their vault web app after a fresh unlock.' : 'Action completed. Refresh the directory to see the current state.';
       dialog.querySelector('#management-submit').hidden = true;

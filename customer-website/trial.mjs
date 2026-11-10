@@ -31,16 +31,31 @@ function showInstaller(record) {
   if (!Array.isArray(record.artifacts)) return;
   const available = record.artifacts?.some(asset => asset.product === 'installer' && !asset.supporting);
   $('trial-installer').hidden = !available;
+  $('trial-manual').open = !available;
   if (!available) return;
-  const invited = token;
-  const argument = invited ? ` --invitation '${location.origin}/trial.html#${match[1]}.${token}'` : '';
-  $('trial-installer-command').textContent = `# Windows (PowerShell)\n.\\127vaults-install.exe${argument}\n\n# Linux\n./127vaults-install${argument}`;
-  $('trial-installer-command-help').textContent = invited
-    ? 'Extract your download and run the command for your operating system from its folder. Keep your invitation command private.'
-    : 'Extract your download and run the command for your operating system from its folder. The installer will ask for your private invitation URL.';
+  $('trial-installer-command').textContent = '# Windows (PowerShell)\n.\\127vaults-install.exe\n\n# Linux\n./127vaults-install';
+  $('copy-installer-invitation').hidden = !token;
+  if (!token) $('trial-installer-command-help').textContent = 'Run the installer from the extracted folder. When prompted, paste the full link from your invitation email. You can also get a fresh installer invitation from the customer portal.';
 }
+$('copy-installer-invitation').addEventListener('click', async () => {
+  if (!match) return;
+  const notice = $('installer-invitation-status');
+  try {
+    await navigator.clipboard.writeText(`${location.origin}/trial.html#${match[1]}.${token}`);
+    notice.textContent = 'Invitation copied. Paste it into the installer when prompted.';
+  } catch {
+    notice.textContent = 'Clipboard access is unavailable. Copy the full invitation link from your email and paste it into the installer.';
+  }
+});
 function showLicense(record) {
   showInstaller(record);
+  if (record.billingAvailable) {
+    document.querySelector('.trial-main > .kicker').textContent = 'YOUR SELF-HOSTED SERVER';
+    document.querySelector('.trial-main > h1').textContent = 'Set up 127 Vaults';
+    document.querySelector('.trial-main > h1 + p').textContent = 'Install your private server and the apps you’ll use to connect to it.';
+    $('trial-activate').querySelector('button').textContent = 'Activate my server license';
+    $('bind-confirm').nextElementSibling.textContent = 'This is my server. Activation binds the license to this installation.';
+  }
   if(record.kind === 'development') {
     document.querySelector('.trial-main > .kicker').textContent='DEVELOPMENT ACCESS';
     document.querySelector('.trial-main > h1').textContent='Your development installation.';
@@ -65,7 +80,7 @@ function showLicense(record) {
     ? `Bound to ${record.installationId}. Writes expire ${new Date(record.expiresAt).toLocaleString()}.`
     : record.kind === 'development'
       ? `Development access for up to ${record.maxUsers} vault users, licensed until ${new Date(record.entitlementExpiresAt).toLocaleString()}. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`
-      : `Up to ${record.maxUsers} vault users. The 10 days start when you activate. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
+      : `Up to ${record.maxUsers} vault users. ${record.billingAvailable ? '' : 'The 10 days start when you activate. '}Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
 }
 async function download(action, filename) {
   const response = await api(action); const url = URL.createObjectURL(await response.blob());

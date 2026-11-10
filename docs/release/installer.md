@@ -32,6 +32,12 @@ Desktop uses the native Windows installer or installs an executable Linux AppIma
 
 For unattended extension setup, provide `--extension-ids ID` (comma-separated for Chrome and Edge) and optionally `--extension-host PATH`. `--yes` does not waive connector setup. Missing IDs, failed registration, or a declined connection confirmation leave the extension incomplete and its files in place for a later retry. Setup also runs for an already-current extension, including receipts from older installers that marked extraction alone complete. Unattended registration does not establish that a running browser is connected; verify its popup separately.
 
+## First server sign-in
+
+Run the installer interactively and paste your private invitation URL when prompted. Select **Server** on the computer that will host your vault. The installer displays the server address, public CA certificate path and SHA-256 of the CA file. Verify and trust the CA on each device before opening the server.
+
+On a loopback installation, choose to set up local administration, then create a local operator username and password. Use these credentials at the installer’s `/admin/` address. Choose first-owner setup to generate a private link that expires after 60 minutes. Open it after trusting the CA, then create your separate vault credentials. If the browser asks for a code, use the one shown alongside the link. To request a new code, rerun the installer interactively and select **Server**.
+
 ## Existing servers and upgrades
 
 Installer 0.1.8 discovers running 127Vaults installations publishing port 12780

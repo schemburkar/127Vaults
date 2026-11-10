@@ -18,6 +18,7 @@ export function validResponse(path, method, value) {
   if (kind === 'overview') {
     return text(value.status) && timestamp(value.checkedAt) && integer(value.schemaVersion) && integer(value.expectedSchemaVersion)
       && object(value.users) && integer(value.users.users) && integer(value.users.active_users) && integer(value.activeDevices)
+      && (value.users.active_owners === undefined || integer(value.users.active_owners))
       && (value.users.sign_in_blocked === undefined || integer(value.users.sign_in_blocked))
       && (value.configuration === undefined || object(value.configuration) && integer(value.configuration.operatorCount)
         && typeof value.configuration.smtpConfigured === 'boolean' && typeof value.configuration.subscriptionRefreshConfigured === 'boolean'
@@ -77,7 +78,7 @@ export function errorMessage(error) {
   return ({
     invalid_credentials: 'Check your operator name and password.',
     rate_limited: 'Too many sign-in attempts. Wait a minute, then try again.',
-    admin_not_configured: 'Operator access is not configured. Create the local operator file and restart the server using the administration runbook.',
+    admin_not_configured: 'Operator access is not configured. On the server computer, run the installer, select Server and choose to set up local administration.',
     local_only: 'Server administration is available only on a loopback deployment. Open the console on the local server.',
     forbidden: 'The server refused this request. Reload the page to obtain a fresh session and try again.',
     admin_data_unavailable: 'The server could not read its administration data. Check the API and database, then try again.',

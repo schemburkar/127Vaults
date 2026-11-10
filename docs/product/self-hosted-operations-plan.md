@@ -4,6 +4,14 @@ A household or small team should be able to install the server, enroll its first
 
 This is a local product plan. The Manage portal remains the place to obtain downloads and manage subscriptions. Central Admin remains the platform operator’s portal.
 
+## Implementation checkpoint
+
+- The invitation page leads with the standalone downloads and a copy button for the private URL. The installer accepts the URL in a hidden prompt. Manual package and license steps are available under a separate disclosure.
+- Interactive server installation can create the first local operator for a loopback deployment, show the server address and public CA file, and generate the first-owner setup link. The installer uses the existing operator initialization and bootstrap commands. Older vault packages can use the displayed one-time code.
+- Local Admin shows the household setup sequence and produces a private setup link for each invitation. Recipients need a trusted connection to the server and enrollment email. The current loopback address works only on the host. Guided SMTP setup and a host-local Admin entry for private-network deployments are still open.
+- The clean-host download-to-owner test, lost-operator recovery, storage and backup controls, printable recovery record, and server-down recovery remain rollout gates.
+- An invitation bound to a lost installation identity still requires approval for a replacement license. Plan a verified customer recovery flow in Manage with explicit retirement of the prior installation, audit and abuse controls, and a clear distinction between license replacement and recovery of encrypted data. Trial expiry and replacement eligibility remain governed by their existing policy.
+
 ## Inventory and proposed workflows
 
 | Today’s manual work | Proposed workflow | Phase |

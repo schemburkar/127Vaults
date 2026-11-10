@@ -464,7 +464,7 @@ async function registrationSignature(candidate, record, key) {
   );
 }
 let cloudOwnerSetup = false;
-let cloudMemberSetup = false;
+let memberSetup = false;
 let cloudDeployment = false;
 let memberAttempt = null;
 
@@ -505,7 +505,7 @@ async function finishMemberSetup(event) {
     $("cloud-member-code").value = "";
     $("cloud-member-verification").hidden = true;
     memberAttempt = null;
-    cloudMemberSetup = false;
+    memberSetup = false;
     wipeInputs();
     showLogin();
     showLoginPassword();
@@ -562,7 +562,7 @@ async function setup() {
       parts = bindingParts(binding);
     if (parts.origin !== location.origin || parts.account !== accountId || parts.device !== deviceId ||
         (cloudTenantId && parts.installation !== cloudTenantId)) throw Error("SERVER_IDENTITY_CHANGED");
-    const discovery = cloudMemberSetup ? await cloudDiscovery() : null;
+    const discovery = cloudDeployment && memberSetup ? await cloudDiscovery() : null;
     if (discovery && (discovery.tenantId !== parts.installation || discovery.serverPublicKey !== b64(parts.serverPublicKey))) throw Error("SERVER_IDENTITY_CHANGED");
     let upload = ExperimentalOpaqueBridge.client_registration_finish(
         start.state(),
@@ -610,7 +610,7 @@ async function setup() {
       secretEnvelope,
       secretExpiresAt: installedApp ? undefined : Date.now() + 30 * 24 * 60 * 60 * 1000,
     };
-    if (cloudMemberSetup) {
+    if (memberSetup) {
       stage = "starting email verification";
       const attempt = await call("/api/v1/onboarding/invitation", { method: "POST", body: { token, email, candidate } });
       memberAttempt = { ...attempt, browserIdentity };
@@ -2985,7 +2985,7 @@ try {
     window.addEventListener('storage', event => {
       if ((event.key === cloudActiveKey || event.key === null) && localStorage.getItem(cloudActiveKey) !== cloudTenantId) {
         memberAttempt = null;
-        cloudMemberSetup = false;
+        memberSetup = false;
         pendingBrowserEnrollment = null;
         void lock(false);
         msg('Another Cloud tenant is active. Reopen this tenant to switch back.');
@@ -3005,34 +3005,30 @@ try {
   ownerSetupRequired = setupState.ownerRequired === true;
   cloudDeployment = setupState.deployment === "cloud" || Boolean(identity?.cloudOrigin);
   cloudOwnerSetup = setupState.deployment === "cloud" && ownerSetupRequired;
-  if (setupState.deployment === "cloud") {
-    const ownerSetupFragment = location.hash.match(/^#ownerSetup=(127V-B1-[A-Za-z0-9_-]{43})$/);
-    const invitationFragment = location.hash.match(/^#memberInvite=(127V-I1-[A-Za-z0-9_-]{43})$/);
-    if (ownerSetupFragment || invitationFragment) {
-      history.replaceState(history.state, "", location.pathname + location.search);
-      if (cloudOwnerSetup && ownerSetupFragment) $("bootstrap").value = ownerSetupFragment[1];
-      if (invitationFragment && !identity && !ownerSetupRequired && !setupState.activationPending && $("cloud-member-verification")) {
-        cloudMemberSetup = true;
-        $("bootstrap").value = invitationFragment[1];
-        $("registration-label").textContent = "FAMILY INVITATION";
-      }
-    }
+  const ownerSetupFragment = location.hash.match(/^#ownerSetup=(127V-B1-[A-Za-z0-9_-]{43})$/);
+  const invitationFragment = location.hash.match(/^#memberInvite=(127V-I1-[A-Za-z0-9_-]{43})$/);
+  if (ownerSetupFragment || invitationFragment) history.replaceState(history.state, "", location.pathname + location.search);
+  if (ownerSetupRequired && ownerSetupFragment) $("bootstrap").value = ownerSetupFragment[1];
+  if (invitationFragment && !identity && !ownerSetupRequired && !setupState.activationPending && $("cloud-member-verification")) {
+    memberSetup = true;
+    $("bootstrap").value = invitationFragment[1];
+    $("registration-label").textContent = cloudDeployment ? "FAMILY INVITATION" : "SERVER INVITATION";
   }
   $("show-registration").hidden = !ownerSetupRequired;
   if ($('register-browser-device')) $('register-browser-device').hidden = ownerSetupRequired || !!identity;
-  $("registration-exit").hidden = ownerSetupRequired || cloudMemberSetup;
-  if ($("setup-guidance")) $("setup-guidance").textContent = cloudMemberSetup
-    ? "Create your account using the email address your family’s vault owner invited."
+  $("registration-exit").hidden = ownerSetupRequired || memberSetup;
+  if ($("setup-guidance")) $("setup-guidance").textContent = memberSetup
+    ? "Create your account using the email address that received the invitation."
     : setupState.deployment === "cloud"
     ? "Enter the one-time setup code you received for this vault."
     : setupState.licenseMode === "active"
-    ? "Your server license is active. Run install bootstrap on the server and enter its one-time code below."
-    : "Install a signed license on the server, then run install bootstrap and enter its one-time code below.";
+    ? "Your server license is active. Use the one-time code from your server installer to create the first owner."
+    : "Finish license activation in the server installer, then use its one-time setup code here.";
   startupReady = true;
   setBusy(false);
-  if (ownerSetupRequired || cloudMemberSetup) showRegistration();
+  if (ownerSetupRequired || memberSetup) showRegistration();
   else showLogin();
-  msg(cloudMemberSetup ? "Set up your family vault account." : ownerSetupRequired ? "Create the first owner for this server." : setupState.activationPending
+  msg(memberSetup ? "Set up your invited vault account." : invitationFragment && identity ? "Open the invitation in a separate browser profile. This profile already has a vault account." : ownerSetupRequired ? "Create the first owner for this server." : setupState.activationPending
     ? "Owner setup is complete. Reload this page after your vault is activated."
     : identity ? "Ready to sign in." : "This browser needs device enrollment from an existing user.");
   $("state").textContent = ownerSetupRequired ? "First owner setup" : "Locked";

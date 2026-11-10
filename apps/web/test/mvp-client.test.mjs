@@ -4,6 +4,31 @@ import test from "node:test";
 import vm from "node:vm";
 import { PrivateVaultClient } from "../src/private-vault-client.mjs";
 
+test('self-hosted setup links open the appropriate enrollment and clear the capability from history', async () => {
+  const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
+  const code = source.slice(source.indexOf('  const ownerSetupFragment ='), source.indexOf('  $("show-registration").hidden = !ownerSetupRequired;'));
+  const ownerCode = '127V-B1-' + 'a'.repeat(43), memberCode = '127V-I1-' + 'b'.repeat(43);
+  for (const [hash, ownerSetupRequired, identity, expected, memberSetup] of [
+    ['#ownerSetup=' + ownerCode, true, null, ownerCode, false],
+    ['#ownerSetup=' + ownerCode, false, null, '', false],
+    ['#memberInvite=' + memberCode, false, null, memberCode, true],
+    ['#memberInvite=' + memberCode, true, null, '', false],
+    ['#memberInvite=' + memberCode, false, { username: 'existing' }, '', false],
+  ]) {
+    const elements = { bootstrap: { value: '' }, 'registration-label': {}, 'cloud-member-verification': {} };
+    const urls = [];
+    const context = vm.createContext({
+      location: { hash, pathname: '/', search: '' }, history: { replaceState: (_state, _title, path) => urls.push(path) },
+      ownerSetupRequired, identity, setupState: {}, cloudDeployment: false, memberSetup: false, $: id => elements[id],
+    });
+    vm.runInContext(code, context);
+    assert.deepEqual(urls, ['/']);
+    assert.equal(elements.bootstrap.value, expected);
+    assert.equal(context.memberSetup, memberSetup);
+    if (memberSetup) assert.equal(elements['registration-label'].textContent, 'SERVER INVITATION');
+  }
+});
+
 async function licenseHarness() {
   const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
   const code = source.slice(source.indexOf('let stopLicenseStatus ='), source.indexOf('async function login() {'));
