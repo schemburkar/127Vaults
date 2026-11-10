@@ -4,6 +4,8 @@ Progress is **49 of 64**. Items 1â€“52 retain their original numbers. Items 53â€
 
 **Hosting hold.** Continue local implementation and verification. Defer hosted Cloud spending and deployment until at least one paying self-hosted customer. The hosting and runtime choice remains open.
 
+The local browser rehearsals for Node and the native Worker verify that suspending and resuming a family in Admin updates its status in Manage on reload. The signed-in control owner sees only their own family.
+
 Target one deployment in one location with private PostgreSQL. Use `https://cloud.127vaults.com/` for the public invitation-only landing page and `/t/<slug>/` for each family. Use `admin.127vaults.com` for platform operations, `manage.127vaults.com` for customer accounts, and local `/admin` for self-hosted administration. The deployment initializes the database inside the hosting environment. Public signup and Cloud checkout stay closed.
 
 ## Admin surface handoff

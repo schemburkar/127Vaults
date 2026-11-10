@@ -813,13 +813,28 @@ try {
       await ownFamily.filter({ hasText: slugs[0] }).waitFor();
       assert.equal(await ownFamily.count(), 1);
       assert.match(await ownFamily.innerText(), worker ? /3 seats allocated/ : /2 seats allocated/);
+      const managedTenant = portal.locator('#cloud-directory section').filter({
+        has: portal.getByRole('heading', { name: slugs[0], exact: true })
+      });
+      await managedTenant.getByRole('button', { name: 'Suspend tenant' }).click();
+      await managedTenant.getByRole('button', { name: 'Resume tenant' }).waitFor();
+      await customer.reload();
+      await ownFamily.getByText(/Suspended ·/).waitFor();
+      assert.equal(await ownFamily.count(), 1);
+      await managedTenant.getByRole('button', { name: 'Resume tenant' }).click();
+      await managedTenant.getByRole('button', { name: 'Suspend tenant' }).waitFor();
+      await customer.reload();
+      await ownFamily.getByText(/Active ·/).waitFor();
       await customer.getByRole('link', { name: 'Open family settings' }).click();
       await customer.locator('#login-flow').waitFor();
       assert.equal(customer.url(), `${familyUrl}?settings=family`);
       assert.equal(await customer.locator('#vault').isVisible(), false);
       assert.equal((await customer.context().cookies(familyUrl)).some(cookie => cookie.name === '__Host-127v-session'), false);
       const operatorActions = await admin.query('SELECT action,count(*)::int AS count FROM cloud.operator_audit WHERE actor=$1 GROUP BY action ORDER BY action', [localOperator]);
-      assert.deepEqual(operatorActions.rows, ['activate', 'issue-setup', 'provision'].map(action => ({ action, count: 2 })));
+      assert.deepEqual(operatorActions.rows, [
+        ...['activate', 'issue-setup', 'provision'].map(action => ({ action, count: 2 })),
+        { action: 'resume', count: 1 }, { action: 'suspend', count: 1 }
+      ]);
       console.log('Local Admin provisioned two isolated families. Both enrolled and synced with real OPAQUE. Manage listed only the signed-in control owner’s family through the HTTPS directory.');
     } finally {
       await browser?.close();
