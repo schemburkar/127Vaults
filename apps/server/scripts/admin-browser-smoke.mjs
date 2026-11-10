@@ -22,6 +22,8 @@ const accounts = Array.from({ length: 137 }, (_, index) => ({
   display_name: index === 0 ? '<img src=x onerror=alert(1)> Alice & Co' : `Person ${index}`,
   email: `user${index}@example.invalid`, server_role: index === 0 ? 'owner' : 'user', enrollment_state: index % 5 ? 'active' : 'pending',
   email_verified: index % 3 !== 0, created_at: new Date(Date.UTC(2026, 9, 10) - index * 60_000).toISOString(), device_count: 1,
+  sign_in_status: index === 1 ? 'locked' : index === 2 ? 'delayed' : 'clear',
+  sign_in_retry_at: index === 2 ? new Date(Date.now() + 10 * 60_000).toISOString() : null,
 }));
 const devices = accounts.map((account, index) => ({ id: uuid('d1', index), account_id: account.id, username: account.username, display_name: account.display_name,
   lifecycle_status: ['active', 'revoked', 'replaced', 'pending'][index % 4], protection_class: ['unknown', 'software', 'platform', 'hardware'][index % 4],
@@ -36,7 +38,7 @@ let now = Date.now(), available = true, countLimit = accounts.length;
 const pool = { async query(sql, values = []) {
   if (!available) throw Error('Synthetic database outage');
   if (sql.includes('schema_version')) return { rows: [{ version: 6 }] };
-  if (sql.includes('AS active_users')) return { rows: [{ users: accounts.length, active_users: accounts.filter(a => a.enrollment_state === 'active').length }] };
+  if (sql.includes('AS active_users')) return { rows: [{ users: accounts.length, active_users: accounts.filter(a => a.enrollment_state === 'active').length, sign_in_blocked: 2 }] };
   if (sql.includes('AS devices')) {
     const active = devices.filter(d => d.lifecycle_status === 'active');
     return { rows: [{ devices: active.length, rotation_required: active.filter(d => d.credential_state === 'rotation_required').length, stale: active.filter(d => d.credential_state === 'stale').length, unknown_protection: active.filter(d => d.protection_class === 'unknown').length }] };
@@ -53,6 +55,7 @@ const pool = { async query(sql, values = []) {
   if (sql.includes('a.enrollment_state=$') || sql.includes("ELSE a.enrollment_state END)=$") || sql.includes('d.lifecycle_status=$')) { const status = values[index++]; rows = rows.filter(row => (isUsers ? row.enrollment_state : row.lifecycle_status) === status); }
   if (isInvitations && sql.includes('END=$')) { const status = values[index++]; rows = rows.filter(row => row.status === status); }
   if (sql.includes('a.server_role=$')) { const role = values[index++]; rows = rows.filter(row => row.server_role === role); }
+  if (isUsers && sql.includes("IN ('locked','delayed')")) rows = rows.filter(row => row.sign_in_status !== 'clear');
   if (sql.includes('d.protection_class=$')) { const protection = values[index++]; rows = rows.filter(row => row.protection_class === protection); }
   if (sql.includes('d.credential_state=$')) { const credential = values[index++]; rows = rows.filter(row => row.credential_state === credential); }
   if (sql.includes('d.account_id::text=$')) { const account = values[index++]; rows = rows.filter(row => row.account_id === account); }
@@ -62,7 +65,9 @@ const pool = { async query(sql, values = []) {
   return { rows: rows.slice(values[index + 1], values[index + 1] + values[index]) };
 } };
 pool.connect = async () => ({ query: (sql, values) => sql.startsWith('SELECT') ? pool.query(sql, values) : Promise.resolve({}), release() {} });
-const handler = createAdminHandler({ pool, operators: [operator, longOperator], origin, schemaVersion: 6, now: () => now });
+const handler = createAdminHandler({ pool, operators: [operator, longOperator], origin, schemaVersion: 6, now: () => now,
+  smtpConfigured: true, tlsExpiresAt: '2027-10-10T00:00:00.000Z', backupStatus: () => ({ state: 'recorded', lastBackupAt: '2026-10-10T00:00:00.000Z',
+    lastRestoreCheckAt: '2026-10-11T00:00:00.000Z' }) });
 const server = createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
 server.listen(0, '127.0.0.1');
 await once(server, 'listening');
@@ -257,7 +262,17 @@ try {
   releaseOverview(); holdOverview = null;
   await waitText('h2', 'Current backup status');
   await page.getByRole('button', { name: 'Refresh', exact: true }).waitFor();
-  assert.match(await page.locator('main').textContent(), /Backup freshness is unknown/);
+  assert.match(await page.locator('main').textContent(), /Last verified database backup/);
+  assert.match(await page.locator('main').textContent(), /Last database restore rehearsal/);
+  await section('Settings');
+  await waitText('h2', 'Server configuration');
+  assert.match(await page.locator('main').textContent(), /Enrollment email \(SMTP\)Configured/);
+  assert.match(await page.locator('main').textContent(), /HTTPS certificate expires/);
+  await section('Overview');
+  await page.getByRole('button', { name: 'Review sign-in restrictions' }).click();
+  await waitText('#directory-summary', 'Showing 1–2 of 2 matching users');
+  assert.equal(await page.getByLabel('Sign-in', { exact: true }).inputValue(), 'blocked');
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
   await section('Users');
   await waitText('#directory-summary', 'Showing 1–25 of 137 users');
   await screenshot('users-mobile');

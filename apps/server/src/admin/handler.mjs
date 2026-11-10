@@ -23,6 +23,7 @@ const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
 export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, management = null, loadEntitlement,
+  smtpConfigured = false, subscriptionRefreshConfigured = false, tlsExpiresAt = null,
   backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
   const attempts = new Map();
@@ -124,12 +125,16 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
             const installation = rows[0]?.id;
             if (installation) {
               const [status, usage] = await Promise.all([loadEntitlement(installation, checkedAt), readSeatUsage(pool, installation, checkedAt)]);
-              license = { mode: status.mode, plan: status.plan, maxActiveUsers: status.maxActiveUsers, ...usage };
+              license = { mode: status.mode, plan: status.plan, maxActiveUsers: status.maxActiveUsers,
+                expiresAt: status.expiresAt, readOnlyUntil: status.readOnlyUntil, ...usage };
             }
           } catch { /* The health overview remains available when license status cannot be read. */ }
         }
         const version = await pool.query('SELECT version FROM vaults.schema_version WHERE singleton=true');
-        const counts = await pool.query("SELECT count(*)::int AS users, count(*) FILTER (WHERE enrollment_state='active')::int AS active_users FROM vaults.accounts");
+        const counts = await pool.query(`SELECT count(*)::int AS users,
+          count(*) FILTER (WHERE a.enrollment_state='active' AND a.suspended_at IS NULL)::int AS active_users,
+          count(*) FILTER (WHERE f.admin_locked OR f.delayed_until > now())::int AS sign_in_blocked
+          FROM vaults.accounts a LEFT JOIN vaults.authentication_failures f ON f.tenant_id=a.tenant_id AND f.account_id=a.id`);
         const devices = await pool.query(`SELECT count(*)::int AS devices,
           count(*) FILTER (WHERE credential_state='rotation_required')::int AS rotation_required,
           count(*) FILTER (WHERE credential_state='stale')::int AS stale,
@@ -141,8 +146,9 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
           WHERE r.revoked_at IS NULL AND e.redeemed_at IS NULL`);
         const deviceCounts = devices.rows[0];
         json(res, 200, { status: 'online', checkedAt: checkedAt.toISOString(), schemaVersion: Number(version.rows[0]?.version), expectedSchemaVersion: schemaVersion, users: counts.rows[0], activeDevices: deviceCounts?.devices ?? 0, license,
+          configuration: { operatorCount: byName.size, smtpConfigured, subscriptionRefreshConfigured, tlsExpiresAt },
           devices: { rotationRequired: deviceCounts?.rotation_required ?? 0, stale: deviceCounts?.stale ?? 0, unknownProtection: deviceCounts?.unknown_protection ?? 0 },
-          invitations: { pending: invitations.rows[0]?.pending_invitations ?? 0, expired: invitations.rows[0]?.expired_invitations ?? 0 }, backup: backupStatus() }); return true;
+          invitations: { pending: invitations.rows[0]?.pending_invitations ?? 0, expired: invitations.rows[0]?.expired_invitations ?? 0 }, backup: await backupStatus(checkedAt) }); return true;
       }
       if (['/api/admin/users', '/api/admin/devices', '/api/admin/invitations'].includes(path)) {
         const kind = path.split('/').at(-1);

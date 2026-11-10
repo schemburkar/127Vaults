@@ -5,7 +5,7 @@ import { directoryInput, DirectoryInputError, readDirectory } from '../src/admin
 const withConnection = pool => ({ connect: async () => ({ query: (sql, values) => sql.startsWith('SELECT') ? pool.query(sql, values) : Promise.resolve({}), release() {} }) });
 
 test('directory queries have bounded pagination and allowlisted filters', () => {
-  assert.deepEqual(directoryInput(new URLSearchParams(), 'users'), { q: '', page: 1, pageSize: 25, sort: 'newest', status: '', role: '' });
+  assert.deepEqual(directoryInput(new URLSearchParams(), 'users'), { q: '', page: 1, pageSize: 25, sort: 'newest', status: '', role: '', signIn: '' });
   assert.equal(directoryInput(new URLSearchParams('q=%20Alice%20&page=3&pageSize=50&status=active&role=user'), 'users').q, 'Alice');
   assert.equal(directoryInput(new URLSearchParams('status=suspended'), 'users').status, 'suspended');
   for (const query of ['page=0', 'page=-1', 'page=1.5', 'page=1e2', 'page=1000001', 'pageSize=101', 'pageSize=', 'page=1&page=2', 'sort=email', 'status=deleted', 'role=root', `q=${'x'.repeat(121)}`, 'q=%00']) {

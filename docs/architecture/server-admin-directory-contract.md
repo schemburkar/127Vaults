@@ -14,8 +14,9 @@ The experimental `/api/admin/` routes use the separate local operator session de
 | `sort` | Users | `newest` (default), `oldest` or `username` (ascending). |
 | `sort` | Devices | `newest` (default), `oldest` or `account` (ascending username). |
 | `sort` | Invitations | `newest` (default), `oldest`, `expires` (soonest first) or `email` (ascending). |
-| `status` | Users | `pending` or `active`. |
-| `role` | Users | `owner`, `user` or `admin`; current vault-account schema supports owner/user only. |
+| `status` | Users | `pending`, `active` or `suspended`. |
+| `role` | Users | `owner`, `user` or `admin`. |
+| `signIn` | Users | `blocked`, `locked` or `delayed`. |
 | `status` | Devices | `pending`, `active`, `revoked` or `replaced`. |
 | `protection` | Devices | `unknown`, `software`, `platform` or `hardware`. |
 | `credential` | Devices | `current`, `rotation_required` or `stale`. |
@@ -38,4 +39,8 @@ Database failures return `503 admin_data_unavailable` without internal details. 
 
 Failed sign-in responses include `Retry-After` seconds for the current source cooldown, as do rate-limited attempts. The console honors bounded delays of up to 60 seconds. Observed expired operator sessions are removed from memory; subsequent successful sign-in also prunes expired sessions. The console validates response shape before rendering and requires `signedOut: true` before treating an HTTP-success sign-out response as confirmed.
 
-`GET /api/admin/overview` additionally reports `devices.rotationRequired`, `devices.stale` and `devices.unknownProtection` for active devices only, plus `invitations.pending` and `invitations.expired` for unredeemed, unrevoked recipients. These counts drive read-only review links with matching directory filters. They are not license-seat totals, device attestations, or SMTP-delivery reports.
+`GET /api/admin/overview` additionally reports `devices.rotationRequired`, `devices.stale` and `devices.unknownProtection` for active devices only, plus `invitations.pending` and `invitations.expired` for unredeemed, unrevoked recipients. These counts drive review links with matching directory filters.
+
+The Users directory accepts `signIn=blocked`, `locked`, or `delayed`. `blocked` includes both an operator-clearable lock and an unexpired temporary delay. Rows report `signInStatus` and `signInRetryAt`, and the overview reports `users.sign_in_blocked`. These describe authentication throttling independently of account suspension.
+
+The overview's `configuration` contains the operator count, the loaded HTTPS certificate's expiry and configured flags for SMTP and subscription refresh. The optional backup dates report matching local receipts for the installation. Configuration values, backup paths and credentials stay on the server host.

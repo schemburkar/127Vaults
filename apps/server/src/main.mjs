@@ -1,5 +1,5 @@
 import { createServer } from 'node:https';
-import { createPrivateKey, createPublicKey, timingSafeEqual } from 'node:crypto';
+import { createPrivateKey, createPublicKey, timingSafeEqual, X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createSecureContext } from 'node:tls';
 import pg from 'pg';
@@ -27,6 +27,7 @@ import { createDeviceEnrollmentHandler } from './device-enrollment-handler.mjs';
 import { readSecretFile, readinessToken, runtimeDatabaseConfig } from './runtime-config.mjs';
 import { createOpsTelemetry } from './ops-log.mjs';
 import { createAdminHandler } from './admin/handler.mjs';
+import { readAdminBackupStatus } from './admin/backup-status.mjs';
 import { loadOperators } from './admin/credentials.mjs';
 import { PgAdminManagement } from './admin/management.mjs';
 import { createOwnershipHandler } from './ownership-handler.mjs';
@@ -50,10 +51,11 @@ const transport = transportConfig(env);
 const { bind: host, port, authority } = transport;
 const certPath = env.VAULTS_TLS_CERT ?? '/run/secrets/tls/server.crt';
 const keyPath = env.VAULTS_TLS_KEY ?? '/run/secrets/tls/server.key';
-let tls;
+let tls, tlsExpiresAt;
 try {
   const cert = readFileSync(certPath);
   const key = readFileSync(keyPath);
+  tlsExpiresAt = new Date(new X509Certificate(cert).validTo).toISOString();
   const context = createSecureContext({ cert, key, minVersion: 'TLSv1.2', maxVersion: 'TLSv1.3' });
   tls = { cert, key, minVersion: 'TLSv1.2', maxVersion: 'TLSv1.3', SNICallback(name, callback) {
     if (!sniAllowed(name, transport)) callback(new Error('Unrecognized TLS name'));
@@ -111,7 +113,10 @@ const credentialRotationHandler=createCredentialRotationHandler({store:new PgCre
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
 const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
 const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
-const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion,management:adminManagement,loadEntitlement});
+const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion,management:adminManagement,loadEntitlement,
+  smtpConfigured:Boolean(env.SMTP_HOST),subscriptionRefreshConfigured:Boolean(env.VAULTS_SUBSCRIPTION_FILE),tlsExpiresAt,
+  backupStatus: env.VAULTS_ADMIN_BACKUP_STATUS_DIR ?
+    now => readAdminBackupStatus(env.VAULTS_ADMIN_BACKUP_STATUS_DIR, installation, now) : undefined});
 const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
   publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,

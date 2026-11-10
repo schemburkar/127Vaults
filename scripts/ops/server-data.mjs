@@ -4,13 +4,26 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdtemp, rm, chmod, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, chmod, writeFile, rename, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const operator = fileURLToPath(new URL(existsSync(new URL('../server.mjs', import.meta.url)) ? '../server.mjs' : '../../server.mjs', import.meta.url));
 export const supportedBackupSchema = value => /^(?:[1-9]|10)$/.test(String(value));
+async function recordAdminStatus(directory, filename, installationId, schema) {
+  if (!directory) return;
+  const path = join(directory, filename);
+  const temporary = `${path}.${randomBytes(8).toString('hex')}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify({ version: 1, installationId,
+      schemaVersion: Number(schema), completedAt: new Date().toISOString() }) + '\n', { flag: 'wx', mode: 0o644 });
+    await rename(temporary, path);
+  } catch {
+    await unlink(temporary).catch(() => {});
+    throw Error('The database operation succeeded, but its Admin status could not be recorded. Check the status directory permissions.');
+  }
+}
 export async function waitForPostgres(engine, name, run, wait = () => new Promise(done => setTimeout(done, 1000))) {
   for (let i = 0; i < 30; i++) {
     // The official image starts a temporary Unix-socket-only bootstrap server.
@@ -75,6 +88,7 @@ try {
     await run(engine, ['exec', source, 'pg_dump', '-U', 'vaults', '-d', 'vaults_experimental', '--format=custom', '--no-owner', '--no-acl'], { output: createWriteStream(dump, { flags: 'wx', mode: 0o600 }), timeout: 600000 });
     await run(process.execPath, [operator, 'envelope', 'seal', '--input', dump, '--output', options['--output'], '--key-file', options['--key-file'], '--database', 'vaults_experimental', '--server-id', installation, '--required-version', `schema-${schema}`]);
     await run(process.execPath, [operator, 'envelope', 'verify', '--input', options['--output'], '--key-file', options['--key-file']]);
+    await recordAdminStatus(options['--admin-status-dir'], 'database-backup.json', installation, schema);
     console.log('Encrypted backup created and authenticated. Rehearse restoration before relying on it.');
   } else {
     const metadata = JSON.parse(await run(process.execPath, [operator, 'envelope', 'open', '--input', options['--input'], '--output', dump, '--key-file', options['--key-file']]));
@@ -90,6 +104,7 @@ try {
     await run(engine, ['exec', name, 'pg_restore', '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', '-U', 'postgres', '-d', 'vaults_experimental', '/tmp/database.dump'], { timeout: 600000 });
     const state = await run(engine, ['exec', name, 'psql', '-U', 'postgres', '-d', 'vaults_experimental', '-At', '-c', "SELECT i.id::text || ' ' || s.version::text || ' ' || (SELECT count(*) FROM vaults.accounts)::text || ' ' || (SELECT count(*) FROM vaults.private_items)::text FROM vaults.installation i CROSS JOIN vaults.schema_version s"]);
     if (!/^[0-9a-f-]{36} (?:[1-9]|10) [0-9]+ [0-9]+$/.test(state) || !state.startsWith(`${metadata.serverId} ${metadata.requiredVersion.slice(7)} `)) throw Error('Restored database invariants failed.');
+    await recordAdminStatus(options['--admin-status-dir'], 'database-restore-rehearsal.json', metadata.serverId, metadata.requiredVersion.slice(7));
     console.log(`Isolated restore passed: installation, schema, accounts and encrypted item counts = ${state}`);
   }
 } finally {

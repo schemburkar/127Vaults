@@ -7,8 +7,8 @@ export function accountActions(kind, item, role) {
   if (item.role === 'owner' && role !== 'owner' || item.status === 'pending') return [];
   const actions = [item.status === 'suspended'
     ? { action: 'account.reactivate', label: 'Reactivate account', detail: 'Online sign-in becomes available if a license seat is available. Old sessions remain invalid.' }
-    : { action: 'account.suspend', label: 'Suspend account', detail: 'All online sessions end and future online sign-in is blocked. Encrypted vault data and devices are retained. At least one active owner must remain.' },
-  { action: 'account.unlock', label: 'Clear authentication lock', detail: 'Clear failed-login delays and the authentication lock. This does not reset credentials or decrypt a vault.' }];
+    : { action: 'account.suspend', label: 'Suspend account', detail: 'All online sessions end and future online sign-in is blocked. Encrypted vault data and devices are retained. At least one active owner must remain.' }];
+  if (item.signInStatus !== 'clear') actions.push({ action: 'account.unlock', label: 'Clear authentication lock', detail: 'Clear failed-login delays and the authentication lock. This does not reset credentials or decrypt a vault.' });
   if (role === 'owner') {
     actions.push({ action: 'role.set', role: item.role === 'user' ? 'admin' : 'user', label: item.role === 'user' ? 'Grant admin role' : 'Remove elevated role', detail: 'Change this account’s server role and end its online sessions. Vault access is unchanged. The console still uses its separate local operator file.' });
     if (item.role !== 'owner' && item.status === 'active') actions.push({ action: 'ownership.request', label: 'Request ownership acceptance', detail: 'The enrolled recipient must accept after a fresh unlock within 24 hours. You remain an owner until an explicit later role change.' });

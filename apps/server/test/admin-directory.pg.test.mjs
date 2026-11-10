@@ -43,6 +43,15 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     }
     assert.equal(new Set(seen).size, 137, 'Equal timestamps must not repeat or omit records between pages');
     assert.deepEqual(seen, [...seen].sort());
+    await pool.query(`INSERT INTO vaults.authentication_failures(tenant_id,account_id,admin_locked,delayed_until)
+      VALUES($1,$2,true,now()-interval '1 hour'),($1,$3,false,now()+interval '1 hour'),($1,$4,false,now()-interval '1 hour')`,
+    [tenant, seen[1], seen[2], seen[3]]);
+    const blocked = await readDirectory(pool, 'users', input('users', { signIn: 'blocked' }));
+    assert.deepEqual(blocked.users.map(account => account.signInStatus), ['locked', 'delayed']);
+    assert.equal(blocked.users[0].signInRetryAt, null);
+    assert.ok(blocked.users[1].signInRetryAt > new Date());
+    const expiredDelay = await readDirectory(pool, 'users', input('users', { q: seen[3] }));
+    assert.equal(expiredDelay.users[0].signInStatus, 'clear');
     await pool.query("UPDATE vaults.accounts SET created_at='2025-01-01 00:00:00+00' WHERE id=$1", [seen[136]]);
     const oldestAccount = await readDirectory(pool, 'users', input('users', { sort: 'oldest' }));
     assert.equal(oldestAccount.users[0].id, seen[136]);

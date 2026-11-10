@@ -18,9 +18,14 @@ export function validResponse(path, method, value) {
   if (kind === 'overview') {
     return text(value.status) && timestamp(value.checkedAt) && integer(value.schemaVersion) && integer(value.expectedSchemaVersion)
       && object(value.users) && integer(value.users.users) && integer(value.users.active_users) && integer(value.activeDevices)
+      && (value.users.sign_in_blocked === undefined || integer(value.users.sign_in_blocked))
+      && (value.configuration === undefined || object(value.configuration) && integer(value.configuration.operatorCount)
+        && typeof value.configuration.smtpConfigured === 'boolean' && typeof value.configuration.subscriptionRefreshConfigured === 'boolean'
+        && optionalTimestamp(value.configuration.tlsExpiresAt))
       && (value.devices === undefined || object(value.devices) && ['rotationRequired', 'stale', 'unknownProtection'].every(key => integer(value.devices[key])))
       && (value.invitations === undefined || object(value.invitations) && integer(value.invitations.pending) && integer(value.invitations.expired))
-      && (!value.backup || object(value.backup) && text(value.backup.state) && (value.backup.detail === undefined || text(value.backup.detail)));
+      && (!value.backup || object(value.backup) && text(value.backup.state) && (value.backup.detail === undefined || text(value.backup.detail))
+        && optionalTimestamp(value.backup.lastBackupAt) && optionalTimestamp(value.backup.lastRestoreCheckAt));
   }
   if (kind === 'actions') return value.suspended === true || value.reactivated === true || value.authenticationUnlocked === true || value.revoked === true
     || value.cancelled === true || ['user', 'admin'].includes(value.role) || value.acceptanceRequired === true && text(value.grantId) && timestamp(value.expiresAt)
@@ -34,7 +39,9 @@ export function validResponse(path, method, value) {
     || typeof value.hasPrevious !== 'boolean' || typeof value.hasNext !== 'boolean' || value[kind].length > value.pageSize) return false;
   return value[kind].every(item => {
     if (!object(item) || !text(item.id) || !item.id || !text(item.status) || !timestamp(item.createdAt)) return false;
-    if (kind === 'users') return text(item.username) && text(item.displayName) && text(item.email) && text(item.role) && integer(item.deviceCount) && typeof item.emailVerified === 'boolean';
+    if (kind === 'users') return text(item.username) && text(item.displayName) && text(item.email) && text(item.role)
+      && integer(item.deviceCount) && typeof item.emailVerified === 'boolean' && optionalTimestamp(item.signInRetryAt)
+      && (item.signInStatus === undefined || ['clear', 'locked', 'delayed'].includes(item.signInStatus));
     if (kind === 'devices') return text(item.accountId) && text(item.username) && text(item.displayName) && text(item.protection) && text(item.credentialState) && optionalTimestamp(item.revokedAt);
     return text(item.email) && text(item.createdBy) && timestamp(item.expiresAt) && optionalTimestamp(item.revokedAt) && optionalTimestamp(item.redeemedAt);
   });

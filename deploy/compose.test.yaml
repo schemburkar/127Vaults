@@ -49,6 +49,7 @@ services:
       VAULTS_BOOTSTRAP_OUTPUT: /run/runtime/bootstrap.txt
       VAULTS_READINESS_TOKEN_FILE: /run/secrets/runtime/readiness-token
       VAULTS_ADMIN_OPERATORS_FILE: /run/secrets/runtime/admin-operators.json
+      VAULTS_ADMIN_BACKUP_STATUS_DIR: /run/runtime
       VAULTS_DATABASE_PASSWORD_FILE: /run/secrets/runtime/postgres-password
       VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS: ${VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS:-0}
       VAULTS_LICENSE_FILE: ${VAULTS_LICENSE_FILE:-}

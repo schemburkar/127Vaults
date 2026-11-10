@@ -5,6 +5,7 @@ import { seatSummary } from './seat-summary.mjs';
 
 const root = document.querySelector('#app');
 const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
+const overviewSections = new Set(['overview', 'backups', 'settings']);
 const resource = () => ({ data: null, loading: false, error: '', checkedAt: null, request: 0, controller: null });
 const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), audit: resource(), ownership: resource(), error: '', loginName: '', retryUntil: 0, signingOut: false, generation: 0 };
 let sessionTimer;
@@ -111,7 +112,9 @@ function overview() {
 }
 function licenseSummary(license) {
   const details = license ? `<p>${escapeHtml(license.plan ?? 'License')} · ${escapeHtml(license.mode)}</p>
-    <p>${escapeHtml(seatSummary(license))}</p>` : '<p>License details are unavailable.</p>';
+    <p>${escapeHtml(seatSummary(license))}</p>
+    ${license.expiresAt ? `<p>License expires ${escapeHtml(date(license.expiresAt))}.</p>` : ''}
+    ${license.mode === 'read-only' && license.readOnlyUntil ? `<p>Read-only access ends ${escapeHtml(date(license.readOnlyUntil))}.</p>` : ''}` : '<p>License details are unavailable.</p>';
   return `<section class="panel"><h2>Installed license and seats</h2>${details}
     <a href="https://manage.127vaults.com/" rel="noreferrer">Manage subscription</a></section>`;
 }
@@ -122,11 +125,29 @@ function roles() {
 function backups() {
   if (!state.overview.data) return overview();
   const backup = state.overview.data.backup ?? { state: 'unknown', detail: 'No status available.' };
-  return `<p class="muted">Backup visibility for this server. Checked ${escapeHtml(date(state.overview.data.checkedAt))}.</p><section class="panel"><h2>Current backup status</h2><p>${badge(backup.state)}</p><p class="muted">${escapeHtml(backup.detail)}</p>${backup.state === 'unknown' ? '<div class="notice">Backup freshness is unknown. Check the operator backup logs and your last restore rehearsal before relying on this server.</div>' : ''}<p class="footnote">Backup creation and restore remain in the operator runbook. This page does not initiate either action.</p></section>`;
+  return `<p class="muted">Backup visibility for this server. Checked ${escapeHtml(date(state.overview.data.checkedAt))}.</p><section class="panel"><h2>Current backup status</h2><p>${badge(backup.state)}</p><p class="muted">${escapeHtml(backup.detail)}</p>
+    <dl class="details-list">
+      <div><dt>Last verified database backup</dt><dd>${escapeHtml(backup.lastBackupAt ? date(backup.lastBackupAt) : 'No record')}</dd></div>
+      <div><dt>Last database restore rehearsal</dt><dd>${escapeHtml(backup.lastRestoreCheckAt ? date(backup.lastRestoreCheckAt) : 'No record')}</dd></div>
+    </dl>
+    <p class="footnote">Use the operator runbook to back up the database and server identity, store the recovery key separately, and rehearse a restore. These dates report completed database operations for this installation.</p></section>`;
 }
 function placeholder(name) { return `<section class="panel empty-state"><h2>${escapeHtml(name)} is coming later</h2><p>This area is reserved for a reviewed administration workflow.</p></section>`; }
-const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles: () => roles() + ownershipView(), devices: () => directoryView('devices', state.devices), backups, settings: () => placeholder('Settings'), audit: auditView };
-function currentResource() { return ['overview', 'backups'].includes(state.section) ? state.overview : ['users', 'devices', 'invitations'].includes(state.section) ? state[state.section] : state.session.managementEnabled && state.section === 'audit' ? state.audit : state.session.managementEnabled && state.session.role === 'owner' && state.section === 'roles' ? state.ownership : null; }
+function settings() {
+  const configuration = state.overview.data?.configuration;
+  if (!state.overview.data) return overview();
+  if (!configuration) return '<section class="panel"><h2>Server configuration is unavailable</h2><p>Refresh after checking the server version.</p></section>';
+  const configured = value => value ? 'Configured' : 'Not configured';
+  return `<section class="panel"><h2>Server configuration</h2><dl class="details-list">
+    <div><dt>Operator accounts</dt><dd>${escapeHtml(configuration.operatorCount)}</dd></div>
+    <div><dt>HTTPS certificate expires</dt><dd>${escapeHtml(date(configuration.tlsExpiresAt))}</dd></div>
+    <div><dt>Enrollment email (SMTP)</dt><dd>${configured(configuration.smtpConfigured)}</dd></div>
+    <div><dt>Subscription refresh</dt><dd>${configured(configuration.subscriptionRefreshConfigured)}</dd></div>
+    </dl><p>Enrollment uses email verification. Check your server’s SMTP configuration if recipients cannot finish enrollment.</p>
+    <p class="muted">Edit deployment settings and operator credentials from the server host. Apply changes using the installation runbook.</p></section>${licenseSummary(state.overview.data.license)}`;
+}
+const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles: () => roles() + ownershipView(), devices: () => directoryView('devices', state.devices), backups, settings, audit: auditView };
+function currentResource() { return overviewSections.has(state.section) ? state.overview : ['users', 'devices', 'invitations'].includes(state.section) ? state[state.section] : state.session.managementEnabled && state.section === 'audit' ? state.audit : state.session.managementEnabled && state.session.role === 'owner' && state.section === 'roles' ? state.ownership : null; }
 function auditView() {
   if (!state.session.managementEnabled) return placeholder('Audit');
   const events = state.audit.data?.events || [];
@@ -148,7 +169,7 @@ function render({ focus = '' } = {}) {
   document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.section)));
   document.querySelectorAll('[data-inspect]').forEach(button => button.addEventListener('click', () => {
     const filters = {};
-    for (const key of ['status', 'credential', 'protection']) if (button.dataset[key]) filters[key] = button.dataset[key];
+    for (const key of ['status', 'credential', 'protection', 'signIn']) if (button.dataset[key]) filters[key] = button.dataset[key];
     inspectDirectory(button.dataset.inspect, filters);
   }));
   document.querySelector('.skip-link').addEventListener('click', event => { event.preventDefault(); document.querySelector('#main-content').focus(); });
@@ -180,7 +201,7 @@ function navigate(section) {
 window.addEventListener('hashchange', () => navigate(sectionFromHash()));
 async function loadSection(force = false, focus = '') {
   const section = state.section;
-  const key = section === 'backups' ? 'overview' : section === 'roles' ? 'ownership' : section;
+  const key = overviewSections.has(section) ? 'overview' : section === 'roles' ? 'ownership' : section;
   if (['ownership','audit'].includes(key) && (!state.session?.managementEnabled || key === 'ownership' && state.session.role !== 'owner')) return;
   if (!['overview', 'users', 'devices', 'invitations', 'audit', 'ownership'].includes(key) || !state.session) return;
   const entry = state[key];
@@ -204,7 +225,7 @@ async function loadSection(force = false, focus = '') {
   } finally {
     if (entry.request === request && state.generation === generation) {
       entry.loading = false; entry.controller = null;
-      if ((state.section === key || key === 'overview' && state.section === 'backups' || key === 'ownership' && state.section === 'roles') && state.session) render({ focus });
+      if ((state.section === key || key === 'overview' && overviewSections.has(state.section) || key === 'ownership' && state.section === 'roles') && state.session) render({ focus });
     }
   }
 }
@@ -218,6 +239,7 @@ function bindDirectory(kind) {
     const status = String(fields.get('status') ?? '');
     const filter = kind === 'users' ? 'role' : kind === 'devices' ? 'protection' : null;
     entry.filters = { ...entry.filters, q, status, sort: String(fields.get('sort') ?? 'newest'), ...(kind === 'devices' ? { credential: String(fields.get('credential') ?? '') } : {}), ...(filter ? { [filter]: String(fields.get(filter) ?? '') } : {}) };
+    if (kind === 'users') entry.filters.signIn = String(fields.get('signIn') ?? '');
     entry.page = 1; entry.data = null;
     void loadSection(true, 'directory-search');
   });
