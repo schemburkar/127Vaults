@@ -133,7 +133,8 @@ async function browserManagement(pool, management) {
   const password = 'synthetic-admin-browser-password', hashed = hashPassword(password);
   const operator = { username: 'localowner', role: 'owner', salt: Buffer.from(hashed.salt, 'base64url'), hash: Buffer.from(hashed.hash, 'base64url') };
   const origin = 'https://admin-management.example.test';
-  const handler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 7, management });
+  const vaultOrigin = 'https://vault-home.example.test:12780';
+  const handler = createAdminHandler({ pool, operators: [operator], origin, vaultOrigin, schemaVersion: 7, management });
   const server = createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -182,7 +183,7 @@ async function browserManagement(pool, management) {
     await page.getByLabel('Invitation code').waitFor();
     assert.match(await page.getByLabel('Invitation code').inputValue(), /^127V-I1-/);
     const setupLink = new URL(await page.getByLabel('Private setup link').inputValue());
-    assert.equal(setupLink.origin, origin);
+    assert.equal(setupLink.origin, vaultOrigin);
     assert.equal(setupLink.pathname, '/');
     assert.equal(setupLink.search, '');
     assert.equal(setupLink.hash, '#memberInvite=' + await page.getByLabel('Invitation code').inputValue());

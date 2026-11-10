@@ -193,7 +193,7 @@ fn validate_network_selection(args: &Args, state: &State) -> Result<()> {
         .from
         .as_ref()
         .or(existing.map(|record| &record.directory));
-    if let Some(directory) = directory {
+    if let Some(directory) = directory.filter(|path| path.join(".env").exists()) {
         let config = fs::read_to_string(directory.join(".env"))?;
         let endpoint = config
             .lines()
@@ -301,6 +301,21 @@ fn execute(mut args: Args) -> Result<()> {
     }
     if args.components.contains(&Product::Server) && args.from.is_none() {
         reconcile_server(&mut args, &mut state)?;
+    }
+    if interactive
+        && !args.yes
+        && !args.plan
+        && args.components.contains(&Product::Server)
+        && args.from.is_none()
+        && args.endpoint.is_none()
+        && !args.tailscale
+        && args.hostname.is_none()
+        && !state.records.iter().any(|record| {
+            record.product == Product::Server
+                && (record.complete || record.directory.join(".env").exists())
+        })
+    {
+        choose_server_network(&mut args)?;
     }
     validate_network_selection(&args, &state)?;
     if let Some(path) = &args.compose_provider {
@@ -813,6 +828,34 @@ fn execute(mut args: Args) -> Result<()> {
     Ok(())
 }
 
+fn choose_server_network(args: &mut Args) -> Result<()> {
+    let mode = cliclack::select("Who needs to reach this vault?")
+        .item(
+            "loopback",
+            "This computer only",
+            "Keep the vault on this computer",
+        )
+        .item(
+            "lan",
+            "Devices on my home network",
+            "Use this server’s private IPv4 address",
+        )
+        .item(
+            "tailscale",
+            "Devices on my Tailscale network",
+            "Use Tailscale already installed and signed in on this server",
+        )
+        .interact()?;
+    args.tailscale = mode == "tailscale";
+    if mode == "lan" {
+        args.endpoint = Some(cliclack::input("Private IPv4 address of this server")
+            .validate(|value: &String| value.parse::<std::net::Ipv4Addr>().ok()
+                .filter(std::net::Ipv4Addr::is_private).map(|_| ()).ok_or("Enter this computer’s private LAN IPv4 address, for example 192.168.1.20."))
+            .interact()?);
+    }
+    Ok(())
+}
+
 fn reconcile_server(args: &mut Args, state: &mut State) -> Result<()> {
     let servers = discovery::discover(args.engine.as_deref())?;
     reconcile_discovered(args, state, servers)
@@ -1035,7 +1078,14 @@ fn guide_server_owner(
             ca.display()
         ),
     )?;
-    if field("VAULTS_ACCESS_MODE=") == Some("loopback") {
+    let admin_origin = if field("VAULTS_ACCESS_MODE=") == Some("loopback") {
+        Some(origin.join("admin/")?)
+    } else if field("VAULTS_LOCAL_ADMIN=") == Some("1") {
+        Some(url::Url::parse("https://127.0.0.1:12781/admin/")?)
+    } else {
+        None
+    };
+    if let Some(admin_origin) = admin_origin {
         let operator_file = directory
             .join(private_dir)
             .join("runtime")
@@ -1045,8 +1095,7 @@ fn guide_server_owner(
             "Local administration",
             if operator_file.is_file() {
                 format!(
-                    "Open {} on this computer after trusting the CA. Use your local operator credentials to manage users, invitations and devices.",
-                    origin.join("admin/")?
+                    "Open {admin_origin} on this computer after trusting the CA. Use your local operator credentials to manage users, invitations and devices. Share the vault address with your household."
                 )
             } else {
                 "To set up a local operator later, rerun the installer interactively and select Server.".to_owned()
@@ -1310,6 +1359,9 @@ mod tests {
         ])
         .unwrap();
         assert!(validate_network_selection(&args, &state).is_err());
+        fs::remove_file(root.join(".env")).unwrap();
+        state.records[0].complete = false;
+        assert!(validate_network_selection(&args, &state).is_ok());
         let args =
             Args::try_parse_from(["installer", "--components", "cli", "--tailscale"]).unwrap();
         assert!(validate_network_selection(&args, &State::default()).is_err());

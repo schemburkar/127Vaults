@@ -53,3 +53,7 @@ export function requestAllowed(req, config) {
 export function sniAllowed(servername, config) {
   return servername === '' ? config.ipEndpoint : servername === config.endpoint;
 }
+
+export function localAdminRequestAllowed(req, config, relayPeer) {
+  return isIP(relayPeer) === 4 && req.socket.remoteAddress === relayPeer && requestAllowed(req, config);
+}

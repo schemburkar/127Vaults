@@ -18,10 +18,10 @@ export function restoreBackupSchema(metadata, installationId) {
   return Number(metadata.requiredVersion.slice(7));
 }
 
-function readinessProbe({ origin, ca, token }) {
+function readinessProbe({ origin, ca, token, pathname = '/health/ready' }) {
   return new Promise(resolveProbe => {
-    const req = request(new URL('/health/ready', origin), {
-      ca, timeout: 2000, headers: { authorization: `Bearer ${token}` },
+    const req = request(new URL(pathname, origin), {
+      ca, timeout: 2000, headers: token ? { authorization: `Bearer ${token}` } : {},
     }, response => {
       response.resume();
       response.on('end', () => resolveProbe(response.statusCode === 200));
@@ -33,10 +33,10 @@ function readinessProbe({ origin, ca, token }) {
   });
 }
 
-export async function waitForReadiness({ origin, ca, token, attempts = 20,
+export async function waitForReadiness({ origin, ca, token, pathname, attempts = 20,
   probe = readinessProbe, pause = () => new Promise(done => setTimeout(done, 1000)) }) {
   for (let attempt = 0; attempt < attempts; attempt++) {
-    if (await probe({ origin, ca, token })) return;
+    if (await probe({ origin, ca, token, ...(pathname ? { pathname } : {}) })) return;
     if (attempt + 1 < attempts) await pause();
   }
   throw Error('Server did not become ready over verified HTTPS. Keep the existing identity and data, inspect container status, and rerun install start after resolving the cause.');
@@ -130,7 +130,8 @@ async function runCompose(args, options) {
   const project = /^VAULTS_PROJECT=(vaults-test-[a-f0-9]{12})$/m.exec(content)?.[1];
   if (!project) throw Error('Installation project identity is missing or invalid.');
   const smtp = /^SMTP_HOST=(.+)$/m.test(content);
-  const files = ['-f', 'compose.test.yaml', ...(smtp ? ['-f', 'compose.smtp.yaml'] : [])];
+  const files = ['-f', 'compose.test.yaml', ...(smtp ? ['-f', 'compose.smtp.yaml'] : []),
+    ...(/^VAULTS_LOCAL_ADMIN=1\r?$/m.test(content) ? ['-f', 'compose.local-admin.yaml'] : [])];
   return run(engine, ['compose', '-p', project, ...files, ...args], options);
 }
 async function initialize() {
@@ -140,7 +141,9 @@ async function initialize() {
   // Restoring an explicit existing identity does not create replacement keys.
   // Its publication is checked when that restored project is started; isolated
   // restore rehearsals may intentionally use a different configured port.
+  const localAdmin = !restoredIdentity && !['localhost', '127.0.0.1'].includes(networkAddress);
   if (!restoredIdentity) await checkPublication(useTailscale || networkAddress === 'localhost' ? '127.0.0.1' : networkAddress);
+  if (localAdmin) await checkPublication('127.0.0.1', 12781);
   if (privateDir === resolve('.') || privateDir.startsWith(resolve('.') + '\\') || privateDir.startsWith(resolve('.') + '/')) throw Error('Private directory must be outside the bundle.');
   if (restoredIdentity) {
     for (const name of ['ca/ca.crt', 'ca/ca.key', 'live/server.crt', 'live/server.key', 'runtime/token.key', 'runtime/checkpoint.key', 'runtime/postgres-password', 'runtime/readiness-token']) {
@@ -148,7 +151,15 @@ async function initialize() {
     }
   } else {
     await run(engine, ['load', '-i', 'openssl-image.tar']);
-    await run(process.execPath, ['server.mjs', 'tls', 'init', endpoint, privateDir], { env: { ...process.env, VAULTS_ENGINE: engine } });
+    if (localAdmin && !useTailscale && process.platform === 'win32') {
+      try {
+        await run(engine, ['run', '--rm', '--publish', `${networkAddress}:12780:12780`,
+          '--entrypoint', 'openssl', 'docker.io/alpine/openssl:3.5.4', 'version'], { quiet: true });
+      } catch {
+        throw Error('The container engine could not publish the selected home-network address. Choose Tailscale or this computer only, or use an engine that can bind that address. No installation identity or license was created.');
+      }
+    }
+    await run(process.execPath, ['server.mjs', 'tls', 'init', endpoint, privateDir, ...(localAdmin ? ['--local-admin'] : [])], { env: { ...process.env, VAULTS_ENGINE: engine } });
     const runtime = join(privateDir, 'runtime');
     await mkdir(runtime, { recursive: true, mode: 0o700 });
     await mkdir(join(privateDir, 'output'), { recursive: true, mode: 0o700 });
@@ -167,6 +178,7 @@ async function initialize() {
   const restoredId = restoredIdentity ? (await readFile(join(privateDir, 'installation-id'), 'utf8')).trim() : null;
   if (restoredId && !/^[0-9a-f-]{36}$/.test(restoredId)) throw Error('Restored installation ID is invalid.');
   const env = [
+    ...(localAdmin ? ['VAULTS_LOCAL_ADMIN=1'] : []),
     `VAULTS_PROJECT=vaults-test-${randomBytes(6).toString('hex')}`,
     ...(restoredId ? [`VAULTS_RESTORE_ID=${restoredId}`, ...await restoredLicenseEnvironment({ runtimeDir: join(privateDir,'runtime'), installationId: restoredId })] : []),
     `VAULTS_BACKEND_SUBNET=172.28.${chosenOctet}.0/24`,
@@ -311,9 +323,13 @@ else {
     await runCompose(['up', '-d', '--no-build']);
     if (/^VAULTS_ACCESS_MODE=tailscale$/m.test(content)) await enableTailnetForward(configuredAddress);
     const publicationPort = /^VAULTS_PUBLISH_PORT=(\d+)$/m.exec(content)?.[1] || '12780';
-    await waitForReadiness({ origin: `https://${configuredEndpoint}:${publicationPort}`,
-      ca: await readFile(join(privateDir, 'ca/ca.crt')),
+    const ca = await readFile(join(privateDir, 'ca/ca.crt'));
+    await waitForReadiness({ origin: `https://${configuredEndpoint}:${publicationPort}`, ca,
       token: (await readFile(join(privateDir, 'runtime/readiness-token'), 'utf8')).trim() });
+    if (/^VAULTS_LOCAL_ADMIN=1\r?$/m.test(content)) {
+      await waitForReadiness({ origin: 'https://127.0.0.1:12781', ca, pathname: '/admin/' });
+      console.log('Local administration: https://127.0.0.1:12781/admin/ (on the server computer).');
+    }
     console.log(`Open https://${configuredEndpoint}:${publicationPort} after verifying and trusting the local CA.`);
   } else if (action === 'stop') await runCompose(['down']);
   else if (action === 'status') {

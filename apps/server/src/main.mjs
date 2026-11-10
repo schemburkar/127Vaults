@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createSecureContext } from 'node:tls';
 import pg from 'pg';
 import { requireSchema, schemaVersion } from './schema.mjs';
-import { requestAllowed, sniAllowed, transportConfig } from './transport.mjs';
+import { localAdminRequestAllowed, requestAllowed, sniAllowed, transportConfig } from './transport.mjs';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { AuthService } from './auth-service.mjs';
@@ -51,14 +51,22 @@ const transport = transportConfig(env);
 const { bind: host, port, authority } = transport;
 const certPath = env.VAULTS_TLS_CERT ?? '/run/secrets/tls/server.crt';
 const keyPath = env.VAULTS_TLS_KEY ?? '/run/secrets/tls/server.key';
-let tls, tlsExpiresAt;
+const localAdmin = env.VAULTS_LOCAL_ADMIN === '1' && transport.mode !== 'loopback';
+const adminTransport = transportConfig({ PORT: '12781' });
+let tls, tlsExpiresAt, adminTls;
 try {
   const cert = readFileSync(certPath);
   const key = readFileSync(keyPath);
-  tlsExpiresAt = new Date(new X509Certificate(cert).validTo).toISOString();
+  const certificate = new X509Certificate(cert);
+  tlsExpiresAt = new Date(certificate.validTo).toISOString();
+  if (localAdmin && !certificate.checkIP('127.0.0.1')) throw Error('Local admin certificate requires loopback identity.');
   const context = createSecureContext({ cert, key, minVersion: 'TLSv1.2', maxVersion: 'TLSv1.3' });
   tls = { cert, key, minVersion: 'TLSv1.2', maxVersion: 'TLSv1.3', SNICallback(name, callback) {
     if (!sniAllowed(name, transport)) callback(new Error('Unrecognized TLS name'));
+    else callback(null, context);
+  } };
+  adminTls = { ...tls, SNICallback(name, callback) {
+    if (!sniAllowed(name, adminTransport)) callback(new Error('Unrecognized local administration TLS name'));
     else callback(null, context);
   } };
 } catch { fail('Valid readable TLS certificate and key files are required; HTTP fallback is forbidden.'); }
@@ -113,10 +121,11 @@ const credentialRotationHandler=createCredentialRotationHandler({store:new PgCre
 const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenticate,transport.origin);
 const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
 const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
-const adminHandler=createAdminHandler({pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),origin:transport.origin,localOnly:transport.mode==='loopback',schemaVersion,management:adminManagement,loadEntitlement,
+const adminOptions={pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),schemaVersion,management:adminManagement,loadEntitlement,
   smtpConfigured:Boolean(env.SMTP_HOST),subscriptionRefreshConfigured:Boolean(env.VAULTS_SUBSCRIPTION_FILE),tlsExpiresAt,
   backupStatus: env.VAULTS_ADMIN_BACKUP_STATUS_DIR ?
-    now => readAdminBackupStatus(env.VAULTS_ADMIN_BACKUP_STATUS_DIR, installation, now) : undefined});
+    now => readAdminBackupStatus(env.VAULTS_ADMIN_BACKUP_STATUS_DIR, installation, now) : undefined};
+const adminHandler=createAdminHandler({...adminOptions,origin:transport.origin,localOnly:transport.mode==='loopback'});
 const licenseHandler=createLicenseHandler({pool,authenticate,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,clock:licenseClock});
 const setupHandler=createSetupHandler({pool,origin:transport.origin,licenseFile:env.VAULTS_LICENSE_FILE,
   publicKeyFile:env.VAULTS_LICENSE_PUBLIC_KEYS_FILE,revocationFile:env.VAULTS_LICENSE_REVOCATION_FILE,
@@ -211,6 +220,31 @@ server.maxHeadersCount = 32;
 server.on('upgrade', (_req, socket) => socket.destroy());
 server.on('error', () => { telemetry.event('listener_error'); process.exit(1); });
 let ingress;
+let localAdminServer;
+if (localAdmin) {
+  const handle = createAdminHandler({ ...adminOptions, origin: adminTransport.origin, vaultOrigin: transport.origin });
+  localAdminServer = createServer(adminTls, containRequestErrors(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (!localAdminRequestAllowed(req, adminTransport, env.VAULTS_RELAY_PEER)) { res.writeHead(403).end(); return; }
+    if (stopping) { res.writeHead(503).end(); return; }
+    if (await handle(req, res)) return;
+    if (['/brand-mark.svg', '/wordmark.svg'].includes(req.url) && ['GET', 'HEAD'].includes(req.method)) {
+      const [asset, type] = webFiles.get(req.url);
+      const bytes = await readFile(new URL(asset, import.meta.url));
+      res.writeHead(200, { 'Content-Type': type }).end(req.method === 'HEAD' ? undefined : bytes);
+      return;
+    }
+    res.writeHead(404).end();
+  }, () => telemetry.event('request_error')));
+  localAdminServer.requestTimeout = 5000;
+  localAdminServer.headersTimeout = 5000;
+  localAdminServer.keepAliveTimeout = 1000;
+  localAdminServer.maxHeadersCount = 32;
+  localAdminServer.on('upgrade', (_req, socket) => socket.destroy());
+  localAdminServer.on('error', () => { telemetry.event('listener_error'); process.exit(1); });
+  localAdminServer.listen(adminTransport.port, host);
+}
 server.listen(0,'127.0.0.1',()=>{
   ingress=createRelayIngress({targetPort:server.address().port,trustedRelayPeer:env.VAULTS_RELAY_PEER??null});
   ingress.on('error',()=>{telemetry.event('listener_error');process.exit(1)});
@@ -223,11 +257,10 @@ async function shutdown() {
   ingress?.close();
   const deadline = setTimeout(() => process.exit(1), 8000);
   deadline.unref();
-  server.close(async () => {
-    try { await pool.end(); clearTimeout(deadline); }
-    catch { process.exitCode = 1; }
-  });
-  server.closeIdleConnections();
+  const closing = [server, localAdminServer].filter(Boolean);
+  await Promise.all(closing.map(listener => new Promise(done => listener.close(done))));
+  try { await pool.end(); clearTimeout(deadline); }
+  catch { process.exitCode = 1; }
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

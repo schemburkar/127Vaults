@@ -1,12 +1,12 @@
 # Local server administration
 
-The admin page is served at `/admin/` on the same HTTPS server as the API. Its files and route handler live under `apps/server/admin` and `apps/server/src/admin`. It has its own operator credentials, cookie, and session. Signing in here does not sign in to, unlock, or grant access to a vault. It shares the server process and PostgreSQL connection so it can report live account and device metadata; it does not need a second backend service.
+Open `/admin/` on the server computer. Same-computer installs use the vault HTTPS address. Fresh LAN and Tailscale installs use `https://127.0.0.1:12781/admin/` with the installation CA trusted. The household vault address serves enrollment and vault access and returns `local_only` for admin routes. Share the private invitation link from Admin with the recipient. It uses the household vault address.
 
-The page is available only when the server is published in loopback mode. The container sees a private bridge address for the browser connection, so the handler checks the validated deployment mode; the Compose publication remains bound to `127.0.0.1`. Private-LAN deployments return `local_only` for admin routes.
+Admin uses its own operator credentials, cookie, and session. It shares the server process and database connection for health and account metadata. The private-network Admin listener is published only on host loopback and serves only Admin routes and their branding assets. Existing private-network installations keep their existing endpoints during normal upgrades.
 
 ## Set up a local operator
 
-Create an operator file in the runtime directory mounted by `compose.yaml`. The first operator must be an owner. Use a long unique password that is distinct from any vault password. The generator writes only a scrypt salt and hash; it refuses to overwrite an existing file.
+In the standalone installer, select **Server** and choose local administration. Choose a unique operator password separate from your vault password. For source and manual bundle installs, create an operator file in the private runtime directory. The first operator must be an owner. The generator writes a scrypt salt and hash and refuses to overwrite an existing file.
 
 ```powershell
 $operatorFile = Join-Path $env:VAULTS_TLS_DIR 'runtime/admin-operators.json'
@@ -16,7 +16,7 @@ node server.mjs admin init localowner $operatorFile
 Remove-Item Env:VAULTS_ADMIN_SETUP_PASSWORD
 ```
 
-Restart the container so it loads the file, then open `https://127.0.0.1:12780/admin/` with the local CA trusted. In `pnpm mvp:dev`, the same URL is proxied to the containerized API. If no operator file exists, the admin sign-in API returns `admin_not_configured`; the vault client remains available.
+Restart the container so it loads the file, then open the Admin address for your installation with the local CA trusted. In `pnpm mvp:dev`, use `https://127.0.0.1:12780/admin/`. If no operator file exists, the admin sign-in API returns `admin_not_configured`; the vault client remains available.
 
 The file format allows multiple operators with `owner` or `admin` roles. Additional entries must use unique names and the same salt/hash format. For now, these roles authorize this separate local operator console, including its management writes. Schema 7 supports multiple server owners, admins and users. Existing schema 6 is frozen and needs an explicit backed-up migration. The [management contract](../architecture/internal-admin-management.md) defines permissions, fresh authentication, last-owner protection and recipient acceptance.
 

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, realpathSync, readFileSync, existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import { isIP } from 'node:net';
 import { relative, resolve } from 'node:path';
 
@@ -25,8 +25,11 @@ const targetArg = argv[2];
 if (!['init', 'renew'].includes(action) || !targetArg) {
   throw new Error('Usage: node server.mjs tls init|renew localhost|<literal-ip> <absolute-private-directory>');
 }
-const san = certificateSan(endpoint);
 const target = resolve(targetArg);
+const current = resolve(target, 'live/server.crt');
+const localAdmin = argv.includes('--local-admin') || (action === 'renew' && existsSync(current)
+  && new X509Certificate(readFileSync(current)).checkIP('127.0.0.1'));
+const san = certificateSan(endpoint) + (localAdmin && endpoint !== '127.0.0.1' ? ',IP:127.0.0.1' : '');
 const fromRepo = relative(resolve('.'), target);
 if (fromRepo === '' || (!fromRepo.startsWith('..') && !fromRepo.includes(':'))) throw new Error('TLS private directory must be outside the repository.');
 mkdirSync(target, { recursive: true, mode: 0o700 });

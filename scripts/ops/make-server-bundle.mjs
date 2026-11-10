@@ -58,6 +58,7 @@ await run(engine, ['save', '-o', join(destination, 'openssl-image.tar'), 'docker
 for (const [source, target] of [
   ['deploy/compose.test.yaml', 'compose.test.yaml'],
   ['deploy/compose.smtp.yaml', 'compose.smtp.yaml'],
+  ['deploy/compose.local-admin.yaml', 'compose.local-admin.yaml'],
   ['server.mjs', 'server.mjs'],
   ['deploy/install.mjs', 'install.mjs'],
   ['deploy/install.ps1', 'install.ps1'],
@@ -92,7 +93,7 @@ if (options.provenance) {
 }
 const files = {};
 files['lib/subscription-refresh.mjs'] = await hash(join(destination, 'lib/subscription-refresh.mjs'));
-for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/private-network.mjs', 'lib/upgrade.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE.md', 'COMMERCIAL-LICENSE.md']) files[name] = await hash(join(destination, name));
+for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'compose.local-admin.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/private-network.mjs', 'lib/upgrade.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE.md', 'COMMERCIAL-LICENSE.md']) files[name] = await hash(join(destination, name));
 files['lib/hostname.mjs'] = await hash(join(destination, 'lib/hostname.mjs'));
 files['lib/recovery.mjs'] = await hash(join(destination, 'lib/recovery.mjs'));
 if (issuerKeys) files['issuer-keys.json'] = await hash(join(destination, 'issuer-keys.json'));

@@ -22,7 +22,7 @@ const assets = new Map([
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
-export function createAdminHandler({ pool, operators, origin, localOnly = true, schemaVersion, management = null, loadEntitlement,
+export function createAdminHandler({ pool, operators, origin, vaultOrigin = origin, localOnly = true, schemaVersion, management = null, loadEntitlement,
   smtpConfigured = false, subscriptionRefreshConfigured = false, tlsExpiresAt = null,
   backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
@@ -77,12 +77,12 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
       const token = randomBytes(32).toString('base64url');
       const csrf = randomBytes(32).toString('base64url');
       sessions.set(digest(token), { username: operator.username, role: operator.role, csrf, expires: now() + 30 * 60_000 });
-      json(res, 200, { username: operator.username, role: operator.role, csrf, expiresAt: new Date(now() + 30 * 60_000).toISOString(), managementEnabled: Boolean(management) }, { 'Set-Cookie': `${cookieName}=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800` });
+      json(res, 200, { username: operator.username, role: operator.role, csrf, expiresAt: new Date(now() + 30 * 60_000).toISOString(), managementEnabled: Boolean(management), vaultOrigin }, { 'Set-Cookie': `${cookieName}=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800` });
       return true;
     }
     const active = session(req);
     if (!active) { json(res, 401, { error: 'admin_auth_required' }); return true; }
-    if (path === '/api/admin/session' && req.method === 'GET') { json(res, 200, { username: active.username, role: active.role, csrf: active.csrf, expiresAt: new Date(active.expires).toISOString(), managementEnabled: Boolean(management) }); return true; }
+    if (path === '/api/admin/session' && req.method === 'GET') { json(res, 200, { username: active.username, role: active.role, csrf: active.csrf, expiresAt: new Date(active.expires).toISOString(), managementEnabled: Boolean(management), vaultOrigin }); return true; }
     if (path === '/api/admin/session' && req.method === 'DELETE') {
       const a = Buffer.from(String(req.headers['x-127v-admin-csrf'] ?? ''));
       const b = Buffer.from(active.csrf);

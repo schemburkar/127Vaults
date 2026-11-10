@@ -46,7 +46,7 @@ export function showManagementAction(root, session, descriptor, targetId, comple
         const output = dialog.querySelector('#management-result'); output.hidden = false;
         const note = document.createElement('p'); note.textContent = 'Share the private setup link with the invited people. They open it on a device that can reach and trust this server, then verify their invited email address. The link disappears when this dialog closes.';
         const code = document.createElement('textarea'); code.readOnly = true; code.value = result.token; code.setAttribute('aria-label', 'Invitation code');
-        const link = new URL('/', location.origin);
+        const link = new URL('/', session.vaultOrigin || location.origin);
         link.hash = `memberInvite=${result.token}`;
         const address = document.createElement('textarea'); address.readOnly = true; address.value = link.href; address.setAttribute('aria-label', 'Private setup link');
         const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'button'; copy.textContent = 'Copy setup link';

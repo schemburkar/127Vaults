@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requestAllowed, sniAllowed, transportConfig } from '../src/transport.mjs';
+import { localAdminRequestAllowed, requestAllowed, sniAllowed, transportConfig } from '../src/transport.mjs';
+
+test('separate admin listener requires the trusted relay, exact loopback authority and origin', () => {
+  const admin = transportConfig({ PORT: '12781' });
+  const relay = '172.28.127.4';
+  const req = { url: '/api/admin/session', rawHeaders: ['Host', admin.authority],
+    headers: { host: admin.authority, origin: admin.origin }, socket: { remoteAddress: relay } };
+  assert.equal(localAdminRequestAllowed(req, admin, relay), true);
+  assert.equal(localAdminRequestAllowed(req, admin, undefined), false);
+  assert.equal(localAdminRequestAllowed({ ...req, socket: { remoteAddress: '172.28.127.3' } }, admin, relay), false);
+  assert.equal(localAdminRequestAllowed({ ...req, headers: { ...req.headers, origin: 'https://100.64.0.10:12780' } }, admin, relay), false);
+  assert.equal(localAdminRequestAllowed({ ...req, headers: { ...req.headers, host: '127.0.0.1:12780' } }, admin, relay), false);
+});
 
 test('accepts exact loopback and private-LAN configurations', () => {
   assert.equal(transportConfig({}).origin, 'https://127.0.0.1:12780');

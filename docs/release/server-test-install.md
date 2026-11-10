@@ -163,8 +163,9 @@ node server.mjs install start --compose-provider '<full path to docker-compose.e
 
 The first operator is an owner and its file cannot be overwritten by this command.
 Restart loads the file. Vault identities remain separate. Account, role and device
-management writes remain in the existing operator/client workflows; the console
-provides inspection only. Private-LAN deployments refuse admin access. The encrypted
+management writes are available in the local console. Fresh LAN and Tailscale
+installations use `https://127.0.0.1:12781/admin/` on the host. The vault address
+refuses Admin routes. The encrypted
 identity backup includes `runtime/admin-operators.json` when present; older backups
 without console operators remain readable. The command also works in the source
 checkout and requires only Node 24 in an extracted bundle.

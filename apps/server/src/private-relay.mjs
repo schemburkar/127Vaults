@@ -52,6 +52,11 @@ export async function runPrivateRelay() {
   // Rootless providers may forward to the first attached interface. Listen on
   // both exact container addresses; never use an all-interface listener.
   const relays = [config.bind, config.backendBind].map(bind => createPrivateRelay({ ...config, bind, sourceMetadata:true }));
+  if (process.env.VAULTS_LOCAL_ADMIN === '1') {
+    for (const bind of [config.bind, config.backendBind]) {
+      relays.push(createPrivateRelay({ ...config, bind, port: 12781, targetPort: 12781 }));
+    }
+  }
   await Promise.all(relays.map(relay => relay.start()));
   const stop = () => { for (const relay of relays) void relay.stop(); };
   process.once('SIGTERM', stop); process.once('SIGINT', stop);

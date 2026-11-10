@@ -56,7 +56,8 @@ export async function upgradeInstallation({ directory, from, backupDirectory, ke
     await writeFile(join(directory, '.env'), configuration, { flag: 'wx', mode: 0o600 });
     await command(engine, ['load', '-i', join(directory, 'server-image.tar')]);
     const compose = ['compose', '-p', project, '-f', 'compose.test.yaml',
-      ...(/^SMTP_HOST=(.+)$/m.test(original) ? ['-f', 'compose.smtp.yaml'] : [])];
+      ...(/^SMTP_HOST=(.+)$/m.test(original) ? ['-f', 'compose.smtp.yaml'] : []),
+      ...(/^VAULTS_LOCAL_ADMIN=1\r?$/m.test(original) ? ['-f', 'compose.local-admin.yaml'] : [])];
     const schema = async action => JSON.parse(await command(engine, [...compose, 'run', '--rm', '--no-deps',
       'server', 'node', 'apps/server/src/entry.mjs', 'schema', action]));
     const current = await schema('status');

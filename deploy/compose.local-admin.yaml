@@ -1,0 +1,9 @@
+services:
+  server:
+    environment:
+      VAULTS_LOCAL_ADMIN: '1'
+  relay:
+    environment:
+      VAULTS_LOCAL_ADMIN: '1'
+    ports:
+      - '127.0.0.1:12781:12781'

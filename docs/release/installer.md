@@ -36,7 +36,9 @@ For unattended extension setup, provide `--extension-ids ID` (comma-separated fo
 
 Run the installer interactively and paste your private invitation URL when prompted. Select **Server** on the computer that will host your vault. The installer displays the server address, public CA certificate path and SHA-256 of the CA file. Verify and trust the CA on each device before opening the server.
 
-On a loopback installation, choose to set up local administration, then create a local operator username and password. Use these credentials at the installer’s `/admin/` address. Choose first-owner setup to generate a private link that expires after 60 minutes. Open it after trusting the CA, then create your separate vault credentials. If the browser asks for a code, use the one shown alongside the link. To request a new code, rerun the installer interactively and select **Server**.
+Choose to set up local administration, then create a local operator username and password. Use these credentials at the installer’s `/admin/` address. On a fresh LAN or Tailscale installation, open `https://127.0.0.1:12781/admin/` on the server computer. Household members use the separate vault address and trust the same public CA. Choose first-owner setup to generate a private link that expires after 60 minutes. Open it after trusting the CA, then create your separate vault credentials. If the browser asks for a code, use the one shown alongside the link. To request a new code, rerun the installer interactively and select **Server**.
+
+Choose home-network setup only when the container engine can publish the selected private address. A Windows Podman machine using its own NAT address may be unable to bind the Windows Wi-Fi address. Tailscale uses loopback publication and requires Tailscale on the server and each connecting device.
 
 ### Enrollment email
 
