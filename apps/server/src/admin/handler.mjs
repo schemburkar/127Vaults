@@ -155,7 +155,11 @@ export function createAdminHandler({ pool, operators, origin, localOnly = true, 
         json(res, 200, await readDirectory(pool, kind, directoryInput(url.searchParams, kind))); return true;
       }
       if (management && path === '/api/admin/audit') {
-        const rows = (await pool.query('SELECT id,actor_id,action,target_id,outcome,created_at FROM vaults.admin_control_audit ORDER BY created_at DESC,id DESC LIMIT 100')).rows;
+        const outcomes = url.searchParams.getAll('outcome');
+        if ([...url.searchParams.keys()].some(key => key !== 'outcome') || outcomes.length > 1
+          || outcomes.some(outcome => !['accepted', 'denied'].includes(outcome))) throw new DirectoryInputError();
+        const where = outcomes.length ? ' WHERE outcome=$1' : '';
+        const rows = (await pool.query(`SELECT id,actor_id,action,target_id,outcome,created_at FROM vaults.admin_control_audit${where} ORDER BY created_at DESC,id DESC LIMIT 100`, outcomes)).rows;
         json(res, 200, { events: rows.map(row => ({ id: row.id, actor: row.actor_id, action: row.action, targetId: row.target_id, outcome: row.outcome, createdAt: row.created_at.toISOString() })) }); return true;
       }
       if (management && path === '/api/admin/ownership') {

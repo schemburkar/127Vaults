@@ -2,6 +2,7 @@ import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { normalizeEmail, tokenDigest } from '../onboarding.mjs';
 import { requireLicenseSeats } from '../license-seats.mjs';
 import { lockWritePrincipal } from '../write-principal.mjs';
+import { AuthError } from '../auth-policy.mjs';
 
 export class AdminManagementError extends Error {
   constructor(code = 'invalid_action', status = 400) { super(code); this.code = code; this.status = status; }
@@ -53,7 +54,7 @@ export class PgAdminManagement {
       await client.query('COMMIT'); return result;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
-      if (error instanceof AdminManagementError) throw error;
+      if (error instanceof AdminManagementError || error instanceof AuthError) throw error;
       if (['LAST_ACTIVE_OWNER', 'OWNERSHIP_ACCEPTANCE_REQUIRED'].includes(error.message)) fail(error.message.toLowerCase());
       if (['seat_limit_reached', 'license_inactive', 'license_unavailable'].includes(error.code)) fail(error.code, error.status);
       fail('admin_unavailable', 503);

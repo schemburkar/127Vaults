@@ -10,13 +10,13 @@ const engine = args.includes('--docker') ? 'docker' : 'podman';
 const name = `vaults-admin-check-${randomUUID()}`;
 const root = resolve(import.meta.dirname, '..');
 const fixturePassword = 'admin-directory-fixture-only-not-a-secret';
-async function run(program, argv, { capture = true, env = process.env } = {}) {
+async function run(program, argv, { capture = true, env = process.env, timeoutMs = 30_000 } = {}) {
   const child = spawn(program, argv, { cwd: root, windowsHide: true, env, stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit' });
   let output = '';
   child.stdout?.setEncoding('utf8');
   child.stdout?.on('data', chunk => { output = (output + chunk).slice(-65536); });
   child.stderr?.resume();
-  const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
+  const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
   try {
     const code = await new Promise((done, reject) => { child.on('error', reject); child.on('close', done); });
     if (code !== 0) throw Error(`${program} admin fixture check failed (${code}). No existing installation was modified.`);
@@ -39,7 +39,8 @@ try {
   if (!ready) throw Error('Disposable PostgreSQL did not become ready.');
   console.log(`Checking admin ${management ? 'management' : 'directories'} against isolated PostgreSQL 17.`);
   await run(process.execPath, ['--test', `apps/server/test/${management ? 'admin-management' : 'admin-directory'}.pg.test.mjs`], {
-    capture: false, env: { ...process.env, VAULTS_ADMIN_MANAGEMENT_BROWSER: args.includes('--browser') ? '1' : '0', [management ? 'VAULTS_ADMIN_MANAGEMENT_DATABASE_URL' : 'VAULTS_ADMIN_TEST_DATABASE_URL']: `postgresql://postgres:${fixturePassword}@127.0.0.1:${port}/postgres` },
+    capture: false, timeoutMs: args.includes('--browser') ? 90_000 : 30_000,
+    env: { ...process.env, VAULTS_ADMIN_MANAGEMENT_BROWSER: args.includes('--browser') ? '1' : '0', [management ? 'VAULTS_ADMIN_MANAGEMENT_DATABASE_URL' : 'VAULTS_ADMIN_TEST_DATABASE_URL']: `postgresql://postgres:${fixturePassword}@127.0.0.1:${port}/postgres` },
   });
 } finally {
   if (created) { await run(engine, ['rm', '--force', name]); console.log('Removed the disposable admin database and its in-memory data.'); }

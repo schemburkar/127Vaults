@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import pg from 'pg';
-import { schemaSql, schemaV6Checksum, schemaV7Checksum, schemaV8MigrationSql, schemaV9MigrationSql } from '../src/schema.mjs';
+import { schemaSql, schemaV6Checksum, schemaV7Checksum, schemaV7MigrationSql, schemaV8MigrationSql, schemaV9MigrationSql, schemaV10MigrationSql } from '../src/schema.mjs';
 import { migrateSchema6To7 } from '../src/schema-migration.mjs';
 import { readSeatUsage } from '../src/license-seats.mjs';
 import { createServer } from 'node:http';
@@ -36,9 +35,9 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
   const action = (name, fields = {}, actor = operatorOwner) => service.execute(actor, { action: name, requestId: randomUUID(), ...fields });
   const account = async id => (await pool.query('SELECT server_role,suspended_at FROM vaults.accounts WHERE tenant_id=$1 AND id=$2', [tenant, id])).rows[0];
   try {
-    const migration = await readFile(new URL('../src/schema-v7-migration.sql', import.meta.url), 'utf8');
-    assert.ok(schemaSql.endsWith(`\n${migration}\n${schemaV8MigrationSql}\n${schemaV9MigrationSql}`));
-    await pool.query(schemaSql.slice(0, -migration.length - schemaV8MigrationSql.length - schemaV9MigrationSql.length - 3));
+    const laterMigrations = ['', schemaV7MigrationSql, schemaV8MigrationSql, schemaV9MigrationSql, schemaV10MigrationSql].join('\n');
+    assert.ok(schemaSql.endsWith(laterMigrations));
+    await pool.query(schemaSql.slice(0, -laterMigrations.length));
     await pool.query('INSERT INTO vaults.installation(id) VALUES($1)', [tenant]);
     for (const [id, username, role] of [[owner, 'OriginalOwner', 'owner'], [alice, 'AliceUser', 'user'], [bob, 'BobUser', 'user']]) {
       await pool.query("INSERT INTO vaults.accounts(tenant_id,id,username,display_name,email,server_role,enrollment_state) VALUES($1,$2,$3,$3,$4,$5,'active')", [tenant, id, username, `${username}@example.invalid`, role]);
@@ -99,7 +98,7 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
     await assert.rejects(service.accept(auth, { grantId: grant.grantId, requestId: randomUUID() }), { status:401 });
     // A fresh independently authenticated session is required after reactivation.
     const newSession = randomUUID();
-    await pool.query("INSERT INTO vaults.sessions(tenant_id,session_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at) VALUES($1,$2,$3,$4,$5,1,$6,$7,now()+interval '1 hour')", [tenant, newSession, Buffer.alloc(32, 12), alice, devices.get(alice), Buffer.alloc(32), Buffer.alloc(60)]);
+    await pool.query("INSERT INTO vaults.sessions(tenant_id,session_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at,session_epoch) SELECT $1,$2,$3,$4,$5,1,$6,$7,now()+interval '1 hour',session_epoch FROM vaults.accounts WHERE tenant_id=$1 AND id=$4", [tenant, newSession, Buffer.alloc(32, 12), alice, devices.get(alice), Buffer.alloc(32), Buffer.alloc(60)]);
     auth.sessionId = newSession;
     await pool.query("UPDATE vaults.sessions SET created_at=now()-interval '6 minutes' WHERE session_id=$1", [newSession]);
     await assert.rejects(service.accept(auth, { grantId: grant.grantId, requestId: randomUUID() }), { code: 'fresh_auth_required' });
@@ -118,8 +117,8 @@ test('PostgreSQL management preserves data, isolates permissions, audits denials
     assert.deepEqual((await pool.query('SELECT account_id,opaque_record,wrapped_root_envelope FROM vaults.authentication_credentials ORDER BY account_id')).rows, ciphertext);
     const originalGrant = await action('ownership.request', { targetId: owner });
     const originalSession = randomUUID();
-    await pool.query("INSERT INTO vaults.sessions(tenant_id,session_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at) VALUES($1,$2,$3,$4,$5,1,$6,$7,now()+interval '1 hour')", [tenant, originalSession, randomBytes(32), owner, devices.get(owner), Buffer.alloc(32), Buffer.alloc(60)]);
-    await service.accept({ tenantId: tenant, accountId: owner, sessionId: originalSession }, { grantId: originalGrant.grantId, requestId: randomUUID() });
+    await pool.query("INSERT INTO vaults.sessions(tenant_id,session_id,token_digest,account_id,device_id,credential_epoch,csrf_digest,csrf_cipher,expires_at,session_epoch) SELECT $1,$2,$3,$4,$5,1,$6,$7,now()+interval '1 hour',session_epoch FROM vaults.accounts WHERE tenant_id=$1 AND id=$4", [tenant, originalSession, randomBytes(32), owner, devices.get(owner), Buffer.alloc(32), Buffer.alloc(60)]);
+    await service.accept({ tenantId: tenant, accountId: owner, deviceId: devices.get(owner), credentialEpoch: 1, sessionId: originalSession }, { grantId: originalGrant.grantId, requestId: randomUUID() });
     const concurrent = await Promise.allSettled([action('role.set', { targetId: owner, role: 'user' }), action('role.set', { targetId: alice, role: 'user' })]);
     assert.equal(concurrent.filter(result => result.status === 'fulfilled').length, 1);
     assert.equal(concurrent.find(result => result.status === 'rejected').reason.code, 'last_active_owner');
@@ -142,6 +141,7 @@ async function browserManagement(pool, management) {
   try {
     browser = await chromium.launch({ channel: process.env.VAULTS_BROWSER_CHANNEL || 'msedge', headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    context.setDefaultTimeout(10_000);
     await context.route(origin + '/**', async route => {
       const req = route.request(), path = new URL(req.url()).pathname + new URL(req.url()).search;
       const response = await fetch(base + path, { method: req.method(), headers: req.headers(), body: req.postData() || undefined });
@@ -188,6 +188,22 @@ async function browserManagement(pool, management) {
     assert.equal(await page.getByLabel('Invitation code').count(), 0);
     await page.getByRole('button', { name: 'Audit', exact: true }).click();
     await page.getByRole('cell', { name: 'invitation.create', exact: true }).first().waitFor();
+    await page.getByLabel('Outcome', { exact: true }).selectOption('denied');
+    await page.getByRole('button', { name: 'Apply filter' }).click();
+    await page.getByRole('cell', { name: 'denied', exact: true }).first().waitFor();
+    assert.equal(await page.getByRole('cell', { name: 'accepted', exact: true }).count(), 0);
+    const downloadEvent = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download redacted JSON' }).click();
+    const download = await downloadEvent;
+    const stream = await download.createReadStream();
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const { events } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    assert.ok(events.length > 0);
+    for (const event of events) {
+      assert.equal(event.outcome, 'denied');
+      assert.deepEqual(Object.keys(event).sort(), ['action', 'createdAt', 'outcome']);
+    }
     assert.deepEqual(errors, []);
     console.log('Edge management walkthrough passed: suspension/reactivation, ownership request/cancel, invitation code clearing, audit and narrow layout.');
   } finally { await browser?.close(); server.closeAllConnections(); await new Promise(done => server.close(done)); }

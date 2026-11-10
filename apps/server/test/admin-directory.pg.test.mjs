@@ -82,6 +82,24 @@ test('PostgreSQL admin directory covers every account, literal searches and devi
     const scoped = await readDirectory(pool, 'devices', input('devices', { accountId: seen[136] }));
     assert.equal(scoped.total, 1);
     assert.equal(scoped.devices[0].username, 'user136');
+    assert.equal(scoped.devices[0].lastSignInAt, null);
+    assert.equal(scoped.devices[0].activeSessions, 0);
+    await pool.query(`INSERT INTO vaults.authentication_credentials
+      (tenant_id,account_id,opaque_record,wrapped_root_descriptor,wrapped_root_envelope)
+      VALUES($1,$2,decode(repeat('ab',192),'hex'),'','')`, [tenant, seen[136]]);
+    await pool.query(`INSERT INTO vaults.sessions
+      (tenant_id,account_id,device_id,token_digest,csrf_digest,csrf_cipher,credential_epoch,created_at,expires_at,revoked_at)
+      SELECT $1,$2,$3,decode(repeat(marker,32),'hex'),decode(repeat('ab',32),'hex'),decode(repeat('ab',60),'hex'),
+        epoch,now()-age,now()+remaining,revoked_at
+      FROM (VALUES ('01',1,interval '1 hour',interval '1 hour',NULL::timestamptz),
+        ('02',1,interval '30 minutes',interval '1 hour',now()),
+        ('03',2,interval '45 minutes',interval '1 hour',NULL),
+        ('04',1,interval '3 hours',interval '-1 hour',NULL)) AS fixture(marker,epoch,age,remaining,revoked_at)`,
+    [tenant, seen[136], scoped.devices[0].id]);
+    const [device] = (await readDirectory(pool, 'devices', input('devices', { accountId: seen[136] }))).devices;
+    assert.equal(device.activeSessions, 1, 'Expired, revoked and stale sessions are excluded');
+    const last = await pool.query("SELECT created_at FROM vaults.sessions WHERE token_digest=decode(repeat('02',32),'hex')");
+    assert.deepEqual(device.lastSignInAt, last.rows[0].created_at);
     const deviceSearch = await readDirectory(pool, 'devices', input('devices', { q: scoped.devices[0].id }));
     assert.equal(deviceSearch.total, 1);
     const rotation = await readDirectory(pool, 'devices', input('devices', { status: 'active', credential: 'rotation_required', pageSize: '100' }));

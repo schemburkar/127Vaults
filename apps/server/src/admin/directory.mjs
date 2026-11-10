@@ -86,14 +86,24 @@ async function readDirectoryRows(client, kind, input) {
     ? `a.id,a.username,a.display_name,a.email,a.server_role,a.enrollment_state,a.suspended_at,a.email_verified,a.created_at,
       ${signInStatus} AS sign_in_status, CASE WHEN f.delayed_until > now() AND NOT f.admin_locked THEN f.delayed_until END AS sign_in_retry_at,
       (SELECT count(*)::int FROM vaults.devices d WHERE d.tenant_id=a.tenant_id AND d.account_id=a.id AND d.lifecycle_status='active') AS device_count`
-    : kind === 'devices' ? 'd.id,d.account_id,a.username,a.display_name,d.lifecycle_status,d.protection_class,d.credential_state,d.created_at,d.revoked_at'
+    : kind === 'devices' ? `d.id,d.account_id,a.username,a.display_name,d.lifecycle_status,d.protection_class,d.credential_state,d.created_at,d.revoked_at,
+      (SELECT max(s.created_at) FROM vaults.sessions s
+       WHERE s.tenant_id=d.tenant_id AND s.account_id=d.account_id AND s.device_id=d.id) AS last_sign_in_at,
+      (SELECT count(*)::int FROM vaults.sessions s
+       JOIN vaults.authentication_credentials c ON c.tenant_id=s.tenant_id AND c.account_id=s.account_id
+       WHERE s.tenant_id=d.tenant_id AND s.account_id=d.account_id AND s.device_id=d.id
+         AND s.revoked_at IS NULL AND s.expires_at>now()
+         AND a.enrollment_state='active' AND a.suspended_at IS NULL AND d.active
+         AND s.session_epoch=a.session_epoch AND s.device_auth_epoch=d.auth_epoch
+         AND s.credential_epoch=d.credential_epoch AND s.credential_epoch=c.credential_epoch) AS active_sessions`
     : `r.id,e.email,a.username AS created_by,r.created_at,r.expires_at,r.revoked_at,e.redeemed_at,${invitationStatus} AS status`;
   const order = sorts[kind][input.sort];
   const rows = await client.query(`SELECT ${fields} FROM ${from}${where} ORDER BY ${order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, input.pageSize, offset]);
   const items = rows.rows.map(r => kind === 'users'
     ? { id: r.id, username: r.username, displayName: r.display_name, email: r.email, role: r.server_role, status: r.suspended_at ? 'suspended' : r.enrollment_state, emailVerified: r.email_verified, createdAt: r.created_at, deviceCount: r.device_count,
       signInStatus: r.sign_in_status, signInRetryAt: r.sign_in_retry_at ?? null }
-    : kind === 'devices' ? { id: r.id, accountId: r.account_id, username: r.username, displayName: r.display_name, status: r.lifecycle_status, protection: r.protection_class, credentialState: r.credential_state, createdAt: r.created_at, revokedAt: r.revoked_at }
+    : kind === 'devices' ? { id: r.id, accountId: r.account_id, username: r.username, displayName: r.display_name, status: r.lifecycle_status, protection: r.protection_class, credentialState: r.credential_state, createdAt: r.created_at, revokedAt: r.revoked_at,
+      lastSignInAt: r.last_sign_in_at ?? null, activeSessions: r.active_sessions }
     : { id: r.id, email: r.email, createdBy: r.created_by, status: r.status, createdAt: r.created_at, expiresAt: r.expires_at, revokedAt: r.revoked_at, redeemedAt: r.redeemed_at });
   return { [kind]: items, total, page, pageSize: input.pageSize, pageCount, hasPrevious: page > 1, hasNext: page < pageCount };
 }

@@ -151,7 +151,16 @@ function currentResource() { return overviewSections.has(state.section) ? state.
 function auditView() {
   if (!state.session.managementEnabled) return placeholder('Audit');
   const events = state.audit.data?.events || [];
-  return `<section class="panel"><h2>Recent management actions</h2><p class="muted">The latest 100 accepted and denied actions. Vault data, passwords and invitation codes are excluded.</p><div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Outcome</th><th>Target ID</th></tr></thead><tbody>${events.map(event => `<tr><td>${escapeHtml(date(event.createdAt))}</td><td>${escapeHtml(event.actor)}</td><td>${escapeHtml(event.action)}</td><td>${escapeHtml(event.outcome)}</td><td class="mono">${escapeHtml(event.targetId || 'Installation')}</td></tr>`).join('')}</tbody></table></div>${!events.length ? '<p>No recorded management actions loaded.</p>' : ''}</section>`;
+  const outcome = state.audit.outcome || '';
+  const filters = `<form id="audit-filters" class="filters">
+    <div class="field"><label for="audit-outcome">Outcome</label><select name="outcome" id="audit-outcome">
+      <option value="">All outcomes</option>
+      <option value="accepted" ${outcome === 'accepted' ? 'selected' : ''}>Accepted</option>
+      <option value="denied" ${outcome === 'denied' ? 'selected' : ''}>Denied</option>
+    </select></div><button class="button" type="submit">Apply filter</button>
+    <button id="audit-export" class="button" type="button" ${state.audit.loading || !events.length ? 'disabled' : ''}>Download redacted JSON</button>
+  </form>`;
+  return `<section class="panel"><h2>Recent management actions</h2><p class="muted">Up to 100 actions matching the selected outcome. The redacted download contains action, outcome and time for those events.</p>${filters}<div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Outcome</th><th>Target ID</th></tr></thead><tbody>${events.map(event => `<tr><td>${escapeHtml(date(event.createdAt))}</td><td>${escapeHtml(event.actor)}</td><td>${escapeHtml(event.action)}</td><td>${escapeHtml(event.outcome)}</td><td class="mono">${escapeHtml(event.targetId || 'Installation')}</td></tr>`).join('')}</tbody></table></div>${!events.length ? '<p>No matching actions loaded.</p>' : ''}</section>`;
 }
 function ownershipView() {
   if (!state.session.managementEnabled || state.session.role !== 'owner') return '';
@@ -177,6 +186,22 @@ function render({ focus = '' } = {}) {
   document.querySelector('#refresh-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
   document.querySelector('#retry-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
   if (directory) bindDirectory(state.section);
+  document.querySelector('#audit-filters')?.addEventListener('submit', event => {
+    event.preventDefault();
+    state.audit.outcome = new FormData(event.currentTarget).get('outcome');
+    state.audit.data = null;
+    state.audit.checkedAt = null;
+    void loadSection(true, 'audit-outcome');
+  });
+  document.querySelector('#audit-export')?.addEventListener('click', () => {
+    const events = state.audit.data.events.map(({ action, outcome, createdAt }) => ({ action, outcome, createdAt }));
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ events }, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '127vaults-admin-audit.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
   if (state.session.managementEnabled && state.section === 'invitations') {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'button primary'; button.textContent = 'Create invitation';
     button.onclick = () => showManagementAction(root, state.session, { action: 'invitation.create', label: 'Create invitation', detail: 'Reserve seats for up to ten email addresses. Share the resulting code through your chosen trusted channel. Recipients must verify their email during enrollment.' }, null, () => { state.invitations.data = null; }, button);
@@ -214,7 +239,9 @@ async function loadSection(force = false, focus = '') {
   entry.loading = true; entry.error = '';
   render({ focus: focus === 'directory-search' ? '' : focus });
   try {
-    const data = await api(key + (['users','devices','invitations'].includes(key) ? '?' + directoryQuery(key, entry) : ''), { signal: controller.signal });
+    const query = ['users', 'devices', 'invitations'].includes(key) ? directoryQuery(key, entry)
+      : key === 'audit' && entry.outcome ? new URLSearchParams({ outcome: entry.outcome }) : '';
+    const data = await api(key + (query ? '?' + query : ''), { signal: controller.signal });
     if (entry.request !== request || state.generation !== generation) return;
     entry.data = data; entry.checkedAt = new Date().toISOString();
     if (['users','devices','invitations'].includes(key)) entry.page = data.page;

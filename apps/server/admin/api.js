@@ -42,7 +42,8 @@ export function validResponse(path, method, value) {
     if (kind === 'users') return text(item.username) && text(item.displayName) && text(item.email) && text(item.role)
       && integer(item.deviceCount) && typeof item.emailVerified === 'boolean' && optionalTimestamp(item.signInRetryAt)
       && (item.signInStatus === undefined || ['clear', 'locked', 'delayed'].includes(item.signInStatus));
-    if (kind === 'devices') return text(item.accountId) && text(item.username) && text(item.displayName) && text(item.protection) && text(item.credentialState) && optionalTimestamp(item.revokedAt);
+    if (kind === 'devices') return text(item.accountId) && text(item.username) && text(item.displayName) && text(item.protection) && text(item.credentialState) && optionalTimestamp(item.revokedAt)
+      && optionalTimestamp(item.lastSignInAt) && (item.activeSessions === undefined || integer(item.activeSessions));
     return text(item.email) && text(item.createdBy) && timestamp(item.expiresAt) && optionalTimestamp(item.revokedAt) && optionalTimestamp(item.redeemedAt);
   });
 }
