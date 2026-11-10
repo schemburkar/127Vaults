@@ -1,8 +1,8 @@
 import { encryptionKey, hash, equal, token, seal, unseal, limitIdentity } from './crypto.mjs';
-import { rawBody, reject } from './dodo.mjs';
+import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed } from './dodo.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
 import { productionRecipient } from '../src/resend-email.mjs';
-import { sendCustomerEmail } from './customer-email.mjs';
+import { resendCustomerEmailEnabled, sendCustomerEmail } from './customer-email.mjs';
 
 const cookieName = '__Host-127v-portal', lifetime = 12 * 3600000;
 const normalize = email => typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -11,6 +11,7 @@ const idPattern = /^[a-f0-9]{64}$/;
 const cookie = (value, seconds = lifetime / 1000) => `${cookieName}=${value}; Path=/; Max-Age=${seconds}; Secure; HttpOnly; SameSite=Strict`;
 const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' };
 const json = (status, value, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
+const personalOffered = env => env.DODO_ENABLED === '1' && JSON.parse(env.DODO_PLANS ?? '{}')['personal-annual']?.plan === 'personal';
 async function body(request, fields) {
   let value; try { value = JSON.parse(await rawBody(request, 2048)); } catch { reject(400, 'invalid_request'); }
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(v => !fields.includes(v))) reject(400, 'invalid_request');
@@ -95,7 +96,14 @@ export async function handleCustomerPortal(request, env, store, now) {
     const challengeId = token();
     const rows = await store.list();
     const owned = rows.filter(row => row.contact?.plan !== 'support' && normalize(row.contact?.email) === email);
-    const customer = owned.find(row => row.trial?.kind !== 'development') ?? owned[0];
+    let customer = owned.find(row => row.trial?.kind !== 'development') ?? owned[0];
+    const buying = personalOffered(env);
+    if (!customer && buying && (env.LOCAL_SITE_PREVIEW === '1' ||
+      (env.DODO_MODE === 'live_mode' && resendCustomerEmailEnabled(env) && productionRecipient(email)))) {
+      const id = await hash(await limitIdentity(store.limiterKey, `personal-signup:${email}`));
+      await store.insertOrder(id, { email, plan: 'personal', name: email }, { kind: 'personal-signup', state: 'signup' });
+      customer = await store.get(id);
+    }
     const cloudPilot = !customer && env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1' &&
       (await cloudCustomerTenants(env, email)).tenants.length > 0;
     if (customer || cloudPilot) {
@@ -111,7 +119,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     }
     return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1' || env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1'
       ? 'If this email is eligible, check your inbox or contact your operator for a sign-in code.'
-      : 'If this email has an access request or invitation, a sign-in code will be sent.' });
+      : buying ? 'Check your inbox for your sign-in code.' : 'If this email has an access request or invitation, a sign-in code will be sent.' });
   }
   if (path === '/api/customer/complete' && request.method === 'POST') {
     const input = await body(request, ['challengeId', 'code']);
@@ -145,6 +153,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     if (!idPattern.test(input.requestId ?? '')) reject(400, 'invalid_request');
     const row = await store.get(input.requestId);
     if (!await customerCanAccess(request, env, store, row, now)) reject(404, 'not_found');
+    if (row.trial.kind === 'personal-purchase' && !paidPersonalAccess(row.trial, now)) reject(403, 'payment_required');
     const value = token(), expiresAt = Math.min(now + 3600000, principal.kind === 'invitation' ? principal.sessionExpiresAt : Infinity);
     await store.save(row, { ...row.trial, portalInstallerHash: await hash(value), portalInstallerUntil: expiresAt, portalInstallerParent: row.trial.tokenHash });
     return json(200, { link: `${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/trial?open=1#${row.id}.${value}`, expiresAt: new Date(expiresAt).toISOString() });
@@ -153,17 +162,22 @@ export async function handleCustomerPortal(request, env, store, now) {
     const rows = await store.list();
     const requests = [];
     for (const row of rows) {
-      if (row.contact?.plan === 'support') continue;
+      if (row.contact?.plan === 'support' || row.trial?.kind === 'personal-signup') continue;
       const owned = principal.kind === 'email' ? normalize(row.contact?.email) === principal.email
         : row.id === principal.requestId && row.trial?.state === 'approved' && await equal(principal.invitationHash, row.trial.tokenHash);
       if (!owned) continue;
-      requests.push({ id: row.id, plan: row.trial?.billing?.planSlug ?? row.contact.plan, state: row.trial?.state ?? 'requested',
+      const personalPurchase = row.trial?.kind === 'personal-purchase';
+      const paid = paidPersonalAccess(row.trial, now);
+      requests.push({ id: row.id, plan: personalPurchase ? 'personal' : row.trial?.billing?.planSlug ?? row.contact.plan,
+        state: personalPurchase && !paid ? 'purchase_pending' : row.trial?.state ?? 'requested',
         installationId: row.trial?.installationId ?? null, expiresAt: row.trial?.expiresAt ?? null,
         billingStatus: row.trial?.billing?.status ?? null, paidThrough: row.trial?.billing?.paidThrough ?? null,
         cancelAtPeriodEnd: Boolean(row.trial?.billing?.cancelAtPeriodEnd), maxUsers: row.trial?.maxUsers ?? null });
     }
     const cloud = principal.kind === 'email' ? await cloudCustomerTenants(env, principal.email) : { tenants: [], unavailable: false };
     return json(200, { scope: principal.installationOnly ? 'installer' : principal.kind, email: principal.kind === 'email' ? principal.email : null,
+      canBuyPersonal: principal.kind === 'email' && personalBuyerAllowed(env, principal.email) && personalOffered(env)
+        && !requests.some(row => row.plan === 'personal' && row.billingStatus),
       requests, cloudTenants: cloud.tenants, cloudUnavailable: cloud.unavailable });
   }
   if (path === '/api/customer/logout' && request.method === 'POST') {

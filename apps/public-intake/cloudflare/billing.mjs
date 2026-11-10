@@ -1,10 +1,19 @@
-import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError } from './dodo.mjs';
-import { equal, hash, token, signEnvelope, from64, seal, unseal } from './crypto.mjs';
-import { customerCanAccess } from './customer-portal.mjs';
+import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPersonalAccess, personalBuyerAllowed } from './dodo.mjs';
+import { equal, hash, token, signEnvelope, from64, seal, unseal, limitIdentity } from './crypto.mjs';
+import { customerCanAccess, customerPrincipal } from './customer-portal.mjs';
+import { serverMajor } from './catalogue.mjs';
 
 const day = 86400000;
 const iso = at => new Date(at).toISOString();
 const payload = source => JSON.parse(new TextDecoder().decode(from64(JSON.parse(source).payload)));
+export async function issuePersonalLicense(record, signingKey, issuerKeyId, now) {
+  return signEnvelope(signingKey, issuerKeyId, '127Vaults license v1', {
+    licenseId: crypto.randomUUID(), installationId: record.installationId,
+    plan: 'personal', majorVersion: record.serverMajorVersion, maxActiveUsers: record.maxUsers,
+    issuedAt: iso(now), notBefore: iso(now), expiresAt: record.billing.paidThrough,
+    sequence: (record.license ? payload(record.license).sequence : 0) + 1,
+  });
+}
 const publicStatus = b => ({ status: b.status, plan: b.planSlug, paidThrough: b.paidThrough ?? null,
   graceUntil: b.paidThrough ? iso(Date.parse(b.paidThrough) + 30 * day) : null,
   cancelAtPeriodEnd: Boolean(b.cancelAtPeriodEnd), lastCheckedAt: b.lastCheckedAt ?? null });
@@ -55,15 +64,19 @@ export async function syncSubscription(env, store, row, release, now, fetcher = 
     if (!Number.isFinite(end) || end <= now || end > now + 370 * day) throw Error('Invalid subscription period');
     next.billing.paidThrough = iso(end);
     // The signed expiry is the paid period boundary. Failure never advances it.
-    if (next.installationId && (!next.license || next.billing.issuedOrderId !== b.orderId || payload(next.license).expiresAt !== iso(end)
-      || payload(next.license).plan !== plan.plan || payload(next.license).maxActiveUsers !== plan.maxUsers)) {
+    const personal = next.kind === 'personal-purchase';
+    if (next.installationId && (!personal || paidPersonalAccess(next, now)) &&
+      (!next.license || next.billing.issuedOrderId !== b.orderId || payload(next.license).expiresAt !== iso(end)
+      || payload(next.license).plan !== plan.plan || payload(next.license).maxActiveUsers !== (personal ? next.maxUsers : plan.maxUsers))) {
       const { signingKey } = await release(env);
-      next.license = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
+      next.maxUsers = personal ? next.maxUsers : plan.maxUsers;
+      next.license = personal ? await issuePersonalLicense(next, signingKey, env.TRIAL_ISSUER_KEY_ID, now)
+        : await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
         licenseId: crypto.randomUUID(), installationId: next.installationId,
         plan: plan.plan, majorVersion: null, maxActiveUsers: plan.maxUsers, issuedAt: iso(now), notBefore: iso(now),
         expiresAt: iso(end), sequence: (next.license ? payload(next.license).sequence : 0) + 1,
       });
-      next.expiresAt = iso(end); next.maxUsers = plan.maxUsers;
+      next.expiresAt = iso(end);
       next.billing.issuedOrderId = b.orderId;
     }
   }
@@ -117,13 +130,15 @@ async function processBillingEvent(id, event, env, store, release, now, fetcher)
         const fullyRefunded = payment.refunds?.some(v => v.status === 'succeeded' && v.is_partial === false);
         const coversCurrentPeriod = payment.service_periods?.some(v => v.subscription_id === subId
           && Date.parse(v.ends_at) >= Date.parse(b.paidThrough));
-        if ((fullyRefunded || event.type === 'dispute.lost') && coversCurrentPeriod && next.license) {
-          const { signingKey } = await release(env), license = payload(next.license);
+        if ((fullyRefunded || event.type === 'dispute.lost') && coversCurrentPeriod && (next.license || next.kind === 'personal-purchase')) {
           next.billing.suspended = true; next.billing.status = fullyRefunded ? 'refunded' : 'disputed';
-          next.billing.revocation = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license revocation v1', {
+          if (next.license) {
+            const { signingKey } = await release(env), license = payload(next.license);
+            next.billing.revocation = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license revocation v1', {
             revocationId: crypto.randomUUID(), installationId: next.installationId, licenseId: license.licenseId,
             issuedAt: iso(now), revokedAt: iso(now),
-          });
+            });
+          }
           await dodo(env, `/subscriptions/${encodeURIComponent(subId)}`, 'PATCH', { status: 'cancelled' }, fetcher);
         }
         await store.save(row, next);
@@ -141,6 +156,27 @@ export async function handleBilling(request, env, store, release, now, operatorA
   const admin = path.startsWith('/api/access-admin/');
   if (admin && !operatorAuthorized) reject(401, 'access_required');
   if (!await store.allow(admin ? 'billing-admin' : 'billing-ip', request.headers.get('cf-connecting-ip') ?? 'unknown', 120, 3600000)) reject(429, 'rate_limited');
+  if (path === '/api/billing/personal-order' && request.method === 'POST') {
+    const principal = await customerPrincipal(request, env, store, now);
+    if (principal?.kind !== 'email' || !personalBuyerAllowed(env, principal.email)) reject(401, 'access_required');
+    const value = await input(request); fields(value, ['acceptTerms']);
+    if (value.acceptTerms !== true) reject(400, 'terms_required');
+    const plan = config.plans['personal-annual'];
+    if (plan?.plan !== 'personal') reject(404, 'not_found');
+    const id = await hash(await limitIdentity(store.limiterKey, `personal-order:${config.mode}:${plan.majorVersion}:${principal.email}`));
+    if (!await store.get(id)) {
+      const { catalogue, identity } = await release(env);
+      if (serverMajor(catalogue) !== plan.majorVersion) reject(409, 'licensed_major_unavailable');
+      await store.insertOrder(id, { email: principal.email, plan: 'personal', name: principal.email }, {
+        kind: 'personal-purchase', state: 'approved', maxUsers: plan.maxUsers, serverMajorVersion: plan.majorVersion,
+        termsAcceptedAt: iso(now), sourceRevision: catalogue.sourceRevision, releaseHash: identity,
+        tokenHash: await hash(token()), linkExpiresAt: iso(now),
+        billing: { mode: config.mode, planSlug: 'personal-annual', productId: plan.productId,
+          status: 'offered', orderId: crypto.randomUUID() },
+      });
+    }
+    return { requestId: id };
+  }
   if (path === '/api/access-admin/billing/plans' && request.method === 'GET') {
     return { mode: config.mode, plans: Object.entries(config.plans).map(([id, value]) => ({ id, maxUsers: value.maxUsers })) };
   }
@@ -174,12 +210,13 @@ export async function handleBilling(request, env, store, release, now, operatorA
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get('authorization') ?? '')?.[1];
   // Machine refresh credentials cannot open checkout or customer billing sessions.
   const machine = action === 'refresh' && record.billing?.refreshHash && await equal(await hash(bearer ?? ''), record.billing.refreshHash);
+  if (action === 'refresh' && request.method === 'POST' && !request.headers.has('origin') && !machine) reject(401, 'access_required');
   const portalAuthorized = !admin && !machine && await customerCanAccess(request, env, store, row, now, 'billing');
   if (!admin && !machine && !portalAuthorized && (!bearer || !await equal(await hash(bearer), record.tokenHash)
     || Date.parse(record.linkExpiresAt) <= now)) reject(401, 'access_required');
   if (admin && action === 'offer' && request.method === 'POST') {
     const v = await input(request); fields(v, ['plan']); const plan = config.plans[v.plan];
-    if (!plan || record.kind === 'development') reject(409, 'offer_unavailable');
+    if (plan?.plan !== 'commercial' || ['development', 'personal-purchase'].includes(record.kind)) reject(409, 'offer_unavailable');
     if (record.billing) {
       if (record.billing.suspended) {
         const prior = await dodo(env, `/subscriptions/${encodeURIComponent(record.billing.subscriptionId)}`, 'GET', undefined, fetcher);
@@ -197,7 +234,8 @@ export async function handleBilling(request, env, store, release, now, operatorA
   if (!record.billing) reject(404, 'not_found');
   if (admin && action === 'rotate-refresh' && request.method === 'POST') {
     fields(await input(request), []); const refreshToken = token();
-    await store.save(row, { ...record, billing: { ...record.billing, refreshHash: await hash(refreshToken) } });
+    await store.save(row, { ...record, billing: { ...record.billing, refreshHash: await hash(refreshToken),
+      ...(record.kind === 'personal-purchase' ? { refreshToken } : {}) } });
     return { refreshToken, refreshUrl: `${customerOrigin}/api/billing/${id}/refresh` };
   }
   if (admin && action === 'recover-checkout' && request.method === 'POST') {
@@ -224,7 +262,10 @@ export async function handleBilling(request, env, store, release, now, operatorA
   if (action === 'checkout' && request.method === 'POST' && !admin) {
     const v = await input(request); fields(v, ['coupon']);
     if (v.coupon !== undefined && !/^[A-Za-z0-9_-]{3,16}$/.test(v.coupon)) reject(400, 'invalid_coupon');
-    if (!['offered'].includes(record.billing.status) || !record.installationId) reject(409, 'checkout_unavailable');
+    const personal = record.kind === 'personal-purchase';
+    if (personal && (!portalAuthorized || v.coupon !== undefined)) reject(403, 'access_required');
+    if (record.billing.status === 'checkout_pending' && record.billing.checkoutUrl) return { checkoutUrl: safeLink(record.billing.checkoutUrl) };
+    if (record.billing.status !== 'offered' || (!personal && !record.installationId)) reject(409, 'checkout_unavailable');
     // Reserve durably before calling the provider. An ambiguous timeout must be reconciled by an operator, never retried into a duplicate subscription.
     await store.save(row, { ...record, billing: { ...record.billing, status: 'checkout_pending', checkoutStartedAt: iso(now) } });
     let result;
@@ -233,7 +274,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
       customer: { email: row.contact.email }, subscription_data: { trial_period_days: 0 },
       metadata: { access_request_id: id, order_id: record.billing.orderId, billing_mode: config.mode },
       ...(v.coupon ? { discount_codes: [v.coupon.toUpperCase()] } : {}),
-      feature_flags: { allow_discount_code: true }, return_url: `${customerOrigin}/portal?billing=return`,
+      feature_flags: { allow_discount_code: !personal }, return_url: `${customerOrigin}/portal?billing=return`,
     }, fetcher); }
     catch (error) {
       if (error instanceof DodoError && [400, 422].includes(error.providerStatus)) {
@@ -244,7 +285,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
     }
     const checkoutUrl = safeLink(result.checkout_url);
     if (!result.session_id) throw Error('Missing checkout identity');
-    await store.save(row, { ...row.trial, billing: { ...row.trial.billing, sessionId: result.session_id } });
+    await store.save(row, { ...row.trial, billing: { ...row.trial.billing, sessionId: result.session_id, ...(personal ? { checkoutUrl } : {}) } });
     return { checkoutUrl };
   }
   if (action === 'portal' && request.method === 'POST' && !admin) {

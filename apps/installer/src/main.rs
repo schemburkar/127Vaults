@@ -143,6 +143,8 @@ struct Release {
     artifacts: Vec<Artifact>,
     source_revision: String,
     installation_id: Option<String>,
+    #[serde(default)]
+    subscription: bool,
 }
 
 fn validate_network_selection(args: &Args, state: &State) -> Result<()> {
@@ -1012,6 +1014,37 @@ fn finish_license(
         add_options(&mut install, args, engine, false);
         existing_identity_options(&mut install, directory)?;
         prerequisites::run(&mut install)?;
+        if release.subscription {
+            let settings = api.request("subscription", None)?.bytes()?;
+            if settings.len() > 4096 {
+                return Err("Unexpected subscription settings size".into());
+            }
+            let subscription_path =
+                directory.join(format!("subscription-{}.json", uuid::Uuid::new_v4()));
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&subscription_path)?;
+            let written = file.write_all(&settings);
+            drop(file);
+            let mut configure = Command::new(node);
+            configure
+                .current_dir(directory)
+                .args(["server.mjs", "install", "subscription", "--file"])
+                .arg(&subscription_path);
+            add_options(&mut configure, args, engine, false);
+            let result = (|| -> Result<()> {
+                written?;
+                existing_identity_options(&mut configure, directory)?;
+                prerequisites::run(&mut configure)
+            })();
+            let _ = fs::remove_file(subscription_path);
+            result?;
+        }
         let mut start = Command::new(node);
         start
             .current_dir(directory)

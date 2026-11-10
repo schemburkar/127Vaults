@@ -80,6 +80,7 @@ function showLicense(record) {
     ? `Bound to ${record.installationId}. Writes expire ${new Date(record.expiresAt).toLocaleString()}.`
     : record.kind === 'development'
       ? `Development access for up to ${record.maxUsers} vault users, licensed until ${new Date(record.entitlementExpiresAt).toLocaleString()}. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`
+      : record.personalPurchase ? `Paid Personal license for up to ${record.maxUsers} vault users. Bind it to your server during setup.`
       : `Up to ${record.maxUsers} vault users. ${record.billingAvailable ? '' : 'The 10 days start when you activate. '}Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
 }
 async function download(action, filename) {
@@ -153,7 +154,7 @@ async function open() {
 $('trial-activate').addEventListener('submit', async event => {
   event.preventDefault(); if (!$('trial-activate').reportValidity()) return;
   const button = $('trial-activate').querySelector('button'); button.disabled = true;
-  try { const record = await (await api('/activate', { installationId: $('installation-id').value.trim() })).json(); showLicense(record); status('Trial activated. Download and install your license on the server.'); }
+  try { const record = await (await api('/activate', { installationId: $('installation-id').value.trim() })).json(); showLicense(record); status('License activated. Download and install it on your server.'); }
   catch (error) { status(error.message); }
   finally { button.disabled = false; }
 });

@@ -75,7 +75,11 @@ export async function renderSites(config, state) {
   const root = await mkdtemp(join(config.stateDirectory, 'sites-')), files = {};
   for (const surface of siteOrder) {
     const assets = join(root, surface);
-    if (surface !== 'intake') await stageSite(surface, assets, { publicOrigin: config.origin });
+    if (surface !== 'intake') await stageSite(surface, assets, {
+      publicOrigin: config.origin,
+      personalBuyUrl: config.billing?.mode === 'live_mode' && config.billing.plans['personal-annual']?.plan === 'personal'
+        && config.customerEmail?.enabled ? new URL('/portal', config.sites.customerOrigin).href : undefined,
+    });
     files[surface] = join(root, `${surface}.json`);
     await saveJson(files[surface], siteConfig(config, state, surface, assets));
   }

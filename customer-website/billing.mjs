@@ -21,7 +21,9 @@ async function api(action = '', value) {
 function show(value) {
   $('controls').hidden = false;
   $('details').textContent = `${value.plan}: ${value.status}. ${value.paidThrough ? `Paid through ${new Date(value.paidThrough).toLocaleString()}.` : 'Payment has not been confirmed.'}${value.cancelAtPeriodEnd ? ' Cancellation is scheduled.' : ''}`;
-  $('checkout').hidden = value.status !== 'offered';
+  const personal = value.plan === 'personal-annual';
+  $('coupon').closest('label').hidden = personal;
+  $('checkout').hidden = value.status !== 'offered' && !(personal && value.status === 'checkout_pending');
 }
 async function run(work) {
   const buttons = [...document.querySelectorAll('button')]; buttons.forEach(b => { b.disabled = true; });

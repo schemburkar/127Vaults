@@ -5,6 +5,11 @@ export class BillingError extends Error {
 }
 export const reject = (status, code) => { throw new BillingError(status, code); };
 export class DodoError extends Error { constructor(status) { super('Billing provider unavailable'); this.providerStatus = status; } }
+export const paidPersonalAccess = (record, now) => record?.kind === 'personal-purchase'
+  && !record.billing?.suspended && record.billing?.lastPayment?.status === 'succeeded'
+  && record.billing.lastPayment.amount > 0 && Date.parse(record.billing.paidThrough) > now;
+export const personalBuyerAllowed = (env, email) => env.DODO_MODE === 'live_mode'
+  || env.LOCAL_SITE_PREVIEW === '1' || Boolean(email && env.DODO_TEST_BUYER === email);
 export function billingConfig(env) {
   if (env.DODO_ENABLED !== '1') reject(404, 'not_found');
   const mode = env.DODO_MODE ?? 'test_mode';
@@ -14,7 +19,9 @@ export function billingConfig(env) {
   const products = new Set();
   for (const [slug, plan] of Object.entries(plans)) {
     if (!/^[a-z0-9-]{1,60}$/.test(slug) || !/^pdt_[A-Za-z0-9]+$/.test(plan.productId)
-      || plan.plan !== 'commercial' || !Number.isSafeInteger(plan.maxUsers) || plan.maxUsers < 1 || plan.maxUsers > 100000) throw Error('Invalid billing plan');
+      || !['personal', 'commercial'].includes(plan.plan)
+      || (plan.plan === 'personal' && (!Number.isSafeInteger(plan.majorVersion) || plan.majorVersion < (mode === 'test_mode' ? 0 : 1)))
+      || !Number.isSafeInteger(plan.maxUsers) || plan.maxUsers < 1 || plan.maxUsers > 100000) throw Error('Invalid billing plan');
     if (products.has(plan.productId)) throw Error('Duplicate billing product');
     products.add(plan.productId);
   }

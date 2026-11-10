@@ -36,12 +36,42 @@ async function account() {
     cloudCards.append(card);
   }
   $('portal-requests').replaceChildren();
+  if (value.canBuyPersonal) {
+    const buy = document.createElement('form');
+    buy.className = 'access-card portal-request';
+    const title = document.createElement('h2');
+    title.textContent = 'Buy Personal Self-Hosted';
+    const terms = document.createElement('label');
+    const consent = document.createElement('input');
+    consent.type = 'checkbox';
+    consent.required = true;
+    const agreement = document.createElement('a');
+    agreement.href = 'https://127vaults.com/terms';
+    agreement.textContent = 'license terms';
+    terms.append(consent, ' I accept the ', agreement, ' and agree to annual billing at $20 USD plus applicable tax.');
+    const submit = document.createElement('button');
+    submit.className = 'button primary';
+    submit.textContent = 'Continue to checkout';
+    buy.append(title, terms, submit);
+    buy.addEventListener('submit', event => {
+      event.preventDefault();
+      run(async () => {
+        const response = await fetch('/api/billing/personal-order', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acceptTerms: consent.checked }),
+        });
+        if (!response.ok) throw Error('Could not start the order. Try again or contact support.');
+        const { requestId } = await response.json();
+        location.assign(`/billing?request=${encodeURIComponent(requestId)}`);
+      });
+    });
+    $('portal-requests').append(buy);
+  }
   for (const row of value.requests) {
     const card = document.createElement('article'); card.className = 'access-card portal-request';
     const heading = document.createElement('div'); heading.className = 'portal-request-heading';
     const title = document.createElement('h2'); title.textContent = { personal: 'Personal Self-Hosted', commercial: 'Commercial Self-Hosted' }[row.plan] ?? row.plan;
     const status = document.createElement('span'); status.className = 'portal-state';
-    status.textContent = { approved: 'Approved', requested: 'Awaiting review', closed: 'Closed', rejected: 'Not approved' }[row.state] ?? row.state;
+    status.textContent = { approved: 'Approved', purchase_pending: 'Purchase', requested: 'Awaiting review', closed: 'Closed', rejected: 'Not approved' }[row.state] ?? row.state;
     heading.append(title, status); card.append(heading);
     const facts = document.createElement('dl'); facts.className = 'portal-facts';
     const fact = (label, value, className) => {
@@ -65,6 +95,8 @@ async function account() {
       })); actions.append(installer);
       if (row.billingStatus && value.scope !== 'installer') actions.append(link('Billing, invoices and cancellation', `/billing?request=${encodeURIComponent(row.id)}`));
       card.append(actions);
+    } else if (row.state === 'purchase_pending') {
+      card.append(link('Open billing and check payment', `/billing?request=${encodeURIComponent(row.id)}`, true));
     } else { const note = document.createElement('p'); note.className = 'portal-request-note'; note.textContent = row.state === 'requested' ? 'Your request is waiting for review. Signing in does not approve access.' : 'This request is not currently approved. Contact your inviter if you need assistance.'; card.append(note); }
     $('portal-requests').append(card);
   }

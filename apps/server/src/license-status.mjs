@@ -27,7 +27,7 @@ export function verifyLicenseFile(file, publicKeys, installationId) {
   if (!keys(payload, ['licenseId', 'installationId', 'plan', 'majorVersion', 'maxActiveUsers', 'issuedAt', 'notBefore', 'expiresAt', 'sequence'])
     || !uuid.test(payload.licenseId) || payload.installationId !== installationId
     || !['personal', 'commercial', 'trial', 'development'].includes(payload.plan)
-    || (payload.plan === 'personal' && (!Number.isSafeInteger(payload.majorVersion) || payload.majorVersion < 1))
+    || (payload.plan === 'personal' && (!Number.isSafeInteger(payload.majorVersion) || payload.majorVersion < 0))
     || (payload.plan !== 'personal' && payload.majorVersion !== null)
     || !Number.isSafeInteger(payload.maxActiveUsers) || payload.maxActiveUsers < 1 || payload.maxActiveUsers > 100000
     || !Number.isSafeInteger(payload.sequence) || payload.sequence < 1

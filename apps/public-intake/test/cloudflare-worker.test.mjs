@@ -350,12 +350,92 @@ test('Dodo full refund of the current payment revokes service and cancels collec
   const result = await handleBilling(f.req(`/api/billing/${f.id}/refresh`, {}, f.offer.refreshToken), f.env, f.store, f.release, now, false, provider);
   assert.equal(result.revocation, row.trial.billing.revocation); assert.equal(result.customerId, undefined);
 });
+test('Dodo Personal signup, verified payment and installation binding require no approval', { timeout: 20000 }, async t => {
+  const messages = [];
+  const secret = Buffer.alloc(32, 7);
+  const paidThrough = new Date(Date.now() + 365 * 86400000).toISOString();
+  let metadata;
+  let checkoutCalls = 0;
+  const f = await fixture(t, { bindings: {
+    SITE_SURFACE: 'customer', CUSTOMER_PORTAL_ENABLED: '1', CUSTOMER_EMAIL_PROVIDER: 'resend',
+    CUSTOMER_EMAIL_MODE: 'production', CUSTOMER_EMAIL_FROM: 'accounts@127vaults.com', RESEND_API_KEY: 're_' + 'fake'.repeat(8),
+    DODO_ENABLED: '1', DODO_MODE: 'live_mode', DODO_API_KEY: 'mock-key',
+    DODO_WEBHOOK_SECRET: 'whsec_' + secret.toString('base64'), DODO_BUSINESS_ID: 'biz_personal',
+    DODO_PLANS: JSON.stringify({ 'personal-annual': { productId: 'pdt_personal', plan: 'personal', majorVersion: 1, maxUsers: 5 } }),
+  }, serverMajorVersion: 1, outboundService: async request => {
+    const url = new URL(request.url);
+    if (url.hostname === 'api.resend.com') {
+      messages.push(await request.json());
+      return Response.json({ id: 'mock-mail' });
+    }
+    assert.equal(url.origin, 'https://live.dodopayments.com');
+    if (url.pathname === '/checkouts') {
+      checkoutCalls++;
+      const input = await request.json();
+      metadata = input.metadata;
+      assert.deepEqual(input.product_cart, [{ product_id: 'pdt_personal', quantity: 1 }]);
+      return Response.json({ session_id: 'cks_personal', checkout_url: 'https://checkout.dodopayments.com/session' });
+    }
+    if (url.pathname === '/subscriptions/sub_personal') return Response.json({
+      subscription_id: 'sub_personal', status: 'active', metadata, product_id: 'pdt_personal',
+      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
+    });
+    assert.equal(url.pathname, '/payments/pay_personal');
+    return Response.json({ payment_id: 'pay_personal', subscription_id: 'sub_personal', status: 'succeeded',
+      total_amount: 2000, currency: 'USD', created_at: new Date().toISOString() });
+  } });
+  const started = await (await f.post('/api/customer/start', { email: 'buyer@customer-domain.dev' })).json();
+  assert.equal(messages.length, 1);
+  const signedIn = await f.post('/api/customer/complete', { challengeId: started.challengeId, code: /code is (\d{6})/.exec(messages[0].text)[1] });
+  assert.equal(signedIn.status, 200);
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0];
+  const post = (path, input) => f.mf.dispatchFetch(origin + path, { method: 'POST',
+    headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  assert.equal((await post('/api/billing/personal-order', { acceptTerms: false })).status, 400);
+  const order = await post('/api/billing/personal-order', { acceptTerms: true });
+  assert.equal(order.status, 200, await order.clone().text());
+  const { requestId } = await order.json();
+  assert.equal((await (await post('/api/billing/personal-order', { acceptTerms: true })).json()).requestId, requestId);
+  const trial = `/api/trials/${requestId}`;
+  const installationId = randomUUID();
+  assert.equal((await post(`${trial}/activate`, { installationId })).status, 403);
+  assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 200);
+  assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 200);
+  assert.equal(checkoutCalls, 1);
+  assert.equal((await f.get(`${trial}/artifacts/server`, null, cookie)).status, 403);
+  const raw = JSON.stringify({ business_id: 'biz_personal', type: 'payment.succeeded', timestamp: new Date().toISOString(),
+    data: { payment_id: 'pay_personal', metadata } });
+  const id = 'msg_personal', timestamp = String(Math.floor(Date.now() / 1000));
+  const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${raw}`))).toString('base64');
+  const webhook = new Request(origin + '/api/billing/webhook', { method: 'POST', body: raw,
+    headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': `v1,${signature}` } });
+  await billingWebhook(webhook, f.env, new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'),
+    await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey)), async () => {
+    throw Error('A license cannot be issued before installation binding');
+  }, Date.now(), requestUrl => f.mfOptions.outboundService(new Request(requestUrl)));
+  assert.equal(await (await f.get(`${trial}/artifacts/server`, null, cookie)).text(), f.archive);
+  const activated = await post(`${trial}/activate`, { installationId });
+  assert.equal(activated.status, 200, await activated.clone().text());
+  const file = await (await f.get(`${trial}/license`, null, cookie)).text();
+  const license = verifyLicenseFile(file, f.publicKeys, installationId);
+  assert.deepEqual([license.plan, license.majorVersion, license.maxActiveUsers, license.expiresAt], ['personal', 1, 5, paidThrough]);
+  const refresh = await (await f.get(`${trial}/subscription`, null, cookie)).json();
+  const machine = await f.mf.dispatchFetch(refresh.refreshUrl, { method: 'POST',
+    headers: { Authorization: `Bearer ${refresh.refreshToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ installationId }) });
+  assert.equal(machine.status, 200);
+  assert.equal((await machine.json()).license, file);
+  assert.equal((await post(`${trial}/activate`, { installationId: randomUUID() })).status, 409);
+});
+
 async function fixture(t, options = {}) {
   const issuerPrivateKey = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
   const publicKeys = { trial: createPublicKey(issuerPrivateKey).export({ type: 'spki', format: 'pem' }) };
   const operatorToken = randomBytes(32).toString('base64url'), intakeKey = randomBytes(32).toString('hex');
   const archive = 'synthetic private archive', sha256 = createHash('sha256').update(archive).digest('hex');
   const catalogue = { schemaVersion: 1, sourceRevision: 'a'.repeat(40), issuerPublicKeys: publicKeys,
+    ...(options.serverMajorVersion === undefined ? {} : { serverMajorVersion: options.serverMajorVersion }),
     artifacts: [{ id: 'server', filename: 'server.tar', label: 'Server', sizeBytes: Buffer.byteLength(archive), sha256,
       objectKey: 'releases/test/server.tar', etag: createHash('md5').update(archive).digest('hex') }] };
   const catalogueSource = JSON.stringify(catalogue);

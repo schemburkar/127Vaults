@@ -9,8 +9,8 @@ import { installerPolicy, installerProtocol } from './installer.mjs';
 import { developmentPolicy } from './development.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, notifyRequestVolume, requestAlertsEnabled } from '../src/request-alerts.mjs';
-import { BillingError } from './dodo.mjs';
-import { billingWebhook, handleBilling, reconcileBilling } from './billing.mjs';
+import { BillingError, paidPersonalAccess } from './dodo.mjs';
+import { billingWebhook, handleBilling, reconcileBilling, issuePersonalLicense } from './billing.mjs';
 import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal, manualCustomerMail } from './customer-portal.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail, pruneCustomerEmail } from './customer-email.mjs';
 
@@ -191,7 +191,8 @@ async function dispatch(request, env, now, schedule) {
     return json(200, await billingWebhook(request, env, store, release, now(), fetch, schedule));
   }
   if (!['GET', 'POST'].includes(request.method) && !artifactHead) fail(405, 'method_not_allowed');
-  if (request.method === 'POST' && (request.headers.get('origin') !== env.PUBLIC_INTAKE_ORIGIN
+  const machineRefresh = !request.headers.has('origin') && /^\/api\/billing\/[a-f0-9]{64}\/refresh$/.test(path);
+  if (request.method === 'POST' && ((!machineRefresh && request.headers.get('origin') !== env.PUBLIC_INTAKE_ORIGIN)
     || request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json')) fail(403, 'forbidden');
   const store = await setup(env, now), at = now();
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
@@ -262,7 +263,7 @@ async function dispatch(request, env, now, schedule) {
   }
   if (path === '/api/access-admin/requests' && request.method === 'GET') {
     const { catalogue } = await release(env);
-    const requests = await Promise.all((await store.list()).filter(row => retained(row,at)).map(async row => {
+    const requests = await Promise.all((await store.list()).filter(row => row.trial?.kind !== 'personal-signup' && retained(row,at)).map(async row => {
       let updateAvailable = false, downloadAvailable = false;
       if (row.trial?.state === 'approved') {
         try {
@@ -279,7 +280,7 @@ async function dispatch(request, env, now, schedule) {
       automaticCustomerEmail: resendCustomerEmailEnabled(env),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|subscription|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
@@ -431,6 +432,8 @@ async function dispatch(request, env, now, schedule) {
   const portalAuthorized = await customerCanAccess(request, env, store, row, at);
   const installerGrant = env.CUSTOMER_PORTAL_ENABLED === '1' && await customerInstallerGrant(row, bearer, at);
   if (!record || record.state !== 'approved' || (!portalAuthorized && !installerGrant && at >= Date.parse(record.linkExpiresAt)) || !row.contact || !retained(row,at)) fail(404, 'link_unavailable');
+  const personalPurchase = record.kind === 'personal-purchase';
+  if (personalPurchase && !paidPersonalAccess(record, at)) fail(403, 'payment_required');
   const { catalogue, publicKey, signingKey } = await entitledRelease(env, record);
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith('__Secure-127v-trial='))?.slice('__Secure-127v-trial='.length);
   const ticketValid = action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method) && record.ticketHash
@@ -441,10 +444,11 @@ async function dispatch(request, env, now, schedule) {
     && !installerPolicy(installerVersion, env.INSTALLER_MIN_VERSION ?? '0.1.0')) fail(426, 'installer_update_required');
   if (action === 'installer' && request.method === 'GET') return json(200, {
     protocolVersion: installerProtocol, minimumInstallerVersion: env.INSTALLER_MIN_VERSION ?? '0.1.0',
+    ...(personalPurchase ? { subscription: true } : {}),
     installationId: record.installationId ?? null, sourceRevision: catalogue.sourceRevision,
     artifacts: catalogue.artifacts.map(publicArtifact),
   });
-  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), billingAvailable: Boolean(record.billing), trialDays: record.kind === 'development' ? 0 : 10, payment: record.billing?.status ?? 'none',
+  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), billingAvailable: Boolean(record.billing), personalPurchase, trialDays: personalPurchase || record.kind === 'development' ? 0 : 10, payment: record.billing?.status ?? 'none',
     sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   if (action === 'ticket' && request.method === 'POST') {
     empty(input); const value = token(); record = { ...record, ticketHash: await hash(value), ticketUntil: at + 300000 };
@@ -477,18 +481,29 @@ async function dispatch(request, env, now, schedule) {
     const installationId = input.installationId.toLowerCase();
     if (record.license && record.installationId !== installationId) fail(409, 'already_bound');
     if (!record.license) {
-      const issuedAt = new Date(at).toISOString(), expiresAt = record.kind === 'development' ? record.entitlementExpiresAt : new Date(at + 10 * day).toISOString();
+      const issuedAt = new Date(at).toISOString();
+      const expiresAt = personalPurchase ? record.billing.paidThrough
+        : record.kind === 'development' ? record.entitlementExpiresAt : new Date(at + 10 * day).toISOString();
       if (Date.parse(expiresAt) <= at) fail(409,'license_expired');
-      record = { ...record, installationId, activatedAt: issuedAt, expiresAt,
-        license: await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
+      record = { ...record, installationId, activatedAt: issuedAt, expiresAt };
+      if (personalPurchase) {
+        const refreshToken = token();
+        record.billing = { ...record.billing, issuedOrderId: record.billing.orderId, refreshToken, refreshHash: await hash(refreshToken) };
+      }
+      record.license = personalPurchase ? await issuePersonalLicense(record, signingKey, env.TRIAL_ISSUER_KEY_ID, at)
+        : await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
           licenseId: crypto.randomUUID(), installationId, plan: record.kind === 'development' ? 'development' : 'commercial', majorVersion: null,
           maxActiveUsers: record.maxUsers, issuedAt, notBefore: issuedAt, expiresAt, sequence: 1,
-        }) };
+        });
       await store.save(row, record);
     }
     return json(200, summary(record, mailer));
   }
   if (action === 'license' && request.method === 'GET' && record.license) return attachment('trial-license.json', record.license);
+  if (action === 'subscription' && request.method === 'GET' && personalPurchase && record.license && !record.revocation) {
+    return attachment('subscription.json', JSON.stringify({ refreshToken: record.billing.refreshToken,
+      refreshUrl: `${customerOrigin}/api/billing/${id}/refresh` }));
+  }
   if (action === 'public-keys' && request.method === 'GET') return attachment('trial-issuer-keys.json', JSON.stringify({ [env.TRIAL_ISSUER_KEY_ID]: publicKey }, null, 2));
   if (action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method)) {
     const asset = catalogue.artifacts.find(v => v.id === action.slice(10)); if (!asset) fail(404, 'not_found');

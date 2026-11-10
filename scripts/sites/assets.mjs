@@ -35,9 +35,15 @@ export async function readSiteAsset(surface, name) {
     return await file.readFile();
   } finally { await file.close(); }
 }
-export async function stageSite(surface, directory, { publicOrigin } = {}) {
+export async function stageSite(surface, directory, { publicOrigin, personalBuyUrl } = {}) {
   if (!siteAssets[surface]) throw Error('Unknown site');
   const sources = new Map(await Promise.all(siteAssets[surface].map(async name => [name, await readSiteAsset(surface, name)])));
+  if (surface === 'public' && personalBuyUrl) {
+    const pricing = sources.get('pricing.html').toString('utf8');
+    const button = '<a class="plan-cta" href="get-started.html?plan=personal">Request access</a>';
+    sources.set('pricing.html', Buffer.from(pricing.replace(button,
+      `<a class="plan-cta" href="${personalBuyUrl}">Buy Personal</a>${button}`)));
+  }
   if (surface !== 'public') sources.set('index.html', sources.get(surface === 'admin' ? 'access-admin.html' : 'portal.html'));
   const digest = createHash('sha256');
   for (const [name, data] of sources) digest.update(name).update('\0').update(data);

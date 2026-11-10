@@ -24,6 +24,10 @@ export class TrialStore {
     await this.db.prepare('INSERT INTO access_requests (id, received_at, contact) VALUES (?, ?, ?)')
       .bind(id, this.now(), await seal(contact, this.contactKey, `contact:${id}`)).run();
   }
+  async insertOrder(id, contact, order) {
+    await this.db.prepare('INSERT INTO access_requests (id, received_at, contact, trial) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
+      .bind(id, this.now(), await seal(contact, this.contactKey, `contact:${id}`), await seal(order, this.trialKey, `trial:${id}`)).run();
+  }
   async save(row, trial, erase = false) {
     const encrypted = await seal(trial, this.trialKey, `trial:${row.id}`);
     const statement = erase
