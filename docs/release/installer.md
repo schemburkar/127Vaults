@@ -38,6 +38,10 @@ Run the installer interactively and paste your private invitation URL when promp
 
 On a loopback installation, choose to set up local administration, then create a local operator username and password. Use these credentials at the installer’s `/admin/` address. Choose first-owner setup to generate a private link that expires after 60 minutes. Open it after trusting the CA, then create your separate vault credentials. If the browser asks for a code, use the one shown alongside the link. To request a new code, rerun the installer interactively and select **Server**.
 
+### Enrollment email
+
+Choose **Set up enrollment email** to let invited users verify their addresses. Have your provider's SMTP-over-TLS hostname for port 465, username, password or app password, and verified sender address ready. The installer stores the password in the server's private runtime directory and checks that the server starts with the settings. Delivery begins when an invited person requests a verification code. If you skip this step, rerun the installer on the host and select **Server** when you're ready.
+
 ## Existing servers and upgrades
 
 Installer 0.1.8 discovers running 127Vaults installations publishing port 12780

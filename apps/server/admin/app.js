@@ -153,7 +153,7 @@ function settings() {
     <div><dt>HTTPS certificate expires</dt><dd>${escapeHtml(date(configuration.tlsExpiresAt))}</dd></div>
     <div><dt>Enrollment email (SMTP)</dt><dd>${configured(configuration.smtpConfigured)}</dd></div>
     <div><dt>Subscription refresh</dt><dd>${configured(configuration.subscriptionRefreshConfigured)}</dd></div>
-    </dl><p>Enrollment uses email verification. Check your server’s SMTP configuration if recipients cannot finish enrollment.</p>
+    </dl><p>Enrollment uses email verification. To set up enrollment email, run the installer on the server computer, select Server and choose enrollment email. Have your provider’s SMTP hostname, username, password and verified sender address ready.</p>
     <p class="muted">Edit deployment settings and operator credentials from the server host. Apply changes using the installation runbook.</p></section>${licenseSummary(state.overview.data.license)}`;
 }
 const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles: () => roles() + ownershipView(), devices: () => directoryView('devices', state.devices), backups, settings, audit: auditView };

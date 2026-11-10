@@ -2,6 +2,7 @@
 mod archive;
 mod backups;
 mod discovery;
+mod enrollment_email;
 mod extension_setup;
 mod prerequisites;
 mod transport;
@@ -1052,6 +1053,32 @@ fn guide_server_owner(
             },
         )?;
     }
+    let mut start = Command::new(node);
+    start
+        .current_dir(directory)
+        .args(["server.mjs", "install", "start"]);
+    add_options(&mut start, args, engine, false);
+    existing_identity_options(&mut start, directory)?;
+    enrollment_email::guide(
+        &directory.join(".env"),
+        &directory
+            .join(private_dir)
+            .join("runtime")
+            .join("smtp-password"),
+        interactive,
+        || prerequisites::run(&mut start),
+    )?;
+    guide_owner_enrollment(node, directory, args, engine, interactive, &origin)
+}
+
+fn guide_owner_enrollment(
+    node: &Path,
+    directory: &Path,
+    args: &Args,
+    engine: &str,
+    interactive: bool,
+    origin: &url::Url,
+) -> Result<()> {
     let mut bootstrap = Command::new(node);
     bootstrap
         .current_dir(directory)
