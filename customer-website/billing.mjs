@@ -22,19 +22,21 @@ async function api(action = '', value) {
 function show(value) {
   $('controls').hidden = false;
   const personal = value.plan === 'personal-annual';
-  const checkout = value.status === 'offered' || (personal && value.status === 'checkout_pending');
+  const checkout = value.status === 'offered' || (personal && value.status === 'checkout_pending') || value.canRetryPayment;
   $('billing-title').textContent = personal ? 'Personal Self-Hosted' : 'Self-hosted subscription';
   $('billing-test').hidden = value.mode !== 'test_mode';
   $('details').textContent = ({
     offered: 'Continue to Dodo Payments to complete checkout.',
     checkout_pending: 'Payment is pending. Your order updates when Dodo confirms payment.',
-    failed: 'Payment did not complete. If Dodo reports that payments are disabled, contact support before trying again.',
+    failed: value.canRetryPayment ? 'Payment did not complete. Retry to open a fresh checkout with Dodo.'
+      : 'Payment did not complete. Contact support if you need help with this order.',
     cancelled: 'This subscription is cancelled.',
     expired: 'This subscription has expired.',
   })[value.status] ?? (value.paidThrough ? `Paid through ${new Date(value.paidThrough).toLocaleDateString()}.` : 'Payment has not been confirmed.');
   if (value.cancelAtPeriodEnd) $('details').textContent += ' Cancellation is scheduled for the end of the paid period.';
   $('coupon').closest('label').hidden = personal;
   $('checkout').hidden = !checkout;
+  $('checkout').querySelector('button').textContent = value.canRetryPayment ? 'Retry payment' : 'Continue to secure checkout';
   $('portal').hidden = checkout || !value.paidThrough || !value.hasCustomerPortal;
   $('cancel').hidden = checkout || !value.hasSubscription
     || !['active', 'on_hold', 'past_due', 'paused'].includes(value.status) || value.cancelAtPeriodEnd;

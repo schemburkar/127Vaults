@@ -261,21 +261,36 @@ export async function handleBilling(request, env, store, release, now, operatorA
   if (!action && request.method === 'GET') return {
     ...publicStatus(record.billing), mode: record.billing.mode, hasLicense: Boolean(record.license),
     hasCustomerPortal: Boolean(record.billing.customerId), hasSubscription: Boolean(record.billing.subscriptionId),
+    canRetryPayment: record.kind === 'personal-purchase' && record.billing.status === 'failed'
+      && Boolean(record.billing.subscriptionId) && !record.billing.paidThrough && !record.license && !record.billing.suspended,
   };
   if (action === 'checkout' && request.method === 'POST' && !admin) {
     const v = await input(request); fields(v, ['coupon']);
     if (v.coupon !== undefined && !/^[A-Za-z0-9_-]{3,16}$/.test(v.coupon)) reject(400, 'invalid_coupon');
     const personal = record.kind === 'personal-purchase';
     if (personal && (!portalAuthorized || v.coupon !== undefined)) reject(403, 'access_required');
-    if (record.billing.status === 'checkout_pending' && record.billing.checkoutUrl) return { checkoutUrl: safeLink(record.billing.checkoutUrl) };
-    if (record.billing.status !== 'offered' || (!personal && !record.installationId)) reject(409, 'checkout_unavailable');
+    if (record.billing.mode !== config.mode || config.plans[record.billing.planSlug]?.productId !== record.billing.productId) reject(409, 'checkout_unavailable');
+    let billing = record.billing;
+    let billingHistory = record.billingHistory;
+    if (billing.status === 'checkout_pending' && billing.checkoutUrl) return { checkoutUrl: safeLink(billing.checkoutUrl) };
+    if (personal && billing.status === 'failed' && billing.subscriptionId && !billing.paidThrough && !record.license && !billing.suspended) {
+      await syncSubscription(env, store, row, release, now, fetcher);
+      const previous = row.trial.billing;
+      if (previous.status !== 'failed' || previous.paidThrough) reject(409, 'checkout_unavailable');
+      // A failed initial subscription is terminal at Dodo. Retain its binding so late events are ignored.
+      billingHistory = [...(billingHistory ?? []), { subscriptionId: previous.subscriptionId, orderId: previous.orderId }];
+      billing = { mode: previous.mode, planSlug: previous.planSlug, productId: previous.productId,
+        status: 'offered', orderId: crypto.randomUUID() };
+    }
+    if (billing.status !== 'offered' || (!personal && !record.installationId)) reject(409, 'checkout_unavailable');
     // Reserve durably before calling the provider. An ambiguous timeout must be reconciled by an operator, never retried into a duplicate subscription.
-    await store.save(row, { ...record, billing: { ...record.billing, status: 'checkout_pending', checkoutStartedAt: iso(now) } });
+    await store.save(row, { ...row.trial, ...(billingHistory ? { billingHistory } : {}),
+      billing: { ...billing, status: 'checkout_pending', checkoutStartedAt: iso(now) } });
     let result;
     try { result = await dodo(env, '/checkouts', 'POST', {
-      product_cart: [{ product_id: record.billing.productId, quantity: 1 }],
+      product_cart: [{ product_id: billing.productId, quantity: 1 }],
       customer: { email: row.contact.email }, subscription_data: { trial_period_days: 0 },
-      metadata: { access_request_id: id, order_id: record.billing.orderId, billing_mode: config.mode },
+      metadata: { access_request_id: id, order_id: billing.orderId, billing_mode: config.mode },
       ...(v.coupon ? { discount_codes: [v.coupon.toUpperCase()] } : {}),
       feature_flags: { allow_discount_code: !personal }, return_url: `${customerOrigin}/portal?billing=return&request=${id}`,
     }, fetcher); }

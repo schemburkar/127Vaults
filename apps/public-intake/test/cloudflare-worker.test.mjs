@@ -350,11 +350,12 @@ test('Dodo full refund of the current payment revokes service and cancels collec
   const result = await handleBilling(f.req(`/api/billing/${f.id}/refresh`, {}, f.offer.refreshToken), f.env, f.store, f.release, now, false, provider);
   assert.equal(result.revocation, row.trial.billing.revocation); assert.equal(result.customerId, undefined);
 });
-test('Dodo Personal signup, verified payment and installation binding require no approval', { timeout: 20000 }, async t => {
+test('Dodo Personal signup, payment retry and installation binding require no approval', { timeout: 20000 }, async t => {
   const messages = [];
   const secret = Buffer.alloc(32, 7);
   const paidThrough = new Date(Date.now() + 365 * 86400000).toISOString();
   let metadata;
+  let failedMetadata;
   let checkoutCalls = 0;
   const f = await fixture(t, { bindings: {
     SITE_SURFACE: 'customer', CUSTOMER_PORTAL_ENABLED: '1', CUSTOMER_EMAIL_PROVIDER: 'resend',
@@ -373,10 +374,15 @@ test('Dodo Personal signup, verified payment and installation binding require no
       checkoutCalls++;
       const input = await request.json();
       metadata = input.metadata;
+      if (checkoutCalls === 1) failedMetadata = metadata;
       assert.deepEqual(input.product_cart, [{ product_id: 'pdt_personal', quantity: 1 }]);
       assert.equal(input.return_url, `${origin}/portal?billing=return&request=${metadata.access_request_id}`);
-      return Response.json({ session_id: 'cks_personal', checkout_url: 'https://checkout.dodopayments.com/session' });
+      return Response.json({ session_id: `cks_personal${checkoutCalls}`, checkout_url: `https://checkout.dodopayments.com/session${checkoutCalls}` });
     }
+    if (url.pathname === '/subscriptions/sub_failed') return Response.json({
+      subscription_id: 'sub_failed', status: 'failed', metadata: failedMetadata, product_id: 'pdt_personal',
+      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' },
+    });
     if (url.pathname === '/subscriptions/sub_personal') return Response.json({
       subscription_id: 'sub_personal', status: 'active', metadata, product_id: 'pdt_personal',
       quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
@@ -410,17 +416,30 @@ test('Dodo Personal signup, verified payment and installation binding require no
   assert.equal(account.requests[0].billingMode, 'live_mode');
   assert.ok(account.requests[0].checkoutStartedAt);
   assert.equal((await f.get(`${trial}/artifacts/server`, null, cookie)).status, 403);
-  const raw = JSON.stringify({ business_id: 'biz_personal', type: 'payment.succeeded', timestamp: new Date().toISOString(),
-    data: { payment_id: 'pay_personal', metadata } });
-  const id = 'msg_personal', timestamp = String(Math.floor(Date.now() / 1000));
   const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${raw}`))).toString('base64');
-  const webhook = new Request(origin + '/api/billing/webhook', { method: 'POST', body: raw,
-    headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': `v1,${signature}` } });
-  await billingWebhook(webhook, f.env, new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'),
-    await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey)), async () => {
-    throw Error('A license cannot be issued before installation binding');
-  }, Date.now(), requestUrl => f.mfOptions.outboundService(new Request(requestUrl)));
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'),
+    await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
+  async function deliver(id, type, data) {
+    const raw = JSON.stringify({ business_id: 'biz_personal', type, timestamp: new Date().toISOString(), data });
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${raw}`))).toString('base64');
+    const webhook = new Request(origin + '/api/billing/webhook', { method: 'POST', body: raw,
+      headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': `v1,${signature}` } });
+    await billingWebhook(webhook, f.env, store, async () => {
+      throw Error('A license cannot be issued before installation binding');
+    }, Date.now(), requestUrl => f.mfOptions.outboundService(new Request(requestUrl)));
+  }
+  const failed = { subscription_id: 'sub_failed', metadata: failedMetadata };
+  await deliver('msg_failed', 'subscription.failed', failed);
+  assert.equal((await (await f.get(`/api/billing/${requestId}`, null, cookie)).json()).canRetryPayment, true);
+  const retries = await Promise.all([post(`/api/billing/${requestId}/checkout`, {}), post(`/api/billing/${requestId}/checkout`, {})]);
+  assert.ok(retries.some(response => response.status === 200));
+  assert.ok(retries.every(response => [200, 409].includes(response.status)));
+  assert.equal(checkoutCalls, 2);
+  assert.notEqual(metadata.order_id, failedMetadata.order_id);
+  await deliver('msg_failed_late', 'subscription.failed', failed);
+  assert.equal((await store.get(requestId)).trial.billing.status, 'checkout_pending');
+  await deliver('msg_personal', 'payment.succeeded', { payment_id: 'pay_personal', metadata });
   assert.equal(await (await f.get(`${trial}/artifacts/server`, null, cookie)).text(), f.archive);
   const activated = await post(`${trial}/activate`, { installationId });
   assert.equal(activated.status, 200, await activated.clone().text());
