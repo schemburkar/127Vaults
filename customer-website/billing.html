@@ -1,3 +1,21 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Subscription — 127 Vaults</title><link rel="stylesheet" href="site.css"><link rel="stylesheet" href="trial.css"><script src="billing.mjs" type="module"></script></head>
-<body><main class="container trial-main"><a class="button" href="portal.html">Customer portal</a><h1>Your subscription</h1><p>Use your customer portal session or private invitation to manage billing. Your billing account is separate from your vault account.</p><p id="status" role="status" aria-live="polite"></p><section id="controls" hidden class="access-card"><p id="details"></p><form id="checkout"><label class="access-field">Discount code (optional)<input id="coupon" maxlength="16" autocomplete="off"></label><button class="button primary">Continue to secure checkout</button></form><div class="trial-actions"><button class="button" id="refresh">Check payment status</button><button class="button" id="portal">Invoices and payment methods</button><button class="button" id="cancel">Cancel at end of paid period</button><button class="button" id="license">Download current license</button></div><p>After payment is confirmed, your server can renew its signed license automatically. Failed renewals stop writes at the end of your paid period; reads and exports remain available for 30 days. Encrypted data is preserved.</p><p>Checkout returning to this website does not confirm payment. Return to your customer portal and check payment status.</p></section></main></body></html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Order and billing — 127Vaults</title><link rel="stylesheet" href="site.css"><link rel="stylesheet" href="trial.css"><link rel="stylesheet" href="portal.css"><script src="theme.mjs" type="module"></script><script src="billing.mjs" type="module"></script></head>
+<body class="customer-portal"><main class="container trial-main portal-main">
+  <a id="back-to-portal" href="portal.html">← Customer portal</a>
+  <div class="portal-intro"><h1 id="billing-title">Order and billing</h1></div>
+  <p id="status" class="portal-status" role="status" aria-live="polite"></p>
+  <section id="controls" hidden class="access-card portal-billing">
+    <p id="billing-test" class="portal-state" hidden>Test subscription · no real charge</p>
+    <p id="details"></p>
+    <form id="checkout" class="portal-buy" hidden>
+      <label class="access-field">Discount code (optional)<input id="coupon" maxlength="16" autocomplete="off"></label>
+      <button class="button primary">Continue to secure checkout</button>
+    </form>
+    <div class="portal-table-actions" id="billing-actions" hidden>
+      <button class="button secondary" id="portal" hidden>Invoices and payment methods</button>
+      <button class="button secondary" id="cancel" hidden>Cancel at end of paid period</button>
+      <button class="button secondary" id="license" hidden>Download current license</button>
+    </div>
+  </section>
+</main></body></html>

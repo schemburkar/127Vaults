@@ -258,7 +258,10 @@ export async function handleBilling(request, env, store, release, now, operatorA
     }));
     return { events };
   }
-  if (!action && request.method === 'GET') return publicStatus(record.billing);
+  if (!action && request.method === 'GET') return {
+    ...publicStatus(record.billing), mode: record.billing.mode, hasLicense: Boolean(record.license),
+    hasCustomerPortal: Boolean(record.billing.customerId), hasSubscription: Boolean(record.billing.subscriptionId),
+  };
   if (action === 'checkout' && request.method === 'POST' && !admin) {
     const v = await input(request); fields(v, ['coupon']);
     if (v.coupon !== undefined && !/^[A-Za-z0-9_-]{3,16}$/.test(v.coupon)) reject(400, 'invalid_coupon');
@@ -274,7 +277,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
       customer: { email: row.contact.email }, subscription_data: { trial_period_days: 0 },
       metadata: { access_request_id: id, order_id: record.billing.orderId, billing_mode: config.mode },
       ...(v.coupon ? { discount_codes: [v.coupon.toUpperCase()] } : {}),
-      feature_flags: { allow_discount_code: !personal }, return_url: `${customerOrigin}/portal?billing=return`,
+      feature_flags: { allow_discount_code: !personal }, return_url: `${customerOrigin}/portal?billing=return&request=${id}`,
     }, fetcher); }
     catch (error) {
       if (error instanceof DodoError && [400, 422].includes(error.providerStatus)) {

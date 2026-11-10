@@ -172,12 +172,16 @@ export async function handleCustomerPortal(request, env, store, now) {
       const paid = paidPersonalAccess(row.trial, now);
       requests.push({ id: row.id, plan: personalPurchase ? 'personal' : row.trial?.billing?.planSlug ?? row.contact.plan,
         state: personalPurchase && !paid ? 'purchase_pending' : row.trial?.state ?? 'requested',
+        kind: row.trial?.kind ?? (row.trial?.state === 'approved' ? 'trial' : null),
+        billingMode: row.trial?.billing?.mode ?? null, createdAt: new Date(row.receivedAt).toISOString(),
+        checkoutStartedAt: row.trial?.billing?.checkoutStartedAt ?? null,
         installationId: row.trial?.installationId ?? null, expiresAt: row.trial?.expiresAt ?? null,
         billingStatus: row.trial?.billing?.status ?? null, paidThrough: row.trial?.billing?.paidThrough ?? null,
         cancelAtPeriodEnd: Boolean(row.trial?.billing?.cancelAtPeriodEnd), maxUsers: row.trial?.maxUsers ?? null });
     }
     const cloud = principal.kind === 'email' ? await cloudCustomerTenants(env, principal.email) : { tenants: [], unavailable: false };
     return json(200, { scope: principal.installationOnly ? 'installer' : principal.kind, email: principal.kind === 'email' ? principal.email : null,
+      purchaseMode: personalOffered(env) && personalBuyerAllowed(env, principal.email) ? env.DODO_MODE : null,
       canBuyPersonal: principal.kind === 'email' && personalBuyerAllowed(env, principal.email) && personalOffered(env)
         && !requests.some(row => row.plan === 'personal' && row.billingStatus),
       requests, cloudTenants: cloud.tenants, cloudUnavailable: cloud.unavailable });

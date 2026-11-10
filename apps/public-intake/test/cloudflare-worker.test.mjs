@@ -374,6 +374,7 @@ test('Dodo Personal signup, verified payment and installation binding require no
       const input = await request.json();
       metadata = input.metadata;
       assert.deepEqual(input.product_cart, [{ product_id: 'pdt_personal', quantity: 1 }]);
+      assert.equal(input.return_url, `${origin}/portal?billing=return&request=${metadata.access_request_id}`);
       return Response.json({ session_id: 'cks_personal', checkout_url: 'https://checkout.dodopayments.com/session' });
     }
     if (url.pathname === '/subscriptions/sub_personal') return Response.json({
@@ -402,6 +403,12 @@ test('Dodo Personal signup, verified payment and installation binding require no
   assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 200);
   assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 200);
   assert.equal(checkoutCalls, 1);
+  const billing = await (await f.get(`/api/billing/${requestId}`, null, cookie)).json();
+  assert.equal(billing.status, 'checkout_pending');
+  assert.equal(billing.hasSubscription || billing.hasCustomerPortal || billing.hasLicense, false);
+  const account = await (await f.get('/api/customer/me', null, cookie)).json();
+  assert.equal(account.requests[0].billingMode, 'live_mode');
+  assert.ok(account.requests[0].checkoutStartedAt);
   assert.equal((await f.get(`${trial}/artifacts/server`, null, cookie)).status, 403);
   const raw = JSON.stringify({ business_id: 'biz_personal', type: 'payment.succeeded', timestamp: new Date().toISOString(),
     data: { payment_id: 'pay_personal', metadata } });

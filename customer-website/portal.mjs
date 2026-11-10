@@ -7,6 +7,127 @@ async function run(work) {
   finally { buttons.forEach(button => { button.disabled = false; }); }
 }
 function link(label, path, primary = false) { const node = document.createElement('a'); node.className = `button ${primary ? 'primary' : 'secondary'}`; node.textContent = label; node.href = path; return node; }
+const query = new URLSearchParams(location.search);
+function element(tag, label, className) {
+  const node = document.createElement(tag);
+  if (label) node.textContent = label;
+  if (className) node.className = className;
+  return node;
+}
+const planName = plan => ({
+  personal: 'Personal Self-Hosted', commercial: 'Commercial Self-Hosted', cloud: '127Vaults Cloud',
+})[plan?.startsWith('commercial-') ? 'commercial' : plan] ?? plan;
+function renderPlans(value) {
+  $('portal-plans').hidden = value.scope !== 'email';
+  $('personal-buy').hidden = !value.canBuyPersonal;
+  $('personal-test').hidden = value.purchaseMode !== 'test_mode';
+  $('personal-terms-copy').textContent = value.purchaseMode === 'test_mode'
+    ? ' for this test checkout. Use a Dodo test card.'
+    : ' and agree to annual billing at $20 USD plus applicable tax.';
+}
+function orderStatus(row) {
+  if (row.cancelAtPeriodEnd && row.billingStatus === 'active') return 'Cancellation scheduled';
+  return ({
+    offered: 'Ready for checkout', checkout_pending: 'Payment pending', active: 'Active',
+    failed: 'Payment failed', cancelled: 'Cancelled', expired: 'Expired', on_hold: 'On hold',
+    past_due: 'Past due', paused: 'Paused', refunded: 'Refunded', disputed: 'Disputed',
+  })[row.billingStatus] ?? (row.billingStatus ? 'Processing' : ({
+    approved: row.expiresAt && Date.parse(row.expiresAt) <= Date.now() ? 'Expired' : 'Approved',
+    requested: 'Awaiting review', closed: 'Closed', rejected: 'Declined',
+  })[row.state] ?? 'Pending');
+}
+function orderKind(row) {
+  if (row.billingMode === 'test_mode') return 'Test subscription';
+  if (row.kind === 'development') return 'Development license';
+  if (row.billingStatus) return 'Subscription';
+  if (row.kind === 'trial') return 'Unpaid trial';
+  return 'Access request';
+}
+function renderOrders(value) {
+  const rows = [...value.requests].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const returning = query.get('billing') === 'return';
+  // Older hosted sessions return without the order reference.
+  const selected = query.get('request') ?? (returning
+    ? rows.filter(row => row.checkoutStartedAt).sort((a, b) => Date.parse(b.checkoutStartedAt) - Date.parse(a.checkoutStartedAt))[0]?.id
+    : undefined);
+  const current = rows.find(row => row.id === selected);
+  const notice = $('portal-return');
+  notice.hidden = !returning || !current;
+  if (!notice.hidden) {
+    const confirmed = current.state === 'approved' && Boolean(current.paidThrough);
+    const detail = confirmed ? 'Your downloads and license setup are ready.'
+      : current.billingStatus === 'failed' ? 'Payment did not complete. Access is still locked.'
+      : 'Access unlocks when payment is confirmed.';
+    notice.textContent = `${orderKind(current)} · ${planName(current.plan)} · ${orderStatus(current)}. ${detail}`;
+  }
+  const body = $('portal-requests');
+  body.replaceChildren();
+  $('portal-orders').hidden = !rows.length;
+  if (current) {
+    rows.splice(rows.indexOf(current), 1);
+    rows.unshift(current);
+  }
+  for (const row of rows) {
+    const entry = element('tr');
+    if (row === current) entry.className = 'portal-selected-order';
+    const name = element('th', planName(row.plan));
+    name.scope = 'row';
+    name.append(element('small', `Ref ${row.id.slice(0, 8)}`));
+    if (row.installationId) {
+      const installation = element('small', `Server ${row.installationId.slice(0, 8)}`);
+      installation.title = row.installationId;
+      name.append(installation);
+    }
+    if (row.maxUsers) name.append(element('small', `${row.maxUsers} licensed users`));
+    const kind = element('td');
+    kind.append(element('span', orderKind(row), row.billingMode === 'test_mode' || row.kind === 'development' ? 'portal-state' : ''));
+    const end = row.paidThrough ?? row.expiresAt;
+    const dates = element('td', end ? new Date(end).toLocaleDateString() : '—');
+    if (end) dates.append(element('small', row.paidThrough ? 'Paid through' : 'License expires'));
+    const action = element('td');
+    const actions = element('div', '', 'portal-table-actions');
+    if (row.state === 'approved') {
+      actions.append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`));
+      const installer = element('button', 'Installer link', 'button secondary');
+      installer.type = 'button';
+      installer.addEventListener('click', () => run(async () => {
+        const result = await portalApi('installer-link', { requestId: row.id });
+        installer.replaceWith(link('Open installer link', result.link));
+      }));
+      actions.append(installer);
+    }
+    if (row.billingStatus && value.scope !== 'installer') {
+      const label = ['offered', 'checkout_pending'].includes(row.billingStatus) ? 'Continue checkout'
+        : row.state === 'approved' ? 'Manage billing' : 'Order details';
+      actions.append(link(label, `/billing?request=${encodeURIComponent(row.id)}`));
+    }
+    action.append(actions);
+    entry.append(name, kind, element('td', orderStatus(row)), dates, action);
+    body.append(entry);
+  }
+}
+async function billingPost(path, value) {
+  const response = await fetch('/api/billing/' + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
+  });
+  if (!response.ok) throw Error('Checkout could not be opened. Check your order below or contact support.');
+  return response.json();
+}
+$('personal-buy').addEventListener('submit', event => {
+  event.preventDefault();
+  run(async () => {
+    const { requestId } = await billingPost('personal-order', { acceptTerms: $('personal-consent').checked });
+    try {
+      const { checkoutUrl } = await billingPost(`${encodeURIComponent(requestId)}/checkout`, {});
+      const destination = new URL(checkoutUrl);
+      if (destination.protocol !== 'https:' || !/(^|\.)dodopayments\.com$/.test(destination.hostname)) throw Error('Invalid checkout destination.');
+      location.assign(destination.href);
+    } catch (error) {
+      await account();
+      throw error;
+    }
+  });
+});
 async function account() {
   const value = await portalApi('me');
   $('portal-login').hidden = true; $('portal-account').hidden = false;
@@ -35,72 +156,9 @@ async function account() {
     }
     cloudCards.append(card);
   }
-  $('portal-requests').replaceChildren();
-  if (value.canBuyPersonal) {
-    const buy = document.createElement('form');
-    buy.className = 'access-card portal-request';
-    const title = document.createElement('h2');
-    title.textContent = 'Buy Personal Self-Hosted';
-    const terms = document.createElement('label');
-    const consent = document.createElement('input');
-    consent.type = 'checkbox';
-    consent.required = true;
-    const agreement = document.createElement('a');
-    agreement.href = 'https://127vaults.com/terms';
-    agreement.textContent = 'license terms';
-    terms.append(consent, ' I accept the ', agreement, ' and agree to annual billing at $20 USD plus applicable tax.');
-    const submit = document.createElement('button');
-    submit.className = 'button primary';
-    submit.textContent = 'Continue to checkout';
-    buy.append(title, terms, submit);
-    buy.addEventListener('submit', event => {
-      event.preventDefault();
-      run(async () => {
-        const response = await fetch('/api/billing/personal-order', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acceptTerms: consent.checked }),
-        });
-        if (!response.ok) throw Error('Could not start the order. Try again or contact support.');
-        const { requestId } = await response.json();
-        location.assign(`/billing?request=${encodeURIComponent(requestId)}`);
-      });
-    });
-    $('portal-requests').append(buy);
-  }
-  for (const row of value.requests) {
-    const card = document.createElement('article'); card.className = 'access-card portal-request';
-    const heading = document.createElement('div'); heading.className = 'portal-request-heading';
-    const title = document.createElement('h2'); title.textContent = { personal: 'Personal Self-Hosted', commercial: 'Commercial Self-Hosted' }[row.plan] ?? row.plan;
-    const status = document.createElement('span'); status.className = 'portal-state';
-    status.textContent = { approved: 'Approved', purchase_pending: 'Purchase', requested: 'Awaiting review', closed: 'Closed', rejected: 'Not approved' }[row.state] ?? row.state;
-    heading.append(title, status); card.append(heading);
-    const facts = document.createElement('dl'); facts.className = 'portal-facts';
-    const fact = (label, value, className) => {
-      const group = document.createElement('div'); if (className) group.className = className;
-      const term = document.createElement('dt'); term.textContent = label;
-      const detail = document.createElement('dd'); detail.textContent = value;
-      group.append(term, detail); facts.append(group);
-    };
-    if (row.installationId) fact('Server installation', row.installationId, 'portal-installation');
-    if (row.expiresAt) fact('License expires', new Date(row.expiresAt).toLocaleString());
-    if (row.maxUsers) fact('Licensed vault users', row.maxUsers);
-    if (row.billingStatus) fact('Subscription', `${row.billingStatus}${row.cancelAtPeriodEnd ? ' · Cancellation scheduled' : ''}`);
-    if (facts.children.length) card.append(facts);
-    if (row.state === 'approved') {
-      const actions = document.createElement('div'); actions.className = 'portal-actions';
-      actions.append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`, true));
-      const installer = document.createElement('button'); installer.type = 'button'; installer.className = 'button secondary'; installer.textContent = 'Get installer invitation';
-      installer.addEventListener('click', () => run(async () => {
-        const value = await portalApi('installer-link', { requestId: row.id });
-        const fresh = link('Open installer invitation (valid for one hour)', value.link); installer.replaceWith(fresh);
-      })); actions.append(installer);
-      if (row.billingStatus && value.scope !== 'installer') actions.append(link('Billing, invoices and cancellation', `/billing?request=${encodeURIComponent(row.id)}`));
-      card.append(actions);
-    } else if (row.state === 'purchase_pending') {
-      card.append(link('Open billing and check payment', `/billing?request=${encodeURIComponent(row.id)}`, true));
-    } else { const note = document.createElement('p'); note.className = 'portal-request-note'; note.textContent = row.state === 'requested' ? 'Your request is waiting for review. Signing in does not approve access.' : 'This request is not currently approved. Contact your inviter if you need assistance.'; card.append(note); }
-    $('portal-requests').append(card);
-  }
-  $('portal-status').textContent = value.requests.length || !cloud.hidden ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
+  renderPlans(value);
+  renderOrders(value);
+  $('portal-status').textContent = value.requests.length || value.canBuyPersonal || !cloud.hidden ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
 }
 $('email-start').addEventListener('submit', event => { event.preventDefault(); run(async () => {
   const result = await portalApi('start', { email: $('email').value.trim() }); challengeId = result.challengeId;
@@ -116,6 +174,7 @@ $('invite-login').addEventListener('submit', event => { event.preventDefault(); 
 $('portal-logout').addEventListener('click', () => run(async () => {
   await portalApi('logout', {}); $('portal-account').hidden = true; $('portal-login').hidden = false;
   $('portal-cloud').hidden = true; $('portal-cloud-tenants').replaceChildren();
+  $('personal-consent').checked = false;
   $('portal-requests').replaceChildren(); $('portal-identity').textContent = ''; $('portal-status').textContent = 'Signed out.';
 }));
 account().catch(error => { $('portal-login').hidden = false; $('portal-status').textContent = error.status === 401 ? '' : error.message; });

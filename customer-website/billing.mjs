@@ -4,6 +4,7 @@ const selected = new URLSearchParams(location.search).get('request');
 const requestId = match?.[1] ?? (/^[a-f0-9]{64}$/.test(selected ?? '') ? selected : null);
 history.replaceState(null, '', !match && requestId ? `${location.pathname}?request=${requestId}` : location.pathname);
 const base = requestId ? `/api/billing/${requestId}` : null;
+if (requestId) $('back-to-portal').href = `/portal?request=${requestId}`;
 async function api(action = '', value) {
   if (!base) throw Error('Reopen your private invitation to manage your subscription.');
   const response = await fetch(base + action, { method: value === undefined ? 'GET' : 'POST', cache: 'no-store',
@@ -13,17 +14,32 @@ async function api(action = '', value) {
     const result = await response.json().catch(() => ({}));
     throw Error(response.status === 404 ? 'Subscription access is not available for this invitation.'
       : result.error === 'checkout_rejected' ? 'Checkout was declined. Check the discount code and try again.'
-      : result.error === 'checkout_unavailable' ? 'Checkout is already pending or your server needs activation. Check payment status or contact support.'
+      : result.error === 'checkout_unavailable' ? 'Checkout cannot be opened for this order. Return to the customer portal or contact support.'
       : 'The action could not be completed. Check your invitation or contact support.');
   }
   return response.json();
 }
 function show(value) {
   $('controls').hidden = false;
-  $('details').textContent = `${value.plan}: ${value.status}. ${value.paidThrough ? `Paid through ${new Date(value.paidThrough).toLocaleString()}.` : 'Payment has not been confirmed.'}${value.cancelAtPeriodEnd ? ' Cancellation is scheduled.' : ''}`;
   const personal = value.plan === 'personal-annual';
+  const checkout = value.status === 'offered' || (personal && value.status === 'checkout_pending');
+  $('billing-title').textContent = personal ? 'Personal Self-Hosted' : 'Self-hosted subscription';
+  $('billing-test').hidden = value.mode !== 'test_mode';
+  $('details').textContent = ({
+    offered: 'Continue to Dodo Payments to complete checkout.',
+    checkout_pending: 'Payment is pending. Your order updates when Dodo confirms payment.',
+    failed: 'Payment did not complete. If Dodo reports that payments are disabled, contact support before trying again.',
+    cancelled: 'This subscription is cancelled.',
+    expired: 'This subscription has expired.',
+  })[value.status] ?? (value.paidThrough ? `Paid through ${new Date(value.paidThrough).toLocaleDateString()}.` : 'Payment has not been confirmed.');
+  if (value.cancelAtPeriodEnd) $('details').textContent += ' Cancellation is scheduled for the end of the paid period.';
   $('coupon').closest('label').hidden = personal;
-  $('checkout').hidden = value.status !== 'offered' && !(personal && value.status === 'checkout_pending');
+  $('checkout').hidden = !checkout;
+  $('portal').hidden = checkout || !value.paidThrough || !value.hasCustomerPortal;
+  $('cancel').hidden = checkout || !value.hasSubscription
+    || !['active', 'on_hold', 'past_due', 'paused'].includes(value.status) || value.cancelAtPeriodEnd;
+  $('license').hidden = checkout || !value.hasLicense;
+  $('billing-actions').hidden = $('portal').hidden && $('cancel').hidden && $('license').hidden;
 }
 async function run(work) {
   const buttons = [...document.querySelectorAll('button')]; buttons.forEach(b => { b.disabled = true; });
@@ -37,8 +53,7 @@ function navigate(value) {
 }
 $('checkout').addEventListener('submit', event => { event.preventDefault(); run(async () => navigate((await api('/checkout', $('coupon').value.trim() ? { coupon: $('coupon').value.trim() } : {})).checkoutUrl)); });
 $('portal').addEventListener('click', () => run(async () => navigate((await api('/portal', {})).portalUrl)));
-$('cancel').addEventListener('click', () => run(async () => show(await api('/cancel', {}))));
-$('refresh').addEventListener('click', () => run(async () => show(await api('/refresh', {}))));
+$('cancel').addEventListener('click', () => run(async () => { await api('/cancel', {}); show(await api()); }));
 $('license').addEventListener('click', () => run(async () => {
   const result = await api('/license'); if (!result.license) throw Error('No license is available yet.');
   const url = URL.createObjectURL(new Blob([result.license], { type: 'application/json' }));
