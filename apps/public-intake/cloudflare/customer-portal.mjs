@@ -1,5 +1,5 @@
 import { encryptionKey, hash, equal, token, seal, unseal, limitIdentity } from './crypto.mjs';
-import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed } from './dodo.mjs';
+import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation } from './dodo.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
 import { productionRecipient } from '../src/resend-email.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail } from './customer-email.mjs';
@@ -163,6 +163,8 @@ export async function handleCustomerPortal(request, env, store, now) {
   if (path === '/api/customer/me' && request.method === 'GET') {
     const rows = await store.list();
     const requests = [];
+    const conversionPlan = env.DODO_MODE === 'live_mode' && personalOffered(env) && principal.kind === 'email'
+      ? JSON.parse(env.DODO_PLANS)['personal-annual'] : null;
     for (const row of rows) {
       if (row.contact?.plan === 'support' || row.trial?.kind === 'personal-signup') continue;
       const owned = principal.kind === 'email' ? normalize(row.contact?.email) === principal.email
@@ -171,7 +173,8 @@ export async function handleCustomerPortal(request, env, store, now) {
       const personalPurchase = row.trial?.kind === 'personal-purchase';
       const paid = paidPersonalAccess(row.trial, now);
       requests.push({ id: row.id, plan: personalPurchase ? 'personal' : row.trial?.billing?.planSlug ?? row.contact.plan,
-        state: personalPurchase && !paid ? 'purchase_pending' : row.trial?.state ?? 'requested',
+        state: row.trial?.convertedPurchaseId ? 'converted' : personalPurchase && !paid ? 'purchase_pending' : row.trial?.state ?? 'requested',
+        convertible: convertibleInstallation(row.trial, conversionPlan), conversion: Boolean(row.trial?.conversionSourceId),
         kind: row.trial?.kind ?? (row.trial?.state === 'approved' ? 'trial' : null),
         billingMode: row.trial?.billing?.mode ?? null, createdAt: new Date(row.receivedAt).toISOString(),
         checkoutStartedAt: row.trial?.billing?.checkoutStartedAt ?? null,

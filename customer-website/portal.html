@@ -23,10 +23,10 @@
       <ul><li>Five users included, with more on request at no extra charge</li><li>Private vaults and offline-capable Desktop and CLI apps</li><li>Annual license for your chosen major version</li></ul>
       <form id="personal-buy" class="portal-buy" hidden>
         <p id="personal-test" class="portal-state" hidden>Dodo test checkout · no real charge</p>
-        <label class="portal-consent"><input id="personal-consent" type="checkbox" required><span>I accept the <a href="terms.html">license terms</a><span id="personal-terms-copy"></span></span></label>
+        <label class="access-field" hidden>Installation<select id="personal-installation"><option value="">Set up a new installation</option></select></label><label class="portal-consent"><input id="personal-consent" type="checkbox" required><span>I accept the <a href="terms.html">license terms</a><span id="personal-terms-copy"></span></span></label>
         <button class="button primary" type="submit">Continue to checkout</button>
       </form>
-      <a class="button secondary" href="https://127vaults.com/get-started?plan=personal">Request a trial</a>
+      <div id="personal-plan-action"></div><a class="button primary" href="https://127vaults.com/get-started?plan=personal">Request a trial</a>
     </article>
     <article class="access-card portal-plan">
       <span class="trial-section-label">Self-hosted</span>
@@ -34,7 +34,7 @@
       <p class="portal-plan-price"><strong>$200</strong> / year</p>
       <p>For organizations operating their own infrastructure.</p>
       <ul><li>Multiple users and private vaults</li><li>Offline-capable Desktop and CLI apps</li><li>Current releases during the five- or ten-year commitment, billed annually</li></ul>
-      <a class="button secondary" href="https://127vaults.com/get-started?plan=commercial">Request access</a>
+      <a class="button primary" href="https://127vaults.com/get-started?plan=commercial">Request access</a>
     </article>
     <article class="access-card portal-plan">
       <span class="trial-section-label">Managed</span>
@@ -46,4 +46,22 @@
     </article>
   </div>
   <a href="https://127vaults.com/pricing">See full plan details</a>
-</section></section></main></body></html>
+</section></section><dialog id="billing-panel" class="portal-panel" aria-labelledby="billing-title">
+  <div class="portal-panel-heading"><h2 id="billing-title">Order details</h2><form method="dialog"><button class="button secondary">Close</button></form></div>
+  <p id="billing-reference"></p>
+  <p id="status" class="portal-status" role="status" aria-live="polite"></p>
+  <section id="controls" hidden class="access-card portal-billing">
+    <p id="billing-test" class="portal-state" hidden>Test subscription · no real charge</p>
+    <p id="details"></p>
+    <form id="checkout" class="portal-buy" hidden>
+      <label class="access-field">Discount code (optional)<input id="coupon" maxlength="16" autocomplete="off"></label>
+      <button class="button primary">Continue to secure checkout</button>
+    </form>
+    <div class="portal-table-actions" id="billing-actions" hidden>
+      <button class="button secondary" id="portal" hidden>Invoices and payment methods</button>
+      <button class="button secondary" id="cancel" hidden>Cancel at end of paid period</button>
+      <button class="button secondary" id="license" hidden>Download current license</button>
+    </div>
+  </section>
+  <div id="billing-download"></div>
+</dialog></main></body></html>

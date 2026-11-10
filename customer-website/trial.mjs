@@ -29,7 +29,7 @@ async function api(action = '', value) {
 function showInstaller(record) {
   // Activation/replacement responses contain license state, without a catalogue.
   if (!Array.isArray(record.artifacts)) return;
-  const available = record.artifacts?.some(asset => asset.product === 'installer' && !asset.supporting);
+  const available = !record.conversionInstallationId && record.artifacts.some(asset => asset.product === 'installer' && !asset.supporting);
   $('trial-installer').hidden = !available;
   $('trial-manual').open = !available;
   if (!available) return;
@@ -66,8 +66,15 @@ function showLicense(record) {
   }
   const upgrading = Boolean(record.upgradeOfferedAt && record.installationId && !record.replacementCount && !record.replacementRequest);
   $('trial-upgrade').hidden = !upgrading;
-  $('trial-prepare').hidden = Boolean(record.installationId);
-  $('trial-install').hidden = upgrading;
+  $('trial-prepare').hidden = Boolean(record.installationId || record.conversionInstallationId);
+  $('trial-install').hidden = upgrading || Boolean(record.conversionInstallationId);
+  $('trial-conversion').hidden = !record.conversionInstallationId;
+  $('download-subscription').hidden = !record.installationId;
+  if (record.conversionInstallationId) {
+    $('trial-conversion').insertBefore($('trial-activate'), $('trial-conversion').querySelector('pre'));
+    $('installation-id').value = record.conversionInstallationId;
+    $('installation-id').readOnly = true;
+  }
   $('trial-activate').hidden = Boolean(record.installationId);
   $('trial-license').hidden = !record.installationId;
   $('trial-recovery').hidden = !record.installationId;
@@ -159,6 +166,7 @@ $('trial-activate').addEventListener('submit', async event => {
   finally { button.disabled = false; }
 });
 $('download-license').addEventListener('click', () => download('/license', 'trial-license.json').catch(error => status(error.message)));
+$('download-subscription').addEventListener('click', () => download('/subscription', 'subscription.json').catch(error => status(error.message)));
 $('download-keys').addEventListener('click', () => download('/public-keys', 'trial-issuer-keys.json').catch(error => status(error.message)));
 open().catch(error => status(error.message));
 

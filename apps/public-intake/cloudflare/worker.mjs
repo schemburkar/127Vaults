@@ -10,7 +10,7 @@ import { developmentPolicy } from './development.mjs';
 import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, notifyRequestVolume, requestAlertsEnabled } from '../src/request-alerts.mjs';
 import { BillingError, paidPersonalAccess } from './dodo.mjs';
-import { billingWebhook, handleBilling, reconcileBilling, issuePersonalLicense } from './billing.mjs';
+import { billingWebhook, handleBilling, reconcileBilling, issuePersonalLicense, claimPersonalConversion } from './billing.mjs';
 import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal, manualCustomerMail } from './customer-portal.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail, pruneCustomerEmail } from './customer-email.mjs';
 
@@ -287,6 +287,7 @@ async function dispatch(request, env, now, schedule) {
   const input = request.method === 'POST' ? await body(request) : null;
   if (admin) {
     if (!row?.contact || !retained(row,at)) fail(404, 'not_found');
+    if (record?.convertedPurchaseId && request.method === 'POST' && !['archive', 'unarchive'].includes(action)) fail(409, 'converted_installation');
     if (record?.billing && ['approve', 'approve-development', 'extend', 'close', 'reject', 'erase'].includes(action)) fail(409, 'manage_billing_subscription');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
       const invitation = customerInvitation(record.invitation, env);
@@ -448,7 +449,9 @@ async function dispatch(request, env, now, schedule) {
     installationId: record.installationId ?? null, sourceRevision: catalogue.sourceRevision,
     artifacts: catalogue.artifacts.map(publicArtifact),
   });
-  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), billingAvailable: Boolean(record.billing), personalPurchase, trialDays: personalPurchase || record.kind === 'development' ? 0 : 10, payment: record.billing?.status ?? 'none',
+  if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), billingAvailable: Boolean(record.billing), personalPurchase,
+    conversionInstallationId: record.conversionInstallationId ?? null,
+    trialDays: personalPurchase || record.kind === 'development' ? 0 : 10, payment: record.billing?.status ?? 'none',
     sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   if (action === 'ticket' && request.method === 'POST') {
     empty(input); const value = token(); record = { ...record, ticketHash: await hash(value), ticketUntil: at + 300000 };
@@ -459,6 +462,7 @@ async function dispatch(request, env, now, schedule) {
     return attachment('replaced-license-revocation.json', record.revocation ?? record.previousRevocation);
   }
   if (action === 'replacement-request' && request.method === 'POST') {
+    if (record.convertedPurchaseId) fail(409, 'converted_installation');
     if (Object.keys(input).sort().join(',') !== 'installationId,reason,retired' || input.retired !== true
       || !installationUuid.test(input.installationId ?? '') || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 500) fail(400, 'invalid_request');
     if (!record.license || !record.installationId || input.installationId.toLowerCase() === record.installationId) fail(409, 'replacement_unavailable');
@@ -481,6 +485,9 @@ async function dispatch(request, env, now, schedule) {
     const installationId = input.installationId.toLowerCase();
     if (record.license && record.installationId !== installationId) fail(409, 'already_bound');
     if (!record.license) {
+      if (record.conversionSourceId) {
+        record = { ...record, conversionSequence: await claimPersonalConversion(store, row, installationId) };
+      }
       const issuedAt = new Date(at).toISOString();
       const expiresAt = personalPurchase ? record.billing.paidThrough
         : record.kind === 'development' ? record.entitlementExpiresAt : new Date(at + 10 * day).toISOString();
@@ -497,7 +504,9 @@ async function dispatch(request, env, now, schedule) {
         });
       await store.save(row, record);
     }
-    return json(200, summary(record, mailer));
+    return json(200, { ...summary(record, mailer), ...(personalPurchase ? {
+      billingAvailable: true, personalPurchase: true, conversionInstallationId: record.conversionInstallationId ?? null,
+    } : {}) });
   }
   if (action === 'license' && request.method === 'GET' && record.license) return attachment('trial-license.json', record.license);
   if (action === 'subscription' && request.method === 'GET' && personalPurchase && record.license && !record.revocation) {

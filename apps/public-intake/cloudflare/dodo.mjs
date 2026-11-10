@@ -8,6 +8,12 @@ export class DodoError extends Error { constructor(status) { super('Billing prov
 export const paidPersonalAccess = (record, now) => record?.kind === 'personal-purchase'
   && !record.billing?.suspended && record.billing?.lastPayment?.status === 'succeeded'
   && record.billing.lastPayment.amount > 0 && Date.parse(record.billing.paidThrough) > now;
+export function convertibleInstallation(record, plan) {
+  return Boolean(plan && record?.state === 'approved' && [undefined, 'trial', 'development'].includes(record.kind)
+    && record.installationId && record.license && !record.billing && !record.revocation
+    && !record.replacementRequest && !record.convertedPurchaseId
+    && (record.serverMajorVersion ?? 0) === plan.majorVersion && record.maxUsers <= plan.maxUsers);
+}
 export const personalBuyerAllowed = (env, email) => env.DODO_MODE === 'live_mode'
   || env.LOCAL_SITE_PREVIEW === '1' || Boolean(email && env.DODO_TEST_BUYER === email);
 export function billingConfig(env) {

@@ -350,13 +350,14 @@ test('Dodo full refund of the current payment revokes service and cancels collec
   const result = await handleBilling(f.req(`/api/billing/${f.id}/refresh`, {}, f.offer.refreshToken), f.env, f.store, f.release, now, false, provider);
   assert.equal(result.revocation, row.trial.billing.revocation); assert.equal(result.customerId, undefined);
 });
-test('Dodo Personal signup, payment retry and installation binding require no approval', { timeout: 20000 }, async t => {
+for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal checkout and licensing (${conversion ?? 'new installation'})`, { timeout: 20000 }, async t => {
   const messages = [];
   const secret = Buffer.alloc(32, 7);
   const paidThrough = new Date(Date.now() + 365 * 86400000).toISOString();
   let metadata;
   let failedMetadata;
   let checkoutCalls = 0;
+  let providerPaid = false;
   const f = await fixture(t, { bindings: {
     SITE_SURFACE: 'customer', CUSTOMER_PORTAL_ENABLED: '1', CUSTOMER_EMAIL_PROVIDER: 'resend',
     CUSTOMER_EMAIL_MODE: 'production', CUSTOMER_EMAIL_FROM: 'accounts@127vaults.com', RESEND_API_KEY: 're_' + 'fake'.repeat(8),
@@ -387,8 +388,9 @@ test('Dodo Personal signup, payment retry and installation binding require no ap
       subscription_id: 'sub_personal', status: 'active', metadata, product_id: 'pdt_personal',
       quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
     });
+    if (url.pathname === '/checkouts/cks_personal2') return Response.json({ payment_id: 'pay_personal' });
     assert.equal(url.pathname, '/payments/pay_personal');
-    return Response.json({ payment_id: 'pay_personal', subscription_id: 'sub_personal', status: 'succeeded',
+    return Response.json({ payment_id: 'pay_personal', subscription_id: 'sub_personal', status: providerPaid ? 'succeeded' : 'processing', metadata,
       total_amount: 2000, currency: 'USD', created_at: new Date().toISOString() });
   } });
   const started = await (await f.post('/api/customer/start', { email: 'buyer@customer-domain.dev' })).json();
@@ -396,15 +398,32 @@ test('Dodo Personal signup, payment retry and installation binding require no ap
   const signedIn = await f.post('/api/customer/complete', { challengeId: started.challengeId, code: /code is (\d{6})/.exec(messages[0].text)[1] });
   assert.equal(signedIn.status, 200);
   const cookie = signedIn.headers.get('set-cookie').split(';')[0];
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'),
+    await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
+  const installationId = randomUUID();
+  const sourceId = 'e'.repeat(64);
+  let original;
+  if (conversion) {
+    const expiresAt = new Date(Date.now() + 86400000).toISOString();
+    const { license } = issueSelfHostedLicense({ privateKeyPem: f.bindings.TRIAL_ISSUER_PRIVATE_KEY,
+      keyId: 'trial', installationId, plan: conversion === 'trial' ? 'commercial' : 'development', majorVersion: null,
+      maxActiveUsers: 5, sequence: 3, expiresAt });
+    original = license;
+    await store.insertOrder(sourceId, { email: 'buyer@customer-domain.dev', plan: 'personal' }, {
+      kind: conversion, state: 'approved', installationId, maxUsers: 5, license, expiresAt, serverMajorVersion: 1,
+    });
+    const customer = await (await f.get('/api/customer/me', null, cookie)).json();
+    assert.equal(customer.requests.find(row => row.id === sourceId).convertible, true);
+  }
   const post = (path, input) => f.mf.dispatchFetch(origin + path, { method: 'POST',
     headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
   assert.equal((await post('/api/billing/personal-order', { acceptTerms: false })).status, 400);
-  const order = await post('/api/billing/personal-order', { acceptTerms: true });
+  const purchase = { acceptTerms: true, ...(conversion ? { convertRequestId: sourceId } : {}) };
+  const order = await post('/api/billing/personal-order', purchase);
   assert.equal(order.status, 200, await order.clone().text());
   const { requestId } = await order.json();
-  assert.equal((await (await post('/api/billing/personal-order', { acceptTerms: true })).json()).requestId, requestId);
+  assert.equal((await (await post('/api/billing/personal-order', purchase)).json()).requestId, requestId);
   const trial = `/api/trials/${requestId}`;
-  const installationId = randomUUID();
   assert.equal((await post(`${trial}/activate`, { installationId })).status, 403);
   assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 200);
   assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 200);
@@ -413,12 +432,11 @@ test('Dodo Personal signup, payment retry and installation binding require no ap
   assert.equal(billing.status, 'checkout_pending');
   assert.equal(billing.hasSubscription || billing.hasCustomerPortal || billing.hasLicense, false);
   const account = await (await f.get('/api/customer/me', null, cookie)).json();
-  assert.equal(account.requests[0].billingMode, 'live_mode');
-  assert.ok(account.requests[0].checkoutStartedAt);
+  const orderRow = account.requests.find(row => row.id === requestId);
+  assert.equal(orderRow.billingMode, 'live_mode');
+  assert.ok(orderRow.checkoutStartedAt);
   assert.equal((await f.get(`${trial}/artifacts/server`, null, cookie)).status, 403);
   const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'),
-    await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
   async function deliver(id, type, data) {
     const raw = JSON.stringify({ business_id: 'biz_personal', type, timestamp: new Date().toISOString(), data });
     const timestamp = String(Math.floor(Date.now() / 1000));
@@ -431,6 +449,7 @@ test('Dodo Personal signup, payment retry and installation binding require no ap
   }
   const failed = { subscription_id: 'sub_failed', metadata: failedMetadata };
   await deliver('msg_failed', 'subscription.failed', failed);
+  if (conversion) assert.equal((await store.get(sourceId)).trial.license, original);
   assert.equal((await (await f.get(`/api/billing/${requestId}`, null, cookie)).json()).canRetryPayment, true);
   const retries = await Promise.all([post(`/api/billing/${requestId}/checkout`, {}), post(`/api/billing/${requestId}/checkout`, {})]);
   assert.ok(retries.some(response => response.status === 200));
@@ -439,13 +458,23 @@ test('Dodo Personal signup, payment retry and installation binding require no ap
   assert.notEqual(metadata.order_id, failedMetadata.order_id);
   await deliver('msg_failed_late', 'subscription.failed', failed);
   assert.equal((await store.get(requestId)).trial.billing.status, 'checkout_pending');
-  await deliver('msg_personal', 'payment.succeeded', { payment_id: 'pay_personal', metadata });
+  await deliver('msg_active', 'subscription.active', { subscription_id: 'sub_personal', metadata });
+  assert.equal((await f.get(`${trial}/artifacts/server`, null, cookie)).status, 403);
+  providerPaid = true;
+  assert.equal((await post(`/api/billing/${requestId}/refresh`, {})).status, 200);
   assert.equal(await (await f.get(`${trial}/artifacts/server`, null, cookie)).text(), f.archive);
+  if (conversion) assert.equal((await post(`${trial}/activate`, { installationId: randomUUID() })).status, 409);
   const activated = await post(`${trial}/activate`, { installationId });
   assert.equal(activated.status, 200, await activated.clone().text());
   const file = await (await f.get(`${trial}/license`, null, cookie)).text();
   const license = verifyLicenseFile(file, f.publicKeys, installationId);
   assert.deepEqual([license.plan, license.majorVersion, license.maxActiveUsers, license.expiresAt], ['personal', 1, 5, paidThrough]);
+  assert.equal(license.sequence, conversion ? 4 : 1);
+  if (conversion) {
+    const prior = (await store.get(sourceId)).trial;
+    assert.equal(prior.license, original);
+    assert.equal(prior.convertedPurchaseId, requestId);
+  }
   const refresh = await (await f.get(`${trial}/subscription`, null, cookie)).json();
   const machine = await f.mf.dispatchFetch(refresh.refreshUrl, { method: 'POST',
     headers: { Authorization: `Bearer ${refresh.refreshToken}`, 'Content-Type': 'application/json' },
