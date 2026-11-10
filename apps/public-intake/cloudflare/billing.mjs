@@ -296,6 +296,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
   }
   if (!action && request.method === 'GET') return {
     ...publicStatus(record.billing), mode: record.billing.mode, hasLicense: Boolean(record.license),
+    accessReady: record.kind !== 'personal-purchase' || paidPersonalAccess(record, now),
     hasCustomerPortal: Boolean(record.billing.customerId), hasSubscription: Boolean(record.billing.subscriptionId),
     canRetryPayment: record.kind === 'personal-purchase' && record.billing.status === 'failed'
       && Boolean(record.billing.subscriptionId) && !record.billing.paidThrough && !record.license && !record.billing.suspended,

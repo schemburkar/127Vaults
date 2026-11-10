@@ -34,6 +34,9 @@ export function mountBilling(root, requestId, bearer) {
     })[value.status] ?? (value.paidThrough
       ? `${value.mode === 'test_mode' ? 'Test period ends' : 'Paid through'} ${new Date(value.paidThrough).toLocaleDateString()}.`
       : 'Payment has not been confirmed.');
+    if (personal && value.status === 'active' && !value.accessReady) {
+      $('details').textContent = 'We’re verifying your payment. Downloads and license setup will appear in the portal when access is ready.';
+    }
     if (value.cancelAtPeriodEnd) $('details').textContent += ' Cancellation is scheduled for the end of the paid period.';
     $('coupon').closest('label').hidden = personal;
     $('checkout').hidden = !checkout;

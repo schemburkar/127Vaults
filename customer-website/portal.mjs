@@ -62,6 +62,7 @@ function orderLink(row, label) {
   return order;
 }
 function orderStatus(row) {
+  if (row.billingStatus === 'active' && row.state === 'purchase_pending') return 'Verifying payment';
   if (row.cancelAtPeriodEnd && row.billingStatus === 'active') return 'Cancellation scheduled';
   return ({
     offered: 'Ready for checkout', checkout_pending: 'Payment pending', active: 'Active',
@@ -117,7 +118,7 @@ function renderOrders(value) {
     if (row.maxUsers) name.append(element('small', `${row.maxUsers} licensed users`));
     const kind = element('td');
     kind.append(element('span', orderKind(row), row.billingMode === 'test_mode' || row.kind === 'development' ? 'portal-state' : ''));
-    const end = row.paidThrough ?? row.expiresAt;
+    const end = row.state === 'purchase_pending' ? null : row.paidThrough ?? row.expiresAt;
     const dates = element('td', end ? new Date(end).toLocaleDateString() : '—');
     if (end) dates.append(element('small', row.paidThrough
       ? row.billingMode === 'test_mode' ? 'Test period ends' : 'Paid through'
