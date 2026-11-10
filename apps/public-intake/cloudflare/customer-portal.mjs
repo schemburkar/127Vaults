@@ -117,7 +117,9 @@ export async function handleCustomerPortal(request, env, store, now) {
         text: `Your customer portal sign-in code is ${code}. It expires in 10 minutes and can be used once.\n\nOpen ${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/ and enter the code in the browser where you requested it.\n\nThis signs you into customer billing and downloads. It does not sign you into a vault. If you did not request it, ignore this email.` }, store, challengeId, now, customer?.id, internal); }
       catch { await store.db.prepare('DELETE FROM customer_challenges WHERE id = ?').bind(challengeId).run(); }
     }
-    return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1' || env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1'
+    return json(202, { challengeId, message: env.CUSTOMER_MANUAL_MAIL === '1'
+      ? 'If this email is eligible, your operator can provide a sign-in code through manual delivery.'
+      : env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1'
       ? 'If this email is eligible, check your inbox or contact your operator for a sign-in code.'
       : buying ? 'Check your inbox for your sign-in code.' : 'If this email has an access request or invitation, a sign-in code will be sent.' });
   }
