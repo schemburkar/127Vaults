@@ -82,6 +82,8 @@ and security acceptance before remote browser access is enabled.
 
 ## Localhost server administration page — remaining backlog
 
+The [self-hosted setup and operations plan](self-hosted-operations-plan.md) maps installer and runbook steps to guided setup, local `/admin` workflows and server-down recovery. It includes the installation details customers should keep and the acceptance checks for each phase.
+
 **Goal:** A browser control panel for the person operating a local server: inspect health, manage users, and handle routine settings. It does not display vault contents. Inspection and the selected internal management-write slice are implemented and tested. Broader settings, SMTP resend, diagnostics export and clean-host acceptance below remain open.
 
 **Access:** The current console is loopback-deployment-only and uses separate file-configured local operator credentials, sessions and CSRF-protected sign-out. Private-LAN access needs a separate decision and the existing HTTPS, Host and Origin protections. Account-management writes enforce a reviewed authenticated owner/admin model, CSRF checks and server-side authorization for every action. Sensitive changes need fresh authentication. Use the proposed [server role boundaries](../adr/0017-server-ownership-and-roles.md), with the exact internal permissions recorded in the management contract. Server roles do not grant vault keys. Preserve at least one active owner; owner grants require recipient acceptance.
