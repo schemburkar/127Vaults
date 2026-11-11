@@ -4,6 +4,10 @@ The customer site is the account-facing portal for requests, private invitations
 
 ## Customer journeys
 
+Manage also supports discoverable WebAuthn passkeys scoped to its own hostname. After email-code sign-in, an account may add up to 20 passkeys, each with a name, added date and last-used date. Settings support renaming and removal. Adding, renaming and removing require authentication within the previous ten minutes. Invitation sessions cannot manage passkeys. Email-code sign-in remains available for recovery.
+
+Registration and authentication require user verification, origin and RP-ID validation, a five-minute single-use challenge, and a browser-bound challenge cookie. Public keys, credential identifiers, names and account emails are encrypted at rest. Removal also invalidates sessions created with the removed credential. Passkeys authorize the existing customer portal account and confer no vault access. Migration `0007_customer_passkeys.sql` is additive.
+
 1. A new customer submits Request access on the public website. Intake stores the request, and an operator reviews it in Admin. Customer sign-in never approves a request or creates a paid entitlement.
 2. The customer can open the original private invitation or paste it into the portal's invitation form. A valid link creates a Secure, HttpOnly, host-only customer session limited to that one approved request. It does not prove ownership of all records with the same email. Rotating the invitation invalidates its derived invitation sessions.
 3. A returning customer enters the email used in their access request. A six-digit, one-use code sent to that email proves ownership. The resulting session can list all retained requests matching that email, including pending, approved and closed requests. Unknown addresses get the same generic start response. A sign-in code never appears in an API response.

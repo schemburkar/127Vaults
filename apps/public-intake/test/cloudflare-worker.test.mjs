@@ -1,3 +1,4 @@
+import { testWorker } from '../../../scripts/cloudflare/test-worker.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -498,7 +499,7 @@ async function fixture(t, options = {}) {
     TRIAL_ISSUER_KEY_ID: 'trial', TRIAL_ISSUER_PRIVATE_KEY: issuerPrivateKey, TRIAL_CATALOGUE_KEY: 'releases/test/catalogue.json',
     TRIAL_SOURCE_REVISION: 'a'.repeat(40), TRIAL_CATALOGUE_SHA256: createHash('sha256').update(catalogueSource).digest('hex'),
     ...(options.bindings ?? {}) };
-  const mfOptions = { modules: true, modulesRoot: root, scriptPath: fileURLToPath(new URL('../cloudflare/worker.mjs', import.meta.url)),
+  const mfOptions = { modules: true, modulesRoot: root, script: await testWorker(fileURLToPath(new URL('../cloudflare/worker.mjs', import.meta.url))),
     modulesRules: [{ type: 'ESModule', include: ['**/*.mjs'], fallthrough: true }],
     compatibilityDate: '2026-07-01', bindings, d1Databases: ['DB'], r2Buckets: ['ARTIFACTS'],
     ...(options.assetsDirectory ? { assets: { directory: options.assetsDirectory, binding: 'ASSETS',
@@ -511,18 +512,13 @@ async function fixture(t, options = {}) {
   if (options.cliRuntime) {
     const require = createRequire(import.meta.url);
     const bundled = createRequire(require.resolve('wrangler/package.json'))('miniflare');
-    const directory = fileURLToPath(new URL('../cloudflare/', import.meta.url));
-    const paths = [mfOptions.scriptPath,
-      ...(await readdir(directory)).filter(name => name.endsWith('.mjs') && name !== 'worker.mjs').map(name => join(directory, name)),
-      ...['validate-request.mjs', 'intake-origin.mjs', 'cloudflare-email.mjs', 'resend-email.mjs', 'operator-session.mjs', 'request-alerts.mjs'].map(name => fileURLToPath(new URL(`../src/${name}`, import.meta.url)))];
-    mf = new bundled.Miniflare(bundled.convertV4MiniflareOptions({ ...mfOptions, scriptPath: undefined,
-      modulesRules: undefined, modules: paths.map(path => ({ type: 'ESModule', path })) }));
+    mf = new bundled.Miniflare(bundled.convertV4MiniflareOptions({ ...mfOptions, modulesRules: undefined, modulesRoot: undefined }));
   } else mf = new Miniflare(mfOptions);
   let disposed = false;
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
   const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
-  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql']) {
+  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql', '0007_customer_passkeys.sql']) {
     const sql = await readFile(new URL(`../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
   }

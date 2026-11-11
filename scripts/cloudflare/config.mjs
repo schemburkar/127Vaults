@@ -18,7 +18,7 @@ export const assetFiles = ['index.html', 'product.html', 'security.html', 'secur
   'downloads.html', 'release-notes-history.html', 'get-started.html', 'faq.html', 'setup-guide.html', 'trial.html', 'access-admin.html',
   'terms.html', 'privacy.html', 'refunds.html', 'support.html',
   'site.css', 'trial.css', 'theme.mjs', 'package-list.mjs', 'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs',
-  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'portal.html', 'portal.mjs', 'portal.css', 'portal-client.mjs', 'billing-admin.mjs', 'admin-shell.mjs', 'admin.css', 'subscriptions.html', 'coupons.html', 'licenses.html', 'licenses.mjs', 'releases.html', 'releases.mjs', 'customer-mail.html', 'customer-mail.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
+  'trial.mjs', 'access-admin.mjs', 'billing.html', 'billing.mjs', 'portal.html', 'portal.mjs', 'portal.css', 'portal-client.mjs', 'passkeys.mjs', 'billing-admin.mjs', 'admin-shell.mjs', 'admin.css', 'subscriptions.html', 'coupons.html', 'licenses.html', 'licenses.mjs', 'releases.html', 'releases.mjs', 'customer-mail.html', 'customer-mail.mjs', 'setup-guide.mjs', 'releases.json', 'brand-mark.svg', 'favicon.svg', 'wordmark.svg'];
 function contains(directory, path) {
   const rel = relative(directory, path);
   return !rel || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));

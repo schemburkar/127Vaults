@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { createLocalSites } from './local.mjs';
 import { readLocalMail } from './mail.mjs';
 import { encryptionKey, unseal, seal } from '../../apps/public-intake/cloudflare/crypto.mjs';
+import { generateKeyPairSync, createHash, randomBytes, sign } from 'node:crypto';
+import { isoCBOR } from '@simplewebauthn/server/helpers';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), '127v-portal-')); let local;
@@ -95,4 +97,90 @@ test('customer verification uses generic responses, bounded guesses, expiry and 
   const cookie = responses.find(v => v.status === 200).headers.get('set-cookie');
   await f.local.database.prepare('UPDATE customer_sessions SET expires_at = 1').run();
   assert.equal((await f.get('/api/customer/me', cookie)).status, 401);
+});
+test('Manage passkeys verify signatures, support names and multiple devices, and revoke removed-key sessions', async t => {
+  const f = await fixture(t);
+  const id = await f.submit('owner@example.com');
+  const invite = await f.approve(id);
+  const emailSession = await f.complete(await f.start('owner@example.com'));
+  const session = emailSession.headers.get('set-cookie').split(';')[0];
+  const origin = f.local.origins.customer;
+  const rpID = new URL(origin).hostname;
+  const sha = value => createHash('sha256').update(value).digest();
+  const b64 = value => Buffer.from(value).toString('base64url');
+  const decode = value => Buffer.from(value, 'base64url');
+  const post = (path, value, cookie = session) => f.post('customer', '/api/customer/passkeys' + path, value, { Cookie: cookie });
+  async function begin(path, value, cookie = session) {
+    const response = await post(path, value, cookie);
+    assert.equal(response.status, 200, await response.clone().text());
+    return { ...await response.json(), cookie: cookie + '; ' + response.headers.get('set-cookie').split(';')[0] };
+  }
+  const client = (type, challenge) => Buffer.from(JSON.stringify({ type, challenge, origin, crossOrigin: false }));
+  async function register(name) {
+    const start = await begin('/register/options', { name });
+    const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const jwk = pair.publicKey.export({ format: 'jwk' });
+    const credentialID = randomBytes(32);
+    const publicKey = isoCBOR.encode(new Map([[1, 2], [3, -7], [-1, 1], [-2, decode(jwk.x)], [-3, decode(jwk.y)]]));
+    const size = Buffer.alloc(2); size.writeUInt16BE(credentialID.length);
+    const authData = Buffer.concat([sha(rpID), Buffer.from([0x45]), Buffer.alloc(4), Buffer.alloc(16), size, credentialID, publicKey]);
+    const credential = { id: b64(credentialID), rawId: b64(credentialID), type: 'public-key', clientExtensionResults: {},
+      response: { clientDataJSON: b64(client('webauthn.create', start.options.challenge)), transports: ['internal'],
+        attestationObject: b64(isoCBOR.encode(new Map([['fmt', 'none'], ['attStmt', new Map()], ['authData', authData]]))) } };
+    const response = await post('/register/verify', { challengeId: start.challengeId, credential }, start.cookie);
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal((await post('/register/verify', { challengeId: start.challengeId, credential }, start.cookie)).status, 403);
+    return { pair, id: b64(credentialID), userHandle: start.options.user.id };
+  }
+  function assertion(key, options, bad = false) {
+    const clientData = client('webauthn.get', options.challenge);
+    const authData = Buffer.concat([sha(rpID), Buffer.from([0x05]), Buffer.alloc(4)]);
+    const signature = sign('sha256', Buffer.concat([authData, sha(clientData)]), key.pair.privateKey);
+    if (bad) signature[signature.length - 1] ^= 1;
+    return { id: key.id, rawId: key.id, type: 'public-key', clientExtensionResults: {}, response: {
+      clientDataJSON: b64(clientData), authenticatorData: b64(authData), signature: b64(signature), userHandle: key.userHandle } };
+  }
+  async function login(key, bad = false) {
+    const start = await begin('/login/options', {}, '');
+    return post('/login/verify', { challengeId: start.challengeId, credential: assertion(key, start.options, bad) }, start.cookie);
+  }
+  const first = await register('Laptop');
+  const second = await register('Phone');
+  const expired = await begin('/login/options', {}, '');
+  await f.local.database.prepare('UPDATE customer_passkey_challenges SET expires_at = 0 WHERE id = ?').bind(expired.challengeId).run();
+  assert.equal((await post('/login/verify', { challengeId: expired.challengeId, credential: assertion(first, expired.options) }, expired.cookie)).status, 403);
+  const wrongOrigin = await begin('/login/options', {}, '');
+  assert.equal((await f.post('customer', '/api/customer/passkeys/login/verify',
+    { challengeId: wrongOrigin.challengeId, credential: assertion(first, wrongOrigin.options) },
+    { Cookie: wrongOrigin.cookie, Origin: 'https://evil.example' })).status, 403);
+  let list = await (await f.get('/api/customer/passkeys', session)).json();
+  assert.deepEqual(list.passkeys.map(key => key.name), ['Laptop', 'Phone']);
+  await f.submit('other@example.com');
+  const otherLogin = await f.complete(await f.start('other@example.com'));
+  const otherCookie = otherLogin.headers.get('set-cookie').split(';')[0];
+  assert.equal((await post('/rename', { id: list.passkeys[0].id, name: 'Stolen' }, otherCookie)).status, 404);
+  assert.equal((await post('/remove', { id: list.passkeys[0].id }, otherCookie)).status, 200);
+  assert.equal((await (await f.get('/api/customer/passkeys', session)).json()).passkeys.length, 2);
+  const invitation = await f.post('customer', '/api/customer/invitation', { requestId: id, token: invite.link.split('.').at(-1) });
+  assert.equal((await post('/register/options', { name: 'Intruder' }, invitation.headers.get('set-cookie'))).status, 401);
+  assert.equal((await login(first, true)).status, 403);
+  const signed = await login(first);
+  assert.equal(signed.status, 200, await signed.clone().text());
+  const passkeySession = signed.headers.get('set-cookie').split(';')[0];
+  const me = await (await f.get('/api/customer/me', passkeySession)).json();
+  assert.equal(me.email, 'owner@example.com');
+  assert.equal((await post('/rename', { id: list.passkeys[0].id, name: 'Work laptop' }, passkeySession)).status, 200);
+  assert.equal((await post('/remove', { id: list.passkeys[0].id }, passkeySession)).status, 200);
+  assert.equal((await f.get('/api/customer/me', passkeySession)).status, 401);
+  assert.equal((await login(first)).status, 403);
+  assert.equal((await login(second)).status, 200);
+  list = await (await f.get('/api/customer/passkeys', session)).json();
+  assert.deepEqual(list.passkeys.map(key => key.name), ['Phone']);
+  const stale = JSON.stringify({ kind: 'email', email: 'owner@example.com', authenticatedAt: Date.now() - 11 * 60000 });
+  const sessionToken = session.split('=')[1];
+  const sessionID = createHash('sha256').update(origin + '\0' + sessionToken).digest('hex');
+  const portalKey = await encryptionKey((await readFile(join(f.directory, 'intake-key'), 'utf8')).trim(), 'customer-portal');
+  await f.local.database.prepare('UPDATE customer_sessions SET principal = ? WHERE id = ?')
+    .bind(await seal(JSON.parse(stale), portalKey, 'customer-session:' + sessionID), sessionID).run();
+  assert.equal((await post('/register/options', { name: 'Late' })).status, 403);
 });

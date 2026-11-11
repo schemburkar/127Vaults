@@ -2,7 +2,13 @@ export async function portalApi(path, value) {
   const response = await fetch(`/api/customer/${path}`, { method: value === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
     headers: value === undefined ? {} : { 'Content-Type': 'application/json' }, ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
   if (!response.ok) {
-    const error = new Error(response.status === 403 ? 'The code is invalid, expired, or already used. Request another code.'
+    const value = await response.json().catch(() => ({}));
+    const error = new Error(value.error === 'recent_sign_in_required' ? 'Sign in again with a passkey or email code to manage passkeys.'
+      : value.error === 'invalid_passkey_name' ? 'Enter a passkey name between 1 and 80 characters.'
+      : value.error === 'passkey_already_registered' ? 'That passkey is already registered.'
+      : value.error === 'passkey_limit' ? 'You can register up to 20 passkeys. Remove one to add another.'
+      : path.startsWith('passkeys') && response.status === 403 ? 'The passkey could not be verified. Try again or use an email code.'
+      : response.status === 403 ? 'The code is invalid, expired, or already used. Request another code.'
       : response.status === 429 ? 'Too many attempts. Please try again later.' : response.status === 401 ? 'Sign in to the customer portal or reopen your invitation.' : 'Customer sign-in is temporarily unavailable.');
     error.status = response.status; throw error;
   }

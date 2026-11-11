@@ -3,6 +3,7 @@ import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed, convertibleI
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
 import { productionRecipient } from '../src/resend-email.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail } from './customer-email.mjs';
+import { handlePasskeys } from './customer-passkeys.mjs';
 
 const cookieName = '__Host-127v-portal', lifetime = 12 * 3600000;
 const normalize = email => typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -42,7 +43,11 @@ export async function customerPrincipal(request, env, store, now) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(value ?? '')) return null;
   const id = await identity(request, value);
   const row = await store.db.prepare('SELECT principal, expires_at FROM customer_sessions WHERE id = ? AND expires_at > ?').bind(id, now).first();
-  return row ? { ...await unseal(row.principal, await portalKey(env), `customer-session:${id}`), sessionExpiresAt: row.expires_at } : null;
+  if (!row) return null;
+  const principal = await unseal(row.principal, await portalKey(env), `customer-session:${id}`);
+  if (principal.passkeyId && !await store.db.prepare('SELECT id FROM customer_passkeys WHERE id = ?')
+    .bind(principal.passkeyId).first()) return null;
+  return { ...principal, sessionExpiresAt: row.expires_at };
 }
 export async function customerCanAccess(request, env, store, row, now, capability = 'installation') {
   if (!row?.contact || row.trial?.state !== 'approved') return false;
@@ -88,6 +93,10 @@ export async function handleCustomerPortal(request, env, store, now) {
   if (!['GET', 'POST'].includes(request.method)) reject(405, 'method_not_allowed');
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   if (!await store.allow('portal-ip', ip, 120, 3600000)) reject(429, 'rate_limited');
+  if (path.startsWith('/api/customer/passkeys')) {
+    return handlePasskeys(request, env, store, now, await customerPrincipal(request, env, store, now), await portalKey(env),
+      principal => createSession(request, env, store, principal, now), json);
+  }
   if (path === '/api/customer/start' && request.method === 'POST') {
     if (env.CUSTOMER_EMAIL_LOGIN === '0') return json(503, { error: 'email_sign_in_unavailable' });
     const input = await body(request, ['email']), email = normalize(input.email);
@@ -134,7 +143,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     if (!await equal(payload.codeHash, await limitIdentity(store.limiterKey, `portal-code:${input.challengeId}:${input.code}`))) reject(403, 'invalid_code');
     const consumed = await store.db.prepare('DELETE FROM customer_challenges WHERE id = ? AND attempts = ? RETURNING id').bind(input.challengeId, row.attempts).first();
     if (!consumed) reject(403, 'invalid_code');
-    return json(200, { signedIn: true }, { 'Set-Cookie': await createSession(request, env, store, { kind: 'email', email: payload.email }, now) });
+    return json(200, { signedIn: true }, { 'Set-Cookie': await createSession(request, env, store, { kind: 'email', email: payload.email, authenticatedAt: now }, now) });
   }
   if (path === '/api/customer/invitation' && request.method === 'POST') {
     const input = await body(request, ['requestId', 'token']);
@@ -208,6 +217,7 @@ export async function manualCustomerMail(env, store, now) {
 }
 export async function pruneCustomerPortal(store, now, manual = false) {
   await store.db.batch([store.db.prepare('DELETE FROM customer_challenges WHERE expires_at <= ?').bind(now),
+    store.db.prepare('DELETE FROM customer_passkey_challenges WHERE expires_at <= ?').bind(now),
     store.db.prepare('DELETE FROM customer_sessions WHERE expires_at <= ?').bind(now)]);
   if (manual) await store.db.prepare('DELETE FROM customer_manual_mail WHERE expires_at <= ? OR id NOT IN (SELECT id FROM customer_challenges)').bind(now).run();
 }

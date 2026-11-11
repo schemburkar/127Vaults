@@ -1,3 +1,4 @@
+import { testWorker } from '../cloudflare/test-worker.mjs';
 import { Miniflare } from 'miniflare';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
@@ -109,19 +110,19 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
     };
     mf = new Miniflare({ host: '127.0.0.1', port: 0, d1Persist: join(directory, 'state', 'd1'), r2Persist: join(directory, 'state', 'r2'),
       workers: [
-        { ...base, name: 'public', routes: [`${new URL(origins.public).hostname}/*`], scriptPath: join(repository, 'apps/public-intake/cloudflare/public-site.mjs'),
+        { ...base, name: 'public', routes: [`${new URL(origins.public).hostname}/*`], script: await testWorker(join(repository, 'apps/public-intake/cloudflare/public-site.mjs')),
           bindings: { PUBLIC_INTAKE_ORIGIN: origins.public }, serviceBindings: { INTAKE: 'intake', ASSETS: assetServices.public } },
-        { ...base, name: 'intake', scriptPath: join(repository, 'apps/public-intake/cloudflare/intake-only.mjs'),
+        { ...base, name: 'intake', script: await testWorker(join(repository, 'apps/public-intake/cloudflare/intake-only.mjs')),
           bindings: { PUBLIC_INTAKE_ORIGIN: origins.public, ...await intakeKeys(intakeKey) }, d1Databases: db,
           serviceBindings: { ALERTS: { name: 'admin', entrypoint: 'AccessRequestAlerts' } } },
-        ...['admin', 'customer'].map(surface => ({ ...base, name: surface, routes: [`${new URL(origins[surface]).hostname}/*`],
-          scriptPath: join(repository, `apps/public-intake/cloudflare/${surface === 'admin' ? 'admin-worker' : 'worker'}.mjs`),
+        ...await Promise.all(['admin', 'customer'].map(async surface => ({ ...base, name: surface, routes: [`${new URL(origins[surface]).hostname}/*`],
+          script: await testWorker(join(repository, `apps/public-intake/cloudflare/${surface === 'admin' ? 'admin-worker' : 'worker'}.mjs`)),
           bindings: { ...Object.fromEntries(Object.entries(control).filter(([key]) => surface === 'admin' || key !== 'OPERATOR_TOKEN')), SITE_SURFACE: surface, PUBLIC_INTAKE_ORIGIN: origins[surface] },
-          d1Databases: db, r2Buckets: r2, serviceBindings: { ASSETS: assetServices[surface], ...(surface === 'customer' ? { CUSTOMER_MAIL: mailService } : {}) } })),
+          d1Databases: db, r2Buckets: r2, serviceBindings: { ASSETS: assetServices[surface], ...(surface === 'customer' ? { CUSTOMER_MAIL: mailService } : {}) } }))),
       ] });
     const database = await mf.getD1Database('DB', 'admin');
     await database.prepare('CREATE TABLE IF NOT EXISTS local_site_migrations (name TEXT PRIMARY KEY)').run();
-    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql']) {
+    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql', '0007_customer_passkeys.sql']) {
       if (await database.prepare('SELECT name FROM local_site_migrations WHERE name = ?').bind(name).first()) continue;
       const sql = await readFile(join(repository, 'apps/public-intake/cloudflare/migrations', name), 'utf8');
       await database.batch([...sql.split(';').map(v => v.trim()).filter(Boolean).map(v => database.prepare(v)),

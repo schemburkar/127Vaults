@@ -1,5 +1,6 @@
 import { portalApi, establishInvitationSession, parseInvitation } from './portal-client.mjs';
 import { mountBilling } from './billing.mjs';
+import { setupPasskeys, renderPasskeys } from './passkeys.mjs';
 const $ = id => document.getElementById(id);
 let challengeId;
 async function run(work) {
@@ -212,6 +213,7 @@ async function account() {
   }
   renderPlans(value);
   renderOrders(value);
+  await renderPasskeys(value.scope === 'email');
   $('portal-status').textContent = value.requests.length || value.canBuyPersonal || !cloud.hidden ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
 }
 $('email-start').addEventListener('submit', event => { event.preventDefault(); run(async () => {
@@ -231,4 +233,5 @@ $('portal-logout').addEventListener('click', () => run(async () => {
   $('personal-consent').checked = false;
   $('portal-requests').replaceChildren(); $('portal-identity').textContent = ''; $('portal-status').textContent = 'Signed out.';
 }));
+setupPasskeys(account);
 account().catch(error => { $('portal-login').hidden = false; $('portal-status').textContent = error.status === 401 ? '' : error.message; });

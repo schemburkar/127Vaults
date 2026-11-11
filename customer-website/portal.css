@@ -57,3 +57,9 @@
 .portal-panel-heading h2 { margin: 0; }
 .portal-panel .portal-billing { padding: 18px; }
 #personal-plan-action:not(:empty) { width: 100%; }
+.portal-passkey-list { padding: 0; list-style: none; }
+.portal-passkey-list li { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.portal-passkey-row { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.portal-passkey-row .access-field { flex: 1; min-width: 180px; margin: 0; }
+.portal-passkey-row .button { width: auto; }
+.portal-passkey-list p { color: var(--muted); font-size: .85rem; margin-top: 8px; }
