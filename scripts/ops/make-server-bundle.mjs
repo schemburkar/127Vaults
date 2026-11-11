@@ -15,6 +15,11 @@ export async function archiveServerBundle(destination, run) {
 export async function runMakeBundle(argv, options = {}) {
 const destination = resolve(argv[0] ?? '');
 const checkout = resolve(options.checkout ?? '.');
+if (options.packageVersion) {
+  const runtime = await readFile(join(checkout, 'apps/server/src/license-version.mjs'), 'utf8');
+  const declared = /export const SERVER_MAJOR_VERSION = (\d+);/.exec(runtime)?.[1];
+  if (Number(declared) !== Number(options.packageVersion.split('.')[0])) throw Error('Runtime license major differs from release version.');
+}
 if (!argv[0] || destination === checkout || destination.startsWith(checkout + sep)) throw Error('Supply a new output directory outside the checkout.');
 if (existsSync(`${destination}.tar.gz`)) throw Error('Bundle archive already exists.');
 const engine = argv.includes('--docker') ? 'docker' : 'podman';
@@ -71,6 +76,7 @@ for (const [source, target] of [
   ['deploy/license-files.mjs', 'lib/license-files.mjs'],
   ['apps/server/src/admin/credentials.mjs', 'lib/admin-credentials.mjs'],
   ['apps/server/src/license-status.mjs', 'lib/license-status.mjs'],
+  ['apps/server/src/license-version.mjs', 'lib/license-version.mjs'],
   ['apps/server/src/subscription-refresh.mjs', 'lib/subscription-refresh.mjs'],
   ['scripts/tls.mjs', 'lib/tls.mjs'],
   ['scripts/ops/backup-envelope.mjs', 'lib/backup-envelope.mjs'],
@@ -93,7 +99,7 @@ if (options.provenance) {
 }
 const files = {};
 files['lib/subscription-refresh.mjs'] = await hash(join(destination, 'lib/subscription-refresh.mjs'));
-for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'compose.local-admin.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/private-network.mjs', 'lib/upgrade.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE.md', 'COMMERCIAL-LICENSE.md']) files[name] = await hash(join(destination, name));
+for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'compose.local-admin.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/private-network.mjs', 'lib/upgrade.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/license-version.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE.md', 'COMMERCIAL-LICENSE.md']) files[name] = await hash(join(destination, name));
 files['lib/hostname.mjs'] = await hash(join(destination, 'lib/hostname.mjs'));
 files['lib/recovery.mjs'] = await hash(join(destination, 'lib/recovery.mjs'));
 if (issuerKeys) files['issuer-keys.json'] = await hash(join(destination, 'issuer-keys.json'));

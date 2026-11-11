@@ -338,7 +338,7 @@ test('Dodo full refund of the current payment revokes service and cancels collec
   const provider = async (url, options) => {
     if (options.method === 'PATCH') { cancellations++; return Response.json({}); }
     if (url.includes('/payments/')) return Response.json({ subscription_id: 'sub_test', payment_id: 'pay_test',
-      created_at: new Date(now).toISOString(), status: 'succeeded', total_amount: 1000, currency: 'USD',
+      created_at: new Date(now).toISOString(), status: 'succeeded', total_amount: 1000, currency: 'USD', metadata: f.sub.metadata,
       service_periods: [{ subscription_id: 'sub_test', starts_at: new Date(now).toISOString(), ends_at: f.sub.next_billing_date }],
       refunds: [{ status: 'succeeded', is_partial: false }] });
     return Response.json(f.sub);
@@ -359,12 +359,14 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
   let failedMetadata;
   let checkoutCalls = 0;
   let providerPaid = false;
+  let providerStatus = 'active';
+  let previousMetadata;
   const f = await fixture(t, { bindings: {
     SITE_SURFACE: 'customer', CUSTOMER_PORTAL_ENABLED: '1', CUSTOMER_EMAIL_PROVIDER: 'resend',
     CUSTOMER_EMAIL_MODE: 'production', CUSTOMER_EMAIL_FROM: 'accounts@127vaults.com', RESEND_API_KEY: 're_' + 'fake'.repeat(8),
     DODO_ENABLED: '1', DODO_MODE: 'live_mode', DODO_API_KEY: 'mock-key',
     DODO_WEBHOOK_SECRET: 'whsec_' + secret.toString('base64'), DODO_BUSINESS_ID: 'biz_personal',
-    DODO_PLANS: JSON.stringify({ 'personal-annual': { productId: 'pdt_personal', plan: 'personal', majorVersion: 1, maxUsers: 5 } }),
+    DODO_PLANS: JSON.stringify({ 'personal-annual': { productId: 'pdt_personal', plan: 'personal', majorVersion: 0, maxUsers: 5 } }),
   }, serverMajorVersion: 1, outboundService: async request => {
     const url = new URL(request.url);
     if (url.hostname === 'api.resend.com') {
@@ -375,6 +377,7 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
     if (url.pathname === '/checkouts') {
       checkoutCalls++;
       const input = await request.json();
+      previousMetadata = metadata;
       metadata = input.metadata;
       if (checkoutCalls === 1) failedMetadata = metadata;
       assert.deepEqual(input.product_cart, [{ product_id: 'pdt_personal', quantity: 1 }]);
@@ -386,12 +389,17 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
       quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' },
     });
     if (url.pathname === '/subscriptions/sub_personal') return Response.json({
-      subscription_id: 'sub_personal', status: 'active', metadata, product_id: 'pdt_personal',
+      subscription_id: 'sub_personal', status: providerStatus, metadata: checkoutCalls > 2 ? previousMetadata : metadata, product_id: 'pdt_personal',
       quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
     });
+    if (url.pathname === '/subscriptions/sub_personal3') return Response.json({
+      subscription_id: 'sub_personal3', status: 'active', metadata, product_id: 'pdt_personal',
+      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
+    });
+    if (url.pathname === '/checkouts/cks_personal3') return Response.json({ payment_id: 'pay_personal' });
     if (url.pathname === '/checkouts/cks_personal2') return Response.json({ payment_id: 'pay_personal' });
     assert.equal(url.pathname, '/payments/pay_personal');
-    return Response.json({ payment_id: 'pay_personal', subscription_id: 'sub_personal', status: providerPaid ? 'succeeded' : 'processing', metadata,
+    return Response.json({ payment_id: 'pay_personal', subscription_id: checkoutCalls > 2 ? 'sub_personal3' : 'sub_personal', status: providerPaid ? 'succeeded' : 'processing', metadata,
       total_amount: 2000, currency: 'USD', created_at: new Date().toISOString() });
   } });
   const started = await (await f.post('/api/customer/start', { email: 'buyer@customer-domain.dev' })).json();
@@ -469,7 +477,7 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
   assert.equal(activated.status, 200, await activated.clone().text());
   const file = await (await f.get(`${trial}/license`, null, cookie)).text();
   const license = verifyLicenseFile(file, f.publicKeys, installationId);
-  assert.deepEqual([license.plan, license.majorVersion, license.maxActiveUsers, license.expiresAt], ['personal', 1, 5, paidThrough]);
+  assert.deepEqual([license.plan, license.majorVersion, license.maxActiveUsers, license.expiresAt], ['personal', 0, 5, paidThrough]);
   assert.equal(license.sequence, conversion ? 4 : 1);
   if (conversion) {
     const prior = (await store.get(sourceId)).trial;
@@ -483,6 +491,34 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
   assert.equal(machine.status, 200);
   assert.equal((await machine.json()).license, file);
   assert.equal((await post(`${trial}/activate`, { installationId: randomUUID() })).status, 409);
+  // Reconcile a stale terminal state before permitting another charge.
+  let row = await store.get(requestId);
+  await store.save(row, { ...row.trial, billing: { ...row.trial.billing, status: 'cancelled' } });
+  assert.equal((await post(`/api/billing/${requestId}/checkout`, {})).status, 400);
+  assert.equal((await post(`/api/billing/${requestId}/checkout`, { acceptTerms: true })).status, 409);
+  assert.equal(checkoutCalls, 2);
+  providerStatus = conversion === 'development' ? 'expired' : conversion === 'trial' ? 'failed' : 'cancelled';
+  await post(`/api/billing/${requestId}/refresh`, {});
+  assert.equal((await (await f.get(`/api/billing/${requestId}`, null, cookie)).json()).canResubscribe, true);
+  assert.equal((await post(`/api/billing/${requestId}/checkout`, { acceptTerms: true })).status, 200);
+  assert.equal(checkoutCalls, 3);
+  row = await store.get(requestId);
+  assert.equal(row.trial.installationId, installationId);
+  assert.equal(row.trial.license, file);
+  assert.ok(row.trial.billingHistory.some(item => item.subscriptionId === 'sub_personal'));
+  // A verified payment event must issue the replacement immediately, without a browser refresh.
+  const provider = requestUrl => f.mfOptions.outboundService(new Request(requestUrl));
+  const payment = await (await provider('https://live.dodopayments.com/payments/pay_personal')).json();
+  await syncSubscription(f.env, store, row, async () => ({
+    signingKey: await issuer(f.bindings.TRIAL_ISSUER_PRIVATE_KEY, f.publicKeys.trial),
+  }), Date.now(), provider, 'sub_personal3', payment);
+  assert.notEqual(row.trial.license, file);
+  assert.equal((await post(`/api/billing/${requestId}/refresh`, {})).status, 200);
+  const renewed = await store.get(requestId);
+  assert.equal(verifyLicenseFile(renewed.trial.license, f.publicKeys, installationId).sequence, license.sequence + 1);
+  assert.ok(row.trial.billing.refreshHash);
+  assert.equal(renewed.trial.billing.refreshHash, row.trial.billing.refreshHash);
+  assert.equal(renewed.trial.billing.refreshToken, refresh.refreshToken);
 });
 
 async function fixture(t, options = {}) {

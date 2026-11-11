@@ -21,7 +21,7 @@ export function issueSelfHostedLicense({ privateKeyPem, keyId, installationId, p
   const license = JSON.stringify({ schemaVersion: 1, keyId, payload: bytes.toString('base64url'),
     signature: sign(null, Buffer.concat([Buffer.from('127Vaults license v1\0'), bytes]), key).toString('base64url') }) + '\n';
   const publicKeyPem = createPublicKey(key).export({ type: 'spki', format: 'pem' });
-  verifyLicenseFile(license, { [keyId]: publicKeyPem }, installationId);
+  verifyLicenseFile(license, { [keyId]: publicKeyPem }, installationId, majorVersion ?? 0);
   return { license, publicKeys: JSON.stringify({ [keyId]: publicKeyPem }, null, 2) + '\n' };
 }
 

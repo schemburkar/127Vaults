@@ -1,3 +1,4 @@
+import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation } from './dodo.mjs';
 import { equal, hash, token, signEnvelope, from64, seal, unseal, limitIdentity } from './crypto.mjs';
 import { customerCanAccess, customerPrincipal } from './customer-portal.mjs';
@@ -26,6 +27,8 @@ export async function claimPersonalConversion(store, row, installationId) {
   if (!prior.convertedPurchaseId) await store.save(source, { ...prior, convertedPurchaseId: row.id });
   return payload(prior.license).sequence;
 }
+const canResubscribe = record => record.kind === 'personal-purchase' && !record.billing.suspended
+  && Boolean(record.billing.subscriptionId) && ['cancelled', 'expired', 'failed'].includes(record.billing.status);
 const publicStatus = b => ({ status: b.status, plan: b.planSlug, paidThrough: b.paidThrough ?? null,
   graceUntil: b.paidThrough ? iso(Date.parse(b.paidThrough) + 30 * day) : null,
   cancelAtPeriodEnd: Boolean(b.cancelAtPeriodEnd), lastCheckedAt: b.lastCheckedAt ?? null });
@@ -77,7 +80,15 @@ export async function syncSubscription(env, store, row, release, now, fetcher = 
     next.billing.paidThrough = iso(end);
     // The signed expiry is the paid period boundary. Failure never advances it.
     const personal = next.kind === 'personal-purchase';
-    if (personal && !b.lastPayment && b.sessionId && !eventPayment) {
+    if (personal && eventPayment?.subscription_id === subscriptionId
+      && (!b.lastPayment || Date.parse(eventPayment.created_at) >= Date.parse(b.lastPayment.createdAt))
+      && eventPayment.metadata?.order_id === b.orderId && eventPayment.metadata?.access_request_id === row.id
+      && eventPayment.metadata?.billing_mode === mode && eventPayment.status === 'succeeded' && eventPayment.total_amount > 0
+      && !eventPayment.refunds?.some(refund => refund.status === 'succeeded' && refund.is_partial === false)) {
+      next.billing.lastPayment = { id: eventPayment.payment_id, createdAt: eventPayment.created_at,
+        amount: eventPayment.total_amount, currency: eventPayment.currency, status: eventPayment.status };
+    }
+    if (personal && !next.billing.lastPayment && b.sessionId && !eventPayment) {
       const checkout = await dodo(env, `/checkouts/${encodeURIComponent(b.sessionId)}`, 'GET', undefined, fetcher);
       if (checkout.payment_id) {
         const payment = await dodo(env, `/payments/${encodeURIComponent(checkout.payment_id)}`, 'GET', undefined, fetcher);
@@ -146,7 +157,9 @@ async function processBillingEvent(id, event, env, store, release, now, fetcher)
     if (!row?.trial?.billing) throw Error('Unknown subscription order');
     // Always retrieve current provider state: delayed events cannot resurrect old access.
     await syncSubscription(env, store, row, release, now, fetcher, subId, payment);
-    if (payment && payment.subscription_id === row.trial.billing.subscriptionId) {
+    if (payment && payment.subscription_id === row.trial.billing.subscriptionId
+      && payment.metadata?.access_request_id === row.id && payment.metadata?.order_id === row.trial.billing.orderId
+      && payment.metadata?.billing_mode === row.trial.billing.mode) {
       const b = row.trial.billing;
       const current = !b.lastPayment || Date.parse(payment.created_at) >= Date.parse(b.lastPayment.createdAt);
       if (current && payment.status === 'succeeded') {
@@ -188,8 +201,13 @@ export async function handleBilling(request, env, store, release, now, operatorA
     if (value.acceptTerms !== true) reject(400, 'terms_required');
     const plan = config.plans['personal-annual'];
     if (plan?.plan !== 'personal') reject(404, 'not_found');
-    const id = await hash(await limitIdentity(store.limiterKey, `personal-order:${config.mode}:${plan.majorVersion}:${principal.email}`));
-    const existing = await store.get(id);
+    // Preserve historical 0/1 order identities across the first stable release.
+    const majors = plan.majorVersion <= 1 ? [0, 1] : [plan.majorVersion];
+    const ids = await Promise.all(majors.map(async major => hash(await limitIdentity(store.limiterKey,
+      `personal-order:${config.mode}:${major}:${principal.email}`))));
+    const orders = await Promise.all(ids.map(id => store.get(id)));
+    const existing = orders.find(Boolean);
+    const id = existing?.id ?? ids[0];
     if (existing && (existing.trial.conversionSourceId ?? null) !== (value.convertRequestId ?? null)) reject(409, 'order_already_exists');
     if (!existing) {
       let conversion = {};
@@ -201,7 +219,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
         conversion = { conversionSourceId: source.id, conversionInstallationId: source.trial.installationId };
       }
       const { catalogue, identity } = await release(env);
-      if (serverMajor(catalogue) !== plan.majorVersion) reject(409, 'licensed_major_unavailable');
+      if (!compatiblePersonalMajor(plan.majorVersion, serverMajor(catalogue))) reject(409, 'licensed_major_unavailable');
       await store.insertOrder(id, { email: principal.email, plan: 'personal', name: principal.email }, {
         kind: 'personal-purchase', state: 'approved', maxUsers: plan.maxUsers, serverMajorVersion: plan.majorVersion,
         termsAcceptedAt: iso(now), sourceRevision: catalogue.sourceRevision, releaseHash: identity,
@@ -298,11 +316,12 @@ export async function handleBilling(request, env, store, release, now, operatorA
     ...publicStatus(record.billing), mode: record.billing.mode, hasLicense: Boolean(record.license),
     accessReady: record.kind !== 'personal-purchase' || paidPersonalAccess(record, now),
     hasCustomerPortal: Boolean(record.billing.customerId), hasSubscription: Boolean(record.billing.subscriptionId),
+    canResubscribe: canResubscribe(record),
     canRetryPayment: record.kind === 'personal-purchase' && record.billing.status === 'failed'
       && Boolean(record.billing.subscriptionId) && !record.billing.paidThrough && !record.license && !record.billing.suspended,
   };
   if (action === 'checkout' && request.method === 'POST' && !admin) {
-    const v = await input(request); fields(v, ['coupon']);
+    const v = await input(request); fields(v, ['coupon', 'acceptTerms']);
     if (v.coupon !== undefined && !/^[A-Za-z0-9_-]{3,16}$/.test(v.coupon)) reject(400, 'invalid_coupon');
     const personal = record.kind === 'personal-purchase';
     if (personal && (!portalAuthorized || v.coupon !== undefined)) reject(403, 'access_required');
@@ -310,24 +329,28 @@ export async function handleBilling(request, env, store, release, now, operatorA
     let billing = record.billing;
     let billingHistory = record.billingHistory;
     if (billing.status === 'checkout_pending' && billing.checkoutUrl) return { checkoutUrl: safeLink(billing.checkoutUrl) };
-    if (personal && billing.status === 'failed' && billing.subscriptionId && !billing.paidThrough && !record.license && !billing.suspended) {
+    if (canResubscribe(record)) {
+      const initialFailure = billing.status === 'failed' && !billing.paidThrough && !record.license;
+      if (!initialFailure && v.acceptTerms !== true) reject(400, 'terms_required');
       await syncSubscription(env, store, row, release, now, fetcher);
       const previous = row.trial.billing;
-      if (previous.status !== 'failed' || previous.paidThrough) reject(409, 'checkout_unavailable');
-      // A failed initial subscription is terminal at Dodo. Retain its binding so late events are ignored.
+      if (!canResubscribe(row.trial)) reject(409, 'checkout_unavailable');
+      // Confirm the former subscription is terminal before creating a fresh charge.
+      // Keep the installation, signed license and renewal token; ignore late former-order events.
       billingHistory = [...(billingHistory ?? []), { subscriptionId: previous.subscriptionId, orderId: previous.orderId }];
       billing = { mode: previous.mode, planSlug: previous.planSlug, productId: previous.productId,
-        status: 'offered', orderId: crypto.randomUUID() };
+        status: 'offered', orderId: crypto.randomUUID(),
+        ...(previous.refreshToken ? { refreshToken: previous.refreshToken, refreshHash: previous.refreshHash } : {}) };
     }
     if (billing.status !== 'offered' || (!personal && !record.installationId)) reject(409, 'checkout_unavailable');
-    if (record.conversionSourceId) {
+    if (record.conversionSourceId && !record.installationId) {
       const source = await store.get(record.conversionSourceId);
       if (config.mode !== 'live_mode' || !await customerCanAccess(request, env, store, source, now, 'billing')
         || !convertibleInstallation(source.trial, config.plans[billing.planSlug])
         || source.trial.installationId !== record.conversionInstallationId) reject(409, 'conversion_unavailable');
     }
     // Reserve durably before calling the provider. An ambiguous timeout must be reconciled by an operator, never retried into a duplicate subscription.
-    await store.save(row, { ...row.trial, ...(billingHistory ? { billingHistory } : {}),
+    await store.save(row, { ...row.trial, ...(v.acceptTerms === true ? { termsAcceptedAt: iso(now) } : {}), ...(billingHistory ? { billingHistory } : {}),
       billing: { ...billing, status: 'checkout_pending', checkoutStartedAt: iso(now) } });
     let result;
     try { result = await dodo(env, '/checkouts', 'POST', {

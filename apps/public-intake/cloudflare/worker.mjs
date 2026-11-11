@@ -1,3 +1,4 @@
+import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { validateRequest } from '../src/validate-request.mjs';
 import { validIntakeOrigin } from '../src/intake-origin.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
@@ -94,11 +95,12 @@ const entitledMajor = record => record?.serverMajorVersion ?? 0;
 async function entitledRelease(env, record) {
   const current = await release(env), major = entitledMajor(record);
   let selected = current;
-  if (serverMajor(current.catalogue) !== major) {
-    const channel = current.catalogue.previousMajors?.find(v => v.majorVersion === major);
+  const matches = candidate => record?.kind === 'personal-purchase' ? compatiblePersonalMajor(major, candidate) : candidate === major;
+  if (!matches(serverMajor(current.catalogue))) {
+    const channel = current.catalogue.previousMajors?.slice().sort((a, b) => b.majorVersion - a.majorVersion).find(v => matches(v.majorVersion));
     if (!channel) fail(409, 'licensed_major_unavailable');
     selected = await release({ ...env, TRIAL_CATALOGUE_KEY: channel.objectKey, TRIAL_CATALOGUE_SHA256: channel.sha256 });
-    if (serverMajor(selected.catalogue) !== major) fail(503, 'catalogue_major_mismatch');
+    if (!matches(serverMajor(selected.catalogue))) fail(503, 'catalogue_major_mismatch');
   }
   if (record?.license && !await verifyLicenseIssuer(record.license, selected.catalogue.issuerPublicKeys)) fail(409, 'license_issuer_changed');
   return selected;

@@ -2,6 +2,7 @@ import { createPublicKey, verify } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { subscriptionLicense } from './subscription-refresh.mjs';
+import { SERVER_MAJOR_VERSION, compatiblePersonalMajor } from './license-version.mjs';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const b64 = /^[A-Za-z0-9_-]+$/;
@@ -11,7 +12,7 @@ const iso = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const fail = () => { throw new Error('invalid_license'); };
 
-export function verifyLicenseFile(file, publicKeys, installationId) {
+export function verifyLicenseFile(file, publicKeys, installationId, serverMajorVersion = SERVER_MAJOR_VERSION) {
   if (!uuid.test(installationId) || typeof file !== 'string' || Buffer.byteLength(file) > 8192) fail();
   let envelope;
   try { envelope = JSON.parse(file); } catch { fail(); }
@@ -37,6 +38,7 @@ export function verifyLicenseFile(file, publicKeys, installationId) {
   try { key = createPublicKey(publicKeys[envelope.keyId]); } catch { fail(); }
   if (key.asymmetricKeyType !== 'ed25519'
     || !verify(null, Buffer.concat([Buffer.from('127Vaults license v1\0'), bytes]), key, signature)) fail();
+  if (payload.plan === 'personal' && !compatiblePersonalMajor(payload.majorVersion, serverMajorVersion)) fail();
   return { ...payload, keyId: envelope.keyId };
 }
 

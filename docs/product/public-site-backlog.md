@@ -4,11 +4,17 @@
 
 Before opening paid Personal signup beyond the restricted Dodo Test mode buyer:
 
-- Resolve the version policy for the current 0.x server. Billing currently rejects a live Personal major below 1. Catalogue selection pins the purchased major, but the server license verifier validates the signed major field without comparing it with the running server major. Complete and test that supported upgrade boundary.
+- Implemented locally: Personal 0.x and 1.x share one entitlement, including existing signed licenses and compatible downloads. Later majors are isolated. The server enforces the running major, and coordinated package builds reject a runtime/release-major mismatch. Live Personal major 0 is allowed. Release/publication and installed acceptance remain pending.
 - Complete a fresh Personal journey through verified payment, installer setup link, license binding, server startup and automatic renewal configuration on a disposable installation. Payment confirmation and access readiness have been verified against Dodo Test mode; full installed Personal acceptance remains pending.
-- Support buying again after a paid subscription is cancelled or expires. The present Personal order is reused per email and major, and a fresh checkout is allowed only for an offer or a failed initial subscription with no paid period.
+- Implemented locally: Subscribe again for provider-confirmed cancelled, expired or failed Personal subscriptions, with fresh terms acceptance after a paid period. Retain the installation, license sequence and machine renewal credentials; preserve the prior signed license until payment succeeds. A scheduled cancellation on an active subscription does not create another charge. Historical order bindings prevent delayed old events from affecting a new subscription. Refunded/disputed suspended orders remain support-managed.
 - Finish provider-connected renewal, cancellation, refund and dispute acceptance. Local mocked regression coverage does not replace those provider checks.
 - After Dodo approval, supply separate live API credentials, product configuration and webhook secret, verify production email readiness and expose the public Buy action through the live-mode deployment configuration. Existing Test mode orders stay separate.
+
+## Current implementation checkpoint — 2026-11-11
+
+Payment/access reconciliation, red plan actions, the order-details side panel, named multiple passkeys, and live trial/development conversion are implemented. The earlier follow-up below is retained as historical scope, not an open implementation list. This session also makes an already-bound paid conversion renew its license directly from a verified payment event. Local tests use mocked transports only. Fresh Personal install and provider-connected lifecycle acceptance are intentionally deferred until the implementation is complete; no real sign-in emails or payments are sent by these tests.
+
+Next recommended self-hosted acceptance: clean Windows/Linux install and upgrade/recovery, backup/restore with license rollback protection, then the private Tailscale two-computer journey (SRV-021). Wider physical OS-lock/cross-client interruption cases remain in the internal priority review. macOS and Cloud remain outside the current Personal launch slice.
 
 ## Personal checkout follow-up — 2026-11-10
 

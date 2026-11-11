@@ -63,3 +63,13 @@ test('current license enters revoked state but a renewed license is unaffected',
     assert.equal(clockBlocked.clockState, 'rollback_detected');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+ test('Personal major 0 and 1 are grandfathered together; later majors remain isolated', () => {
+  for (const purchased of [0, 1, 2, 3]) for (const running of [0, 1, 2, 3]) {
+    const source = file({ ...payload(), majorVersion: purchased });
+    if (Math.max(1, purchased) === Math.max(1, running))
+      assert.equal(verifyLicenseFile(source, publicKeys, installationId, running).majorVersion, purchased);
+    else assert.throws(() => verifyLicenseFile(source, publicKeys, installationId, running), /invalid_license/);
+  }
+  assert.throws(() => verifyLicenseFile(file({ ...payload(), majorVersion: 2 }), publicKeys, installationId), /invalid_license/);
+});

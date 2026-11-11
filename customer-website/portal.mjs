@@ -37,7 +37,7 @@ function renderPlans(value) {
   const order = value.requests.find(row => row.plan === 'personal' && row.billingStatus);
   $('personal-plan-action').replaceChildren();
   if (!value.canBuyPersonal && order && value.scope === 'email') {
-    const label = ({ offered: 'Continue checkout', checkout_pending: 'Continue checkout', failed: 'Retry payment' })[order.billingStatus] ?? 'Manage plan';
+    const label = ({ offered: 'Continue checkout', checkout_pending: 'Continue checkout', failed: 'Retry payment', cancelled: 'Subscribe again', expired: 'Subscribe again' })[order.billingStatus] ?? 'Manage plan';
     $('personal-plan-action').append(orderLink(order, label));
   }
   $('personal-test').hidden = value.purchaseMode !== 'test_mode';

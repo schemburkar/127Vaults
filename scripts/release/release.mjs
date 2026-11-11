@@ -164,7 +164,7 @@ async function build(plan, platform, attempt) {
     if (plan.issuerPublicKeys) await writeFile(issuerFile, JSON.stringify(plan.issuerPublicKeys, null, 2) + '\n', { flag: 'wx' });
     await runMakeBundle([join(stage, `127vaults-server-${plan.packageVersion}-linux-amd64`),
       ...(plan.issuerPublicKeys ? ['--issuer-public-keys', issuerFile] : []), ...(plan.engine === 'docker' ? ['--docker'] : [])],
-      { checkout: source, provenance: { revision: plan.revision, sourceDirty: false },
+      { checkout: source, packageVersion: plan.packageVersion, provenance: { revision: plan.revision, sourceDirty: false },
         image: `localhost/127vaults-server:release-${plan.inputFingerprint.slice(0, 16)}`, refreshImages: plan.refreshImages });
   }
   for (const name of await readdir(stage)) if (/\.(?:zip|tar|gz|exe|deb|AppImage|dmg)$/.test(name)) {

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { archiveServerBundle } from './make-server-bundle.mjs';
+import { archiveServerBundle, runMakeBundle } from './make-server-bundle.mjs';
 
 test('compressed offline bundle extracts through ordinary installer tar flow without changing bytes', async () => {
   const root = await mkdtemp(join(tmpdir(), '127vaults-compressed-'));
@@ -22,5 +22,12 @@ test('compressed offline bundle extracts through ordinary installer tar flow wit
     await run('tar', ['-xf', archive, '-C', extract], { windowsHide: true });
     assert.deepEqual(await readFile(join(extract, '127vaults-server-0.0.4-linux-amd64/server-image.tar')), bytes);
     await assert.rejects(archiveServerBundle(directory, () => { throw Error('Must not overwrite'); }), /already exists/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('server release refuses a runtime license major that differs from package major before building', async () => {
+  const root = await mkdtemp(join(tmpdir(), '127vaults-major-gate-'));
+  try {
+    await assert.rejects(runMakeBundle([join(root, 'bundle')], { packageVersion: '2.0.0' }), /Runtime license major differs/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

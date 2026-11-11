@@ -21,7 +21,7 @@ export function mountBilling(root, requestId, bearer) {
   function show(value) {
     $('controls').hidden = false;
     const personal = value.plan === 'personal-annual';
-    const checkout = value.status === 'offered' || (personal && value.status === 'checkout_pending') || value.canRetryPayment;
+    const checkout = value.status === 'offered' || (personal && value.status === 'checkout_pending') || value.canRetryPayment || value.canResubscribe;
     $('billing-title').textContent = personal ? 'Personal Self-Hosted' : 'Self-hosted subscription';
     $('billing-test').hidden = value.mode !== 'test_mode';
     $('details').textContent = ({
@@ -40,7 +40,9 @@ export function mountBilling(root, requestId, bearer) {
     if (value.cancelAtPeriodEnd) $('details').textContent += ' Cancellation is scheduled for the end of the paid period.';
     $('coupon').closest('label').hidden = personal;
     $('checkout').hidden = !checkout;
-    $('checkout').querySelector('button').textContent = value.canRetryPayment ? 'Retry payment' : 'Continue to secure checkout';
+    $('resubscribe-terms').hidden = !value.canResubscribe || value.canRetryPayment;
+    $('resubscribe-accept').required = !$('resubscribe-terms').hidden;
+    $('checkout').querySelector('button').textContent = value.canRetryPayment ? 'Retry payment' : value.canResubscribe ? 'Subscribe again' : 'Continue to secure checkout';
     $('portal').hidden = checkout || !value.paidThrough || !value.hasCustomerPortal;
     $('cancel').hidden = checkout || !value.hasSubscription
       || !['active', 'on_hold', 'past_due', 'paused'].includes(value.status) || value.cancelAtPeriodEnd;
@@ -57,7 +59,7 @@ export function mountBilling(root, requestId, bearer) {
     if (url.protocol !== 'https:' || !/(^|\.)dodopayments\.com$/.test(url.hostname)) throw Error('Invalid billing destination.');
     location.assign(url.href);
   }
-  $('checkout').addEventListener('submit', event => { event.preventDefault(); run(async () => navigate((await api('/checkout', $('coupon').value.trim() ? { coupon: $('coupon').value.trim() } : {})).checkoutUrl)); });
+  $('checkout').addEventListener('submit', event => { event.preventDefault(); run(async () => navigate((await api('/checkout', { ...($('coupon').value.trim() ? { coupon: $('coupon').value.trim() } : {}), ...(!$('resubscribe-terms').hidden ? { acceptTerms: $('resubscribe-accept').checked } : {}) })).checkoutUrl)); });
   $('portal').addEventListener('click', () => run(async () => navigate((await api('/portal', {})).portalUrl)));
   $('cancel').addEventListener('click', () => run(async () => { await api('/cancel', {}); show(await api()); }));
   $('license').addEventListener('click', () => run(async () => {

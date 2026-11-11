@@ -1,3 +1,4 @@
+import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { bytes, from64, equal } from './crypto.mjs';
 
 export class BillingError extends Error {
@@ -12,7 +13,7 @@ export function convertibleInstallation(record, plan) {
   return Boolean(plan && record?.state === 'approved' && [undefined, 'trial', 'development'].includes(record.kind)
     && record.installationId && record.license && !record.billing && !record.revocation
     && !record.replacementRequest && !record.convertedPurchaseId
-    && (record.serverMajorVersion ?? 0) === plan.majorVersion && record.maxUsers <= plan.maxUsers);
+    && compatiblePersonalMajor(record.serverMajorVersion ?? 0, plan.majorVersion) && record.maxUsers <= plan.maxUsers);
 }
 export const personalBuyerAllowed = (env, email) => env.DODO_MODE === 'live_mode'
   || env.LOCAL_SITE_PREVIEW === '1' || Boolean(email && env.DODO_TEST_BUYER === email);
@@ -26,7 +27,7 @@ export function billingConfig(env) {
   for (const [slug, plan] of Object.entries(plans)) {
     if (!/^[a-z0-9-]{1,60}$/.test(slug) || !/^pdt_[A-Za-z0-9]+$/.test(plan.productId)
       || !['personal', 'commercial'].includes(plan.plan)
-      || (plan.plan === 'personal' && (!Number.isSafeInteger(plan.majorVersion) || plan.majorVersion < (mode === 'test_mode' ? 0 : 1)))
+      || (plan.plan === 'personal' && (!Number.isSafeInteger(plan.majorVersion) || plan.majorVersion < 0))
       || !Number.isSafeInteger(plan.maxUsers) || plan.maxUsers < 1 || plan.maxUsers > 100000) throw Error('Invalid billing plan');
     if (products.has(plan.productId)) throw Error('Duplicate billing product');
     products.add(plan.productId);
