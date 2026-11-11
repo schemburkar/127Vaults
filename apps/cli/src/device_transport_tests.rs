@@ -804,6 +804,13 @@ fn inspection() -> Value {
         "expiresAt":"2026-10-09T12:00:00.000Z"})
 }
 
+pub(crate) fn offline_agent_session() -> (Session, std::path::PathBuf) {
+    let mut session = session("http://127.0.0.1:1");
+    session.online = false;
+    let directory = session.profile_dir.clone();
+    (session, directory)
+}
+
 pub(crate) fn session(origin: &str) -> Session {
     let mut template = vec![0; 77];
     template[0] = 1;
@@ -2523,6 +2530,7 @@ fn live_tls_postgres_device_lifecycle() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn extension_batch_reads_are_local_secret_free_and_preserve_fill_checks() {
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -2624,8 +2632,7 @@ fn extension_batch_reads_are_local_secret_free_and_preserve_fill_checks() {
         std::io::ErrorKind::WouldBlock
     );
     eprintln!(
-        "40-item local read: previous {:?}, batch {:?}; selected credential {:?}; IPC listing 41 -> 1, fill 2 -> 1",
-        baseline_time, batch_time, fill_time
+        "40-item local read: previous {baseline_time:?}, batch {batch_time:?}; selected credential {fill_time:?}; IPC listing 41 -> 1, fill 2 -> 1"
     );
     std::fs::write(
         session.profile_dir.join("license-entitlement.enc"),

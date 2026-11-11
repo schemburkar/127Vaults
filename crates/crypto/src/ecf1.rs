@@ -203,6 +203,49 @@ impl Core {
             handle: Some(handle),
         })
     }
+    /// Rewrap an existing root under new credentials without changing its vault keys.
+    ///
+    /// # Errors
+    /// Rejects scope changes, skipped/replayed epochs, invalid credentials or exhausted resources.
+    pub fn rewrap_root(
+        &mut self,
+        root: KeyHandle,
+        template: &[u8],
+        password: &[u8],
+        account_secret: &[u8],
+    ) -> Result<Created, Error> {
+        if password.is_empty() || password.len() > 1024 || account_secret.len() != 32 {
+            return Err(Error::InvalidInput);
+        }
+        let context = self.new_context(template, 1)?;
+        let entry = self.keys.get(&root).ok_or(Error::InvalidHandle)?;
+        if entry.kind != Kind::Root
+            || entry.tenant != id(&context, 1)
+            || entry.account != id(&context, 17)
+            || entry.epoch.checked_add(1) != Some(epoch(&context))
+        {
+            return Err(Error::ContextMismatch);
+        }
+        let bytes = entry.bytes.clone();
+        let mut salt = [0_u8; 16];
+        fill(&mut salt)?;
+        let key = derive_root(password, account_secret, &salt, &context)?;
+        let envelope = seal(&context, &salt, 65_536, 3, 1, &key, bytes.as_ref())?;
+        let handle = self.insert(KeyEntry {
+            bytes,
+            kind: Kind::Root,
+            tenant: id(&context, 1),
+            account: id(&context, 17),
+            vault: [0; 16],
+            epoch: epoch(&context),
+        })?;
+        self.creations += 1;
+        Ok(Created {
+            context,
+            envelope,
+            handle: Some(handle),
+        })
+    }
     /// # Errors
     /// Returns a bounded error; authentication failures expose no details.
     pub fn unwrap_root(
@@ -1052,6 +1095,50 @@ mod tests {
         x[6] = 0x40;
         x[8] = 0x80;
         x
+    }
+    #[test]
+    fn credential_rotation_rewraps_same_root_and_preserves_old_vaults() {
+        let mut core = Core::new();
+        let original = core
+            .create_root(&template(1), b"old fictitious password", &[9; 32])
+            .unwrap();
+        let root = original.handle.unwrap();
+        let vault = core.create_vault(root, &template(2)).unwrap();
+        let mut next = template(1);
+        next[69..77].copy_from_slice(&2u64.to_be_bytes());
+        let wrapped = core
+            .rewrap_root(root, &next, b"new fictitious password", &[8; 32])
+            .unwrap();
+        assert!(
+            core.unwrap_root(
+                &wrapped.envelope,
+                &wrapped.context,
+                b"old fictitious password",
+                &[9; 32]
+            )
+            .is_err()
+        );
+        let renewed = core
+            .unwrap_root(
+                &wrapped.envelope,
+                &wrapped.context,
+                b"new fictitious password",
+                &[8; 32],
+            )
+            .unwrap();
+        assert!(
+            core.unwrap_vault(renewed, &vault.envelope, &vault.context)
+                .is_ok()
+        );
+        assert!(
+            core.rewrap_root(root, &template(1), b"new fictitious password", &[8; 32])
+                .is_err()
+        );
+        next[1..17].copy_from_slice(&uuid(9));
+        assert!(
+            core.rewrap_root(root, &next, b"new fictitious password", &[8; 32])
+                .is_err()
+        );
     }
     fn template(p: u8) -> [u8; TEMPLATE] {
         let mut t = [0; TEMPLATE];

@@ -13,9 +13,12 @@ mod passkeys;
 use generator::generate_command;
 pub use generator::{GenerateCommand, generate_secret};
 pub mod client;
+mod credentials;
 pub mod entitlement;
 pub mod extension_host;
 pub mod migration;
+mod remembered_secret;
+pub use credentials::CredentialCommand;
 pub mod replica;
 pub mod server_connection;
 mod sync_transport;
@@ -258,7 +261,29 @@ pub struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum AccountSecretCommand {
+    /// Report whether an unexpired remembered secret is available (never prints it).
+    Status {
+        #[arg(long)]
+        username: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+    /// Remove this CLI profile/account's remembered secret. Does not delete vault data.
+    Forget {
+        #[arg(long)]
+        username: Option<String>,
+        #[arg(long, default_value = ".127vaults")]
+        config_dir: PathBuf,
+    },
+}
+#[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Rotate credentials or reconcile an interrupted rotation using the server's device proofs.
+    Credential {
+        #[command(subcommand)]
+        command: CredentialCommand,
+    },
     /// Import a local plaintext password export into a vault. Preview unless --confirm is supplied.
     Import {
         #[arg(long)]
@@ -303,8 +328,19 @@ pub enum Command {
         username: String,
         #[arg(long)]
         enroll: bool,
+        /// Remember the verified account secret in OS credential storage for 30 days.
+        #[arg(long, conflicts_with = "no_remembered_secret")]
+        remember_secret: bool,
+        /// Ignore a remembered secret and prompt for both credentials.
+        #[arg(long)]
+        no_remembered_secret: bool,
         #[arg(long, default_value = ".127vaults")]
         config_dir: PathBuf,
+    },
+    /// Inspect or forget the optional OS-protected account secret.
+    AccountSecret {
+        #[command(subcommand)]
+        command: AccountSecretCommand,
     },
     #[command(hide = true)]
     AgentServe {
@@ -1498,36 +1534,42 @@ fn authenticated_session(
         Some(value) => value.to_owned(),
         None => file_profile_value(&config_dir.join("device.conf"), "username")?,
     };
-    let mut prompt = TerminalSecretPrompt;
-    let secret = Zeroizing::new(
-        prompt
-            .read_secret("Account secret: ")
-            .map_err(|_| "secure terminal input failed".to_owned())?,
-    );
-    let password = Zeroizing::new(
-        prompt
-            .read_secret("Master password: ")
-            .map_err(|_| "secure terminal input failed".to_owned())?,
-    );
-    let secret = std::str::from_utf8(&secret)
-        .map_err(|_| "account secret must be hexadecimal".to_owned())?;
-    client::unlock(config_dir, &username, secret, &password)
+    let (secret, password) = unlock_material(config_dir, &username, true)?;
+    client::unlock(config_dir, &username, &secret, &password)
 }
 
-fn unlock_material() -> Result<(Zeroizing<String>, Zeroizing<Vec<u8>>), String> {
+fn unlock_material(
+    config: &std::path::Path,
+    username: &str,
+    allow_remembered: bool,
+) -> Result<(Zeroizing<String>, Zeroizing<Vec<u8>>), String> {
     let mut prompt = TerminalSecretPrompt;
-    let secret = Zeroizing::new(
-        String::from_utf8(
+    let remembered = if allow_remembered {
+        remembered_secret::load(config, username).unwrap_or(None)
+    } else {
+        None
+    };
+    let secret = if let Some(secret) = remembered {
+        eprintln!(
+            "Using the OS-protected remembered account secret. Your master password is still required."
+        );
+        secret
+    } else {
+        let bytes = Zeroizing::new(
             prompt
                 .read_secret("Account secret: ")
-                .map_err(|_| "secure terminal input failed".to_owned())?,
+                .map_err(|_| "secure terminal input failed")?,
+        );
+        Zeroizing::new(
+            std::str::from_utf8(&bytes)
+                .map_err(|_| "account secret must be hexadecimal")?
+                .to_owned(),
         )
-        .map_err(|_| "account secret must be hexadecimal".to_owned())?,
-    );
+    };
     let password = Zeroizing::new(
         prompt
             .read_secret("Master password: ")
-            .map_err(|_| "secure terminal input failed".to_owned())?,
+            .map_err(|_| "secure terminal input failed")?,
     );
     Ok((secret, password))
 }
@@ -2035,25 +2077,71 @@ pub fn run(cli: Cli) -> Result<String, String> {
             }
             Ok(output)
         }
+        Command::Credential { command } => credentials::run(command),
         Command::Device { command } => devices::run(command),
         Command::Login {
             username,
             enroll,
+            remember_secret,
+            no_remembered_secret,
             config_dir,
         } => {
             if enroll {
                 println!("{}", enroll_device(&config_dir, &username)?);
             }
-            let (secret, password) = unlock_material()?;
+            let (secret, password) =
+                unlock_material(&config_dir, &username, !no_remembered_secret)?;
             agent::start(&config_dir, &username, &secret, &password)?;
+            if remember_secret
+                && let Err(error) = remembered_secret::remember(&config_dir, &username, &secret)
+            {
+                let _ = agent::call(&config_dir, "logout", serde_json::json!({}));
+                return Err(error);
+            }
             remember_active_profile(&config_dir)?;
             Ok("login verified; unlocked for up to 30 minutes of inactivity".to_owned())
+        }
+        Command::AccountSecret { command } => {
+            let (username, config_dir, forget) = match command {
+                AccountSecretCommand::Status {
+                    username,
+                    config_dir,
+                } => (username, config_dir, false),
+                AccountSecretCommand::Forget {
+                    username,
+                    config_dir,
+                } => (username, config_dir, true),
+            };
+            let config_dir = effective_config_dir(&config_dir);
+            let username = username.unwrap_or(file_profile_value(
+                &config_dir.join("device.conf"),
+                "username",
+            )?);
+            if forget {
+                remembered_secret::forget(&config_dir, &username)?;
+                Ok(
+                    "Remembered CLI account secret removed. Use lock to end an active session."
+                        .to_owned(),
+                )
+            } else {
+                let available = remembered_secret::load(&config_dir, &username)?.is_some();
+                Ok(
+                    serde_json::json!({"remembered":available,"masterPasswordRequired":true})
+                        .to_string(),
+                )
+            }
         }
         Command::AgentServe {
             username,
             config_dir,
             read_only,
-        } => agent::serve(&config_dir, &username, read_only),
+        } => match agent::serve(&config_dir, &username, read_only) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                println!("{}", serde_json::json!({"error":error}));
+                Err("Unlock agent could not authenticate; no lease was created".to_owned())
+            }
+        },
         Command::Unlock {
             username,
             config_dir,

@@ -165,6 +165,13 @@ pub struct HttpSyncTransport {
     cookie: String,
     csrf: String,
 }
+impl Drop for HttpSyncTransport {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.cookie.zeroize();
+        self.csrf.zeroize();
+    }
+}
 
 impl HttpSyncTransport {
     pub fn new(client: Client, origin: String, cookie: String, csrf: String) -> Self {

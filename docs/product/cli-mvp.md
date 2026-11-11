@@ -3,9 +3,7 @@
 The CLI is a first-party client using the same OPAQUE, encrypted-vault, device-key,
 and signed-sync contracts as web. The server receives neither the master password
 nor plaintext item fields. `login` starts a per-user local unlock agent that keeps
-only the server session and usable root-key handle in memory. The account secret
-and master password are erased after that login exchange. The agent locks after
-30 minutes without an authenticated command, or immediately on `lock`/`logout`.
+the online session, usable encryption keys, device signing authority and temporarily decrypted data in memory. The agent’s owned account-secret and master-password input buffers are zeroized before its command loop starts, including on authentication failure. Decoded secret and signing-seed temporaries use zeroizing buffers. The agent locks after 30 minutes without an authenticated non-status command, or on `lock`/`logout`. Status polling does not extend the lease. Key cleanup precedes best-effort network logout. This is application-level cleanup, not a guarantee that an OS, runtime, pipe or process dump retains no transient copies.
 Item passwords and unlock credentials use no-echo prompts; item `get` redacts the
 password.
 
@@ -286,5 +284,57 @@ present. A different existing trust or device profile is never overwritten.
   written to the profile.
 - Endpoint trust accepts loopback, RFC1918 LAN, or explicitly asserted Tailscale
   identities only. The CLI trusts only the supplied installation CA.
-- QR enrollment, interoperability, checkpoint consumption/conflict UI, and
-  recovery are later.
+- QR enrollment and opt-in selected-admin/lost-credential recovery remain separate work. Encrypted offline replicas, signed checkpoints, explicit conflicts, device approval/revocation and credential maintenance are implemented. Physical terminal and clean-machine Windows/Linux acceptance remain tracked separately.
+
+## Remember an account secret safely
+
+By default a fresh login asks for both credentials unless this CLI profile already has an unexpired remembered secret. To opt in:
+
+```text
+127vaults login USERNAME --remember-secret --config-dir PROFILE
+127vaults account-secret status --config-dir PROFILE
+127vaults login USERNAME --no-remembered-secret --config-dir PROFILE
+127vaults account-secret forget --config-dir PROFILE
+127vaults lock --config-dir PROFILE
+```
+
+The master password remains required at every fresh login. Remembering happens only after successful authentication. The secret and thirty-day expiry are stored together in OS credential storage, bound to the canonical local profile, trusted endpoint, installation, device and username. There is no plaintext-file fallback. An expired or malformed entry is ignored and deletion is attempted. Expiry uses the local clock; it is not hardware-enforced. Forgetting does not erase vault data or end an existing unlock lease; use lock as well. The CLI cache is separate from Desktop’s cache.
+
+## Rotate credentials and recover an interrupted change
+
+Sync all devices first. Credential rotation uses a fresh online login and the existing device-signature/OPAQUE ceremony, rewraps the same encryption root, and preserves existing vault keys. It refuses local pending edits or conflicts. Secrets are hidden prompts, never command-line flags.
+
+```text
+127vaults credential rotate-password --config-dir PROFILE
+127vaults generate account-secret
+127vaults credential rotate-account-secret --config-dir PROFILE
+127vaults credential status --config-dir PROFILE
+127vaults credential resume --config-dir PROFILE
+127vaults credential abort --config-dir PROFILE
+```
+
+The generate command explicitly prints a cryptographically random 32-byte account secret as 64 hex characters. Save it in your recovery materials before rotating; explicit generation/output can remain in terminal scrollback or downstream tools. Password rotation requires fresh sign-in on other devices. Account-secret rotation also replaces this device identity and requires other devices to enroll again. It cannot remotely erase other devices’ encrypted replicas or prevent offline decryption when those devices retain the required credentials.
+
+A durable rotation journal contains only public metadata, encrypted root/settings envelopes and the proposed identity. It contains neither credentials nor private keys. The replacement signing key goes into the OS store before commit. A lost/ambiguous reply leaves the previous local profile intact. Resume authenticates the new credentials online before applying the new local state. Abort must authenticate the old credentials online before discarding the intent. Do not delete the journal or rerun rotation blindly after a timeout. Local promotion is resumable after interruption. Remembered CLI secrets are cleared during local promotion where OS deletion is available.
+
+## Replace a lost CLI device
+
+Prepare a fresh profile with the correct server connection, preserving the old profile and queued data. Then run:
+
+```text
+127vaults credential recover-device USERNAME --config-dir NEW-PROFILE
+```
+
+An existing trusted device must approve enrollment. Supply the account secret and master password through the hidden prompts, then review and revoke the lost device. This recovers a client connection, not lost encryption credentials. If every trusted device or the required encryption credentials are gone, this command does not bypass enrollment or decrypt data. Selected-admin recovery is not implemented.
+
+## What is stored where
+
+| Storage | Contents |
+| --- | --- |
+| Plaintext profile metadata | Username, server URL, installation/device IDs, public CA, public tenant binding, agent port and non-secret preferences |
+| Encrypted local files | Vault contents, encrypted queued changes, wrapped-root offline unlock record, protected license/settings envelopes; associated signatures, identifiers and sync metadata may be public |
+| OS credential store | Device signing seed, random agent authorization capability, and optional CLI remembered account secret with expiry |
+| Unlocked memory | Usable vault/root/device keys, online session authority and temporarily decrypted fields |
+| Explicit user-directed output | Generated secrets, requested password fields and explicitly requested plaintext exports |
+
+Normal profile/replica writes do not store the account secret, master password or unwrapped keys in plaintext. OS-backed device storage is software protection under the signed-in user, not a demonstrated non-exportable TPM identity. Malware with that user’s authority, process inspection and deliberate plaintext output remain outside that protection.

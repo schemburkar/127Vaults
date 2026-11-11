@@ -68,6 +68,13 @@ struct Startup {
     master_password: String,
 }
 
+impl Drop for Startup {
+    fn drop(&mut self) {
+        self.account_secret.zeroize();
+        self.master_password.zeroize();
+    }
+}
+
 #[derive(Serialize)]
 struct StartupRef<'a> {
     account_secret: &'a str,
@@ -142,6 +149,46 @@ struct Request {
 struct Response {
     ok: bool,
     value: Value,
+}
+
+fn clear_value(value: &mut Value) {
+    match value {
+        Value::String(text) => text.zeroize(),
+        Value::Array(rows) => rows.iter_mut().for_each(clear_value),
+        Value::Object(fields) => fields.values_mut().for_each(clear_value),
+        _ => {}
+    }
+}
+struct SensitiveValue(Value);
+impl Drop for SensitiveValue {
+    fn drop(&mut self) {
+        clear_value(&mut self.0);
+    }
+}
+impl Drop for Request {
+    fn drop(&mut self) {
+        self.capability.zeroize();
+        if let Some(password) = &mut self.password {
+            password.zeroize();
+        }
+        self.custom_fields.iter_mut().for_each(clear_value);
+        clear_value(&mut self.passkey_metadata);
+    }
+}
+impl Drop for Response {
+    fn drop(&mut self) {
+        clear_value(&mut self.value);
+    }
+}
+struct LeaseCleanup {
+    state: PathBuf,
+    protected: keyring::Entry,
+}
+impl Drop for LeaseCleanup {
+    fn drop(&mut self) {
+        let _ = self.protected.delete_credential();
+        let _ = fs::remove_file(&self.state);
+    }
 }
 
 fn profile(path: &Path, key: &str) -> Result<String, String> {
@@ -616,21 +663,24 @@ fn read_agent_request(stream: &TcpStream) -> Result<Request, String> {
     serde_json::from_str(&input).map_err(|_| "invalid local agent request".to_owned())
 }
 pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<String, String> {
-    let mut line = Zeroizing::new(String::new());
-    std::io::stdin()
-        .read_line(&mut line)
-        .map_err(|_| "could not receive unlock material")?;
-    let mut startup: Startup =
-        serde_json::from_str(&line).map_err(|_| "invalid unlock material")?;
-    line.zeroize();
-    let password = Zeroizing::new(startup.master_password.as_bytes().to_vec());
-    let secret = Zeroizing::new(startup.account_secret.clone());
-    startup.master_password.zeroize();
-    startup.account_secret.zeroize();
-    let mut session = if read_only {
-        client::unlock_offline(config_dir, username, &secret, &password)?
-    } else {
-        client::unlock_with_offline_fallback(config_dir, username, &secret, &password)?
+    // Credentials must leave scope before the long-lived agent loop, on success or failure.
+    let session = {
+        let mut line = Zeroizing::new(String::new());
+        std::io::stdin()
+            .read_line(&mut line)
+            .map_err(|_| "could not receive unlock material")?;
+        let mut startup: Startup =
+            serde_json::from_str(&line).map_err(|_| "invalid unlock material")?;
+        line.zeroize();
+        let password = Zeroizing::new(startup.master_password.as_bytes().to_vec());
+        let secret = Zeroizing::new(std::mem::take(&mut startup.account_secret));
+        startup.master_password.zeroize();
+        startup.account_secret.zeroize();
+        if read_only {
+            client::unlock_offline(config_dir, username, &secret, &password)?
+        } else {
+            client::unlock_with_offline_fallback(config_dir, username, &secret, &password)?
+        }
     };
     let listener =
         TcpListener::bind("127.0.0.1:0").map_err(|_| "could not start local unlock agent")?;
@@ -641,9 +691,14 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
     OsRng.fill_bytes(&mut raw);
     let capability = Zeroizing::new(URL_SAFE_NO_PAD.encode(raw));
     raw.zeroize();
-    entry(config_dir)?
+    let protected = entry(config_dir)?;
+    protected
         .set_password(&capability)
         .map_err(|_| "could not protect local agent capability")?;
+    let lease_cleanup = LeaseCleanup {
+        state: state_path(config_dir),
+        protected,
+    };
     fs::write(
         state_path(config_dir),
         format!(
@@ -659,8 +714,27 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
     std::io::stdout()
         .flush()
         .map_err(|_| "could not acknowledge local unlock agent")?;
+    serve_loop(
+        session,
+        listener,
+        &capability,
+        read_only,
+        IDLE_TTL,
+        Some(lease_cleanup),
+    )
+}
+#[allow(clippy::needless_pass_by_value)] // Own the listener so timeout/logout closes its port.
+fn serve_loop(
+    mut session: Session,
+    listener: TcpListener,
+    capability: &str,
+    read_only: bool,
+    idle_ttl: Duration,
+    cleanup: Option<LeaseCleanup>,
+) -> Result<String, String> {
+    let _lease_cleanup = cleanup;
     let mut last = Instant::now();
-    while last.elapsed() < IDLE_TTL {
+    while last.elapsed() < idle_ttl {
         match listener.accept() {
             Ok((mut stream, _)) => {
                 let _ = stream.set_nodelay(true);
@@ -685,11 +759,10 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
                         value: Value::String(error),
                     },
                 };
-                let _ = writeln!(
-                    stream,
-                    "{}",
-                    serde_json::to_string(&response).map_err(|_| "local agent failed")?
+                let encoded = Zeroizing::new(
+                    serde_json::to_string(&response).map_err(|_| "local agent failed")?,
                 );
+                let _ = writeln!(stream, "{}", encoded.as_str());
                 if stop {
                     break;
                 }
@@ -700,8 +773,6 @@ pub fn serve(config_dir: &Path, username: &str, read_only: bool) -> Result<Strin
             Err(_) => break,
         }
     }
-    let _ = entry(config_dir)?.delete_credential();
-    let _ = fs::remove_file(state_path(config_dir));
     Ok(String::new())
 }
 
@@ -818,6 +889,7 @@ mod startup_tests {
 
 #[allow(clippy::needless_pass_by_value)]
 pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, String> {
+    let mut fields = SensitiveValue(fields);
     let state = fs::read_to_string(state_path(config_dir))
         .map_err(|_| "not logged in; run login first".to_owned())?;
     let port = state
@@ -834,9 +906,14 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
     let capability = lease
         .get_password()
         .map_err(|_| "not logged in; run login first".to_owned())?;
-    let mut value = fields.as_object().cloned().unwrap_or_default();
+    let mut value = fields
+        .0
+        .as_object_mut()
+        .map(std::mem::take)
+        .unwrap_or_default();
     value.insert("capability".to_owned(), Value::String(capability));
     value.insert("action".to_owned(), Value::String(action.to_owned()));
+    let mut outbound = SensitiveValue(Value::Object(value));
     let mut stream = TcpStream::connect_timeout(
         &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
         Duration::from_secs(2),
@@ -856,28 +933,27 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
     stream
         .set_write_timeout(Some(Duration::from_secs(5)))
         .map_err(|_| "local agent unavailable")?;
-    let mut outbound = Value::Object(value);
     let mut encoded =
-        Zeroizing::new(serde_json::to_vec(&outbound).map_err(|_| "local agent unavailable")?);
+        Zeroizing::new(serde_json::to_vec(&outbound.0).map_err(|_| "local agent unavailable")?);
     encoded.push(b'\n');
     stream
         .write_all(&encoded)
         .map_err(|_| "local agent unavailable")?;
-    if let Some(object) = outbound.as_object_mut() {
+    if let Some(object) = outbound.0.as_object_mut() {
         for name in ["capability", "password"] {
             if let Some(Value::String(secret)) = object.get_mut(name) {
                 secret.zeroize();
             }
         }
     }
-    let mut line = String::new();
+    let mut line = Zeroizing::new(String::new());
     BufReader::new(stream)
         .read_line(&mut line)
         .map_err(|_| "local agent unavailable")?;
-    let response: Response =
+    let mut response: Response =
         serde_json::from_str(&line).map_err(|_| "invalid local agent response")?;
     if response.ok {
-        Ok(response.value)
+        Ok(response.value.take())
     } else {
         Err(response
             .value
@@ -889,6 +965,126 @@ pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, Str
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn agent_requires_capability_and_authenticated_logout_ends_the_lease() {
+        let (session, directory) = crate::client::device_transport_tests::offline_agent_session();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            super::serve_loop(
+                session,
+                listener,
+                "fixture-capability",
+                true,
+                std::time::Duration::from_secs(2),
+                None,
+            )
+        });
+        let send = |capability: &str| {
+            use std::io::{BufRead, Write};
+            let mut stream = std::net::TcpStream::connect(address).unwrap();
+            writeln!(
+                stream,
+                "{}",
+                serde_json::json!({"action":"logout","capability":capability})
+            )
+            .unwrap();
+            let mut line = String::new();
+            std::io::BufReader::new(stream)
+                .read_line(&mut line)
+                .unwrap();
+            serde_json::from_str::<serde_json::Value>(&line).unwrap()
+        };
+        assert_eq!(send("wrong")["ok"], false);
+        assert_eq!(send("fixture-capability")["value"]["loggedOut"], true);
+        assert!(worker.join().unwrap().is_ok());
+        assert!(std::net::TcpStream::connect(address).is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn idle_agent_exits_without_any_command_or_restart_authority() {
+        let (session, directory) = crate::client::device_transport_tests::offline_agent_session();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        assert!(
+            super::serve_loop(
+                session,
+                listener,
+                "fixture-capability",
+                true,
+                std::time::Duration::from_millis(20),
+                None
+            )
+            .is_ok()
+        );
+        assert!(std::net::TcpStream::connect(address).is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn status_polling_cannot_keep_an_agent_unlocked() {
+        use std::io::{BufRead, Write};
+        let (session, directory) = crate::client::device_transport_tests::offline_agent_session();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sender, done) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = super::serve_loop(
+                session,
+                listener,
+                "fixture-capability",
+                true,
+                std::time::Duration::from_millis(150),
+                None,
+            );
+            sender.send(result).unwrap();
+        });
+        let started = std::time::Instant::now();
+        let mut replies = 0;
+        let mut stopped = false;
+        while started.elapsed() < std::time::Duration::from_secs(5) {
+            if let Ok(result) = done.try_recv() {
+                assert!(result.is_ok());
+                stopped = true;
+                break;
+            }
+            let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+                &address,
+                std::time::Duration::from_millis(50),
+            ) else {
+                assert!(
+                    done.recv_timeout(std::time::Duration::from_secs(1))
+                        .unwrap()
+                        .is_ok()
+                );
+                stopped = true;
+                break;
+            };
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(1)))
+                .unwrap();
+            if writeln!(
+                stream,
+                "{}",
+                serde_json::json!({"action":"status","capability":"fixture-capability"})
+            )
+            .is_err()
+            {
+                continue;
+            }
+            let mut line = String::new();
+            if std::io::BufReader::new(stream).read_line(&mut line).is_ok() && !line.is_empty() {
+                replies += 1;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(stopped, "Status polling kept the lease alive");
+        assert!(replies > 0);
+        worker.join().unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
     #[test]
     fn conflict_merge_requires_explicit_known_unique_field_sources() {
         assert!(super::conflict_field_choices("", &[]).is_err());
@@ -982,7 +1178,14 @@ mod tests {
                 dispatch(&mut session, &mut request, true).unwrap_err(),
                 "read-only agent command denied"
             );
-            assert!(request.password.unwrap().bytes().all(|byte| byte == 0));
+            assert!(
+                request
+                    .password
+                    .as_ref()
+                    .unwrap()
+                    .bytes()
+                    .all(|byte| byte == 0)
+            );
         }
     }
 }

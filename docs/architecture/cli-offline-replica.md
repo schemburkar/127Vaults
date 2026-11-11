@@ -61,3 +61,9 @@ agent capability remain in OS credential storage.
 
 The current direct-online command path is transitional and must not be described
 as offline-first until steps 2–6 are verified.
+
+## Credential maintenance checkpoint — 2026-11-11
+
+Optional remembered account secrets and their expiry live in OS credential storage, not replica files. Agent input credentials leave scope before the command loop; owned decoded-secret/signing-seed temporaries and IPC/session buffers have explicit cleanup. This is software memory hygiene, not non-exportable hardware binding.
+
+Fresh online credential rotation preserves root/vault keys and refuses local pending changes. The credential-rotation journal contains only public identity and encrypted root/settings envelopes; replacement private signing keys remain in OS storage. A complete journal is published atomically without replacing another process’s intent. Ambiguous replies preserve the prior profile; explicit resume/abort requires successful online authentication before local state is promoted/discarded. Profile metadata remains plaintext as documented in the CLI guide. Offline access and revocation retain the limitations above; selected-admin/lost-credential recovery is not introduced by these commands.

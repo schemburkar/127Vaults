@@ -1,5 +1,7 @@
 #![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
+mod credential_rotation;
 mod removal;
+pub use credential_rotation::{abort_rotation, resume_rotation, rotation_status};
 mod transport;
 use removal::{
     ItemMoveMapping, VaultRemovalJournal, load_removal_journal, removal_journal_path,
@@ -192,10 +194,8 @@ pub fn unlock_offline(
     secret_hex: &str,
     password: &[u8],
 ) -> Result<Session, String> {
-    let secret_vec = hex::decode(secret_hex)
-        .map_err(|_| "account secret must be 64 hexadecimal characters".to_owned())?;
-    let secret: [u8; 32] = secret_vec
-        .try_into()
+    let mut secret = zeroize::Zeroizing::new([0_u8; 32]);
+    hex::decode_to_slice(secret_hex, &mut *secret)
         .map_err(|_| "account secret must be 64 hexadecimal characters".to_owned())?;
     if password.len() < 20 {
         return Err("master password must contain at least 20 characters".to_owned());
@@ -236,9 +236,9 @@ pub fn unlock_offline(
         .map_err(|_| "offline unlock record is invalid")?;
     let mut core = Core::new();
     let root = core
-        .unwrap_root(&envelope, &descriptor, password, &secret)
+        .unwrap_root(&envelope, &descriptor, password, &secret[..])
         .map_err(|_| "offline authentication failed".to_owned())?;
-    let signing = stored_signing_key(config_dir, &server_id, &record.device_id)?;
+    let signing = stored_signing_key(config_dir, &server_id, &record.device_id, false)?;
     let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
     let session = Session {
         client: Client::new(),
@@ -389,6 +389,7 @@ fn stored_signing_key(
     config_dir: &Path,
     server_id: &str,
     device_id: &str,
+    pending_rotation: bool,
 ) -> Result<SigningKey, String> {
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     {
@@ -397,14 +398,18 @@ fn stored_signing_key(
             &format!("{server_id}:{device_id}"),
         )
         .map_err(|_| "OS credential storage is unavailable".to_owned())?;
-        let secret = entry
-            .get_secret()
-            .map_err(|_| "enrolled device key is unavailable".to_owned())?;
-        let seed: [u8; 32] = secret
-            .try_into()
-            .map_err(|_| "stored device key is invalid".to_owned())?;
+        let secret = zeroize::Zeroizing::new(
+            entry
+                .get_secret()
+                .map_err(|_| "enrolled device key is unavailable".to_owned())?,
+        );
+        if secret.len() != 32 {
+            return Err("stored device key is invalid".to_owned());
+        }
+        let mut seed = zeroize::Zeroizing::new([0_u8; 32]);
+        seed.copy_from_slice(&secret);
         let configured = profile(&config_dir.join("device.conf"), "device_id")?;
-        if configured != device_id {
+        if configured != device_id && !pending_rotation {
             return Err("device profile does not match protected key".to_owned());
         }
         Ok(SigningKey::from_bytes(&seed))
@@ -423,15 +428,28 @@ pub fn unlock(
     secret_hex: &str,
     password: &[u8],
 ) -> Result<Session, String> {
-    let secret_vec = hex::decode(secret_hex)
-        .map_err(|_| "account secret must be 64 hexadecimal characters".to_owned())?;
-    let secret: [u8; 32] = secret_vec
-        .try_into()
+    if credential_rotation::rotation_status(config_dir)?["pending"] == true {
+        return Err("Credential rotation is pending; use credential resume with new credentials or credential abort with old credentials".into());
+    }
+    unlock_with_rotation_device(config_dir, username, secret_hex, password, None, false)
+}
+#[allow(clippy::too_many_lines)]
+fn unlock_with_rotation_device(
+    config_dir: &Path,
+    username: &str,
+    secret_hex: &str,
+    password: &[u8],
+    pending_device: Option<&str>,
+    promote_rotation: bool,
+) -> Result<Session, String> {
+    let mut secret = zeroize::Zeroizing::new([0_u8; 32]);
+    hex::decode_to_slice(secret_hex, &mut *secret)
         .map_err(|_| "account secret must be 64 hexadecimal characters".to_owned())?;
     if password.len() < 20 {
         return Err("master password must contain at least 20 characters".to_owned());
     }
-    let (client, origin, server_id, device_id) = http_client(config_dir)?;
+    let (client, origin, server_id, configured_device) = http_client(config_dir)?;
+    let device_id = pending_device.unwrap_or(&configured_device).to_owned();
     let ceremony = client
         .get(format!("{origin}/api/v1/ceremony"))
         .send()
@@ -452,7 +470,7 @@ pub fn unlock(
         .as_str()
         .ok_or("invalid ceremony response")?
         .to_owned();
-    let start = opaque::client_login_start(&secret, password)
+    let start = opaque::client_login_start(&secret[..], password)
         .map_err(|_| "authentication failed".to_owned())?;
     let begun_response = post(
         &client,
@@ -507,8 +525,9 @@ pub fn unlock(
         attempt,
         server_public_key,
     };
-    let finish = opaque::client_login_finish(&start.state, &secret, password, &challenge, binding)
-        .map_err(|_| "authentication failed".to_owned())?;
+    let finish =
+        opaque::client_login_finish(&start.state, &secret[..], password, &challenge, binding)
+            .map_err(|_| "authentication failed".to_owned())?;
     let attempt_id = begun["attemptId"]
         .as_str()
         .ok_or("invalid authentication response")?;
@@ -542,7 +561,7 @@ pub fn unlock(
     }
     let mut core = Core::new();
     let root = core
-        .unwrap_root(&envelope, &descriptor, password, &secret)
+        .unwrap_root(&envelope, &descriptor, password, &secret[..])
         .map_err(|_| "root unlock failed".to_owned())?;
     let context_hash = authentication_context_hash(&binding_raw)?;
     let transcript_hash = Sha512::new()
@@ -561,7 +580,7 @@ pub fn unlock(
     proof.extend_from_slice(&device);
     proof.extend_from_slice(&epoch.to_be_bytes());
     proof.extend_from_slice(&root_hash);
-    let signing = stored_signing_key(config_dir, &server_id, &device_id)?;
+    let signing = stored_signing_key(config_dir, &server_id, &device_id, pending_device.is_some())?;
     let response = post(
         &client,
         &origin,
@@ -590,6 +609,17 @@ pub fn unlock(
         csrf.clone(),
     );
     persist_tenant_binding(config_dir, &trusted_tenant)?;
+    if promote_rotation {
+        credential_rotation::finish_local(
+            config_dir,
+            username,
+            &descriptor,
+            &envelope,
+            &device_id,
+            &core,
+            root,
+        )?;
+    }
     let (settings_store, settings_record, settings_data) = local_settings(config_dir, &core, root)?;
     let mut session = Session {
         client,
@@ -3944,6 +3974,11 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
+        use zeroize::Zeroize;
+        // Clear usable vault keys before best-effort network logout can block.
+        self.core.lock();
+        self.signing = SigningKey::from_bytes(&[0_u8; 32]);
+        self.sync_transport.take();
         if self.online
             && let Ok(origin) = crate::http_origin(&self.origin)
         {
@@ -3955,7 +3990,8 @@ impl Drop for Session {
                 .header("Cookie", &self.cookie)
                 .send();
         }
-        self.core.lock();
+        self.cookie.zeroize();
+        self.csrf.zeroize();
     }
 }
 

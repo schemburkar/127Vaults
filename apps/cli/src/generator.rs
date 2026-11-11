@@ -3,6 +3,8 @@ use vaults_crypto::generator::{Mode, Options, generate};
 
 #[derive(Debug, Subcommand)]
 pub enum GenerateCommand {
+    /// Generate a new 32-byte account secret as 64 hex characters (explicit plaintext output).
+    AccountSecret,
     /// Generate a password; every enabled character set is required.
     Password {
         #[arg(long, default_value_t = 20)]
@@ -39,7 +41,16 @@ pub enum GenerateCommand {
 }
 
 pub fn generate_command(command: GenerateCommand) -> Result<String, String> {
+    if matches!(command, GenerateCommand::AccountSecret) {
+        use rand_core::{OsRng, RngCore};
+        let mut secret = zeroize::Zeroizing::new([0_u8; 32]);
+        OsRng
+            .try_fill_bytes(&mut *secret)
+            .map_err(|_| "Secure randomness is unavailable")?;
+        return Ok(hex::encode(secret.as_slice()));
+    }
     let options = match command {
+        GenerateCommand::AccountSecret => unreachable!("handled above"),
         GenerateCommand::Password {
             length,
             no_lowercase,
