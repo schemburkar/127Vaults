@@ -170,6 +170,8 @@ function DesktopApp() {
     [masterPassword, setMasterPassword] = useState("");
   const [rememberedSecret, setRememberedSecret] = useState(false);
   const [showSecretEntry, setShowSecretEntry] = useState(false);
+  const [serverConnection, setServerConnection] = useState<{ source: string; serverName: string; serverUrl: string; installationId: string } | null>(null);
+  const connectionInput = useRef<HTMLInputElement>(null);
   const [tailnetPeers, setTailnetPeers] = useState<{name:string;address:string}[]>([]);
   const [offlineReason, setOfflineReason] = useState<string | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string } | null>(null);
@@ -1239,6 +1241,31 @@ function DesktopApp() {
     };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   });
+  const readServerConnection = async (file?: File) => {
+    setServerConnection(null);
+    if (!file || trustBusy) return;
+    setTrustBusy(true);
+    try {
+      if (file.size > 32768) throw Error("Connection file is too large.");
+      const source = await file.text();
+      const preview = await invoke<{ serverName: string; serverUrl: string; installationId: string }>("preview_server_connection", { source });
+      setServerConnection({ source, ...preview });
+      setStatus("Check that this is your administrator’s server, then confirm the connection.");
+    } catch (error) { setStatus(friendlyError(error)); }
+    finally { setTrustBusy(false); if (connectionInput.current) connectionInput.current.value = ""; }
+  };
+  const importServerConnection = async () => {
+    if (!serverConnection || trustBusy) return;
+    setTrustBusy(true);
+    setStatus("Verifying the server certificate…");
+    try {
+      await invoke("import_server_connection", { source: serverConnection.source });
+      setDesktopInfo(await invoke<DesktopInfo>("desktop_info"));
+      setServerConnection(null);
+      setStatus("Server connection saved. Sign in with your vault account and register this desktop.");
+    } catch (error) { setStatus(friendlyError(error)); }
+    finally { setTrustBusy(false); }
+  };
   const configureTrust = async (cloud = false) => {
     if (trustBusy) return;
     setTrustBusy(true);
@@ -1420,6 +1447,17 @@ function DesktopApp() {
                 </section>}
                 {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-5">
                   <h2 className="font-bold">Connect to your private server</h2>
+                  <p className="mb-3 mt-1 text-sm text-slate-400">Ask your administrator for a server connection file. Receive it through a channel you trust, then import it here. The same file works across supported desktop platforms.</p>
+                  <input ref={connectionInput} type="file" accept=".127vaults-server,.json" className="hidden" aria-label="Server connection file" onChange={event => void readServerConnection(event.target.files?.[0])} />
+                  <Button className="mb-3 w-full" disabled={trustBusy} onClick={() => connectionInput.current?.click()}>Import server connection</Button>
+                  {serverConnection && <section className="mb-4 rounded-xl border border-white/15 p-4" aria-label="Confirm server connection">
+                    <h3 className="font-bold">{serverConnection.serverName}</h3>
+                    <p className="break-all">{serverConnection.serverUrl}</p>
+                    <p className="mt-2 text-sm text-slate-400">Only continue if this file came from your administrator. Importing the file configures the server; you still need your own account and device approval.</p>
+                    <Button className="mt-3" disabled={trustBusy} onClick={() => void importServerConnection()}>{trustBusy ? "Checking server…" : "Verify and connect"}</Button>
+                    <Button className="ml-2 mt-3" variant="secondary" disabled={trustBusy} onClick={() => setServerConnection(null)}>Cancel</Button>
+                  </section>}
+                  <details><summary className="mb-3 cursor-pointer">Enter connection details manually</summary>
                   <p className="mb-3 mt-1 text-sm text-slate-400">Get the exact HTTPS address, installation ID, public CA certificate file, and SHA-256 CA fingerprint from your server operator. The certificate must match before trust is saved.</p>
                   <Button variant="secondary" className="mb-3" onClick={() => void invoke<{name:string;address:string}[]>("tailscale_peers").then(peers => { setTailnetPeers(peers); setStatus(peers.length ? "Choose your server, then verify its installation ID and CA." : "No online Tailscale peers found."); }).catch(error => setStatus(friendlyError(error)))}>Find Tailscale servers</Button>
                   {tailnetPeers.length > 0 && <select aria-label="Tailscale server" className="mb-3 w-full rounded-xl bg-slate-900 p-3" value={trustUrl} onChange={event => setTrustUrl(event.target.value)}><option value="">Choose your server</option>{tailnetPeers.map(peer => <option key={peer.address} value={`https://${peer.address}:12780`}>{peer.name}</option>)}</select>}
@@ -1429,7 +1467,7 @@ function DesktopApp() {
                     <Input aria-label="Public CA certificate path" placeholder="Path to ca.crt" value={trustCaPath} onChange={event => setTrustCaPath(event.target.value)} />
                     <Input aria-label="Expected CA SHA-256 fingerprint" placeholder="64-character SHA-256 fingerprint" value={trustFingerprint} onChange={event => setTrustFingerprint(event.target.value)} />
                   </div>
-                  <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button>
+                  <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button></details>
                 </section>}
                 <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <h2 className="font-bold">I already have an account</h2>

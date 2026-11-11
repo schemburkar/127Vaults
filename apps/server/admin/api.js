@@ -11,6 +11,9 @@ const optionalTimestamp = value => value === null || value === undefined || time
 export function validResponse(path, method, value) {
   if (!object(value)) return false;
   const kind = path.split('?')[0];
+  if (kind === 'server-connection') return value.schemaVersion === 1 && value.kind === '127vaults-server-connection'
+    && text(value.serverName) && text(value.serverUrl) && text(value.installationId) && text(value.caCertificate)
+    && /^[a-f0-9]{64}$/.test(value.caSha256);
   if (kind === 'session') {
     if (method === 'DELETE') return value.signedOut === true;
     return text(value.username) && ['owner', 'admin'].includes(value.role) && text(value.csrf) && /^[A-Za-z0-9_-]{43}$/.test(value.csrf) && timestamp(value.expiresAt);

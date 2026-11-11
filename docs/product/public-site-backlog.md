@@ -1,5 +1,9 @@
 # Public site and commercial onboarding backlog
 
+## Portable client connection — 2026-11-11
+
+Implemented locally: server administration **Connect devices → Share server connection** exports one public `.127vaults-server` file; standalone Desktop previews/imports it through native pinned-CA validation. Reuses the same portable Rust importer for Windows/Linux and future macOS. Account enrollment and device approval remain separate. Package publication and fresh-computer acceptance are pending. See [the connection file contract](../architecture/server-connection-file.md).
+
 ## Public Personal launch gates — 2026-11-11
 
 Before opening paid Personal signup beyond the restricted Dodo Test mode buyer:

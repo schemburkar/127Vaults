@@ -3,6 +3,8 @@ import { after, test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createAdminHandler } from '../src/admin/handler.mjs';
+import { rootCertificates } from 'node:tls';
+import { serverConnection } from '../src/server-connection.mjs';
 import { hashPassword } from '../src/admin/credentials.mjs';
 
 const password = 'a-long-disposable-operator-password';
@@ -31,10 +33,13 @@ server.listen(0, '127.0.0.1');
 await once(server, 'listening');
 const base = `http://127.0.0.1:${server.address().port}`;
 origin = base;
-handler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 6 });
+handler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 6,
+  connection: () => serverConnection({ serverUrl: 'https://192.168.1.10:12780', installationId: '10000000-0000-4000-8000-000000000001', caCertificate: rootCertificates[0] }),
+});
 after(() => server.close());
 
 test('admin sign-in is separate, read-only, and CSRF protected', async () => {
+  assert.equal((await fetch(`${base}/api/admin/server-connection`)).status, 401);
   const before = await fetch(`${base}/api/admin/users`);
   assert.equal(before.status, 401);
   assert.equal((await fetch(`${base}/api/admin/invitations`)).status, 401);
@@ -45,6 +50,15 @@ test('admin sign-in is separate, read-only, and CSRF protected', async () => {
   const cookie = login.headers.get('set-cookie').split(';')[0];
   const { csrf, role } = await login.json();
   assert.equal(role, 'owner');
+  const connection = await fetch(`${base}/api/admin/server-connection`, { headers: { Cookie: cookie } });
+  assert.equal(connection.status, 200);
+  assert.match(connection.headers.get('content-disposition'), /127vaults-server/);
+  assert.equal(connection.headers.get('cache-control'), 'no-store');
+  const details = await connection.json();
+  assert.equal(details.serverUrl, 'https://192.168.1.10:12780');
+  assert.equal(details.kind, '127vaults-server-connection');
+  assert.equal(Object.keys(details).length, 7);
+  assert.ok(!JSON.stringify(details).includes('PRIVATE KEY'));
   const overview = await fetch(`${base}/api/admin/overview`, { headers: { Cookie: cookie } });
   const health = await overview.json();
   assert.equal(health.devices.rotationRequired, 1);

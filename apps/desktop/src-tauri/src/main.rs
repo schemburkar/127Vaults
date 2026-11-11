@@ -239,6 +239,23 @@ fn tailscale_peers() -> Result<Vec<vaults_cli::tailscale::Peer>, String> {
     vaults_cli::tailscale::discover()
 }
 
+#[tauri::command]
+fn preview_server_connection(source: String) -> Result<Value, String> {
+    let file = vaults_cli::server_connection::ServerConnection::parse(&source)?;
+    Ok(
+        json!({ "serverName": file.server_name, "serverUrl": file.server_url, "installationId": file.installation_id }),
+    )
+}
+
+#[tauri::command]
+async fn import_server_connection(source: String) -> Result<String, String> {
+    let file = vaults_cli::server_connection::ServerConnection::parse(&source)?;
+    let directory = config_directory()?;
+    tauri::async_runtime::spawn_blocking(move || file.establish(&directory))
+        .await
+        .map_err(|_| "Server verification did not complete".to_owned())?
+}
+
 fn profile(path: &std::path::Path, key: &str) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()?
@@ -1340,6 +1357,8 @@ fn main() {
             begin_device_enrollment,
             device_enrollment_status,
             configure_server_trust,
+            preview_server_connection,
+            import_server_connection,
             configure_cloud_trust,
             tailscale_peers
         ])

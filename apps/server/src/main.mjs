@@ -27,6 +27,7 @@ import { createDeviceEnrollmentHandler } from './device-enrollment-handler.mjs';
 import { readSecretFile, readinessToken, runtimeDatabaseConfig } from './runtime-config.mjs';
 import { createOpsTelemetry } from './ops-log.mjs';
 import { createAdminHandler } from './admin/handler.mjs';
+import { serverConnection } from './server-connection.mjs';
 import { readAdminBackupStatus } from './admin/backup-status.mjs';
 import { loadOperators } from './admin/credentials.mjs';
 import { PgAdminManagement } from './admin/management.mjs';
@@ -122,6 +123,9 @@ const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenti
 const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
 const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
 const adminOptions={pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),schemaVersion,management:adminManagement,loadEntitlement,
+  connection: async () => serverConnection({ serverUrl: transport.origin, installationId: installation,
+    serverName: env.VAULTS_INSTALLATION_LABEL || '127Vaults private server', leafCertificate: tls.cert,
+    caCertificate: await readFile(env.VAULTS_TLS_CA ?? '/run/secrets/ca.crt', 'utf8') }),
   smtpConfigured:Boolean(env.SMTP_HOST),subscriptionRefreshConfigured:Boolean(env.VAULTS_SUBSCRIPTION_FILE),tlsExpiresAt,
   backupStatus: env.VAULTS_ADMIN_BACKUP_STATUS_DIR ?
     now => readAdminBackupStatus(env.VAULTS_ADMIN_BACKUP_STATUS_DIR, installation, now) : undefined};

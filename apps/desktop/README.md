@@ -183,3 +183,9 @@ For a separate Arch/Omarchy WSLg package fixture, follow the
 [Omarchy WSL runbook](../../docs/release/omarchy-wsl.md). The headless adaptation
 can verify app startup and OS services while native Hyprland acceptance remains
 separate.
+
+## Import a private server connection
+
+Install Desktop normally. On the first-run setup screen choose **Connect to your private server → Import server connection**, select the `.127vaults-server` file received from your administrator, check the server name/address and choose **Verify and connect**. Then sign in to your vault account and approve this desktop. New users still need their server administrator’s account invitation. The connection file is public configuration, not a login or purchase invitation.
+
+Administrators export it from their local **Server administration → Connect devices → Share server connection** screen. Share through a trusted channel and ensure recipients can reach the private-LAN or Tailscale endpoint. One file works across supported desktop platforms. See [the portable file contract](../../docs/architecture/server-connection-file.md).

@@ -23,7 +23,7 @@ const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
 export function createAdminHandler({ pool, operators, origin, vaultOrigin = origin, localOnly = true, schemaVersion, management = null, loadEntitlement,
-  smtpConfigured = false, subscriptionRefreshConfigured = false, tlsExpiresAt = null,
+  smtpConfigured = false, subscriptionRefreshConfigured = false, tlsExpiresAt = null, connection = null,
   backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
   const attempts = new Map();
@@ -82,6 +82,13 @@ export function createAdminHandler({ pool, operators, origin, vaultOrigin = orig
     }
     const active = session(req);
     if (!active) { json(res, 401, { error: 'admin_auth_required' }); return true; }
+    if (path === '/api/admin/server-connection' && req.method === 'GET') {
+      try {
+        if (!connection) throw Error('Connection export unavailable');
+        json(res, 200, await connection(), { 'Content-Disposition': 'attachment; filename="127vaults.127vaults-server"', 'X-Content-Type-Options': 'nosniff' });
+      } catch { json(res, 503, { error: 'connection_unavailable' }); }
+      return true;
+    }
     if (path === '/api/admin/session' && req.method === 'GET') { json(res, 200, { username: active.username, role: active.role, csrf: active.csrf, expiresAt: new Date(active.expires).toISOString(), managementEnabled: Boolean(management), vaultOrigin }); return true; }
     if (path === '/api/admin/session' && req.method === 'DELETE') {
       const a = Buffer.from(String(req.headers['x-127v-admin-csrf'] ?? ''));

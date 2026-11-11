@@ -17,6 +17,7 @@ pub mod entitlement;
 pub mod extension_host;
 pub mod migration;
 pub mod replica;
+pub mod server_connection;
 mod sync_transport;
 pub mod tailscale;
 pub mod vault_settings;

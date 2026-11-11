@@ -4,7 +4,7 @@ import { accountActions, showManagementAction } from './management.js';
 import { seatSummary } from './seat-summary.mjs';
 
 const root = document.querySelector('#app');
-const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
+const titles = { overview: 'Overview', users: 'Users', invitations: 'Invitations', roles: 'Roles & ownership', devices: 'Devices', connect: 'Connect devices', backups: 'Backups', settings: 'Settings', audit: 'Audit' };
 const overviewSections = new Set(['overview', 'backups', 'settings']);
 const resource = () => ({ data: null, loading: false, error: '', checkedAt: null, request: 0, controller: null });
 const state = { session: null, section: sectionFromHash(), overview: resource(), users: newDirectory(), devices: newDirectory(), invitations: newDirectory(), audit: resource(), ownership: resource(), error: '', loginName: '', retryUntil: 0, signingOut: false, generation: 0 };
@@ -156,7 +156,10 @@ function settings() {
     </dl><p>Enrollment uses email verification. To set up enrollment email, run the installer on the server computer, select Server and choose enrollment email. Have your provider’s SMTP hostname, username, password and verified sender address ready.</p>
     <p class="muted">Edit deployment settings and operator credentials from the server host. Apply changes using the installation runbook.</p></section>${licenseSummary(state.overview.data.license)}`;
 }
-const views = { overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles: () => roles() + ownershipView(), devices: () => directoryView('devices', state.devices), backups, settings, audit: auditView };
+function connectDevices() {
+  return '<section class="panel"><h2>Share server connection</h2><p>Download one connection file and send it through a trusted channel, such as Signal, WhatsApp or email. The same file works with Windows and Linux Desktop, and is designed for future macOS support.</p><p>Recipients install Desktop, choose <strong>Import server connection</strong>, select this file and confirm your server. They then sign in and approve their device. New users still need an account invitation.</p><p>The file contains the server address, installation ID and public certificate. It grants no account or vault access. Recipients must be able to reach your server over your private network or Tailscale.</p><p>A loopback-only server address works only on the server computer. Configure a reachable private-network address before sharing with another computer.</p><button class="button primary" id="download-connection">Download connection file</button><p id="connection-status" role="status" aria-live="polite"></p></section>';
+}
+const views = { connect: connectDevices, overview, users: () => directoryView('users', state.users), invitations: () => directoryView('invitations', state.invitations), roles: () => roles() + ownershipView(), devices: () => directoryView('devices', state.devices), backups, settings, audit: auditView };
 function currentResource() { return overviewSections.has(state.section) ? state.overview : ['users', 'devices', 'invitations'].includes(state.section) ? state[state.section] : state.session.managementEnabled && state.section === 'audit' ? state.audit : state.session.managementEnabled && state.session.role === 'owner' && state.section === 'roles' ? state.ownership : null; }
 function auditView() {
   if (!state.session.managementEnabled) return placeholder('Audit');
@@ -195,6 +198,18 @@ function render({ focus = '' } = {}) {
   document.querySelector('#signout').addEventListener('click', signOut);
   document.querySelector('#refresh-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
   document.querySelector('#retry-data')?.addEventListener('click', () => loadSection(true, 'refresh-data'));
+  document.querySelector('#download-connection')?.addEventListener('click', async event => {
+    const button = event.currentTarget, status = document.querySelector('#connection-status');
+    button.disabled = true;
+    try {
+      const value = await api('server-connection');
+      const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2) + '\n'], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = '127vaults.127vaults-server'; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      status.textContent = 'Connection file downloaded. Share it only through a channel your recipients trust.';
+    } catch (error) { status.textContent = error.code === 'connection_unavailable' ? 'The public server certificate is unavailable or does not match this server. Check the server TLS configuration.' : message(error); }
+    finally { button.disabled = false; }
+  });
   if (directory) bindDirectory(state.section);
   document.querySelector('#audit-filters')?.addEventListener('submit', event => {
     event.preventDefault();
