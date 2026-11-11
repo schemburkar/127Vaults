@@ -15,8 +15,7 @@
     "summary": "Personal checkout and guided self-hosted setup.",
     "changes": [
       "Added the Personal Self-Hosted purchase flow for test-mode verification.",
-      "Improved guided self-hosted setup, local server administration, and device and audit controls.",
-      "Added the invite-only Cloud family landing page and customer portal support for pilot tenants."
+      "Improved guided self-hosted setup, local server administration, and device and audit controls."
     ]
   },
   {

@@ -1,5 +1,15 @@
 # Public site and commercial onboarding backlog
 
+## Public Personal launch gates — 2026-11-11
+
+Before opening paid Personal signup beyond the restricted Dodo Test mode buyer:
+
+- Resolve the version policy for the current 0.x server. Billing currently rejects a live Personal major below 1. Catalogue selection pins the purchased major, but the server license verifier validates the signed major field without comparing it with the running server major. Complete and test that supported upgrade boundary.
+- Complete a fresh Personal journey through verified payment, installer setup link, license binding, server startup and automatic renewal configuration on a disposable installation. Payment confirmation and access readiness have been verified against Dodo Test mode; full installed Personal acceptance remains pending.
+- Support buying again after a paid subscription is cancelled or expires. The present Personal order is reused per email and major, and a fresh checkout is allowed only for an offer or a failed initial subscription with no paid period.
+- Finish provider-connected renewal, cancellation, refund and dispute acceptance. Local mocked regression coverage does not replace those provider checks.
+- After Dodo approval, supply separate live API credentials, product configuration and webhook secret, verify production email readiness and expose the public Buy action through the live-mode deployment configuration. Existing Test mode orders stay separate.
+
 ## Personal checkout follow-up — 2026-11-10
 
 Deferred until the next work session. The India-region test card completed Dodo Test mode checkout and the portal showed the Personal subscription as Active with a paid-through date. The same row still displayed the payment-pending message and only offered Order details. Installer access and license issuance remain to be verified.
