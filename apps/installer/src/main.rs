@@ -27,8 +27,13 @@ use vaults_installer::{Artifact, Invitation, Product, Result, select_artifact};
     about = "Install and upgrade your licensed 127Vaults apps"
 )]
 struct Args {
-    /// Private trial invitation URL. Prefer `VAULTS_INSTALL_INVITATION` to avoid shell history.
-    #[arg(long, env = "VAULTS_INSTALL_INVITATION", hide_env_values = true)]
+    /// Private setup link from Manage. Prefer `VAULTS_INSTALL_SETUP_LINK` to avoid shell history.
+    #[arg(
+        long = "setup-link",
+        visible_alias = "invitation",
+        env = "VAULTS_INSTALL_SETUP_LINK",
+        hide_env_values = true
+    )]
     invitation: Option<String>,
     #[arg(long, value_enum, value_delimiter = ',')]
     components: Vec<Product>,
@@ -73,7 +78,7 @@ struct Args {
     /// Installed native connector executable, if it cannot be found automatically.
     #[arg(long)]
     extension_host: Option<PathBuf>,
-    /// List published local servers without an invitation or installation changes.
+    /// List published local servers without a setup link or installation changes.
     #[arg(long)]
     discover: bool,
     /// Update an already licensed server without activating/downloading a trial license.
@@ -283,12 +288,12 @@ fn execute(mut args: Args) -> Result<()> {
     if args.keep_existing_license && !args.components.contains(&Product::Server) {
         return Err("--keep-existing-license requires an existing server selection".into());
     }
-    let invitation = match args.invitation.take() {
+    let invitation = match args.invitation.take().or_else(|| std::env::var("VAULTS_INSTALL_INVITATION").ok()) {
         Some(value) => Invitation::parse(&value)?,
         None if interactive => {
-            Invitation::parse(&cliclack::password("Paste your private invitation URL").interact()?)?
+            Invitation::parse(&cliclack::password("Paste your setup link from Manage (Downloads and license)").interact()?)?
         }
-        None => return Err("Provide VAULTS_INSTALL_INVITATION or --invitation".into()),
+        None => return Err("Get a setup link from Manage → Downloads and license, then provide VAULTS_INSTALL_SETUP_LINK or --setup-link".into()),
     };
     let root = args.directory.clone().unwrap_or(
         dirs::data_local_dir()
@@ -370,10 +375,10 @@ fn execute(mut args: Args) -> Result<()> {
             )?;
             if !args.keep_existing_license {
                 if !interactive || args.yes {
-                    return Err("This invitation activates another installation. To use it only for authorized package downloads while retaining this server's active license, rerun with --keep-existing-license".into());
+                    return Err("This setup link activates another installation. To use it only for authorized package downloads while retaining this server's active license, rerun with --keep-existing-license".into());
                 }
                 args.keep_existing_license = cliclack::confirm(format!(
-                    "This machine already has an active {} license. Keep it and use the invitation only for package downloads? No trial activation or rebinding will occur.",
+                    "This machine already has an active {} license. Keep it and use the setup link only for package downloads? No trial activation or rebinding will occur.",
                     license["plan"].as_str().unwrap_or_default())).interact()?;
                 if !args.keep_existing_license {
                     binding?;
@@ -381,7 +386,7 @@ fn execute(mut args: Args) -> Result<()> {
             }
             args.expected_license = Some(license);
             cliclack::log::info(
-                "Keep this server's existing license. Package access uses the invitation; trial activation and license replacement are skipped",
+                "Keep this server's existing license. Package access uses the setup link; trial activation and license replacement are skipped",
             )?;
         } else {
             binding?;
@@ -399,7 +404,7 @@ fn execute(mut args: Args) -> Result<()> {
                 args.keep_existing_license = true;
                 args.expected_license = Some(license);
                 cliclack::log::info(
-                    "Keep this server's existing license. This invitation already belongs to this installation; no activation or license replacement is needed",
+                    "Keep this server's existing license. This setup link already belongs to this installation; no activation or license replacement is needed",
                 )?;
             }
         }
@@ -506,7 +511,9 @@ fn execute(mut args: Args) -> Result<()> {
         .iter()
         .any(|r| r.product == Product::Server && r.complete)
     {
-        "Proceed with this update plan? Existing server identity, data and trial expiry are preserved. Missing prerequisites will be installed."
+        "Proceed with this update plan? Existing server identity, data and license expiry are preserved. Missing prerequisites will be installed."
+    } else if release.subscription {
+        "Proceed with this plan? Your paid license will be bound to this server. Missing prerequisites will be installed."
     } else {
         "Proceed with this plan? Fresh server activation starts the trial's 10 days. Missing prerequisites will be installed."
     };
@@ -924,7 +931,7 @@ fn verify_invitation_binding(state: &State, binding: Option<&str>) -> Result<()>
         return Ok(());
     };
     let record = state.records.iter().find(|r| r.product == Product::Server)
-        .ok_or("This invitation is already bound to an installation. Start/adopt that server with --from; a replacement requires approval")?;
+        .ok_or("This setup link is already bound to an installation. Start/adopt that server with --from; a replacement requires approval")?;
     let config = fs::read_to_string(record.directory.join(".env"))?;
     let private = config
         .lines()
@@ -932,7 +939,7 @@ fn verify_invitation_binding(state: &State, binding: Option<&str>) -> Result<()>
         .ok_or("Missing existing installation identity directory")?;
     let actual = fs::read_to_string(Path::new(private).join("installation-id"))?;
     if actual.trim() != expected {
-        return Err("Invitation is bound to another installation. No upgrade or new identity was started; select the matching server or request an approved replacement".into());
+        return Err("Setup link is bound to another installation. No upgrade or new identity was started; select the matching server or request an approved replacement".into());
     }
     Ok(())
 }
@@ -996,7 +1003,7 @@ fn finish_license(
         .as_deref()
         .is_some_and(|existing| existing != id)
     {
-        return Err("Invitation is bound to another installation. Use its existing server or request an approved replacement".into());
+        return Err("Setup link is bound to another installation. Use its existing server or request an approved replacement".into());
     }
     api.request("activate", Some(&serde_json::json!({"installationId": id})))?;
     let license = api.request("license", None)?.bytes()?;
@@ -1342,6 +1349,13 @@ fn replace_staged(staged: &Path, previous: &Path, root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn setup_link_option_preserves_the_invitation_alias() {
+        for option in ["--setup-link", "--invitation"] {
+            let args = Args::try_parse_from(["installer", option, "private-setup-link"]).unwrap();
+            assert_eq!(args.invitation.as_deref(), Some("private-setup-link"));
+        }
+    }
     #[test]
     fn owner_setup_output_accepts_only_the_expected_capability() {
         let code = format!("127V-B1-{}", "a".repeat(43));

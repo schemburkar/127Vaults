@@ -128,11 +128,11 @@ function renderOrders(value) {
     const actions = element('div', '', 'portal-table-actions');
     if (row.state === 'approved') {
       actions.append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`));
-      const installer = element('button', 'Installer link', 'button secondary');
+      const installer = element('button', 'Get setup link', 'button secondary');
       installer.type = 'button';
       installer.addEventListener('click', () => run(async () => {
         const result = await portalApi('installer-link', { requestId: row.id });
-        installer.replaceWith(link('Open installer link', result.link));
+        installer.replaceWith(link('Open setup link', result.link));
       }));
       if (!row.conversion) actions.append(installer);
     }
@@ -186,7 +186,7 @@ async function account() {
     }
   }
   $('portal-login').hidden = true; $('portal-account').hidden = false;
-  $('portal-identity').textContent = value.email ? `Signed in as ${value.email}` : value.scope === 'installer' ? 'Signed in with an installer invitation. This session opens installation downloads and licensing only.' : 'Signed in with an invitation. This session opens only that invitation.';
+  $('portal-identity').textContent = value.email ? `Signed in as ${value.email}` : value.scope === 'installer' ? 'Signed in with an installer setup link. This session opens installation downloads and licensing only.' : 'Signed in with an invitation. This session opens only that invitation.';
   const cloud = $('portal-cloud');
   const tenants = value.cloudTenants ?? [];
   cloud.hidden = !tenants.length && !value.cloudUnavailable;

@@ -40,7 +40,7 @@ impl Api {
             .map_err(|_| "Unable to reach the private download service")?;
         if !response.status().is_success() {
             return Err(match response.status().as_u16() {
-                401 | 404 => "Invitation unavailable; reopen the private invitation or request a renewed link",
+                401 | 404 => "Setup link unavailable; open Manage → Downloads and license and copy a fresh setup link",
                 409 => "License binding or release access changed; inspect the private trial page",
                 426 => "This installer is retired. Download the latest installer from your private trial page",
                 429 => "Download service rate limit reached; retry later",

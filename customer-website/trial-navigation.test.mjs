@@ -4,9 +4,9 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('./trial.mjs', import.meta.url), 'utf8');
-const startup = source.slice(0, source.indexOf('const base ='));
+const startup = source.slice(0, source.indexOf('const base =')).replace(/^import .*;\r?\n/gm, '');
 
-test('recommended installer commands omit credentials and offer copying only with an invitation', () => {
+test('recommended installer commands omit credentials and offer setup links for portal customers', () => {
   const renderer = source.slice(source.indexOf('function showInstaller'), source.indexOf("\n$('copy-installer-invitation').addEventListener"));
   for (const [artifacts, visible] of [[[{ product: 'installer', supporting: false }], true],
     [[{ product: 'server' }], false], [[{ product: 'installer', supporting: true }], false]]) {
@@ -22,7 +22,7 @@ test('recommended installer commands omit credentials and offer copying only wit
       assert.ok(nodes['trial-installer-command'].textContent.includes('.\\127vaults-install.exe'));
       assert.ok(nodes['trial-installer-command'].textContent.includes('./127vaults-install'));
       vm.runInContext('token = undefined; showInstaller(record);', context);
-      assert.equal(nodes['copy-installer-invitation'].hidden, true);
+      assert.equal(nodes['copy-installer-invitation'].hidden, false);
     } else assert.equal(nodes['trial-installer-command'].textContent, '');
   }
 });
@@ -38,7 +38,7 @@ test('the copy button hands off the full private URL only on request', async () 
     'installer-invitation-status': notice,
   };
   const context = vm.createContext({
-    token, match: [null, requestId], location: { origin: 'https://manage.example' }, $: id => nodes[id],
+    token, requestId, match: [null, requestId], location: { origin: 'https://manage.example' }, $: id => nodes[id],
     navigator: { clipboard: { writeText: async value => { copied.push(value); } } },
   });
   vm.runInContext(handler, context);
@@ -46,6 +46,18 @@ test('the copy button hands off the full private URL only on request', async () 
   await click();
   assert.deepEqual(copied, [`https://manage.example/trial.html#${requestId}.${token}`]);
   assert.doesNotMatch(notice.textContent, /https:/);
+  const paidContext = vm.createContext({
+    token: undefined, requestId, $: id => nodes[id],
+    portalApi: async (path, value) => {
+      assert.equal(path, 'installer-link');
+      assert.equal(value.requestId, requestId);
+      return { link: 'https://manage.example/trial#fresh-setup-link' };
+    },
+    navigator: { clipboard: { writeText: async value => { copied.push(value); } } },
+  });
+  vm.runInContext(handler, paidContext);
+  await click();
+  assert.equal(copied.at(-1), 'https://manage.example/trial#fresh-setup-link');
 });
 
 test('opening another invitation in the same tab reloads its document rather than retaining old packages', () => {

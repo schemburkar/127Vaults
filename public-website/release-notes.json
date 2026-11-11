@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.20",
+    "date": "2026-11-11",
+    "summary": "Installer setup links and improved Manage sign-in.",
+    "changes": [
+      "Renamed paid installer invitations to setup links available directly from Manage.",
+      "Added multiple named Manage passkeys with email-code recovery.",
+      "Improved order details, failed-payment retries, access reconciliation and eligible Personal license conversion."
+    ]
+  },
+  {
     "version": "0.1.19",
     "date": "2026-11-10",
     "summary": "Personal checkout and guided self-hosted setup.",

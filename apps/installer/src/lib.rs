@@ -19,19 +19,21 @@ impl Invitation {
     /// # Errors
     /// Rejects malformed invitations, non-HTTPS URLs and embedded credentials.
     pub fn parse(input: &str) -> Result<Self> {
-        let url = Url::parse(input).map_err(|_| "Invalid invitation URL")?;
+        let url = Url::parse(input).map_err(|_| "Invalid setup link")?;
         if url.scheme() != "https"
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some_and(|q| q != "open=1")
             || !["/trial", "/trial.html"].contains(&url.path())
         {
-            return Err("Use the HTTPS private trial invitation URL".into());
+            return Err(
+                "Use the HTTPS setup link from Manage or your approved trial invitation".into(),
+            );
         }
         let (id, token) = url
             .fragment()
             .and_then(|v| v.split_once('.'))
-            .ok_or("Invalid invitation")?;
+            .ok_or("Invalid setup link")?;
         if id.len() != 64
             || !id
                 .bytes()
@@ -41,7 +43,7 @@ impl Invitation {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
         {
-            return Err("Invalid invitation".into());
+            return Err("Invalid setup link".into());
         }
         Ok(Self {
             origin: url.origin().ascii_serialization(),

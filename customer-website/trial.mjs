@@ -1,4 +1,5 @@
 const $ = id => document.getElementById(id);
+import { portalApi } from './portal-client.mjs';
 const fragment = location.hash.slice(1);
 // Pasting a new invitation into this tab changes only the fragment. Reload so
 // the new bearer and current page/module version replace the previous view.
@@ -34,17 +35,27 @@ function showInstaller(record) {
   $('trial-manual').open = !available;
   if (!available) return;
   $('trial-installer-command').textContent = '# Windows (PowerShell)\n.\\127vaults-install.exe\n\n# Linux\n./127vaults-install';
-  $('copy-installer-invitation').hidden = !token;
-  if (!token) $('trial-installer-command-help').textContent = 'Run the installer from the extracted folder. When prompted, paste the full link from your invitation email. You can also get a fresh installer invitation from the customer portal.';
+  $('copy-installer-invitation').hidden = false;
+  $('trial-installer-command-help').textContent = 'Copy your setup link below, run the installer from the extracted folder, and paste the link when prompted. The link gives the installer access to your authorized downloads and license setup.';
 }
 $('copy-installer-invitation').addEventListener('click', async () => {
-  if (!match) return;
+  if (!requestId) return;
   const notice = $('installer-invitation-status');
+  let link;
   try {
-    await navigator.clipboard.writeText(`${location.origin}/trial.html#${match[1]}.${token}`);
-    notice.textContent = 'Invitation copied. Paste it into the installer when prompted.';
+    if (token) link = `${location.origin}/trial.html#${requestId}.${token}`;
+    else {
+      const result = await portalApi('installer-link', { requestId });
+      link = result.link;
+    }
+    await navigator.clipboard.writeText(link);
+    notice.textContent = 'Setup link copied. Paste it into the installer. Keep this link private.';
   } catch {
-    notice.textContent = 'Clipboard access is unavailable. Copy the full invitation link from your email and paste it into the installer.';
+    if (link) {
+      $('installer-setup-fallback').hidden = false;
+      $('installer-setup-value').value = link;
+      notice.textContent = 'Copy the setup link from the field above and paste it into the installer. Keep it private.';
+    } else notice.textContent = 'Could not create a setup link. Sign in to Manage and open Downloads and license again.';
   }
 });
 function showLicense(record) {

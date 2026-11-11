@@ -14,10 +14,10 @@
         <div id="trial-installer-artifacts" class="trial-installer-grid"></div>
         <div class="trial-installer-run">
           <h3>Extract, run, and choose your apps</h3>
-          <p id="trial-installer-command-help">Extract your download and run the command for your operating system from its folder. The installer will ask for your private invitation URL.</p>
+          <p id="trial-installer-command-help">Extract your download and run the command for your operating system from its folder. Copy your setup link below, then paste it when the installer asks.</p>
           <pre><code id="trial-installer-command"></code></pre>
-          <button class="button secondary" id="copy-installer-invitation" type="button" hidden>Copy private invitation URL</button>
-          <p id="installer-invitation-status" role="status"></p>
+          <button class="button secondary" id="copy-installer-invitation" type="button" hidden>Copy setup link</button>
+          <label id="installer-setup-fallback" class="access-field" hidden>Setup link<input id="installer-setup-value" readonly autocomplete="off" spellcheck="false"></label><p id="installer-invitation-status" role="status"></p>
           <p>On the computer that will host the vault, select <strong>Server</strong>. The installer binds the license to that server. For other computers, select the apps you want to connect to the server. Keep this page open until setup is complete.</p>
           <p class="trial-installer-footnote">Browser extension and PWA setup finish with your approval in the browser.</p>
         </div>
