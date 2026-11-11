@@ -31,6 +31,7 @@ struct Args {
     #[arg(
         long = "setup-link",
         visible_alias = "invitation",
+        value_name = "SETUP_LINK",
         env = "VAULTS_INSTALL_SETUP_LINK",
         hide_env_values = true
     )]

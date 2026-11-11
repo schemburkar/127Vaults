@@ -2,7 +2,9 @@
 
 `127vaults-install` is a standalone Rust app with its own version, independent of downloaded server and client versions. Component selection happens before prerequisite work. No Rust, Node, pnpm or checkout is needed to start it.
 
-Download the Installer archive for Windows x64 or Linux x64 from the private trial page, verify its displayed SHA-256, and extract it. The page provides a command containing the existing invitation credential. That command is private. Alternatively set `VAULTS_INSTALL_INVITATION` in the process environment, or run interactively and paste the URL into the hidden prompt to avoid shell history. The installer never persists the invitation or places its bearer in HTTP URLs.
+Sign in to Manage, open **Downloads and license** for your paid order or approved trial, download the Windows x64 or Linux x64 installer, verify its SHA-256, and extract it. Choose **Copy setup link**, then run the installer and paste the link into its hidden prompt. Paid customers generate their own setup link after payment confirmation. Each link is private.
+
+For automation, use `VAULTS_INSTALL_SETUP_LINK` in the process environment or `--setup-link`. The older `VAULTS_INSTALL_INVITATION` environment variable and `--invitation` option remain accepted. The installer keeps the link credential in memory and sends it only as an authorization header.
 
 ```powershell
 .\127vaults-install.exe
@@ -34,7 +36,7 @@ For unattended extension setup, provide `--extension-ids ID` (comma-separated fo
 
 ## First server sign-in
 
-Run the installer interactively and paste your private invitation URL when prompted. Select **Server** on the computer that will host your vault. The installer displays the server address, public CA certificate path and SHA-256 of the CA file. Verify and trust the CA on each device before opening the server.
+Run the installer interactively and paste your setup link when prompted. Select **Server** on the computer that will host your vault. The installer displays the server address, public CA certificate path and SHA-256 of the CA file. Verify and trust the CA on each device before opening the server.
 
 Choose to set up local administration, then create a local operator username and password. Use these credentials at the installer’s `/admin/` address. On a fresh LAN or Tailscale installation, open `https://127.0.0.1:12781/admin/` on the server computer. Household members use the separate vault address and trust the same public CA. Choose first-owner setup to generate a private link that expires after 60 minutes. Open it after trusting the CA, then create your separate vault credentials. If the browser asks for a code, use the one shown alongside the link. To request a new code, rerun the installer interactively and select **Server**.
 
