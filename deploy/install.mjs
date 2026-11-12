@@ -216,7 +216,14 @@ export async function main(args, dependencies = {}) {
   const directory = dependencies.directory ?? import.meta.dirname;
   const log = dependencies.log ?? console.log;
   const [action = 'help', ...options] = args;
+  if (action === 'maintain') {
+    if (options.length) throw Error('The maintenance wizard takes no options.');
+    const module = existsSync(resolve(directory,'lib/maintenance.mjs')) ? new URL('./lib/maintenance.mjs',import.meta.url) : new URL('./maintenance.mjs',import.meta.url);
+    await (await import(module)).maintenanceWizard(resolve(directory),{verify,...dependencies});
+    return 0;
+  }
   if (action === 'help' || action === '--help') {
+    log('Guided backups, certificate renewal, update preview and new-target restore: node install.mjs maintain');
     log('127Vaults private test server\nUse: install.ps1 / bash install.sh <command> [options]\nCommands: verify, doctor, setup, start, status, bootstrap, stop, upgrade\nOptions: --docker, --compose-provider <path>, --endpoint <private IPv4>, --private-dir <path>, --tailscale\nupgrade requires --from <old bundle>, --backup-dir <new backup directory>, --backup-key-file <key path>.\ndoctor --json emits a redacted prerequisite report. Each external probe has a 15-second deadline.\nsetup creates a fresh identity, loads images and starts the server. Existing .env is preserved.');
     return 0;
   }

@@ -7,6 +7,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const bundled = existsSync(join(root, 'manifest.json'));
 const [group, action, ...args] = process.argv.slice(2);
 const commands = {
+  maintenance: ['deploy/maintenance.mjs', 'lib/maintenance.mjs', 'runMaintenance', ['run']],
   admin: ['apps/server/src/admin/credentials.mjs', 'lib/admin-credentials.mjs', 'runAdmin', ['init']],
   install: ['deploy/test-install.mjs', 'lib/test-install.mjs', 'runTestInstall', ['init', 'start', 'status', 'identify', 'license', 'subscription', 'revoke', 'stop', 'bootstrap', 'restore']],
   database: ['scripts/ops/server-data.mjs', 'lib/server-data.mjs', 'runServerData', ['keygen', 'backup', 'rehearse']],

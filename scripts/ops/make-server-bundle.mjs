@@ -71,6 +71,7 @@ for (const [source, target] of [
   ['deploy/test-install.mjs', 'lib/test-install.mjs'],
   ['deploy/private-network.mjs', 'lib/private-network.mjs'],
   ['deploy/recovery.mjs', 'lib/recovery.mjs'],
+  ['deploy/maintenance.mjs', 'lib/maintenance.mjs'],
   ['apps/server/src/hostname.mjs', 'lib/hostname.mjs'],
   ['deploy/upgrade.mjs', 'lib/upgrade.mjs'],
   ['deploy/license-files.mjs', 'lib/license-files.mjs'],
@@ -102,6 +103,7 @@ files['lib/subscription-refresh.mjs'] = await hash(join(destination, 'lib/subscr
 for (const name of ['server-image.tar', 'postgres-image.tar', 'openssl-image.tar', 'compose.test.yaml', 'compose.smtp.yaml', 'compose.local-admin.yaml', 'server.mjs', 'install.mjs', 'install.ps1', 'install.sh', 'lib/test-install.mjs', 'lib/private-network.mjs', 'lib/upgrade.mjs', 'lib/license-files.mjs', 'lib/admin-credentials.mjs', 'lib/license-status.mjs', 'lib/license-version.mjs', 'lib/tls.mjs', 'lib/backup-envelope.mjs', 'lib/server-data.mjs', 'lib/identity-backup.mjs', 'README.md', 'LICENSE.md', 'COMMERCIAL-LICENSE.md']) files[name] = await hash(join(destination, name));
 files['lib/hostname.mjs'] = await hash(join(destination, 'lib/hostname.mjs'));
 files['lib/recovery.mjs'] = await hash(join(destination, 'lib/recovery.mjs'));
+files['lib/maintenance.mjs'] = await hash(join(destination, 'lib/maintenance.mjs'));
 if (issuerKeys) files['issuer-keys.json'] = await hash(join(destination, 'issuer-keys.json'));
 await writeFile(join(destination, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), revision, sourceDirty: Boolean(changed), image, ...(options.provenance ? { imageIds } : {}), files }, null, 2) + '\n', { flag: 'wx' });
 console.log(`Offline test bundle: ${destination}`);

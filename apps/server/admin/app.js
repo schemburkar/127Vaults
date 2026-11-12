@@ -141,9 +141,10 @@ function backups() {
   return `<p class="muted">Backup visibility for this server. Checked ${escapeHtml(date(state.overview.data.checkedAt))}.</p><section class="panel"><h2>Current backup status</h2><p>${badge(backup.state)}</p><p class="muted">${escapeHtml(backup.detail)}</p>
     <dl class="details-list">
       <div><dt>Last verified database backup</dt><dd>${escapeHtml(backup.lastBackupAt ? date(backup.lastBackupAt) : 'No record')}</dd></div>
+      <div><dt>Last scheduled maintenance attempt</dt><dd>${escapeHtml(backup.lastAttemptAt ? date(backup.lastAttemptAt) + " · " + backup.lastAttemptOperation + " · " + backup.lastAttemptOutcome : "No record")}</dd></div>
       <div><dt>Last database restore rehearsal</dt><dd>${escapeHtml(backup.lastRestoreCheckAt ? date(backup.lastRestoreCheckAt) : 'No record')}</dd></div>
     </dl>
-    <p class="footnote">Use the operator runbook to back up the database and server identity, store the recovery key separately, and rehearse a restore. These dates report completed database operations for this installation.</p></section>`;
+    <p class="footnote">On the server computer, open its extracted bundle and run <code>node install.mjs maintain</code>. Choose daily backups or backup now; review the destination, existing protected key and schedule before confirming. The same wizard provides update preview and guarded new-target recovery. Keep the database and server identity backups, store the recovery key separately, and rehearse a restore. These dates report completed database operations for this installation.</p></section>`;
 }
 function placeholder(name) { return `<section class="panel empty-state"><h2>${escapeHtml(name)} is coming later</h2><p>This area is reserved for a reviewed administration workflow.</p></section>`; }
 function settings() {
@@ -153,7 +154,7 @@ function settings() {
   const configured = value => value ? 'Configured' : 'Not configured';
   return `<section class="panel"><h2>Server configuration</h2><dl class="details-list">
     <div><dt>Operator accounts</dt><dd>${escapeHtml(configuration.operatorCount)}</dd></div>
-    <div><dt>HTTPS certificate expires</dt><dd>${escapeHtml(date(configuration.tlsExpiresAt))}</dd></div>
+    <div><dt>HTTPS certificate expires</dt><dd>${escapeHtml(date(configuration.tlsExpiresAt))}</dd></div><div><dt>Renew HTTPS</dt><dd>Run <code>node install.mjs maintain</code> on the server and choose Renew HTTPS certificate. Review the expiry and brief downtime before confirming. This preserves the CA; do not generate a new CA.</dd></div>
     <div><dt>Enrollment email (SMTP)</dt><dd>${configured(configuration.smtpConfigured)}</dd></div>
     <div><dt>Subscription refresh</dt><dd>${configured(configuration.subscriptionRefreshConfigured)}</dd></div>
     </dl><p>Enrollment uses email verification. To set up enrollment email, run the installer on the server computer, select Server and choose enrollment email. Have your provider’s SMTP hostname, username, password and verified sender address ready.</p>

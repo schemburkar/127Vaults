@@ -31,7 +31,9 @@ export function validResponse(path, method, value) {
       && (value.devices === undefined || object(value.devices) && ['rotationRequired', 'stale', 'unknownProtection'].every(key => integer(value.devices[key])))
       && (value.invitations === undefined || object(value.invitations) && integer(value.invitations.pending) && integer(value.invitations.expired))
       && (!value.backup || object(value.backup) && text(value.backup.state) && (value.backup.detail === undefined || text(value.backup.detail))
-        && optionalTimestamp(value.backup.lastBackupAt) && optionalTimestamp(value.backup.lastRestoreCheckAt));
+        && optionalTimestamp(value.backup.lastBackupAt) && optionalTimestamp(value.backup.lastRestoreCheckAt)
+        && optionalTimestamp(value.backup.lastAttemptAt) && (value.backup.lastAttemptOutcome == null || ['success','failed'].includes(value.backup.lastAttemptOutcome))
+        && (value.backup.lastAttemptOperation == null || ['backup','restore'].includes(value.backup.lastAttemptOperation)));
   }
   if (kind === 'actions') return value.suspended === true || value.reactivated === true || value.authenticationUnlocked === true || value.revoked === true
     || value.cancelled === true || ['user', 'admin'].includes(value.role) || value.acceptanceRequired === true && text(value.grantId) && timestamp(value.expiresAt)

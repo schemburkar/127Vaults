@@ -249,3 +249,17 @@ server is not restarted automatically. A current-bundle combined restore require
 a schema-9 backup; restore older backups with their matching bundle first, then
 perform the guarded upgrade. The recipient launcher resolves junction/symlink
 paths before deciding whether it is the executable entry point.
+
+## Guided local maintenance
+
+From the extracted server bundle, run `node install.mjs maintain` (use the private Node executable printed by the combined installer if Node is not on PATH). The wizard offers daily encrypted backups, a backup now, an isolated restore rehearsal, HTTPS leaf-certificate renewal, an update preview, and recovery into a new destination. Each action shows its plan and requires an explicit YES. The browser console shows status and instructions; it never receives backup keys or executes host commands.
+
+For daily backups, choose the existing protected 32-byte recovery key, an encrypted backup destination outside the bundle and private identity directory, and a daily local time. Keep a safe copy of the key separately and copy completed encrypted backup pairs off the server. The first database and identity backup must succeed before scheduling. The saved configuration contains paths, not key bytes. Windows uses a limited current-user Task Scheduler task and needs that user signed in; Linux uses a systemd user timer and needs its service manager active (host administrators can arrange lingering). The container engine must be available. No older backups are pruned automatically. A stale maintenance.lock means an interrupted run: inspect the running jobs and partial backup directory before removing only that lock.
+
+The schedule writes a new timestamped folder containing encrypted database and identity backups and a completion receipt. Both use the selected key; separate keys remain available through the individual operator commands below. Server administration → Backups shows the latest recorded success, failure and isolated restore check without exposing raw errors or paths. Choose isolated restore rehearsal to verify a database backup without changing the running installation; rehearse before relying on backups.
+
+Renewal displays certificate expiry, retains the existing CA, checks its hash after renewal, then stops and restarts the server so it loads the new leaf certificate. Expect brief downtime. Never replace the CA to resolve a browser warning.
+
+For updates, run the wizard from a fresh verified bundle. It checks the original schema and backup locations and displays downtime before invoking the established backed-up upgrade workflow. Retain the old bundle until an existing client has logged in and synced. Reconfigure any daily backup task to the new bundle path before retiring the old one; schedules are never redirected silently.
+
+Recovery runs only from a fresh bundle into a new private identity directory and database project. Supply matching encrypted database and identity backups, their key and the original installation UUID. The wizard rehearses the database, restores the matching CA/signing identity, and delegates to the existing empty-database and installation-ID guards before starting. Stop the old server first; do not run the same identity concurrently. Keep the original host intact until a trusted client verifies a login, read and sync. Preserve the original private address/hostname; Tailscale address changes and other network migrations still need their separate reviewed network procedure.
