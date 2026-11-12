@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.21",
+    "date": "2026-11-12",
+    "summary": "Personal subscriptions and clearer self-hosted setup.",
+    "changes": [
+      "Personal Self-Hosted subscriptions are available from the pricing page, with trial access as a separate option.",
+      "Improved setup instructions for containers, owner creation, certificate trust and device connections.",
+      "Kept Commercial access by request and improved account links for downloads and licenses."
+    ]
+  },
+  {
     "version": "0.1.20",
     "date": "2026-11-11",
     "summary": "Installer setup links and improved Manage sign-in.",
