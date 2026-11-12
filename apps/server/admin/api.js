@@ -11,6 +11,8 @@ const optionalTimestamp = value => value === null || value === undefined || time
 export function validResponse(path, method, value) {
   if (!object(value)) return false;
   const kind = path.split('?')[0];
+  if(kind==='connection-check')return text(value.serverUrl)&&typeof value.localOnly==='boolean'&&text(value.sharing)&&text(value.browserTrust);
+  if(kind==='client-downloads')return text(value.link)&&value.scope==='client-downloads'&&timestamp(value.expiresAt);
   if (kind === 'server-connection') return value.schemaVersion === 1 && value.kind === '127vaults-server-connection'
     && text(value.serverName) && text(value.serverUrl) && text(value.installationId) && text(value.caCertificate)
     && /^[a-f0-9]{64}$/.test(value.caSha256);

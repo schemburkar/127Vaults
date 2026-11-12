@@ -7,6 +7,7 @@ import { directoryInput, DirectoryInputError, readDirectory } from './directory.
 import { AdminManagementError } from './management.mjs';
 import { parseJsonObject, readRequestBody, HttpBoundaryError } from '../http-boundary.mjs';
 import { readSeatUsage } from '../license-seats.mjs';
+import { connectionReadiness } from '../connection-readiness.mjs';
 
 const assets = new Map([
   ['/admin', ['../../admin/index.html', 'text/html; charset=utf-8']],
@@ -18,12 +19,13 @@ const assets = new Map([
   ['/admin/seat-summary.mjs', ['../../../../packages/domain/src/seat-summary.mjs', 'text/javascript; charset=utf-8']],
   ['/admin/api.js', ['../../admin/api.js', 'text/javascript; charset=utf-8']],
   ['/admin/management.js', ['../../admin/management.js', 'text/javascript; charset=utf-8']],
+  ['/admin/joining-kit.js', ['../../admin/joining-kit.js', 'text/javascript; charset=utf-8']],
 ]);
 const cookieName = '__Host-127v-admin';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
 export function createAdminHandler({ pool, operators, origin, vaultOrigin = origin, localOnly = true, schemaVersion, management = null, loadEntitlement,
-  smtpConfigured = false, subscriptionRefreshConfigured = false, tlsExpiresAt = null, connection = null,
+  smtpConfigured = false, subscriptionRefreshConfigured = false, tlsExpiresAt = null, connection = null, clientDownloads=null,
   backupStatus = () => ({ state: 'unknown', detail: 'No backup status integration is configured.' }), now = () => Date.now() }) {
   const sessions = new Map();
   const attempts = new Map();
@@ -82,6 +84,16 @@ export function createAdminHandler({ pool, operators, origin, vaultOrigin = orig
     }
     const active = session(req);
     if (!active) { json(res, 401, { error: 'admin_auth_required' }); return true; }
+    if(path==='/api/admin/connection-check'&&req.method==='GET') {
+      try {if(!connection)throw Error();json(res,200,connectionReadiness(await connection(),tlsExpiresAt,now()));}
+      catch {json(res,503,{error:'connection_unavailable'});}return true;
+    }
+    if(path==='/api/admin/client-downloads'&&req.method==='POST') {
+      const a=Buffer.from(String(req.headers['x-127v-admin-csrf']??'')),b=Buffer.from(active.csrf);
+      if(!['owner','admin'].includes(active.role)||req.headers.origin!==origin||a.length!==b.length||!timingSafeEqual(a,b)){json(res,403,{error:'forbidden'});return true;}
+      try { const value=parseJsonObject(req,await readRequestBody(req,2048)); if(Object.keys(value).length)throw Error();if(!clientDownloads)throw Error(); json(res,200,await clientDownloads()); }
+      catch {json(res,503,{error:'client_downloads_unavailable'});}return true;
+    }
     if (path === '/api/admin/server-connection' && req.method === 'GET') {
       try {
         if (!connection) throw Error('Connection export unavailable');

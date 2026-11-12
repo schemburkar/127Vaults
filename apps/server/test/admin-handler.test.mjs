@@ -34,6 +34,7 @@ await once(server, 'listening');
 const base = `http://127.0.0.1:${server.address().port}`;
 origin = base;
 handler = createAdminHandler({ pool, operators: [operator], origin, schemaVersion: 6,
+  clientDownloads:()=>({link:'https://manage.example.invalid/join#'+'a'.repeat(64)+'.'+'b'.repeat(43),expiresAt:new Date(Date.now()+3600000).toISOString(),scope:'client-downloads'}),
   connection: () => serverConnection({ serverUrl: 'https://192.168.1.10:12780', installationId: '10000000-0000-4000-8000-000000000001', caCertificate: rootCertificates[0] }),
 });
 after(() => server.close());
@@ -50,6 +51,9 @@ test('admin sign-in is separate, read-only, and CSRF protected', async () => {
   const cookie = login.headers.get('set-cookie').split(';')[0];
   const { csrf, role } = await login.json();
   assert.equal(role, 'owner');
+  assert.equal((await fetch(`${base}/api/admin/client-downloads`,{method:'POST',headers:{Cookie:cookie,Origin:origin,'Content-Type':'application/json'},body:'{}'})).status,403);
+  const delegated=await fetch(`${base}/api/admin/client-downloads`,{method:'POST',headers:{Cookie:cookie,Origin:origin,'Content-Type':'application/json','X-127v-admin-csrf':csrf},body:'{}'});
+  assert.equal(delegated.status,200);assert.equal((await delegated.json()).scope,'client-downloads');
   const connection = await fetch(`${base}/api/admin/server-connection`, { headers: { Cookie: cookie } });
   assert.equal(connection.status, 200);
   assert.match(connection.headers.get('content-disposition'), /127vaults-server/);

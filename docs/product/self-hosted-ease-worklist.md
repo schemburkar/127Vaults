@@ -36,11 +36,11 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 5. Server admin
 
-- [ ] 5.1 Add a person wizard.
-- [ ] 5.2 Connection file plus copyable joining message.
-- [ ] 5.3 Invitation lifecycle visibility.
-- [ ] 5.4 Reachability checks before sharing.
-- [ ] 5.5 Server readiness checklist.
+- [x] 5.1 Add a person wizard.
+- [x] 5.2 Connection file plus copyable joining message.
+- [x] 5.3 Invitation lifecycle visibility.
+- [x] 5.4 Reachability checks before sharing.
+- [x] 5.5 Server readiness checklist.
 
 ## 6. Extension
 
@@ -84,3 +84,5 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 
 Batch 1 evidence: installer journey module, role recommendations, bounded public connection import, prerequisite preview/restart instructions and existing atomic installation receipts; protected client-download grants with expiry/revocation and explicit denial of server/license/billing endpoints; joining page with OS recommendations and non-secret checklist. `cargo test -p vaults-installer`, installer Clippy, client-download unit tests and the Worker HTTP authorization regression pass. Remaining handoff details stay open below.
+
+Batch 2 evidence: Add a person reuses the fresh-password, idempotent invitation ceremony and adds a connection-file/client-download/instruction sharing kit. Server-only refresh credentials stay behind the local admin API; trial operators can paste a client-only Manage link. Connection readiness distinguishes local-only addresses and expiring certificates without claiming remote reachability. Existing invitation state queries and readiness counts are verified. Admin handler/directory, joining-kit and delegation tests pass.

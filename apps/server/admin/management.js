@@ -1,5 +1,6 @@
 import { escapeHtml } from './directory.js';
 import { requestAdmin, errorMessage } from './api.js';
+import { appendJoiningKit } from './joining-kit.js';
 
 export function accountActions(kind, item, role) {
   if (kind === 'invitations') return item.status === 'pending' ? [{ action: 'invitation.revoke', label: 'Revoke invitation', detail: 'Unused recipients cannot enroll with this invitation. Enrolled accounts are retained.' }] : [];
@@ -55,6 +56,7 @@ export function showManagementAction(root, session, descriptor, targetId, comple
           catch { address.focus(); address.select(); status.textContent = 'Copy the selected setup link.'; }
         };
         output.replaceChildren(note, address, copy, code);
+        appendJoiningKit(output,session,link.href);
       }
       status.textContent = result.acceptanceRequired ? 'Ownership request created. The recipient must accept in their vault web app after a fresh unlock.' : 'Action completed. Refresh the directory to see the current state.';
       dialog.querySelector('#management-submit').hidden = true;
@@ -67,5 +69,5 @@ export function showManagementAction(root, session, descriptor, targetId, comple
       if (dialog.isConnected) dialog.querySelectorAll('button,input,textarea,select').forEach(element => { element.disabled = false; });
     }
   };
-  dialog.showModal(); dialog.querySelector('#management-password').focus();
+  dialog.showModal(); dialog.querySelector(descriptor.action==='invitation.create'?'#management-emails':'#management-password').focus();
 }

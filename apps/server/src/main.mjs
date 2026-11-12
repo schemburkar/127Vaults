@@ -28,6 +28,7 @@ import { readSecretFile, readinessToken, runtimeDatabaseConfig } from './runtime
 import { createOpsTelemetry } from './ops-log.mjs';
 import { createAdminHandler } from './admin/handler.mjs';
 import { serverConnection } from './server-connection.mjs';
+import { delegateClientDownloads } from './client-download-delegation.mjs';
 import { readAdminBackupStatus } from './admin/backup-status.mjs';
 import { loadOperators } from './admin/credentials.mjs';
 import { PgAdminManagement } from './admin/management.mjs';
@@ -123,6 +124,7 @@ const deviceEnrollmentHandler=createDeviceEnrollmentHandler(deviceStore,authenti
 const adminManagement=new PgAdminManagement(pool,{tokenKey,loadEntitlement});
 const ownershipHandler=createOwnershipHandler(adminManagement,authenticate,transport.origin);
 const adminOptions={pool,operators:loadOperators(env.VAULTS_ADMIN_OPERATORS_FILE,{allowVirtualizedPermissions:env.VAULTS_ALLOW_VIRTUALIZED_SECRET_PERMISSIONS==='1'}),schemaVersion,management:adminManagement,loadEntitlement,
+  clientDownloads:()=>delegateClientDownloads(env.VAULTS_SUBSCRIPTION_FILE),
   connection: async () => serverConnection({ serverUrl: transport.origin, installationId: installation,
     serverName: env.VAULTS_INSTALLATION_LABEL || '127Vaults private server', leafCertificate: tls.cert,
     caCertificate: await readFile(env.VAULTS_TLS_CA ?? '/run/secrets/ca.crt', 'utf8') }),
