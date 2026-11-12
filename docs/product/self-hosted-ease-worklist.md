@@ -1,5 +1,7 @@
 # Self-hosted ease-of-use implementation
 
+**Usability review:** the checked items below record the first implementation pass, not proof that the self-hosted journey is easy or release-ready. The [updated journey tracker](self-hosted-journey-tracker.md) reviews every point and is the active follow-up queue.
+
 User-selected scope: all 50 points. Implement and commit in coherent batches. Keep intermediate packages internal; publication is separate. Existing unrelated release-cache work is preserved. A point is complete only with implemented behavior or verified existing behavior and recorded evidence.
 
 ## 1. Combined installer
@@ -93,7 +95,7 @@ Batch 4 evidence: extension source detection now preserves an explicit non-secre
 
 Batch 5 evidence: `node install.mjs maintain` guides daily encrypted database/identity backup scheduling (limited current-user Windows task or Linux systemd user timer), first-run backup verification, isolated restore rehearsal, same-CA leaf renewal, schema/license-aware update preview and new-target recovery. Host key paths never enter the browser. Backup attempts retain earlier successful receipts and expose only outcome/operation/timestamps. Recovery delegates to existing authenticated-envelope, matching-installation and empty-database guards. New tests cover cancellation, literal scheduler argument quoting, safe key/destination selection, matching backup pairs, redacted failures, unchanged CA before restart, V0-to-V1 compatibility/V2 refusal, and rehearsal isolation. Packaging tests pass (68), maintenance/administration/upgrade regressions pass, server checks pass.
 
-All 50 implementation points are covered. Verification limits: current-host builds and automated regressions are complete; new clean-machine Windows/Linux installer acceptance, native scheduled-task execution over time, and a real disaster-recovery rehearsal remain release/host acceptance checks. Store submission, macOS distribution and Cloudflare/package publication were not performed. No production email was sent.
+All 50 points received an implementation pass. The subsequent usability review found partial outcomes and remaining acceptance work; use the updated journey tracker for current completion criteria. Verification limits: current-host builds and automated regressions are complete; new clean-machine Windows/Linux installer acceptance, native scheduled-task execution over time, and a real disaster-recovery rehearsal remain release/host acceptance checks. Store submission, macOS distribution and Cloudflare/package publication were not performed. No production email was sent.
 
 Final regression pass: full workspace Clippy with warnings denied and full serial workspace Rust tests pass. Web tests (95), Desktop tests (52), extension tests (38), current-host builds, server checks, site separation (23), scoped access and diagnostic-redaction regressions pass. The agent authorization/logout test retains its short explicit idle-expiry tests separately and now uses a realistic deadline for the logout ceremony on a busy test host. Final review also binds Desktop account invitation links to the exact configured server/tenant path and preserves the legacy web shell when optional onboarding controls are absent.
 

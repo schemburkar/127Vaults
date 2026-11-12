@@ -1,5 +1,7 @@
 # Self-hosted setup and operations plan
 
+The [updated self-hosted journey tracker](self-hosted-journey-tracker.md) is the active usability follow-up queue. It rechecks all 50 implementation points against the ordinary operator/member experience and distinguishes implemented foundations from remaining product work and acceptance evidence. This document retains the broader operations design.
+
 A household or small team should be able to install the server, enroll its first owner, invite people, and maintain and recover the installation without copying commands from a runbook. The installer takes the operator to the local `/admin` console. The console is the starting point for routine server work and points to the installer’s recovery mode when the server cannot complete a task itself.
 
 This is a local product plan. The Manage portal remains the place to obtain downloads and manage subscriptions. Central Admin remains the platform operator’s portal.
