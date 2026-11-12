@@ -43,8 +43,14 @@ export async function stageSite(surface, directory, { publicOrigin, personalBuyU
     for (const name of ['index.html', 'pricing.html']) {
       const content = sources.get(name).toString('utf8');
       if (!content.includes(button)) throw Error(`Personal plan action missing in ${name}`);
-      sources.set(name, Buffer.from(content.replace(button,
-        `<a class="plan-cta" href="${personalBuyUrl}">Subscribe now</a><p class="plan-trial-link"><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
+      let updated = content.replace(/<article\b[^>]*>[\s\S]*?<\/article>/g, article => article.includes(button)
+        ? article.replace(button, `<a class="plan-cta" href="${personalBuyUrl}">Subscribe now</a>`)
+          .replace('</article>', '<p class="plan-trial-link"><a href="get-started.html?plan=personal">Request trial access</a></p></article>')
+        : article);
+      if (name === 'index.html') updated = updated.replace(
+        '<a class="button primary" href="get-started.html">Get access</a>',
+        `<a class="button primary" href="${personalBuyUrl}">Subscribe now</a>`);
+      sources.set(name, Buffer.from(updated));
     }
     const downloads = sources.get('downloads.html').toString('utf8');
     sources.set('downloads.html', Buffer.from(downloads.replace(

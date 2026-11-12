@@ -17,6 +17,15 @@ test('live Personal purchase is primary on pricing, home and downloads while tri
     const html = await readFile(join(live.directory,name),'utf8');
     assert.match(html, /class="plan-cta" href="https:\/\/manage.example.com\/portal">Subscribe now/);
     assert.match(html, /Request trial access/);
+    const personal = [...html.matchAll(/<article\b[^>]*>[\s\S]*?<\/article>/g)].find(match => match[0].includes('Subscribe now'))?.[0];
+    assert.ok(personal);
+    assert.ok(personal.indexOf('Subscribe now') < personal.indexOf('Five users included'));
+    assert.ok(personal.indexOf('Five users included') < personal.indexOf('<ul>'));
+    assert.ok(personal.indexOf('</ul>') < personal.indexOf('Request trial access'));
+    if (name === 'index.html') {
+      assert.match(html, /class="button primary" href="https:\/\/manage.example.com\/portal">Subscribe now/);
+      assert.doesNotMatch(html, />Get access<\/a>/);
+    }
     assert.match(html, /plan=commercial">Request access/);
   }
   const downloads = await readFile(join(live.directory,'downloads.html'),'utf8');
