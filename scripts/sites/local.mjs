@@ -60,7 +60,7 @@ async function localAssetService(site) {
     return new Response(request.method === 'HEAD' ? null : files.get(file), { headers: { ...headers, 'Content-Type': types[file.split('.').at(-1)] ?? 'application/octet-stream' } });
   };
 }
-export async function createLocalSites({ directory = join(repository, '.tools', 'site-preview'), origins = defaultOrigins, manualMail = false } = {}) {
+export async function createLocalSites({ directory = join(repository, '.tools', 'site-preview'), origins = defaultOrigins, manualMail = false, purchasePreview = false } = {}) {
   origins = validateOrigins(origins); directory = validatePreviewDirectory(directory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   directory = validatePreviewDirectory(await realpath(directory));
@@ -80,7 +80,9 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
     if (!/^[a-f0-9]{64}$/.test(intakeKey) || !/^[A-Za-z0-9_-]{43}$/.test(operatorToken)) throw Error('Invalid local preview credentials; no identity was reset.');
     const build = join(directory, 'assets', crypto.randomUUID()); await mkdir(build, { recursive: true });
     const sites = {};
-    for (const surface of ['public', 'admin', 'customer']) sites[surface] = await stageSite(surface, join(build, surface), { publicOrigin: origins.public });
+    for (const surface of ['public', 'admin', 'customer']) sites[surface] = await stageSite(surface, join(build, surface), {
+      publicOrigin: origins.public, personalBuyUrl: purchasePreview ? `${origins.customer}/portal?subscribe=personal` : undefined,
+    });
     const archive = '127Vaults local site preview sample. This is not an installable server package.\n';
     const sha256 = createHash('sha256').update(archive).digest('hex');
     const catalogue = { schemaVersion: 1, sourceRevision: '0'.repeat(40),
@@ -163,7 +165,7 @@ export async function runLocalSites(args = process.argv.slice(2)) {
   try {
     const options = {};
     for (let i = 0; i < args.length; i += 2) {
-      if (!['--work', '--port', '--admin-port', '--customer-port'].includes(args[i]) || !args[i + 1] || args[i + 1].startsWith('--') || options[args[i]]) throw Error('Use [--work PRIVATE-DIRECTORY] [--port 12951] [--admin-port 12952] [--customer-port 12953].');
+      if (!['--work', '--port', '--admin-port', '--customer-port', '--purchase-preview'].includes(args[i]) || !args[i + 1] || args[i + 1].startsWith('--') || options[args[i]]) throw Error('Use [--work PRIVATE-DIRECTORY] [--port 12951] [--admin-port 12952] [--customer-port 12953] [--purchase-preview true].');
       options[args[i]] = args[i + 1];
     }
     const origins = { ...defaultOrigins };
@@ -171,7 +173,8 @@ export async function runLocalSites(args = process.argv.slice(2)) {
       const port = Number(options[flag]); if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error('Invalid local port.');
       const url = new URL(origins[surface]); url.port = String(port); origins[surface] = url.origin;
     }
-    local = await createLocalSites({ directory: options['--work'], origins }); await local.listen();
+    if (options['--purchase-preview'] && options['--purchase-preview'] !== 'true') throw Error('Purchase preview must be true when supplied');
+    local = await createLocalSites({ directory: options['--work'], origins, purchasePreview: options['--purchase-preview'] === 'true' }); await local.listen();
     console.log(`Public website: ${origins.public}/get-started\n127Vaults Admin: ${origins.admin}/\nCustomer portal: ${origins.customer}/\nOperator key file: ${join(local.directory, 'operator-token')}\nLocal sign-in email preview: pnpm sites:mail --work "${local.directory}"\nLocal sample data/packages only. Dodo and outbound email are disabled. Ctrl+C stops all three sites and preserves their local data.`);
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { local.close().then(() => process.exit(0), () => process.exit(1)); });
     return local;

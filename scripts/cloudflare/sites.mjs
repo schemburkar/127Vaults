@@ -78,7 +78,7 @@ export async function renderSites(config, state) {
     if (surface !== 'intake') await stageSite(surface, assets, {
       publicOrigin: config.origin,
       personalBuyUrl: config.billing?.mode === 'live_mode' && config.billing.plans['personal-annual']?.plan === 'personal'
-        && config.customerEmail?.enabled ? new URL('/portal', config.sites.customerOrigin).href : undefined,
+        && config.customerEmail?.enabled ? new URL('/portal?subscribe=personal', config.sites.customerOrigin).href : undefined,
     });
     files[surface] = join(root, `${surface}.json`);
     await saveJson(files[surface], siteConfig(config, state, surface, assets));

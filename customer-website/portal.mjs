@@ -10,6 +10,17 @@ async function run(work) {
 }
 function link(label, path, primary = false) { const node = document.createElement('a'); node.className = `button ${primary ? 'primary' : 'secondary'}`; node.textContent = label; node.href = path; return node; }
 const query = new URLSearchParams(location.search);
+const subscribing = query.get('subscribe') === 'personal';
+let signupChallengeId;
+function showLogin() {
+  $('portal-login').hidden = false;
+  $('portal-signup').hidden = !subscribing;
+  $('portal-existing-title').hidden = !subscribing;
+}
+if (subscribing) {
+  $('portal-title').textContent = 'Get Personal Self-Hosted.';
+  $('portal-description').textContent = 'Start with your email, review your subscription, then pay securely. Your downloads and license setup will be available here after payment is confirmed.';
+}
 function element(tag, label, className) {
   const node = document.createElement(tag);
   if (label) node.textContent = label;
@@ -191,6 +202,7 @@ async function account() {
     }
   }
   $('portal-login').hidden = true; $('portal-account').hidden = false;
+  $('portal-signup').hidden = true; $('portal-existing-title').hidden = true;
   $('portal-identity').textContent = value.email ? `Signed in as ${value.email}` : value.scope === 'installer' ? 'Signed in with an installer setup link. This session opens installation downloads and licensing only.' : 'Signed in with an invitation. This session opens only that invitation.';
   const cloud = $('portal-cloud');
   const tenants = value.cloudTenants ?? [];
@@ -225,6 +237,18 @@ $('email-start').addEventListener('submit', event => { event.preventDefault(); r
   const result = await portalApi('start', { email: $('email').value.trim() }); challengeId = result.challengeId;
   $('email-complete').hidden = false; $('portal-status').textContent = result.message; $('code').value = ''; $('code').focus();
 }); });
+$('signup-start').addEventListener('submit', event => { event.preventDefault(); run(async () => {
+  const result = await portalApi('start', { email: $('signup-email').value.trim() });
+  signupChallengeId = result.challengeId;
+  $('signup-complete').hidden = false;
+  $('signup-status').textContent = result.message;
+  $('signup-code').value = ''; $('signup-code').focus();
+}); });
+$('signup-complete').addEventListener('submit', event => { event.preventDefault(); run(async () => {
+  await portalApi('complete', { challengeId: signupChallengeId, code: $('signup-code').value.trim() });
+  $('signup-code').value = ''; await account();
+  $('portal-plans').scrollIntoView({ block: 'start' });
+}); });
 $('email-complete').addEventListener('submit', event => { event.preventDefault(); run(async () => {
   await portalApi('complete', { challengeId, code: $('code').value.trim() }); $('code').value = ''; await account();
 }); });
@@ -233,10 +257,10 @@ $('invite-login').addEventListener('submit', event => { event.preventDefault(); 
   $('invitation').value = ''; await account();
 }); });
 $('portal-logout').addEventListener('click', () => run(async () => {
-  await portalApi('logout', {}); $('portal-account').hidden = true; $('portal-login').hidden = false;
+  await portalApi('logout', {}); $('portal-account').hidden = true; showLogin();
   $('portal-cloud').hidden = true; $('portal-cloud-tenants').replaceChildren();
   $('personal-consent').checked = false;
   $('portal-requests').replaceChildren(); $('portal-identity').textContent = ''; $('portal-status').textContent = 'Signed out.';
 }));
 setupPasskeys(account);
-account().catch(error => { $('portal-login').hidden = false; $('portal-status').textContent = error.status === 401 ? '' : error.message; });
+account().catch(error => { showLogin(); $('portal-status').textContent = error.status === 401 ? '' : error.message; });

@@ -9,6 +9,22 @@ import { createLocalSites, defaultOrigins, validateOrigins, validatePreviewDirec
 import { stageSite, siteAssets, repository } from './assets.mjs';
 import { verifyLicenseFile } from '../../apps/server/src/license-status.mjs';
 
+test('purchase preview links to local signup and keeps checkout disabled', async t => {
+  const directory = await mkdtemp(join(tmpdir(), '127v-signup-preview-'));
+  const local = await createLocalSites({ directory, purchasePreview: true });
+  t.after(async () => { await local.close(); await rm(directory, { recursive: true, force: true }); });
+  const pricing = await (await local.request('public', '/pricing')).text();
+  assert.ok(pricing.includes(`${local.origins.customer}/portal?subscribe=personal`));
+  const portal = await (await local.request('customer', '/portal?subscribe=personal')).text();
+  assert.ok(portal.indexOf('id="portal-signup"') < portal.indexOf('id="portal-existing-title"'));
+  assert.ok(portal.indexOf('id="portal-existing-title"') < portal.indexOf('id="portal-login"'));
+  assert.match(portal, /Sign up with email/);
+  const checkout = await local.request('customer', '/api/billing/personal-order', {
+    method: 'POST', headers: { Origin: local.origins.customer, 'Content-Type': 'application/json' }, body: JSON.stringify({ acceptTerms: true }),
+  });
+  assert.equal(checkout.status, 404);
+});
+
 test('live Personal purchase is primary on pricing, home and downloads while trials and Commercial remain separate', async t => {
   const dir = await mkdtemp(join(tmpdir(), '127v-live-plans-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
