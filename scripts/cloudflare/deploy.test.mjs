@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { validateConfig, loadConfig, loadSecrets, stageAssets, assetFiles, wranglerConfig, repository, localDeploymentDirectory } from './config.mjs';
 import { assertPrivateBucket, execute, parseBucketNames, provision, runWrangler } from './deploy.mjs';
 import { configureResend } from './configure-resend.mjs';
+import { prepareDodoSecrets } from './prepare-dodo-secrets.mjs';
 import { siteConfig, siteSecrets } from './sites.mjs';
 
 test('Resend configuration starts disabled and cannot enable without a private sending key; credentials never reach public or intake', async t => {
@@ -57,8 +58,22 @@ test('Dodo deployment explicitly disables retained secrets by default and valida
   }
   await writeFile(join(f.config.secretsDirectory, 'dodo-api-key'), 'test_' + 'a'.repeat(32));
   await writeFile(join(f.config.secretsDirectory, 'dodo-webhook-secret'), 'whsec_' + Buffer.alloc(32, 7).toString('base64'));
+  await writeFile(file, JSON.stringify(config));
+  await assert.rejects(loadSecrets(config, f.catalogue), { code: 'ENOENT' });
+  const prepared = await prepareDodoSecrets(file, 'test_mode');
+  assert.equal(prepared.copied, 2);
+  assert.equal((await prepareDodoSecrets(file, 'test_mode')).copied, 0);
   const secrets = await loadSecrets(config, f.catalogue);
   assert.match(secrets.DODO_API_KEY, /^test_/);
+  const live = validateConfig({ ...config, billing: { ...billing, mode: 'live_mode' } }, file);
+  await assert.rejects(loadSecrets(live, f.catalogue), { code: 'ENOENT' });
+  const liveDirectory = join(config.secretsDirectory, 'dodo', 'live_mode');
+  await writeFile(join(liveDirectory, 'dodo-api-key'), 'live_' + 'b'.repeat(32));
+  await writeFile(join(liveDirectory, 'dodo-webhook-secret'), 'whsec_' + Buffer.alloc(32, 8).toString('base64'));
+  const liveSecrets = await loadSecrets(live, f.catalogue);
+  assert.match(liveSecrets.DODO_API_KEY, /^live_/);
+  assert.notEqual(liveSecrets.DODO_WEBHOOK_SECRET, secrets.DODO_WEBHOOK_SECRET);
+  assert.equal((await loadSecrets(config, f.catalogue)).DODO_API_KEY, secrets.DODO_API_KEY);
   const vars = wranglerConfig(config, state, f.directory).vars;
   assert.ok(!JSON.stringify(vars).includes(secrets.DODO_API_KEY));
 });

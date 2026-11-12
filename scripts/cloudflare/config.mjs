@@ -167,8 +167,9 @@ export async function loadSecrets(config, catalogue) {
     if (!/^[A-Za-z0-9_-]{20,200}$/.test(values.TURNSTILE_SECRET_KEY)) throw Error('Invalid Turnstile secret');
   }
   if (config.billing) {
-    values.DODO_API_KEY = await read('dodo-api-key');
-    values.DODO_WEBHOOK_SECRET = await read('dodo-webhook-secret');
+    const directory = dodoSecretsDirectory(config);
+    values.DODO_API_KEY = (await readFile(join(directory, 'dodo-api-key'), 'utf8')).trim();
+    values.DODO_WEBHOOK_SECRET = (await readFile(join(directory, 'dodo-webhook-secret'), 'utf8')).trim();
     if (!/^[\x21-\x7e]{20,512}$/.test(values.DODO_API_KEY)
       || !/^(?:whsec_)?[A-Za-z0-9+/=_-]{20,512}$/.test(values.DODO_WEBHOOK_SECRET)) throw Error('Invalid billing secrets');
   }
@@ -186,6 +187,11 @@ export async function loadSecrets(config, catalogue) {
         values.CLOUD_CUSTOMER_DIRECTORY_TOKEN === values.CLOUD_MANAGEMENT_TOKEN) throw Error('Invalid Cloud customer directory token');
   }
   return values;
+}
+export function dodoSecretsDirectory(config) {
+  const mode = config.billing?.mode ?? 'test_mode';
+  if (!['test_mode', 'live_mode'].includes(mode)) throw Error('Invalid Dodo secrets mode');
+  return join(config.secretsDirectory, 'dodo', mode);
 }
 export function wranglerConfig(config, state, assetsDirectory) {
   if (!/^[a-f0-9-]{36}$/i.test(state.databaseId ?? '')) throw Error('Provision the D1 database first');
