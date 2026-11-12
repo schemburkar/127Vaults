@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Setup guide · STE review — 127 Vaults</title>
+  <link rel="stylesheet" href="site.css?v=3">
+  <script src="theme.mjs?v=2" type="module"></script>
+  <script src="setup-guide-ste-review.mjs" type="module"></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header"><div class="container header-inner"><a class="wordmark" href="index.html" aria-label="127 Vaults home"><img class="brand-mark" src="brand-mark.svg" alt="" width="40" height="40"><img class="brand-wordmark" src="wordmark.svg" alt="127 Vaults" width="164" height="48"></a><nav aria-label="Main navigation"><a href="deployment.html">Deployment</a><a href="pricing.html">Pricing</a><a href="downloads.html">Downloads</a></nav><a class="header-link" href="https://manage.127vaults.com/portal">Manage account</a></div></header>
+  <main id="main">
+    <section class="page-hero"><div class="container">
+      <span class="kicker">SELF-HOSTED SETUP · LOCAL REVIEW</span>
+      <h1>Set up your private server.</h1>
+      <p>Use this guide to install a server or connect a device.</p>
+      <p class="setup-resume">STE-style review draft. This draft has not had a full ASD-STE100 conformity assessment.</p>
+      <div class="hero-actions"><a class="button secondary" href="setup-guide.html">Compare with the current guide →</a></div>
+    </div></section>
+    <section class="page-section"><div class="container setup-wizard" id="setup-checklist">
+      <nav class="setup-sidebar" aria-label="Setup steps"><ol>
+        <li><a href="#prerequisites" data-step-link="prerequisites"><span>1</span>Prepare your computer</a></li>
+        <li><a href="#packages" data-step-link="packages"><span>2</span>Get the packages</a></li>
+        <li><a href="#server" data-step-link="server"><span>3</span>Start the server</a></li>
+        <li><a href="#license" data-step-link="license"><span>4</span>Install the license</a></li>
+        <li><a href="#owner" data-step-link="owner"><span>5</span>Create the owner account</a></li>
+        <li><a href="#clients" data-step-link="clients"><span>6</span>Connect a device</a></li>
+        <li><a href="#verify" data-step-link="verify"><span>7</span>Test and back up</a></li>
+      </ol></nav>
+      <div class="setup-content">
+        <p id="setup-progress" role="status" aria-live="polite">Setup guide</p>
+        <p class="setup-resume">This browser saves your place in this review. It does not save passwords or server details.</p>
+
+        <section data-setup-step="prerequisites" id="prerequisites">
+          <h2 tabindex="-1">1. Prepare your computer</h2>
+          <h3>Select your task</h3>
+          <ul>
+            <li><strong>New server:</strong> start with this step.</li>
+            <li><strong>Join a server:</strong> go to <a href="#clients" data-go-step="clients">Step 6</a>.</li>
+            <li><strong>Existing server:</strong> use the update instructions in <a href="#server" data-go-step="server">Step 3</a>.</li>
+          </ul>
+          <p>Your Manage account controls orders and downloads. Your vault account is on your private server.</p>
+          <p>An order access code does not create a vault account.</p>
+          <h3>Use the combined installer</h3>
+          <p>The combined installer guides server setup and client installation.</p>
+          <p>If you use the combined installer, follow its instructions for required software.</p>
+          <p>The commands below are for manual setup.</p>
+          <p>Use a Windows or Linux x64 computer. Make sure that several GB of disk space are available.</p>
+          <p>Keep at least 2 GiB available for the container virtual machine.</p>
+          <p>macOS packages are not available. Windows 10 requires a supervised trial.</p>
+          <details><summary>Manual setup: install Node.js 24</summary>
+            <ol><li><a href="https://nodejs.org/en/download">Download Node.js 24</a>.</li><li>Install Node.js 24.</li><li>Run this command.</li></ol>
+            <pre><code>node --version</code></pre>
+            <p>Make sure that the version starts with <code>v24</code>.</p>
+          </details>
+          <details><summary>Manual setup: install Podman Desktop and Compose</summary>
+            <ol>
+              <li>Install <a href="https://podman-desktop.io/docs/installation">Podman Desktop</a>.</li>
+              <li>Start the Podman machine.</li>
+              <li>Open <strong>Settings → Resources → Compose → Setup</strong>.</li>
+              <li>Follow the instructions to install the Compose binary.</li>
+              <li>Run these commands.</li>
+            </ol>
+            <pre><code>podman info
+podman compose version
+podman compose ls</code></pre>
+            <p>An active extension does not show that the Compose binary is installed.</p>
+            <p>For more information, read the <a href="https://podman-desktop.io/docs/compose/setting-up-compose">Compose setup instructions</a>.</p>
+          </details>
+          <details><summary>Manual setup: use the Podman CLI</summary>
+            <p>Podman can use the native Docker Compose binary. Docker Desktop is not necessary for this configuration.</p>
+            <p>On Windows, run this command.</p>
+            <pre><code>winget install --exact --id Docker.DockerCompose --source winget</code></pre>
+            <ol><li>Open a new terminal.</li><li>Start the Podman machine.</li><li>Run these commands.</li></ol>
+            <pre><code>docker-compose version
+podman compose version
+podman compose ls</code></pre>
+            <p>Make sure that the two version commands identify the same Compose provider.</p>
+            <p>For Linux, follow the <a href="https://docs.docker.com/compose/install/standalone/">standalone Compose instructions</a>.</p>
+            <p>Put the binary on your <code>PATH</code>.</p>
+            <p>If Podman selects a different provider, set <code>PODMAN_COMPOSE_PROVIDER</code> to the correct binary's full path.</p>
+            <p>Refer to <a href="https://docs.podman.io/en/latest/markdown/podman-compose.1.html">Podman's provider configuration</a>.</p>
+          </details>
+          <details><summary>Manual setup: use Docker Desktop</summary>
+            <ol><li>Install <a href="https://docs.docker.com/desktop/">Docker Desktop</a>.</li><li>Start Docker Desktop.</li><li>Run these commands.</li></ol>
+            <pre><code>docker info
+docker compose ls</code></pre>
+            <p>For Docker, add <code>--docker</code> to the server installer commands in this guide.</p>
+          </details>
+          <details><summary>Windows: prepare WSL 2</summary>
+            <ol><li>Enable hardware virtualization.</li><li><a href="https://learn.microsoft.com/windows/wsl/install">Install or update WSL 2</a>.</li><li>Approve the required administrator prompt.</li><li>Restart Windows if instructed.</li><li>Run this command.</li></ol>
+            <pre><code>wsl --version</code></pre>
+          </details>
+          <p><strong>If a command fails, correct the problem before you continue.</strong></p>
+        </section>
+
+        <section data-setup-step="packages" id="packages">
+          <h2 tabindex="-1">2. Get the packages</h2>
+          <h3>Get your download link</h3>
+          <ul>
+            <li><strong>Paid plan:</strong> open your order in <a href="https://manage.127vaults.com/portal">Manage account</a>.</li>
+            <li><strong>Trial:</strong> <a href="get-started.html">request access</a>.</li>
+            <li><strong>Joining user:</strong> get a client-download link from your server operator.</li>
+          </ul>
+          <p>Download the applicable installer or packages from your approved download page.</p>
+          <p>Joining users do not need the purchaser's account or server license.</p>
+          <h3>Compare the file hash</h3>
+          <ol><li>Find the SHA-256 value on your download page.</li><li>Replace <code>FILE</code> with the downloaded file's path.</li><li>Run the applicable command below.</li><li>Compare the result with the download page.</li></ol>
+          <p>Windows PowerShell:</p><pre><code>Get-FileHash FILE -Algorithm SHA256</code></pre>
+          <details><summary>Linux</summary><pre><code>sha256sum FILE</code></pre></details>
+          <p><strong>If the values are different, do not run the file.</strong></p>
+          <p>Download the file again.</p>
+          <details><summary>Manual setup: extract and verify the server package</summary>
+            <ol><li>Extract the server package.</li><li>Open a terminal in the extracted folder.</li><li>Run these commands.</li></ol>
+            <pre><code>node install.mjs verify
+node install.mjs doctor</code></pre>
+            <p>Make sure that <code>doctor</code> reports ready.</p>
+            <p>If verification fails, download the package again.</p>
+            <p>Do not change the manifest to bypass verification.</p>
+          </details>
+        </section>
+
+        <section data-setup-step="server" id="server">
+          <h2 tabindex="-1">3. Start the server</h2>
+          <p><strong>Existing installation:</strong> use the update procedure below. Do not start a new installation to repair an existing server.</p>
+          <h3>Use the combined installer</h3>
+          <ol><li>Run the approved combined installer.</li><li>Select the server setup role.</li><li>Select the components you need.</li><li>Follow the setup instructions.</li><li>Keep the server address shown by the installer.</li></ol>
+          <details><summary>Manual setup: use this computer only</summary>
+            <p>Use this procedure only for a new installation.</p>
+            <p>In the extracted server folder, run this command.</p>
+            <pre><code>node install.mjs setup --endpoint 127.0.0.1</code></pre>
+            <p>The address <code>127.0.0.1</code> works only on the server computer.</p>
+          </details>
+          <details><summary>Manual setup: read the server status and installation ID</summary>
+            <pre><code>node server.mjs install status
+node server.mjs install identify</code></pre>
+            <p>Keep the installation ID and the exact HTTPS address.</p>
+          </details>
+          <details><summary>New server: use Tailscale</summary>
+            <ol><li>Install Tailscale on the server.</li><li>Sign in to Tailscale.</li><li>Install Tailscale on each computer that will connect.</li><li>Sign in to the same permitted private network on those computers.</li></ol>
+            <p>For manual setup, use this command instead of the same-computer setup command.</p>
+            <pre><code>node install.mjs setup --tailscale</code></pre>
+            <p>Setup finds the server's Tailscale IPv4 address.</p>
+            <p>The application listens on <code>127.0.0.1:12780</code>. Tailscale Serve forwards connections from the private network.</p>
+            <p>Tailscale Serve is part of the Tailscale client. A separate Tailscale server is not necessary.</p>
+            <p>Setup refuses Funnel and conflicting Serve routes.</p>
+            <ol><li>Use the exact HTTPS address shown by setup.</li><li>Make sure that Tailscale access rules permit the connection.</li><li>Complete browser certificate trust on each computer that uses the web app.</li></ol>
+            <p>An example address is <code>https://100.64.0.10:12780</code>. Use your server's address, not this example.</p>
+            <p>Desktop and CLI can find a server by its Tailscale name.</p>
+            <p>They still need the installation ID, verified CA certificate and device approval.</p>
+          </details>
+          <details><summary>New server: use a private LAN</summary>
+            <p>For manual setup, replace the example with the server's private LAN IPv4 address.</p>
+            <pre><code>node install.mjs setup --endpoint 192.168.1.50</code></pre>
+            <ol><li>Restrict the host firewall to permitted computers or subnets.</li><li>Complete HTTPS certificate trust on each computer that uses the web app.</li></ol>
+            <p>Do not use public port forwarding, wildcard listeners or Tailscale Funnel.</p>
+            <p>This procedure does not enable Cloudflare private routing.</p>
+          </details>
+          <details><summary>Existing server: update or repair</summary>
+            <ol><li>Make a backup before the update.</li><li>Keep the original installation identity, project, database volume and license.</li><li>Use the backed-up update procedure.</li><li>If startup fails, run <code>doctor</code>.</li><li>Read the local container logs.</li><li>After a restart, read the server status again.</li></ol>
+            <p>Do not overwrite the configuration or create a replacement installation.</p>
+            <p>A package update does not change a same-computer installation into a Tailscale installation.</p>
+            <p>A network change requires a separate migration procedure.</p>
+            <p>That procedure must preserve the identity and database.</p>
+            <p>It can also require certificate renewal and client reconnection.</p>
+            <p>Do not repeat new-server setup to change an existing address.</p>
+          </details>
+          <details><summary>Server maintenance</summary>
+            <p>On the server computer, open a terminal in the extracted server folder.</p>
+            <pre><code>node install.mjs maintain</code></pre>
+            <p>The menu provides backup scheduling, restore tests, certificate renewal, update preview and restoration to a new installation.</p>
+            <p>Keep the recovery key separate from the backup files.</p>
+            <p>Keep a safe copy of the key on another device.</p>
+            <p>Regularly read <strong>Server administration → Backups</strong>.</p>
+            <p>Installed packages do not show that backups and device setup are complete.</p>
+          </details>
+        </section>
+
+        <section data-setup-step="license" id="license">
+          <h2 tabindex="-1">4. Install the license</h2>
+          <p>The server needs a signed license for its installation.</p>
+          <h3>Use the combined installer</h3>
+          <p>Use the setup link for the applicable order.</p>
+          <p>The installer guides installation binding and license setup.</p>
+          <p>If the installer reports an active license, continue to Step 5.</p>
+          <details><summary>Trial setup</summary>
+            <ol><li>Open your approved private trial page.</li><li>Enter the installation ID when requested.</li><li>Confirm activation.</li></ol>
+            <p>Trial activation starts the ten-day trial period.</p>
+          </details>
+          <details><summary>Paid Personal setup</summary>
+            <p>Use your paid order in <a href="https://manage.127vaults.com/portal">Manage account</a>.</p>
+            <p>Do not use trial activation to repair a paid installation.</p>
+            <p>Use the license and setup access for the applicable paid order.</p>
+          </details>
+          <details><summary>Manual setup: install the license file</summary>
+            <ol><li>Download the license for this installation.</li><li>Save the file as <code>license.json</code> in the server folder.</li><li>Run these commands.</li></ol>
+            <pre><code>node server.mjs install license --file license.json
+node install.mjs start
+node server.mjs install status</code></pre>
+            <p>Make sure that the status shows an active license and the correct user limit.</p>
+          </details>
+          <details><summary>Existing license or license error</summary>
+            <p>Keep the existing license during an update.</p>
+            <p>Do not activate a different installation to repair startup.</p>
+            <p>If a binding or signature error occurs, obtain the matching license.</p>
+          </details>
+        </section>
+
+        <section data-setup-step="owner" id="owner">
+          <h2 tabindex="-1">5. Create the owner account</h2>
+          <p>The local operator account and vault owner account are different accounts.</p>
+          <p>A public contact email does not create a vault account.</p>
+          <h3 id="browser-trust">First, set browser certificate trust</h3>
+          <p>Do this on each computer that uses the web vault or installed web app.</p>
+          <p>Desktop's connection file sets trust inside Desktop. It does not set browser trust.</p>
+          <p>An online login does not show that the offline app is ready.</p>
+          <p><strong>If the address bar shows “Not secure,” stop before you continue setup.</strong></p>
+          <p>Do not bypass the certificate warning.</p>
+          <h3>Get the public CA certificate</h3>
+          <p>The server operator can use the public CA path shown by the installer.</p>
+          <p>The operator can also use <strong>Server administration → Connect devices → Download public CA and fingerprint</strong>.</p>
+          <p>In manual installations, the file is <code>&lt;VAULTS_TLS_DIR&gt;/ca/ca.crt</code>.</p>
+          <p>Only share the public certificate and public connection file.</p>
+          <p><strong>Do not share <code>ca.key</code> or another private key.</strong></p>
+          <p>Confirm the exact CA file SHA-256 with the operator through a trusted channel.</p>
+          <p>A certificate viewer can show a different fingerprint. This guide uses the SHA-256 of the complete PEM file.</p>
+          <details><summary>Windows: use the installer's browser trust step</summary>
+            <p>If the installer offers <strong>Browser HTTPS trust</strong>, use this procedure.</p>
+            <ol><li>Read the server address and public CA file fingerprint.</li><li>Confirm the fingerprint through your trusted operator or channel.</li><li>Read the Windows trust explanation.</li><li>If you agree, select the separate trust confirmation.</li><li>Approve a Windows prompt only for this verified CA.</li></ol>
+            <p>The installer verifies the file, CA signing purpose, validity and server HTTPS connection.</p>
+            <p>This step is optional. Its default is to skip the import.</p>
+            <p>The general install confirmation and <code>--yes</code> do not approve CA import.</p>
+            <p>The CA enters the current Windows user's trusted root store.</p>
+            <p>This trust applies beyond one server URL. Only trust a CA controlled by an operator you trust.</p>
+            <p>The installer does not change machine-wide trust or managed browser policy.</p>
+            <p>Your organization can require IT approval.</p>
+          </details>
+          <details><summary>Windows: import the CA manually</summary>
+            <ol><li>Replace the example filename if your public CA file has a different name.</li><li>Run this command.</li></ol>
+            <pre><code>Get-FileHash .\127vaults-public-ca.crt -Algorithm SHA256</code></pre>
+            <ol start="3"><li>Compare the result with the operator's file hash.</li><li>Open the verified certificate file.</li><li>Select <strong>Install Certificate</strong>.</li><li>Select <strong>Current User</strong>.</li><li>Select <strong>Place all certificates in the following store</strong>.</li><li>Select <strong>Trusted Root Certification Authorities</strong>.</li><li>Review the certificate.</li><li>Confirm the import only if it is the verified CA.</li></ol>
+            <p>This changes trust for your Windows user. An organization policy can prevent the change.</p>
+            <p>Do not change the server address to bypass a hostname mismatch.</p>
+          </details>
+          <details><summary>Linux: import the CA in your browser</summary>
+            <ol><li>Run this command for the public CA file.</li></ol>
+            <pre><code>sha256sum 127vaults-public-ca.crt</code></pre>
+            <ol start="2"><li>Compare the result with the operator's file hash.</li><li>Open the browser's certificate settings.</li><li>Open <strong>Authorities</strong>.</li><li>Import the verified CA for website identification.</li></ol>
+            <p>Firefox can use a separate certificate store.</p>
+            <p>Chromium certificate settings depend on the Linux distribution and managed policy.</p>
+            <p>If import is unavailable, ask your administrator for the approved trust procedure.</p>
+            <p>Do not disable certificate validation or use an ignore-certificate-errors flag.</p>
+          </details>
+          <details><summary>macOS: reference instructions for future clients</summary>
+            <p>macOS Desktop packages are not available.</p>
+            <p>The public connection file is portable. Browser trust is a separate setting.</p>
+            <ol><li>Use <code>shasum -a 256</code> to calculate the public CA file hash.</li><li>Compare the result with the operator's file hash.</li><li>Import the verified public CA into your login Keychain.</li><li>Review its SSL trust setting.</li></ol>
+            <p>Follow your organization's managed certificate procedure when applicable.</p>
+          </details>
+          <h3>Verify browser trust</h3>
+          <ol><li>Restart the browser.</li><li>Open the exact HTTPS server address.</li><li>Make sure that there is no certificate warning.</li></ol>
+          <p>If a warning remains, inspect the hostname, certificate dates and organization policy.</p>
+          <p>After trust is correct, reopen the app to prepare its offline files.</p>
+          <p>An offline vault copy also needs an online unlock and sync.</p>
+          <p>If available, select <strong>Joining and connection help → Check this browser connection</strong>.</p>
+          <details><summary>Remove browser trust later</summary>
+            <ol><li>On Windows, open <code>certmgr.msc</code>.</li><li>Open <strong>Trusted Root Certification Authorities → Certificates</strong> for the current user.</li><li>Identify the exact imported CA.</li><li>Remove only that certificate entry.</li></ol>
+            <p>Do not delete other root certificates or server identity files.</p>
+            <p>Removal does not erase vault data. The browser will refuse trusted connections until certificate trust is restored.</p>
+            <p>Firefox and managed browsers can have separate policy requirements.</p>
+          </details>
+          <h3>Create the first vault owner</h3>
+          <p>If an owner already exists, use the existing account.</p>
+          <p>For a new server, use the first-owner setup link shown by the installer.</p>
+          <details><summary>Manual setup: get a first-owner code</summary>
+            <p>On the server computer, run this command.</p>
+            <pre><code>node server.mjs install bootstrap</code></pre>
+            <p>Enter the one-time code in the server's web screen.</p>
+          </details>
+          <p>Follow the account creation steps on the private server.</p>
+          <p>Keep your account secret and master password private.</p>
+        </section>
+
+        <section data-setup-step="clients" id="clients">
+          <h2 tabindex="-1">6. Connect a device</h2>
+          <p>Use this step if you join an existing server.</p>
+          <p>You do not need to install a server or obtain the purchaser's license.</p>
+          <h3>Server operator: send the joining information</h3>
+          <ol><li>Open <strong>Server administration → Connect devices → Share server connection</strong>.</li><li>Select <strong>Download connection file</strong>.</li><li>Send the <code>.127vaults-server</code> file through a trusted channel.</li><li>Send the protected client-download link.</li><li>For a new account, send an account invitation.</li></ol>
+          <p>You can use Signal, WhatsApp or email to share the information.</p>
+          <p>Use a reachable private-network or Tailscale address.</p>
+          <p>A loopback address works only on the server computer.</p>
+          <details><summary>Understand the three different steps</summary>
+            <ul><li><strong>Connection file:</strong> identifies the server and its public certificate. It does not give account or vault access.</li><li><strong>Account invitation:</strong> permits a new user to create a vault account.</li><li><strong>Device approval:</strong> permits that user's device after verification of its code and details.</li></ul>
+            <p>The same connection file works on supported Desktop platforms.</p>
+          </details>
+          <h3>Joining user: connect Desktop</h3>
+          <ol>
+            <li>Get the approved Windows or Linux Desktop package.</li>
+            <li>Install Desktop.</li>
+            <li>Open <strong>Connect to your private server → Import server connection</strong>.</li>
+            <li>Select the operator's connection file.</li>
+            <li>Verify the server name and address with the operator.</li>
+            <li>Select <strong>Verify and connect</strong>.</li>
+          </ol>
+          <p>The file supplies the connection details and public certificate.</p>
+          <p>Only import a file from your trusted operator.</p>
+          <p>The combined installer is an alternative to the separate Desktop installer.</p>
+          <details><summary>New user: create your account first</summary>
+            <ol><li>Complete <a href="#browser-trust" data-go-step="owner">browser certificate trust</a> on the computer that will open the invitation.</li><li>Open your account invitation.</li><li>Complete account registration on the private server.</li><li>Keep the registered browser session available for Desktop approval.</li></ol>
+            <p>The trusted browser session can be on the same computer as Desktop.</p>
+            <p>A separate physical device is not always necessary.</p>
+          </details>
+          <h3>Register and approve Desktop</h3>
+          <ol><li>In Desktop, select <strong>I already have an account → Register this desktop</strong>.</li><li>Enter your vault username.</li><li>Read the one-time approval code.</li><li>In a trusted web session, open <strong>Settings → Devices → Register a device</strong>.</li><li>Compare the code and device details.</li><li>If the details agree, approve the device.</li><li>Return to Desktop.</li><li>Unlock Desktop online once.</li></ol>
+          <p>The online unlock prepares Desktop's encrypted offline copy.</p>
+          <p>You can approve Desktop from a trusted browser on this computer or another device.</p>
+          <p>Desktop import does not install a browser or OS root certificate.</p>
+          <p>If this computer uses the web vault, complete its separate browser trust procedure.</p>
+          <details><summary>Older Desktop client: enter connection details manually</summary>
+            <ol><li>Open the manual connection option.</li><li>Enter the operator's exact HTTPS address.</li><li>Enter the installation ID.</li><li>Select the public CA certificate path.</li><li>Enter the SHA-256 of the CA file bytes.</li><li>Verify and save server trust.</li><li>Register Desktop.</li></ol>
+            <p>Do not share the CA private key.</p>
+          </details>
+          <details><summary>Connect the CLI</summary>
+            <p>Replace the placeholders with your server details.</p>
+            <pre><code>127vaults server trust --url https://PRIVATE-IP:12780 --ca ca.crt --server-id INSTALLATION-ID
+127vaults login USERNAME --enroll</code></pre>
+            <p>Approve the code from a trusted client.</p>
+            <p>On Windows, use your signed-in session for credential storage.</p>
+          </details>
+          <details><summary>Connect the browser extension</summary>
+            <ol><li>Load the approved extension package.</li><li>Register its packaged native connector.</li><li>Unlock Desktop or CLI.</li></ol>
+            <p>For a web-tab source, use the browser profile that contains the unlocked vault tab.</p>
+            <ol start="4"><li>Open the applicable website's sign-in page.</li><li>Open the extension.</li><li>Select the vault source.</li><li>Select the saved login.</li></ol>
+            <p>The extension fills the form only after your action.</p>
+            <p>It does not submit the form.</p>
+          </details>
+        </section>
+
+        <section data-setup-step="verify" id="verify">
+          <h2 tabindex="-1">7. Test and back up</h2>
+          <h3>Test the connection and sync</h3>
+          <ol><li>Create a vault.</li><li>Add a sample login.</li><li>Edit the sample login on one client.</li><li>Sync that client.</li><li>Open the sample login on another client.</li><li>Make sure that the change is present.</li><li>Disconnect an installed client from the network.</li><li>Unlock that client offline.</li><li>Edit the sample login.</li><li>Connect the client to the network again.</li><li>Sync the client.</li><li>Make sure that no changes remain pending.</li></ol>
+          <p>Ordinary browser tabs need the server online.</p>
+          <h3>Prepare a backup that you can restore</h3>
+          <p>Setup shows the backup key location, backup folder and saved recovery settings.</p>
+          <p>The default recovery settings are under <code>~/.127vaults/</code> in your home directory.</p>
+          <p>Updates use the saved key. Older backups still need their original key.</p>
+          <ol><li>Back up the database.</li><li>Back up its matching installation identity.</li><li>Keep a safe copy of the key separate from the backup files.</li><li>Test restoration in an isolated installation.</li><li>Make sure that restoration succeeds before you depend on the backup.</li></ol>
+          <p>The operator can use <code>node install.mjs maintain</code> for guided maintenance.</p>
+          <details><summary>License status and invitations</summary>
+            <p>After normal expiry, the license has a 30-day read-only period.</p>
+            <p>A locked or revoked license can block vault reads and writes.</p>
+            <p>A detected clock rollback can also lock access.</p>
+            <p>The server retains encrypted data. Keep pending local changes during repair.</p>
+            <pre><code>node server.mjs install status</code></pre>
+            <p>Before you invite another user, make sure that SMTP and available seats are ready.</p>
+          </details>
+        </section>
+
+        <nav class="setup-navigation" aria-label="Setup stages" hidden><button class="button" type="button" id="setup-back">Back</button><button class="button primary" type="button" id="setup-next">Next</button><button class="button" type="button" id="setup-reset">Start over</button></nav>
+        <p id="setup-finished" role="status" hidden>You reached the end of this guide. Keep your backup and recovery material safe.</p>
+        <noscript><p>JavaScript is off. All steps are shown. The browser cannot save your place.</p></noscript>
+      </div>
+    </div></section>
+  </main>
+</body>
+</html>
