@@ -173,3 +173,7 @@ All items below are **open**. A checkbox closes only when the outcome and its st
 - Extension: `apps/extension/src/popup.mjs`, `popup.html`, `scripts/release/extension-review.mjs`.
 - Trust/errors/operations: `apps/server/src/connection-readiness.mjs`, `packages/domain/src/connection-help.mjs`, `deploy/maintenance.mjs`, `apps/server/src/admin/backup-status.mjs`.
 - Prior goals and acceptance: [operations plan](self-hosted-operations-plan.md), [local Admin](server-admin.md), [installer](../release/installer.md), [operator runbook](../release/server-test-install.md).
+
+### Progress: optional Windows browser trust (2026-11-12)
+
+J08/J17 now have an opt-in installer implementation: verified public CA → separate default-declined confirmation → Current User trusted roots, with no `--yes` approval, machine-wide import or browser-policy bypass. The public guide now explains per-computer setup, online versus offline readiness, success checks, manual alternatives and removal. Linux remains guided manual import. The J08/J17 acceptance checkboxes remain open pending packaged clean-host/browser testing; the developer’s real root store was not changed by implementation tests.

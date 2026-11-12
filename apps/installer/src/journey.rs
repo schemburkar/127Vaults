@@ -69,6 +69,13 @@ impl Connection {
         file.commit()?;
         Ok(path)
     }
+    pub fn save_public_ca(&self, root: &Path) -> Result<(std::path::PathBuf, String)> {
+        let path = root.join("127vaults-public-ca.crt");
+        let mut file = atomic_write_file::AtomicWriteFile::open(&path)?;
+        file.write_all(self.ca_certificate.as_bytes())?;
+        file.commit()?;
+        Ok((path, self.ca_sha256.clone()))
+    }
 }
 #[derive(Serialize)]
 pub struct NextStep {

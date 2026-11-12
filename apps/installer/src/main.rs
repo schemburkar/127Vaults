@@ -1,6 +1,7 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 mod archive;
 mod backups;
+mod browser_trust;
 mod discovery;
 mod enrollment_email;
 mod extension_setup;
@@ -923,6 +924,7 @@ fn execute(mut args: Args) -> Result<()> {
     }
     if let Some(directory) = server_directory {
         guide_server_owner(
+            &root,
             node.as_ref().ok_or("Server runtime unavailable")?,
             &directory,
             &args,
@@ -993,6 +995,20 @@ fn execute(mut args: Args) -> Result<()> {
             "Your public connection file is ready to import: {}",
             root.join("server-connection.127vaults-server").display()
         ))?;
+    }
+    if let Some(connection) = &connection {
+        let (ca, fingerprint) = connection.save_public_ca(&root)?;
+        if let Err(error) = browser_trust::guide(
+            &root,
+            &ca,
+            &connection.server_url,
+            &fingerprint,
+            interactive && !args.yes,
+        ) {
+            cliclack::log::warning(format!(
+                "Browser trust needs attention: {error}. Follow setup-guide.html#browser-trust; installed apps are preserved."
+            ))?;
+        }
     }
     if interactive
         && !args.yes
@@ -1258,6 +1274,7 @@ fn existing_identity_options(command: &mut Command, directory: &Path) -> Result<
 }
 
 fn guide_server_owner(
+    root: &Path,
     node: &Path,
     directory: &Path,
     args: &Args,
@@ -1295,6 +1312,12 @@ fn guide_server_owner(
             ca.display()
         ),
     )?;
+    if let Err(error) = browser_trust::guide(root, &ca, origin.as_str(), &fingerprint, interactive)
+    {
+        cliclack::log::warning(format!(
+            "Browser trust needs attention: {error}. Follow setup-guide.html#browser-trust; the server identity is preserved."
+        ))?;
+    }
     let admin_origin = if field("VAULTS_ACCESS_MODE=") == Some("loopback") {
         Some(origin.join("admin/")?)
     } else if field("VAULTS_LOCAL_ADMIN=") == Some("1") {
