@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile, unlink } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated } from './mvp-startup.mjs';
+import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated, devStartupPlan } from './mvp-startup.mjs';
+import {createHash} from 'node:crypto';
 import { createServer } from 'node:http';
 
 test('development settings retain defaults and reject ambiguous ports or unsafe project names', () => {
@@ -113,7 +114,7 @@ test(`actual ${args.join(' ')} exits with the TLS error before creating runtime 
   await mkdir(join(directory, 'scripts'));
   for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
   await writeFile(join(directory, '.env'), `VAULTS_TLS_DIR=${identity}\n`);
-  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', ...args], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true });
+  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', ...args], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true, env:{...process.env,VAULTS_CONFIG_DIR:join(directory,'client-profile')} });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
   assert.ok(result.stderr.replace(/\r\n/g, '\n').includes(missingMessage(identity, args[0], ['live/server.key'])), result.stderr);
@@ -127,7 +128,7 @@ test('launcher preflight accepts complete TLS files without starting containers 
   await mkdir(join(directory, 'scripts'));
   for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
   await writeFile(join(directory, '.env'), `VAULTS_TLS_DIR=${identity}\n`);
-  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', 'dev', '--check'], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true });
+  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', 'dev', '--check'], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true, env:{...process.env,VAULTS_CONFIG_DIR:join(directory,'client-profile')} });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Local TLS startup files are present/);
@@ -143,4 +144,30 @@ test('an enrolled origin cannot be taken over even if no listener is running', a
  await writeFile(join(dir,'tenant-binding.json'),JSON.stringify({tenant_id:'fixture-original'}));
  await writeFile(join(dir,'installation-id'),'fixture-original');
  await assert.rejects(ensureDevOriginIsolated('https://127.0.0.1:12961',dir,dir),/independent identity/);
+});
+
+test('development selects only the recorded matching server, leaving fixture takeover blocked',async t=>{
+ const {directory,identity}=await fixture(t,['ca/ca.crt']);const profile=join(directory,'profile');await mkdir(profile);await mkdir(join(directory,'.tools'));
+ const origin='https://127.0.0.1:12780',installationId='10000000-0000-4000-8000-000000000001';
+ const ca=await readFile(join(identity,'ca/ca.crt')),digest=createHash('sha256').update(ca).digest('hex');
+ const trust=`url=${origin}/\nca_sha256=${digest}\n`;await writeFile(join(profile,'trust.conf'),trust);await writeFile(join(profile,'installation-ca.pem'),ca);await writeFile(join(profile,'tenant-binding.json'),JSON.stringify({tenant_id:installationId}));
+ const input={root:directory,origin,profile};
+ await assert.rejects(devStartupPlan(input),/recorded local server is unavailable/);
+ const config={origin,identity,installationId,database:'fixture-db',server:'fixture-server',relay:'fixture-relay',mounts:Object.fromEntries(['database','server','relay'].map(role=>[role,[{Source:role,Destination:'/fixture'}]]))};
+ await writeFile(join(directory,'.tools/local-server.json'),JSON.stringify(config));
+ assert.deepEqual(await devStartupPlan(input),{mode:'pinned',origin,legacyFingerprint:false});
+ await assert.rejects(devStartupPlan({...input,allowPinned:false}),/enrolled Desktop/);
+ await writeFile(join(profile,'installation-ca.pem'),'other CA');await assert.rejects(devStartupPlan(input),/certificate differs/);await writeFile(join(profile,'installation-ca.pem'),ca);
+ await writeFile(join(profile,'tenant-binding.json'),JSON.stringify({tenant_id:'other-installation'}));await assert.rejects(devStartupPlan(input),/differs from Desktop history/);
+ await writeFile(join(profile,'tenant-binding.json'),JSON.stringify({tenant_id:installationId}));
+ await writeFile(join(profile,'trust.conf'),`url=${origin}/\nca_sha256=${'0'.repeat(64)}\n`);
+ assert.equal((await devStartupPlan(input)).legacyFingerprint,true);assert.match(await readFile(join(profile,'trust.conf'),'utf8'),new RegExp('0'.repeat(64)));
+ assert.deepEqual(await devStartupPlan({...input,origin:'https://127.0.0.1:12961'}),{mode:'fixture',origin:'https://127.0.0.1:12961'});
+ await mkdir(join(directory,'scripts'));for(const name of ['mvp-startup.mjs','mvp-acceptance.mjs'])await copyFile(new URL(name,import.meta.url),join(directory,'scripts',name));
+ await writeFile(join(directory,'.env'),'VAULTS_TLS_DIR='+join(directory,'unrelated-missing-fixture-identity')+'\n');
+ const result=spawnSync(process.execPath,['scripts/mvp-acceptance.mjs','dev','--check'],{cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,VAULTS_CONFIG_DIR:profile,VAULTS_MVP_ENV_FILE:''}});
+ assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/Recorded server startup preflight passed/);
+ await unlink(join(directory,'.env'));
+ const noFixtureEnv=spawnSync(process.execPath,['scripts/mvp-acceptance.mjs','dev','--check'],{cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,VAULTS_CONFIG_DIR:profile,VAULTS_MVP_ENV_FILE:''}});
+ assert.equal(noFixtureEnv.status,0,noFixtureEnv.stderr);assert.match(noFixtureEnv.stdout,/Recorded server startup preflight passed/);
 });

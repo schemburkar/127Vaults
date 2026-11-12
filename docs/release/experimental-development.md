@@ -6,6 +6,16 @@ or a stable storage-format commitment.
 
 ## Supported v1 development path
 
+### Launching Desktop with its existing local server
+
+On Windows, run `./dev.ps1` (or `./dev.ps1 server desktop` to skip extension preparation). `./dev.ps1 -Check` performs a read-only preflight and explains the selected startup mode.
+
+When Desktop already trusts the requested local address and `.tools/local-server.json` records its installation, `pnpm mvp:dev` / `node scripts/mvp-acceptance.mjs dev` restart that recorded server instead of building a different acceptance stack on its address. The selection checks Desktop's active CA and installation binding; the restart also verifies the original mounts, database identity and retained replica history. It waits for PostgreSQL recovery before checking identity. No account credentials, server identity or database volume are replaced. This mode uses the existing server image; it is not backend hot reload. A fixture `.env` is not required for a recorded restart.
+
+The launcher reuses an already open Desktop window from this checkout. Background command output is under `.tools/dev-launcher/`; Desktop itself opens normally. If it is already open, close it yourself before relaunching when a native-code rebuild is needed, so unsaved work is not discarded.
+
+For a separate hot-reload fixture, set `VAULTS_MVP_ENV_FILE` to an independent environment with distinct UI/API ports, TLS/runtime identity and `VAULTS_MVP_PROJECT` database project. An explicit fixture never takes over Desktop's enrolled origin. Missing or conflicting recorded identity/mount/history evidence still fails closed. Never remove Desktop trust, reset the existing database, or bypass the isolation guard to fix a launch error.
+
 Development vault access requires a signed installation-bound development or
 trial license. The source Compose stack passes `VAULTS_LICENSE_FILE`,
 `VAULTS_LICENSE_PUBLIC_KEYS_FILE` and optional `VAULTS_LICENSE_REVOCATION_FILE`

@@ -1,4 +1,4 @@
-import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated } from './mvp-startup.mjs';
+import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated, devStartupPlan } from './mvp-startup.mjs';
 import { spawnSync } from 'node:child_process';
 import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
@@ -8,11 +8,23 @@ import { fileURLToPath } from 'node:url';
 
 const root=dirname(dirname(fileURLToPath(import.meta.url))),action=process.argv[2];
 if(!['start','dev','migrate','exercise','view','browser','reset','stop'].includes(action))throw Error('Usage: node scripts/mvp-acceptance.mjs start|dev|migrate|exercise|view|browser|reset|stop');
-const values={};for(const line of (await readFile(process.env.VAULTS_MVP_ENV_FILE || join(root,'.env'),'utf8')).split(/\r?\n/)){const match=/^([A-Z0-9_]+)=(.*)$/.exec(line);if(match)values[match[1]]=match[2]}
+const environmentSource=await readFile(process.env.VAULTS_MVP_ENV_FILE || join(root,'.env'),'utf8').catch(error=>{if(error.code==='ENOENT'&&action==='dev'&&!process.env.VAULTS_MVP_ENV_FILE)return '';throw error;});
+const values={};for(const line of environmentSource.split(/\r?\n/)){const match=/^([A-Z0-9_]+)=(.*)$/.exec(line);if(match)values[match[1]]=match[2]}
 for (const key of ['VAULTS_DEV_WEB_PORT','VAULTS_DEV_API_PORT','VAULTS_MVP_PROJECT']) if (process.env[key]) values[key] = process.env[key];
 const { webPort, apiPort, project, origin } = devConfiguration(values);
+if(action==='dev') {
+ const plan=await devStartupPlan({origin,root,identity:values.VAULTS_TLS_DIR,allowPinned:!process.env.VAULTS_MVP_ENV_FILE});
+ if(plan.mode==='pinned') {
+  console.log(`Using Desktop's recorded local server at ${origin}. Its database, identity and history are preserved; this is not a hot-reload server rebuild.`);
+  if(process.argv[3]==='--check') {console.log('Recorded server startup preflight passed.');process.exit(0);}
+  const result=spawnSync(process.execPath,['scripts/ops/local-server.mjs','restart'],{cwd:root,stdio:'inherit',windowsHide:true});
+  if(result.status!==0)throw Error('The recorded server could not restart safely. Review the diagnostic above; no development stack was substituted.');
+  console.log(`Server ready at ${origin}. Open or unlock Desktop using its existing account.`);process.exit(0);
+ }
+}
 if(action==='start'||action==='dev'){
  await ensureTlsReady(values, action);
+ if(action==='start')await ensureDevOriginIsolated(origin,undefined,values.VAULTS_TLS_DIR);
  if(process.argv[3]==='--check'){
   console.log('Local TLS startup files are present.');
   process.exit(0);

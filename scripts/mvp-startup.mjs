@@ -1,16 +1,20 @@
 import { access, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { get } from 'node:https';
 import { readFile, writeFile, chmod } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 
-export async function ensureDevOriginIsolated(origin, profile = process.env.VAULTS_CONFIG_DIR || join(process.env.APPDATA || join(homedir(), '.config'), '127Vaults'), identity) {
+export const desktopProfile = () => process.env.VAULTS_CONFIG_DIR || join(process.env.APPDATA || join(homedir(), '.config'), '127Vaults');
+export async function ensureDevOriginIsolated(origin, profile = desktopProfile(), identity) {
   let trust;
   try { trust = await readFile(join(profile, 'trust.conf'), 'utf8'); }
   catch (error) { if (error.code === 'ENOENT') return; throw error; }
   const address = /^url=(.+)$/m.exec(trust)?.[1]?.trim();
-  if (address && new URL(address).origin === origin) throw Error('This address belongs to an enrolled Desktop profile. Development startup cannot replace its server or history, even when the port is free. Restart the pinned server with node scripts/ops/local-server.mjs restart. Use independent development ports, identity and database for a new fixture.');
+  if (address && new URL(address).origin === origin) {
+    const error=Error('This address belongs to an enrolled Desktop profile. Development startup cannot replace its server or history, even when the port is free. Restart the pinned server with node scripts/ops/local-server.mjs restart. Use independent development ports, identity and database for a new fixture.');
+    error.code='DEV_ORIGIN_ENROLLED';throw error;
+  }
   if (identity) {
     try {
       const binding = JSON.parse(await readFile(join(profile, 'tenant-binding.json'), 'utf8'));
@@ -18,6 +22,34 @@ export async function ensureDevOriginIsolated(origin, profile = process.env.VAUL
       if (installation === binding.tenant_id) throw Error('Development fixtures must use an independent identity and database. This identity belongs to the enrolled Desktop installation.');
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
+}
+
+// Read-only selection. A recorded installation may be restarted, never rebuilt or adopted implicitly.
+export async function devStartupPlan({origin,root,identity,profile=desktopProfile(),allowPinned=true}) {
+  try {await ensureDevOriginIsolated(origin,profile,identity);return {mode:'fixture',origin};}
+  catch(error) {if(error.code!=='DEV_ORIGIN_ENROLLED'||!allowPinned)throw error;}
+  let pinned;
+  try {pinned=JSON.parse(await readFile(join(root,'.tools/local-server.json'),'utf8'));}
+  catch {throw Error('Desktop trusts this address, but its recorded local server is unavailable. Preserve Desktop trust and restore .tools/local-server.json, or use an independent fixture address and identity. No server was changed.');}
+  if(pinned.origin!==origin || !isAbsolute(pinned.identity??'') || !/^[a-f0-9-]{36}$/.test(pinned.installationId??'') ||
+     !['database','server','relay'].every(role=>/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(pinned[role]??'') && Array.isArray(pinned.mounts?.[role]) && pinned.mounts[role].length))
+    throw Error('The recorded local server does not match this Desktop address. Existing trust, data and listeners were preserved. Review the recorded installation before restarting it.');
+  const trust=await readFile(join(profile,'trust.conf'),'utf8');
+  const expected=/^ca_sha256=([a-f0-9]{64})\r?$/m.exec(trust)?.[1];
+  const ca=await readFile(join(pinned.identity,'ca/ca.crt'));
+  const activeCa=await readFile(join(profile,'installation-ca.pem'));
+  const digest=createHash('sha256').update(ca).digest('hex');
+  if(createHash('sha256').update(activeCa).digest('hex')!==digest)throw Error('The recorded server certificate differs from Desktop trust. Restore the matching server identity; trust was not replaced.');
+  let bound=false;
+  try {
+    const binding=JSON.parse(await readFile(join(profile,'tenant-binding.json'),'utf8'));
+    if(binding.tenant_id!==pinned.installationId)throw Error('The recorded installation differs from Desktop history. Existing data and trust were preserved.');
+    bound=true;
+  } catch(error) {if(error.code!=='ENOENT')throw error;}
+  // Older local profiles can retain stale display metadata. Require both the active
+  // pinned certificate and durable tenant binding; never rewrite either trust file.
+  if(expected!==digest&&!bound)throw Error('Desktop certificate metadata is inconsistent and no matching history binding is available. Restore matching trust before restarting.');
+  return {mode:'pinned',origin,legacyFingerprint:expected!==digest};
 }
 
 export async function ensureRuntimeKeys(directory) {

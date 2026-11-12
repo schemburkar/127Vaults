@@ -30,6 +30,16 @@ export function verifyPinnedMounts(actual, expected) {
   if (!expected?.length || signature(actual) !== signature(expected)) throw Error('Pinned server storage changed. Refusing to use a different database or identity.');
 }
 
+export async function readPinnedDatabaseIdentity(run,database,{attempts=30,wait=()=>new Promise(done=>setTimeout(done,1000))}={}) {
+  for(let attempt=0;attempt<attempts;attempt++) {
+    try {return run(['exec',database,'psql','-U','vaults','-d','vaults_experimental','-At','-c','SELECT id FROM vaults.installation']);}
+    catch(error) {
+      if(attempt===attempts-1)throw Error('The pinned database did not become ready. Its existing volume and identity were preserved; inspect the database startup logs.');
+      await wait();
+    }
+  }
+}
+
 async function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
   const action = process.argv[2];
@@ -46,7 +56,7 @@ async function main() {
     verifyPinnedMounts(inspected.Mounts, config.mounts[role]);
   }
   if (action !== 'status') run(['start', config.database]);
-  const databaseId = run(['exec', config.database, 'psql', '-U', 'vaults', '-d', 'vaults_experimental', '-At', '-c', 'SELECT id FROM vaults.installation']);
+  const databaseId = await readPinnedDatabaseIdentity(run,config.database,{...(action==='status'?{attempts:1}:{})});
   if (databaseId !== config.installationId) throw Error('Pinned database installation does not match Desktop.');
   const profile = process.env.VAULTS_CONFIG_DIR || join(process.env.APPDATA || join(homedir(), '.config'), '127Vaults');
   const replicaDirectory = join(profile, 'replicas');
