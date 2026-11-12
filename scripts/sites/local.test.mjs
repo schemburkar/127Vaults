@@ -9,6 +9,25 @@ import { createLocalSites, defaultOrigins, validateOrigins, validatePreviewDirec
 import { stageSite, siteAssets, repository } from './assets.mjs';
 import { verifyLicenseFile } from '../../apps/server/src/license-status.mjs';
 
+test('live Personal purchase is primary on pricing, home and downloads while trials and Commercial remain separate', async t => {
+  const dir = await mkdtemp(join(tmpdir(), '127v-live-plans-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const live = await stageSite('public', join(dir, 'live'), { personalBuyUrl: 'https://manage.example.com/portal' });
+  for (const name of ['index.html', 'pricing.html']) {
+    const html = await readFile(join(live.directory,name),'utf8');
+    assert.match(html, /class="plan-cta" href="https:\/\/manage.example.com\/portal">Subscribe now/);
+    assert.match(html, /Request trial access/);
+    assert.match(html, /plan=commercial">Request access/);
+  }
+  const downloads = await readFile(join(live.directory,'downloads.html'),'utf8');
+  assert.match(downloads,/Subscribe to Personal/);
+  assert.match(downloads,/Manage downloads/);
+  const testBuild = await stageSite('public',join(dir,'test'));
+  const testPricing = await readFile(join(testBuild.directory,'pricing.html'),'utf8');
+  assert.doesNotMatch(testPricing,/Subscribe now/);
+  assert.match(testPricing,/plan=personal">Request access/);
+});
+
 test('separate site builds contain only their own executable pages and modules', async t => {
   const dir = await mkdtemp(join(tmpdir(), '127v-site-assets-')); t.after(() => rm(dir, { recursive: true, force: true }));
   for (const surface of ['public', 'admin', 'customer']) {

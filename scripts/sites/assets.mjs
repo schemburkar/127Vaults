@@ -39,10 +39,17 @@ export async function stageSite(surface, directory, { publicOrigin, personalBuyU
   if (!siteAssets[surface]) throw Error('Unknown site');
   const sources = new Map(await Promise.all(siteAssets[surface].map(async name => [name, await readSiteAsset(surface, name)])));
   if (surface === 'public' && personalBuyUrl) {
-    const pricing = sources.get('pricing.html').toString('utf8');
     const button = '<a class="plan-cta" href="get-started.html?plan=personal">Request access</a>';
-    sources.set('pricing.html', Buffer.from(pricing.replace(button,
-      `<a class="plan-cta" href="${personalBuyUrl}">Buy Personal</a>${button}`)));
+    for (const name of ['index.html', 'pricing.html']) {
+      const content = sources.get(name).toString('utf8');
+      if (!content.includes(button)) throw Error(`Personal plan action missing in ${name}`);
+      sources.set(name, Buffer.from(content.replace(button,
+        `<a class="plan-cta" href="${personalBuyUrl}">Subscribe now</a><p class="plan-trial-link"><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
+    }
+    const downloads = sources.get('downloads.html').toString('utf8');
+    sources.set('downloads.html', Buffer.from(downloads.replace(
+      '<!-- personal-purchase -->',
+      `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p><p><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
   }
   if (surface !== 'public') sources.set('index.html', sources.get(surface === 'admin' ? 'access-admin.html' : 'portal.html'));
   const digest = createHash('sha256');
