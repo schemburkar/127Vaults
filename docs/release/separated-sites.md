@@ -106,6 +106,13 @@ cookie sharing or broad CORS allowance is added.
 
 ## Run and verify
 
+For a local site-only publication using the installed Cloudflare CLI's default
+credentials, first run `cf auth whoami`, then use
+`node scripts/release/cloudflare-cli-auth.mjs --sites -Revision FULL_COMMIT -Config .cloudflare-deploy/config.json`.
+This runs the same checked PowerShell publication workflow. It keeps the existing
+package catalogue and does not create an installer release. Add `-Plan` for the
+local checks and dry-run only.
+
 After committing and pushing the intended source, start the existing runner with
 `pwsh -NoProfile -File scripts/release/runner.ps1 start`, then dispatch
 `.github/workflows/sites-publish.yml` on main. The workflow runs site/runtime,

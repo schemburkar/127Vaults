@@ -17,7 +17,11 @@ export async function cloudflareCliEnvironment(env = process.env) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const env = await cloudflareCliEnvironment();
-    const child = spawn(process.execPath, [fileURLToPath(new URL('./set.mjs', import.meta.url)), '--request'],
+    const sites = process.argv[2] === '--sites';
+    const command = sites ? 'pwsh' : process.execPath;
+    const args = sites ? ['-NoProfile', '-File', fileURLToPath(new URL('../cloudflare/publish-sites.ps1', import.meta.url)), ...process.argv.slice(3)]
+      : [fileURLToPath(new URL('./set.mjs', import.meta.url)), '--request'];
+    const child = spawn(command, args,
       { env, stdio: 'inherit', windowsHide: true });
     child.on('error', () => { console.error('Cannot start the release workflow.'); process.exitCode = 1; });
     child.on('exit', code => { process.exitCode = code ?? 1; });
