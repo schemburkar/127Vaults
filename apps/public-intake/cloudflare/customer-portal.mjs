@@ -203,7 +203,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     return json(200, { scope: principal.installationOnly ? 'installer' : principal.kind, email: principal.kind === 'email' ? principal.email : null,
       purchaseMode: personalOffered(env) && personalBuyerAllowed(env, principal.email) ? env.DODO_MODE : null,
       canBuyPersonal: principal.kind === 'email' && personalBuyerAllowed(env, principal.email) && personalOffered(env)
-        && !requests.some(row => row.plan === 'personal' && row.billingStatus),
+        && !requests.some(row => row.plan === 'personal' && row.billingStatus && row.billingMode === env.DODO_MODE),
       requests, cloudTenants: cloud.tenants, cloudUnavailable: cloud.unavailable });
   }
   if (path === '/api/customer/logout' && request.method === 'POST') {

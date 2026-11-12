@@ -34,7 +34,7 @@ function renderPlans(value) {
   }
   if (options.some(row => row.id === selected)) target.value = selected;
   target.closest('label').hidden = !options.length;
-  const order = value.requests.find(row => row.plan === 'personal' && row.billingStatus);
+  const order = value.requests.find(row => row.plan === 'personal' && row.billingStatus && row.billingMode === value.purchaseMode);
   $('personal-plan-action').replaceChildren();
   if (!value.canBuyPersonal && order && value.scope === 'email') {
     const label = ({ offered: 'Continue checkout', checkout_pending: 'Continue checkout', failed: 'Retry payment', cancelled: 'Subscribe again', expired: 'Subscribe again' })[order.billingStatus] ?? 'Manage plan';

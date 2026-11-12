@@ -412,6 +412,15 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
     await encryptionKey(f.intakeKey, 'trials'), () => Date.now(), await limiterKey(f.intakeKey));
   const installationId = randomUUID();
   const sourceId = 'e'.repeat(64);
+  if (!conversion) {
+    await store.insertOrder('d'.repeat(64), { email: 'buyer@customer-domain.dev', plan: 'personal' }, {
+      kind: 'personal-purchase', state: 'approved', maxUsers: 5,
+      billing: { mode: 'test_mode', planSlug: 'personal-annual', productId: 'pdt_test', status: 'active' },
+    });
+    const customer = await (await f.get('/api/customer/me', null, cookie)).json();
+    assert.equal(customer.canBuyPersonal, true, 'historical test orders must not block live purchases');
+    assert.equal(customer.requests.find(row => row.id === 'd'.repeat(64)).billingMode, 'test_mode');
+  }
   let original;
   if (conversion) {
     const expiresAt = new Date(Date.now() + 86400000).toISOString();
