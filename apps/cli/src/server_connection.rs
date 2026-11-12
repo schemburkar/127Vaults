@@ -4,6 +4,41 @@ use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 use url::Url;
 
+/// Read first-owner availability using the saved, pinned HTTPS trust only.
+///
+/// # Errors
+/// Fails closed when trust, TLS, connectivity or the bounded response is invalid.
+pub fn setup_status(config: &Path) -> Result<serde_json::Value, String> {
+    use std::io::Read;
+    let origin = super::profile_value(config, "url")?;
+    let client = super::trusted_http_builder(config)?
+        .timeout(std::time::Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| "Server connection failed".to_owned())?;
+    let response = client
+        .get(format!("{}/api/v1/setup", origin.trim_end_matches('/')))
+        .send()
+        .map_err(|_| "Server connection failed; check network and certificate".to_owned())?
+        .error_for_status()
+        .map_err(|_| "Server setup status unavailable".to_owned())?;
+    let mut bytes = Vec::new();
+    response
+        .take(8193)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Server response unavailable".to_owned())?;
+    if bytes.len() > 8192 {
+        return Err("Server response too large".to_owned());
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid server response".to_owned())?;
+    let required = value
+        .get("ownerRequired")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or("Invalid setup status")?;
+    Ok(serde_json::json!({"ownerRequired":required}))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ServerConnection {

@@ -161,6 +161,7 @@ const webFiles=new Map([
   ['/app/signed-sync.mjs',['../../web/src/signed-sync.mjs','text/javascript; charset=utf-8']],
   ['/app/passkeys.mjs',['../../extension/src/passkeys.mjs','text/javascript; charset=utf-8']],
   ['/app/shared/passkey-metadata.mjs',['../../../packages/domain/src/passkey-metadata.mjs','text/javascript; charset=utf-8']],
+  ['/app/shared/connection-help.mjs',['../../../packages/domain/src/connection-help.mjs','text/javascript; charset=utf-8']],
   ['/app/shared/seat-summary.mjs',['../../../packages/domain/src/seat-summary.mjs','text/javascript; charset=utf-8']],
   ['/app/shared/directory-presentation.mjs',['../admin/directory-presentation.mjs','text/javascript; charset=utf-8']],
   ['/app/private-vault-client.mjs',['../../web/src/private-vault-client.mjs','text/javascript; charset=utf-8']],

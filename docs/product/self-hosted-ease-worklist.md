@@ -20,19 +20,19 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 3. Desktop
 
-- [ ] 3.1 Staged first-run joining wizard.
-- [ ] 3.2 Primary file import with advanced manual setup.
-- [ ] 3.3 Confirm recognizable server identity.
-- [ ] 3.4 Pending approval code and trusted-device instructions.
-- [ ] 3.5 Resume onboarding without retaining credentials.
+- [x] 3.1 Staged first-run joining wizard.
+- [x] 3.2 Primary file import with advanced manual setup.
+- [x] 3.3 Confirm recognizable server identity.
+- [x] 3.4 Pending approval code and trusted-device instructions.
+- [x] 3.5 Resume onboarding without retaining credentials.
 
 ## 4. Web app
 
-- [ ] 4.1 Invitation-led account creation.
-- [ ] 4.2 First-owner setup only when needed.
-- [ ] 4.3 Recovery/vault/device onboarding checklist.
-- [ ] 4.4 Prominent reviewed device approval.
-- [ ] 4.5 Post-registration client downloads and connection guidance.
+- [x] 4.1 Invitation-led account creation.
+- [x] 4.2 First-owner setup only when needed.
+- [x] 4.3 Recovery/vault/device onboarding checklist.
+- [x] 4.4 Prominent reviewed device approval.
+- [x] 4.5 Post-registration client downloads and connection guidance.
 
 ## 5. Server admin
 
@@ -60,19 +60,19 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 8. Connection failures
 
-- [ ] 8.1 Actionable server/network/Tailscale errors.
-- [ ] 8.2 Preserve trust and explain identity changes.
-- [ ] 8.3 Distinguish account/approval/revocation errors.
-- [ ] 8.4 Role-appropriate license guidance.
-- [ ] 8.5 Deliberately shared redacted diagnostic report.
+- [x] 8.1 Actionable server/network/Tailscale errors.
+- [x] 8.2 Preserve trust and explain identity changes.
+- [x] 8.3 Distinguish account/approval/revocation errors.
+- [x] 8.4 Role-appropriate license guidance.
+- [x] 8.5 Deliberately shared redacted diagnostic report.
 
 ## 9. Browser certificate trust
 
-- [ ] 9.1 Explain application versus browser trust.
-- [ ] 9.2 Platform-specific browser trust guides.
-- [ ] 9.3 Obtain public CA and verification information.
-- [ ] 9.4 Approval using existing trusted device.
-- [ ] 9.5 Connection check without certificate bypass.
+- [x] 9.1 Explain application versus browser trust.
+- [x] 9.2 Platform-specific browser trust guides.
+- [x] 9.3 Obtain public CA and verification information.
+- [x] 9.4 Approval using existing trusted device.
+- [x] 9.5 Connection check without certificate bypass.
 
 ## 10. Server ownership
 
@@ -86,3 +86,5 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 Batch 1 evidence: installer journey module, role recommendations, bounded public connection import, prerequisite preview/restart instructions and existing atomic installation receipts; protected client-download grants with expiry/revocation and explicit denial of server/license/billing endpoints; joining page with OS recommendations and non-secret checklist. `cargo test -p vaults-installer`, installer Clippy, client-download unit tests and the Worker HTTP authorization regression pass. Remaining handoff details stay open below.
 
 Batch 2 evidence: Add a person reuses the fresh-password, idempotent invitation ceremony and adds a connection-file/client-download/instruction sharing kit. Server-only refresh credentials stay behind the local admin API; trial operators can paste a client-only Manage link. Connection readiness distinguishes local-only addresses and expiring certificates without claiming remote reachability. Existing invitation state queries and readiness counts are verified. Admin handler/directory, joining-kit and delegation tests pass.
+
+Batch 3 evidence: Desktop starts incomplete profiles in staged onboarding, previews the server name/address, gates owner setup on a pinned HTTPS check, displays approval codes, and resumes from trust/device receipts without retaining setup credentials. Web invitations and first-owner gates already pass the enrollment suite; added post-registration guidance and an accessible recovery/vault/device checklist with the existing reviewed approval flow. Shared error guidance retains trust and local data; reports contain only allowlisted status categories/booleans. Admin exports the public CA with its exact-file fingerprint; browser trust guides cover Windows/Linux and future macOS, and the web app checks only its own HTTPS server without bypassing TLS. Desktop check +51 tests, web check +95 tests and diagnostic redaction tests pass.

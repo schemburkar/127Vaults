@@ -668,6 +668,8 @@ function Authentication() {
             Create first owner
           </Button>
           <Button id="register-browser-device" variant="ghost" className="mx-auto mt-3 flex w-fit text-[#E0BB95]" hidden>Register this device</Button>
+          <Button id="joining-help" variant="ghost" className="mt-3 w-full">Joining and connection help</Button>
+          <section id="account-created-next" hidden className="mt-4 rounded-xl border border-white/10 p-4"><strong>Your account is ready</strong><p className="mt-2 text-sm">Keep your recovery material safe. To add Desktop or CLI, use the protected download link and connection file from your administrator. Each device needs its own approval.</p></section>
           <PwaControls compact />
           <Button id="lock" hidden disabled>
             Lock
@@ -711,6 +713,7 @@ function Sidebar({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: ()
         <Button id="mobile-sync" variant="ghost" className={`${nav} hidden max-[560px]:flex`}>
           <RefreshCw aria-hidden="true" /> <span>Sync</span>
         </Button>
+<Button id="joining-help-vault" variant="ghost" className={nav}><PanelsTopLeft aria-hidden="true" /><span>Connect a device</span></Button>
         <Button id="settings-toggle" variant="ghost" className={nav}>
           <SettingsIcon aria-hidden="true" /> <span>Settings</span>
         </Button>
@@ -1047,6 +1050,14 @@ export function App() {
       <Vault />
       <Settings />
       <ToastRegion />
+      <dialog id="joining-help-dialog" aria-labelledby="joining-help-title" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100">
+        <h2 id="joining-help-title" className="text-xl font-bold">Finish setting up your devices</h2>
+        <ol className="mt-4 grid gap-4 list-decimal pl-5"><li>Save your recovery material somewhere safe.<label className="mt-2 flex gap-3"><input id="recovery-noted" type="checkbox" />I have saved it (your own checklist)</label></li><li id="joining-vault-check">Unlock your account and create or open your first vault.</li><li>Ask your administrator for the protected client-download link and the public server connection file. Import the file in Desktop; use the account invitation to create an account, not to configure the server.</li><li>Approve each new device from an already trusted session after comparing its code and details.</li></ol>
+        <p className="mt-4 text-sm">Importing a connection file pins the certificate in Desktop or CLI only. Your browser uses its own certificate trust. Use a trusted channel to confirm the public CA with your administrator. Never bypass a certificate warning.</p>
+        <a className="my-3 block underline" href="https://127vaults.com/setup-guide.html" target="_blank" rel="noreferrer">Browser trust and first-time setup guide</a>
+        <p id="joining-connection-status" role="status" className="my-3 text-sm" />
+        <div className="ui-dialog-actions flex-wrap"><Button id="joining-connection-check" variant="secondary">Check this browser connection</Button><Button id="joining-approve" hidden>Approve another device</Button><Button id="joining-report" variant="ghost">Save redacted report</Button><Button id="joining-help-close" variant="ghost">Close</Button></div>
+      </dialog>
       <CollectionDialog />
       <dialog aria-labelledby="sync-review-title" id="sync-review-dialog" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100"><h2 id="sync-review-title" className="text-xl font-bold" /><p id="sync-review-detail" className="mt-3 text-sm text-slate-400" /><select id="sync-review-destination" aria-label="Recovery vault" hidden className="mt-4 w-full rounded-xl border border-white/10 bg-[#11162b] p-3 text-white" /><div className="ui-dialog-actions ui-dialog-actions-stack"><Button id="sync-review-mine">Keep my offline changes</Button><Button id="sync-review-server" variant="secondary">Use server version</Button><Button id="sync-review-later" variant="ghost">Review later</Button></div></dialog>
       <dialog aria-labelledby="browser-enrollment-title" id="browser-enrollment-dialog" className="ui-dialog border border-white/10 bg-[#11162b] text-slate-100"><h2 className="text-xl font-bold" id="browser-enrollment-title">Register this device</h2><p className="mt-3 text-sm text-slate-400">On an already registered device, unlock 127Vaults and open Settings → Devices → Register a device. Approve this one-time code:</p><output id="browser-enrollment-code" className="my-5 block text-center font-mono text-3xl tracking-widest" /><p id="browser-enrollment-status" className="text-sm text-slate-400" role="status" /><div className="ui-dialog-actions"><Button id="browser-enrollment-cancel" variant="secondary">Cancel</Button><Button id="browser-enrollment-check">Check approval</Button></div></dialog>

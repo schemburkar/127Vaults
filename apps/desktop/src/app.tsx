@@ -1,3 +1,4 @@
+import { connectionHelp, diagnosticReport } from '../../../packages/domain/src/connection-help.mjs';
 import { ConfirmationProvider, useConfirmation } from "./components/confirmation-dialog";
 import { ItemTabs, tabKey, markerClass } from "@127vaults/ui";
 import { TypePicker, RelatedPicker } from "./components/item-type-pickers";
@@ -63,6 +64,7 @@ type DesktopInfo = {
   configured: boolean;
   configurationPath: string;
   registrationUrl: string | null;
+  serverAddress?: string;
   cloudVaultUrl: string | null;
   cachedUsername: string | null;
   hasCachedSecret: boolean;
@@ -127,6 +129,9 @@ function DesktopApp() {
   const dirtyRef = useRef(false);
   const [enrolling, setEnrolling] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [ownerRequired, setOwnerRequired] = useState(false);
+  const [approvalCode, setApprovalCode] = useState<string | null>(null);
+  const [memberInvitation, setMemberInvitation] = useState("");
   const [approvalLink, setApprovalLink] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false),
     [registrationUsername, setRegistrationUsername] = useState("");
@@ -244,6 +249,8 @@ function DesktopApp() {
       return offlineReason?.includes("checkpoint verification key changed")
         ? "Sync is paused because this server has a different checkpoint verification key. Your encrypted replica and pending changes are preserved. Restore the original server identity before reconnecting."
         : `Sync is paused because online unlock did not complete. Reconnect from Profile with your master password.${offlineReason ? ` Online unlock failed: ${friendlyError(offlineReason)}` : ""}`;
+    const help = connectionHelp(message);
+    if (help) return help.message;
     if (
       message.includes("SERVER_TIMEOUT") ||
       message.toLowerCase().includes("timed out")
@@ -382,7 +389,7 @@ function DesktopApp() {
   useEffect(() => {
     void invoke<typeof nativePasskeys>("native_passkey_provider", { action: "status" }).then(setNativePasskeys).catch(() => undefined);
     void invoke<DesktopInfo>("desktop_info")
-      .then((info) => { setDesktopInfo(info); setRememberedSecret(info.hasCachedSecret); if (info.cachedUsername) setUsername(info.cachedUsername); })
+      .then((info) => { setDesktopInfo(info); if (!info.configured) setRegistrationOpen(true); setRememberedSecret(info.hasCachedSecret); if (info.cachedUsername) setUsername(info.cachedUsername); })
       .catch((e) => setStatus(String(e)));
     // Focus and visibility changes are not lock signals. Users routinely switch
     // apps while retrieving an account secret or completing login.
@@ -1241,6 +1248,22 @@ function DesktopApp() {
     };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   });
+  useEffect(() => {
+    setOwnerRequired(false);
+    if (desktopInfo?.registrationUrl) void invoke<{ownerRequired:boolean}>("server_setup_status").then(result => setOwnerRequired(result.ownerRequired)).catch(() => undefined);
+  }, [desktopInfo?.registrationUrl]);
+  const exportConnectionReport = () => {
+    const report = diagnosticReport("desktop", { error: status || offlineReason, trustConfigured: Boolean(desktopInfo?.registrationUrl), deviceEnrolled: Boolean(desktopInfo?.deviceId), networkReachable: online, unlocked });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type:"application/json"}));
+    const link = document.createElement("a"); link.href = url; link.download = "127vaults-connection-report.json"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const openMemberInvitation = async () => {
+    try {
+      const invitation = new URL(memberInvitation.trim());
+      if (!desktopInfo?.registrationUrl || invitation.origin !== new URL(desktopInfo.registrationUrl).origin || invitation.username || invitation.password || !/^#memberInvite=127V-I1\./.test(invitation.hash)) throw Error("Use the account invitation from this server’s administrator.");
+      await openUrl(invitation.href); setMemberInvitation("");
+    } catch (error) { setStatus(friendlyError(error)); }
+  };
   const readServerConnection = async (file?: File) => {
     setServerConnection(null);
     if (!file || trustBusy) return;
@@ -1300,6 +1323,7 @@ function DesktopApp() {
           "device_enrollment_status",
         );
         if (progress.state === "approval") {
+          setApprovalCode(progress.code || null);
           setStatus(
             `Approve code ${progress.code} in Trusted devices in your browser.`,
           );
@@ -1321,6 +1345,7 @@ function DesktopApp() {
       setStatus(String(e));
     } finally {
       setApprovalLink(null);
+      setApprovalCode(null);
       setEnrolling(false);
     }
   };
@@ -1435,15 +1460,16 @@ function DesktopApp() {
                 </p>
                 <h1 className="mt-1 text-2xl font-bold">Set up this desktop</h1>
                 <p className="mt-2 text-sm text-slate-400">
-                  Choose whether you already have a 127Vaults account.
+                  Import your administrator’s connection file, then register this computer. No passwords are kept when you leave setup.
                 </p>
               </div>
+              <ol aria-label="Setup progress" className="mb-5 flex flex-wrap gap-3 text-xs"><li>{desktopInfo?.registrationUrl ? "✓" : "1"} Connect server</li><li>{desktopInfo?.deviceId ? "✓" : "2"} Account and approval</li><li>3 Unlock vault</li></ol>
               <div className="grid gap-5">
                 {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
-                  <h2 className="font-bold">Connect to a Cloud family vault</h2>
+                  <details><summary className="font-bold cursor-pointer">Connect to an existing Cloud family vault</summary>
                   <p className="mb-3 mt-1 text-sm text-slate-400">Copy the address from Settings → Devices in your web vault. It includes your family name after /t/.</p>
                   <Input aria-label="Cloud family vault address" placeholder="https://cloud.127vaults.com/t/your-family/" value={cloudUrl} onChange={event => setCloudUrl(event.target.value)} />
-                  <Button className="mt-3 w-full" disabled={trustBusy || !cloudUrl.trim()} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button>
+                  <Button className="mt-3 w-full" disabled={trustBusy || !cloudUrl.trim()} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button></details>
                 </section>}
                 {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-5">
                   <h2 className="font-bold">Connect to your private server</h2>
@@ -1469,7 +1495,8 @@ function DesktopApp() {
                   </div>
                   <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button></details>
                 </section>}
-                <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
+                {desktopInfo?.registrationUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
+                  <p className="mb-3 break-all text-sm">Connected server: {desktopInfo.serverAddress}</p>
                   <h2 className="font-bold">I already have an account</h2>
                   {desktopInfo?.cloudVaultUrl && <p className="mt-1 break-all text-xs text-slate-400">{desktopInfo.cloudVaultUrl}</p>}
                   <p className="mb-4 mt-1 text-sm text-slate-400">
@@ -1492,10 +1519,12 @@ function DesktopApp() {
                       ? "Waiting for web approval…"
                       : "Register this desktop"}
                   </Button>
+                  {approvalCode && <aside className="mt-4 rounded-xl border border-amber-300/30 p-4"><h3 className="font-bold">Approve this computer</h3><code className="block my-3 text-2xl">{approvalCode}</code><p className="text-sm">On an already trusted device, open your vault → Settings → Devices. Compare this code and the device details before approving. This browser does not need to be trusted if you use another device.</p></aside>}
                   {approvalLink && <Button className="mt-2 w-full" variant="secondary" onClick={() => void openUrl(approvalLink).catch(() =>
                     setStatus("Open your web vault and enter the approval code under Settings → Devices."))}>Open browser approval</Button>}
-                </section>
-                {!desktopInfo?.cloudVaultUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
+                </section>}
+                {desktopInfo?.registrationUrl && !ownerRequired && <section className="rounded-2xl border border-white/8 p-5"><h2 className="font-bold">Need an account?</h2><p className="my-3 text-sm text-slate-400">Ask your administrator for an account invitation. Create your account in the web vault, then return here for approval.</p><Input aria-label="Account invitation link" type="password" autoComplete="off" value={memberInvitation} onChange={event => setMemberInvitation(event.target.value)} placeholder="Paste account invitation" /><Button className="mt-3" disabled={!memberInvitation || enrolling} onClick={() => void openMemberInvitation()}>Open account invitation</Button></section>}
+                {ownerRequired && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <h2 className="font-bold">This is my first device</h2>
                   <p className="mb-4 mt-1 text-sm text-slate-400">
                     Create the first owner account using the server’s secure
@@ -1522,6 +1551,7 @@ function DesktopApp() {
                   </p>
                 </section>}
               </div>
+              <Button variant="ghost" className="mt-4" onClick={exportConnectionReport}>Save redacted connection report</Button>
               <p
                 className="mt-5 min-h-5 text-xs text-slate-400"
                 role="status"

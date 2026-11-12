@@ -256,6 +256,16 @@ async fn import_server_connection(source: String) -> Result<String, String> {
         .map_err(|_| "Server verification did not complete".to_owned())?
 }
 
+#[tauri::command]
+async fn server_setup_status() -> Result<Value, String> {
+    let directory = config_directory()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        vaults_cli::server_connection::setup_status(&directory)
+    })
+    .await
+    .map_err(|_| "Server check did not complete".to_owned())?
+}
+
 fn profile(path: &std::path::Path, key: &str) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()?
@@ -342,6 +352,7 @@ fn desktop_info() -> Result<Value, String> {
     Ok(json!({
         "configured": config.join("trust.conf").is_file() && config.join("device.conf").is_file(),
         "configurationPath": config,
+        "serverAddress": origin,
         "registrationUrl": origin.as_ref().map(|url| format!("{}/?register=1", url.trim_end_matches('/'))),
         "cloudVaultUrl": origin.filter(|_| cloud).map(|url| format!("{}/", url.trim_end_matches('/'))),
         "cachedUsername": cached_username(&config),
@@ -1359,6 +1370,7 @@ fn main() {
             configure_server_trust,
             preview_server_connection,
             import_server_connection,
+            server_setup_status,
             configure_cloud_trust,
             tailscale_peers
         ])
