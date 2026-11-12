@@ -1,6 +1,7 @@
 // Native private-test packaging. Run once on each target OS; no registry or GitHub required.
 import { spawn } from 'node:child_process';
 import { prepareExtensionAssets } from '../extension-assets.mjs';
+import { prepareStoreReview } from './extension-review.mjs';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { chmod, copyFile, cp, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -67,6 +68,7 @@ export async function packageExtension(output, options = {}) {
     manifest.version = packageVersion;
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   }
+  await prepareStoreReview(directory);
   await copyFile(join(sourceRoot, 'docs/release/extension-install.md'), join(directory, 'README.md'));
   await copyLicenses(sourceRoot, directory);
   await archive(directory, join(output, `127vaults-extension-${packageVersion}.zip`), true);

@@ -28,6 +28,9 @@ use vaults_installer::{Artifact, Invitation, Product, Result, select_artifact};
     about = "Install and upgrade your licensed 127Vaults apps"
 )]
 struct Args {
+    /// Review the local remaining-setup checklist without a setup link.
+    #[arg(long)]
+    review_setup: bool,
     /// Set up a server, join one, or update/repair installed components.
     #[arg(long, value_enum)]
     intent: Option<journey::Intent>,
@@ -101,6 +104,8 @@ struct State {
     format: u8,
     records: Vec<Record>,
     #[serde(default)]
+    selected_products: Vec<Product>,
+    #[serde(default)]
     pending_upgrade: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     preserved_server_setups: Vec<Record>,
@@ -121,6 +126,7 @@ impl State {
             return Ok(Self {
                 format: 1,
                 records: vec![],
+                selected_products: vec![],
                 pending_upgrade: None,
                 preserved_server_setups: vec![],
             });
@@ -135,7 +141,28 @@ impl State {
         let mut file = AtomicWriteFile::open(root.join("installation.json"))?;
         file.write_all(&serde_json::to_vec_pretty(self)?)?;
         file.commit()?;
-        Ok(())
+        let products = if self.selected_products.is_empty() {
+            self.records
+                .iter()
+                .map(|record| record.product)
+                .collect::<Vec<_>>()
+        } else {
+            self.selected_products.clone()
+        };
+        journey::save_progress(
+            root,
+            &products
+                .iter()
+                .map(|product| {
+                    journey::next_step(
+                        *product,
+                        self.records
+                            .iter()
+                            .any(|record| record.product == *product && record.complete),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
     }
     fn record(&mut self, record: Record) {
         self.records.retain(|r| r.product != record.product);
@@ -245,6 +272,26 @@ fn main() {
 
 #[allow(clippy::too_many_lines)] // Sequential orchestration; helpers own side effects.
 fn execute(mut args: Args) -> Result<()> {
+    if args.review_setup {
+        if !std::io::stdin().is_terminal() {
+            return Err("Checklist review requires an interactive terminal".into());
+        }
+        let root = args
+            .directory
+            .clone()
+            .or_else(|| dirs::data_local_dir().map(|path| path.join("127Vaults/installer")))
+            .ok_or("Local installation directory unavailable")?;
+        let state = State::load(&root)?;
+        return journey::review(
+            &root,
+            &state
+                .records
+                .iter()
+                .filter(|record| record.complete)
+                .map(|record| record.product)
+                .collect::<Vec<_>>(),
+        );
+    }
     if args.discover {
         println!(
             "{}",
@@ -600,9 +647,6 @@ fn execute(mut args: Args) -> Result<()> {
         );
     }
     fs::create_dir_all(&root)?;
-    if let Some(value) = &connection {
-        value.save(&root)?;
-    }
     let lock = root.join("installer.lock");
     let mut file = OpenOptions::new().write(true).create_new(true).open(&lock).map_err(|_| "Installer lock exists. If no installer is running, inspect the interrupted installation before removing installer.lock")?;
     let _lock = Lock(lock);
@@ -613,6 +657,10 @@ fn execute(mut args: Args) -> Result<()> {
     // Reload under the lock so another invocation cannot silently replace newer state.
     // The unchanged on-disk snapshot was checked above. Keep the read-only
     // discovery/adoption decisions prepared before confirmation.
+    if let Some(value) = &connection {
+        value.save(&root)?;
+    }
+    state.selected_products = args.components.clone();
     state.save(&root)?;
     let has_server = args.components.contains(&Product::Server);
     let node = if has_server {
@@ -939,6 +987,20 @@ fn execute(mut args: Args) -> Result<()> {
             root.join("server-connection.127vaults-server").display()
         ))?;
     }
+    if interactive
+        && !args.yes
+        && args.components.contains(&Product::Desktop)
+        && cliclack::confirm(
+            "Open Desktop now to continue setup? Only the public connection file is handed over.",
+        )
+        .interact()?
+        && let Err(error) = journey::open_desktop(&root)
+    {
+        cliclack::log::warning(error.to_string())?;
+    }
+    cliclack::log::info(
+        "Return to your remaining setup steps with 127vaults-install --review-setup (add --directory for a custom install location). Package installation alone does not mean a client is ready.",
+    )?;
     cliclack::outro(
         "Installation finished. Follow the next steps above; your checklist is saved in next-steps.json.",
     )?;

@@ -44,19 +44,19 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 6. Extension
 
-- [ ] 6.1 Detect and recommend a source.
-- [ ] 6.2 Remember source preference.
-- [ ] 6.3 Open/unlock/reconnect actions.
-- [ ] 6.4 Guided install and connector repair.
-- [ ] 6.5 Prepare browser-store distribution.
+- [x] 6.1 Detect and recommend a source.
+- [x] 6.2 Remember source preference.
+- [x] 6.3 Open/unlock/reconnect actions.
+- [x] 6.4 Guided install and connector repair.
+- [x] 6.5 Prepare browser-store distribution.
 
 ## 7. Installation handoff
 
 - [x] 7.1 Component-specific completion results.
-- [ ] 7.2 Installed, needs setup and ready states.
-- [ ] 7.3 Correct next action after installation.
-- [ ] 7.4 Safe connection handoff without credentials.
-- [ ] 7.5 Resumable remaining-work checklist.
+- [x] 7.2 Installed, needs setup and ready states.
+- [x] 7.3 Correct next action after installation.
+- [x] 7.4 Safe connection handoff without credentials.
+- [x] 7.5 Resumable remaining-work checklist.
 
 ## 8. Connection failures
 
@@ -88,3 +88,5 @@ Batch 1 evidence: installer journey module, role recommendations, bounded public
 Batch 2 evidence: Add a person reuses the fresh-password, idempotent invitation ceremony and adds a connection-file/client-download/instruction sharing kit. Server-only refresh credentials stay behind the local admin API; trial operators can paste a client-only Manage link. Connection readiness distinguishes local-only addresses and expiring certificates without claiming remote reachability. Existing invitation state queries and readiness counts are verified. Admin handler/directory, joining-kit and delegation tests pass.
 
 Batch 3 evidence: Desktop starts incomplete profiles in staged onboarding, previews the server name/address, gates owner setup on a pinned HTTPS check, displays approval codes, and resumes from trust/device receipts without retaining setup credentials. Web invitations and first-owner gates already pass the enrollment suite; added post-registration guidance and an accessible recovery/vault/device checklist with the existing reviewed approval flow. Shared error guidance retains trust and local data; reports contain only allowlisted status categories/booleans. Admin exports the public CA with its exact-file fingerprint; browser trust guides cover Windows/Linux and future macOS, and the web app checks only its own HTTPS server without bypassing TLS. Desktop check +51 tests, web check +95 tests and diagnostic redaction tests pass.
+
+Batch 4 evidence: extension source detection now preserves an explicit non-secret preference across popup restarts, explains fallback, and retains existing safe open/unlock/reconnect controls. Repair instructions lead to the existing installer connector-registration flow; redacted reports are opt-in. Packaging prepares a permission/asset-validated store review manifest without publishing or inventing store IDs. Installer saves per-component handoff after each durable state change, separates installed from needs-setup and user-confirmed ready, supports a no-credential local checklist review, and launches installed Desktop with only a validated public connection file that still requires review in the app. Installer tests/Clippy, extension tests, and store-preparation regression pass.

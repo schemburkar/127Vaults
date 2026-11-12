@@ -391,6 +391,12 @@ function DesktopApp() {
     void invoke<DesktopInfo>("desktop_info")
       .then((info) => { setDesktopInfo(info); if (!info.configured) setRegistrationOpen(true); setRememberedSecret(info.hasCachedSecret); if (info.cachedUsername) setUsername(info.cachedUsername); })
       .catch((e) => setStatus(String(e)));
+    void invoke<string | null>("initial_server_connection").then(async source => {
+      if (!source) return;
+      const preview = await invoke<{serverName:string;serverUrl:string;installationId:string}>("preview_server_connection", {source});
+      setServerConnection({source,...preview}); setRegistrationOpen(true);
+      setStatus("Review the server shared by the installer before trusting it.");
+    }).catch(error => setStatus(String(error)));
     // Focus and visibility changes are not lock signals. Users routinely switch
     // apps while retrieving an account secret or completing login.
   }, []);

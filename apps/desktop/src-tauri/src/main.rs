@@ -248,6 +248,28 @@ fn preview_server_connection(source: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+fn initial_server_connection() -> Result<Option<String>, String> {
+    use std::io::Read;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(argument) = args.next() {
+        if argument != "--connection-file" {
+            continue;
+        }
+        let path = args.next().ok_or("Missing public connection file")?;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(|_| "Cannot read the shared connection file")?
+            .take(32769)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Cannot read the shared connection file")?;
+        let source = String::from_utf8(bytes).map_err(|_| "Invalid connection file")?;
+        vaults_cli::server_connection::ServerConnection::parse(&source)?;
+        return Ok(Some(source));
+    }
+    Ok(None)
+}
+
+#[tauri::command]
 async fn import_server_connection(source: String) -> Result<String, String> {
     let file = vaults_cli::server_connection::ServerConnection::parse(&source)?;
     let directory = config_directory()?;
@@ -1369,6 +1391,7 @@ fn main() {
             device_enrollment_status,
             configure_server_trust,
             preview_server_connection,
+            initial_server_connection,
             import_server_connection,
             server_setup_status,
             configure_cloud_trust,

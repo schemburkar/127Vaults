@@ -73,12 +73,20 @@ impl Connection {
 #[derive(Serialize)]
 pub struct NextStep {
     pub component: String,
+    pub package_state: &'static str,
     pub state: &'static str,
+    pub readiness_basis: &'static str,
     pub action: &'static str,
 }
 pub fn next_step(product: Product, installed: bool) -> NextStep {
     NextStep {
         component: product.name().to_owned(),
+        package_state: if installed {
+            "installed"
+        } else {
+            "not-installed"
+        },
+        readiness_basis: "not-checked",
         state: if installed {
             "needs-setup"
         } else {
@@ -102,11 +110,72 @@ pub fn next_step(product: Product, installed: bool) -> NextStep {
     }
 }
 pub fn save_progress(root: &Path, steps: &[NextStep]) -> Result<()> {
+    let ready: Vec<String> = fs::read(root.join("setup-checklist.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    let steps: Vec<_> = steps.iter().map(|step| {
+        let confirmed = step.package_state == "installed" && ready.contains(&step.component);
+        serde_json::json!({"component":step.component,"packageState":step.package_state,
+            "state":if confirmed {"ready"} else {step.state},
+            "readinessBasis":if confirmed {"user-confirmed; check current client status"} else {step.readiness_basis},"action":step.action})
+    }).collect();
     let mut file = atomic_write_file::AtomicWriteFile::open(root.join("next-steps.json"))?;
     file.write_all(&serde_json::to_vec_pretty(
         &serde_json::json!({"version":1,"steps":steps}),
     )?)?;
     file.commit()?;
+    Ok(())
+}
+
+pub fn review(root: &Path, products: &[Product]) -> Result<()> {
+    let previous: Vec<String> = fs::read(root.join("setup-checklist.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    let mut ready = Vec::new();
+    for product in products {
+        cliclack::log::info(next_step(*product, true).action)?;
+        if cliclack::confirm(format!("Is {} configured and working? This records your confirmation, not a live health check.", product.name()))
+            .initial_value(previous.iter().any(|name| name == product.name())).interact()? {
+            ready.push(product.name());
+        }
+    }
+    let mut file = atomic_write_file::AtomicWriteFile::open(root.join("setup-checklist.json"))?;
+    file.write_all(&serde_json::to_vec_pretty(&ready)?)?;
+    file.commit()?;
+    save_progress(
+        root,
+        &products
+            .iter()
+            .map(|product| next_step(*product, true))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Launch only the installed Desktop with a public file; never pass setup credentials.
+pub fn open_desktop(root: &Path) -> Result<()> {
+    #[cfg(windows)]
+    let executable = {
+        let output = std::process::Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command",
+            "$p=(Get-Item 'HKCU:\\Software\\127Vaults\\127Vaults Desktop' -ErrorAction Stop).GetValue(''); Join-Path $p 'vaults-desktop-poc.exe'"]).output()?;
+        if !output.status.success() {
+            return Err("Desktop installation not found; open it from your app launcher".into());
+        }
+        std::path::PathBuf::from(String::from_utf8(output.stdout)?.trim())
+    };
+    #[cfg(not(windows))]
+    let executable = root.join("127vaults-desktop.AppImage");
+    if !executable.is_absolute() || !executable.is_file() {
+        return Err("Desktop launcher not found; open the installed Desktop app".into());
+    }
+    let mut command = std::process::Command::new(executable);
+    let file = root.join("server-connection.127vaults-server");
+    if file.is_file() {
+        Connection::read(&file)?;
+        command.arg("--connection-file").arg(file);
+    }
+    command.spawn()?;
     Ok(())
 }
 #[cfg(test)]
@@ -121,5 +190,32 @@ mod tests {
         );
         assert_eq!(next_step(Product::Desktop, true).state, "needs-setup");
         assert_eq!(next_step(Product::Desktop, false).state, "not-installed");
+    }
+    #[test]
+    fn progress_never_turns_an_uninstalled_package_ready_and_survives_resume() {
+        let root = std::env::temp_dir().join(format!("127v-progress-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("setup-checklist.json"), "[\"desktop\",\"cli\"]").unwrap();
+        save_progress(
+            &root,
+            &[
+                next_step(Product::Desktop, true),
+                next_step(Product::Cli, false),
+            ],
+        )
+        .unwrap();
+        let value: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join("next-steps.json")).unwrap()).unwrap();
+        assert_eq!(value["steps"][0]["state"], "ready");
+        assert!(
+            value["steps"][0]["readinessBasis"]
+                .as_str()
+                .unwrap()
+                .starts_with("user-confirmed")
+        );
+        assert_eq!(value["steps"][1]["state"], "not-installed");
+        fs::remove_file(root.join("setup-checklist.json")).unwrap();
+        fs::remove_file(root.join("next-steps.json")).unwrap();
+        fs::remove_dir(root).unwrap();
     }
 }

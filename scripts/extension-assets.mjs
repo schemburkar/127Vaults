@@ -8,6 +8,7 @@ export async function prepareExtensionAssets(repository = resolve(import.meta.di
   const shared = join(destination, 'src/shared');
   await mkdir(shared, { recursive: true });
   await copyFile(join(repository, 'packages/domain/src/passkey-metadata.mjs'), join(shared, 'passkey-metadata.mjs'));
+  await copyFile(join(repository,'packages/domain/src/connection-help.mjs'),join(shared,'connection-help.mjs'));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

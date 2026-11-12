@@ -1,3 +1,5 @@
+import { chooseSource } from './source-choice.mjs';
+import { connectionHelp, diagnosticReport } from './shared/connection-help.mjs';
 import { matchingLogin, originOf, permissionPattern } from './match.mjs';
 import { probeFrame, fillFrame } from './fill.mjs';
 import { sourceStatus } from './source-status.mjs';
@@ -50,7 +52,7 @@ function updatePopupView() {
 function errorMessage(error) {
   const code = String(error?.message || error);
   if (/Cannot access|permission|not allowed to access/i.test(code)) return 'Browser access to the vault tab was denied. Use Web connection to grant access to its HTTPS address, then refresh.';
-  return code.replace(/_/g, ' ').slice(0, 150);
+  return connectionHelp(error)?.message || code.replace(/_/g, ' ').slice(0, 150);
 }
 async function script(tabId, func, args = [], extra = {}, world = 'ISOLATED') {
   return chrome.scripting.executeScript({ target: { tabId, ...extra }, world, func, args });
@@ -187,6 +189,7 @@ async function refresh() {
   status('');
   sourceLoadRevision++;
   const previousSource = $('source-select').value;
+  const storedPreference = (await chrome.storage.local.get('preferredSource')).preferredSource;
   try {
   $('setup').hidden = true;
   $('results').hidden = true;
@@ -231,9 +234,10 @@ async function refresh() {
   $('source-panel').hidden = false;
   $('source-select').hidden = false;
   $('refresh-sources').hidden = false;
-  $('source-select').value = userSelectedSource && options.some(option => option.id === previousSource) ? previousSource
-    : options.find(option => option.preferred)?.id || options.find(option => option.id === 'web')?.id || options[0].id;
+  const choice=chooseSource(options,userSelectedSource?previousSource:storedPreference);
+  $('source-select').value=choice.id;
   await loadSelectedSource();
+  if(choice.fallback) $('source-state').textContent += ' Your preferred source is unavailable; this available source is selected for now. Your preference is retained.';
   } finally { updatePopupView(); setLoading(false); refreshInProgress = false; void passkeys.refresh().catch(error => status(errorMessage(error), true)); }
 }
 async function choose(item) {
@@ -300,7 +304,12 @@ $('connect').onclick = async () => {
     await refresh();
   } catch (error) { status(errorMessage(error), true); }
 };
-$('source-select').onchange = () => { setLoading(true); status(''); userSelectedSource = true; loadSelectedSource().then(() => { if (!$('results').hidden) showSourceControls(false); return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(() => { updatePopupView(); setLoading(false); }); };
+$('source-select').onchange = () => { setLoading(true); status(''); userSelectedSource = true; void chrome.storage.local.set({preferredSource:$('source-select').value}); loadSelectedSource().then(() => { if (!$('results').hidden) showSourceControls(false); return passkeys.refresh(true); }).catch(error => status(errorMessage(error), true)).finally(() => { updatePopupView(); setLoading(false); }); };
+$('connection-report').onclick = () => {
+  const report = diagnosticReport('extension', {source:selectedSource, connectorAvailable:localSources.length > 0, unlocked:!$('results').hidden});
+  const url = URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='127vaults-extension-report.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 $('refresh-sources').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('refresh-setup').onclick = () => refresh().catch(error => status(errorMessage(error), true));
 $('unlock-desktop').onclick = async () => {
