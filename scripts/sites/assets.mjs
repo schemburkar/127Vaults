@@ -50,6 +50,10 @@ export async function stageSite(surface, directory, { publicOrigin, personalBuyU
     sources.set('downloads.html', Buffer.from(downloads.replace(
       '<!-- personal-purchase -->',
       `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p><p><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
+    for (const name of ['deployment.html', 'get-started.html']) {
+      sources.set(name, Buffer.from(sources.get(name).toString('utf8').replace('<!-- personal-purchase -->',
+        `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p><p><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
+    }
   }
   if (surface !== 'public') sources.set('index.html', sources.get(surface === 'admin' ? 'access-admin.html' : 'portal.html'));
   const digest = createHash('sha256');
