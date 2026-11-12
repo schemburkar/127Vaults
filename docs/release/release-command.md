@@ -90,6 +90,12 @@ This also publishes the committed public website and Worker; changing those
 sources after the build requires building a new tested set.
 
 Both commands support `-Plan` for a preview without builds or remote changes.
+If the workstation is signed in with the installed `cf` CLI, run `cf auth whoami`
+to refresh/check its session and add `-UseCloudflareCliAuth` to the release command.
+This explicitly reads the CLI's default profile (respecting `XDG_CONFIG_HOME`) and
+passes only its access token to the deployment child process. Existing
+`CLOUDFLARE_API_TOKEN` takes precedence. Credentials are never printed or copied
+into release files; this option does not change account permissions or targets.
 Use `-Label lowercase-name` on `build` to choose a stable name; retry the same
 label and `-Ref` after a failure to reuse completed, verified outputs. A changed
 revision, version or baseline requires a new label. `publish -Label name` selects

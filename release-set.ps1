@@ -6,6 +6,7 @@ param(
     [string]$Label,
     [string]$Ref = 'HEAD',
     [switch]$Plan,
+    [switch]$UseCloudflareCliAuth,
     [switch]$Help
 )
 $ErrorActionPreference = 'Stop'
@@ -14,7 +15,8 @@ $request = @{ action=$Action; config=$Config; label=$Label; ref=$Ref; plan=[bool
 $previousEncoding = $OutputEncoding
 try {
     $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-    $request | ConvertTo-Json -Compress | & node (Join-Path $PSScriptRoot 'scripts/release/set.mjs') --request
+    $entry = if ($UseCloudflareCliAuth) { 'scripts/release/cloudflare-cli-auth.mjs' } else { 'scripts/release/set.mjs' }
+    $request | ConvertTo-Json -Compress | & node (Join-Path $PSScriptRoot $entry) --request
     $releaseExit = $LASTEXITCODE
 } finally { $OutputEncoding = $previousEncoding }
 exit $releaseExit
