@@ -128,6 +128,19 @@ pub fn save_progress(root: &Path, steps: &[NextStep]) -> Result<()> {
     Ok(())
 }
 
+pub fn progress_step(root: &Path, product: Product, installed: bool) -> NextStep {
+    let mut step = next_step(product, installed);
+    let ready: Vec<String> = fs::read(root.join("setup-checklist.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    if installed && ready.iter().any(|name| name == product.name()) {
+        step.state = "ready";
+        step.readiness_basis = "user-confirmed; check current client status";
+    }
+    step
+}
+
 pub fn review(root: &Path, products: &[Product]) -> Result<()> {
     let previous: Vec<String> = fs::read(root.join("setup-checklist.json"))
         .ok()

@@ -7,7 +7,7 @@
     "package:verify": "node scripts/release/verify.mjs",
     "package:assemble": "node scripts/release/assemble.mjs",
     "release:help": "node scripts/release/release.mjs --help",
-    "test:packaging": "node --test scripts/release/*.test.mjs deploy/install.test.mjs",
+    "test:packaging": "node --test scripts/release/*.test.mjs deploy/install.test.mjs deploy/maintenance.test.mjs",
     "test:mvp-startup": "node --test scripts/mvp-startup.test.mjs scripts/dev-launcher.test.mjs",
     "test:security": "node scripts/security-regression.mjs",
     "test:billing": "node scripts/billing-check.mjs",

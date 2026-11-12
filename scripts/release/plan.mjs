@@ -15,7 +15,7 @@ export const productInputs = {
   desktop: [...rust, ...node, ...policy, 'apps/desktop', 'packages/ui', 'packages/domain', 'apps/extension/src/passkeys.mjs',
     'apps/extension/src/passkeys.d.mts', 'scripts/extension-assets.mjs', 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/client-install.md'],
   cli: [...rust, ...policy, 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/cli-install.md'],
-  extension: [...policy, 'packages/domain/src/passkey-metadata.mjs', 'scripts/extension-assets.mjs', 'apps/extension/package.json', 'apps/extension/manifest.json', 'apps/extension/popup.html', 'apps/extension/src', 'apps/extension/test', 'docs/release/extension-install.md'],
+  extension: [...policy, 'packages/domain/src/passkey-metadata.mjs', 'packages/domain/src/connection-help.mjs', 'scripts/extension-assets.mjs', 'apps/extension/package.json', 'apps/extension/manifest.json', 'apps/extension/popup.html', 'apps/extension/src', 'apps/extension/test', 'docs/release/extension-install.md'],
   server: [...rust.filter(path => path !== 'apps/cli'), 'apps/cli/Cargo.toml', 'crates/browser-fixture', ...node, ...policy, 'apps/server', 'apps/web', 'packages',
     'apps/extension/src/passkeys.mjs',
     'server.mjs', 'deploy', 'scripts/build-fixture.mjs', 'scripts/tls.mjs', 'scripts/ops', 'docs/release/server-test-install.md', '.dockerignore'],
@@ -81,7 +81,7 @@ async function configuredVersion(repository, revision, product) {
   return JSON.parse(await git(repository, ['show', `${revision}:${path}`])).version;
 }
 export async function builderFingerprint() {
-  const paths = ['plan.mjs', 'process.mjs', 'release.mjs', 'package.mjs', 'verify.mjs', 'verify-release.mjs', 'smoke-native-host.mjs'];
+  const paths = ['plan.mjs', 'process.mjs', 'release.mjs', 'package.mjs', 'verify.mjs', 'verify-release.mjs', 'smoke-native-host.mjs', 'extension-review.mjs'];
   const contents = await Promise.all(paths.map(path => readFile(resolve(import.meta.dirname, path))));
   contents.push(await readFile(resolve(import.meta.dirname, '../ops/make-server-bundle.mjs')));
   contents.push(await readFile(resolve(import.meta.dirname, '../extension-assets.mjs')));

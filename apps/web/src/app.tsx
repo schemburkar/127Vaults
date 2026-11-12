@@ -713,7 +713,7 @@ function Sidebar({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: ()
         <Button id="mobile-sync" variant="ghost" className={`${nav} hidden max-[560px]:flex`}>
           <RefreshCw aria-hidden="true" /> <span>Sync</span>
         </Button>
-<Button id="joining-help-vault" variant="ghost" className={nav}><PanelsTopLeft aria-hidden="true" /><span>Connect a device</span></Button>
+        <Button id="joining-help-vault" variant="ghost" className={nav}><PanelsTopLeft aria-hidden="true" /><span>Connect a device</span></Button>
         <Button id="settings-toggle" variant="ghost" className={nav}>
           <SettingsIcon aria-hidden="true" /> <span>Settings</span>
         </Button>

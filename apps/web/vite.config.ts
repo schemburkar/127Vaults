@@ -51,6 +51,7 @@ export default defineConfig(({ command, mode }) => {
     ['/app/signed-sync.mjs', join(webRoot, 'src', 'signed-sync.mjs')],
     ['/app/passkeys.mjs', join(webRoot, '..', 'extension', 'src', 'passkeys.mjs')],
     ['/app/shared/passkey-metadata.mjs', join(webRoot, '..', '..', 'packages', 'domain', 'src', 'passkey-metadata.mjs')],
+    ['/app/shared/connection-help.mjs', join(webRoot, '..', '..', 'packages', 'domain', 'src', 'connection-help.mjs')],
     ['/app/shared/seat-summary.mjs', join(webRoot, '..', '..', 'packages', 'domain', 'src', 'seat-summary.mjs')],
     ['/app/shared/directory-presentation.mjs', join(webRoot, '..', 'server', 'admin', 'directory-presentation.mjs')],
     ['/wasm/vaults_browser_fixture.js', join(webRoot, 'wasm', 'vaults_browser_fixture.js')],

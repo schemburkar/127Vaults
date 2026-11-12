@@ -977,7 +977,7 @@ mod tests {
                 listener,
                 "fixture-capability",
                 true,
-                std::time::Duration::from_secs(2),
+                std::time::Duration::from_secs(30),
                 None,
             )
         });

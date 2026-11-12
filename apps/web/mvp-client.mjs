@@ -511,7 +511,7 @@ async function finishMemberSetup(event) {
     wipeInputs();
     showLogin();
     showLoginPassword();
-    $("account-created-next").hidden = false;
+    if ($("account-created-next")) $("account-created-next").hidden = false;
     status("login-status", "Account created. Enter your master password to sign in.");
   } catch (error) { status("setup-status", safeError(error), "error"); }
   finally { for (const button of buttons) button.disabled = false; }
@@ -647,7 +647,7 @@ async function setup() {
         ? "Account created. Sign in after your vault has been activated."
         : "Account created. Enter your master password to log in.",
     );
-    $("account-created-next").hidden = false;
+    if ($("account-created-next")) $("account-created-next").hidden = false;
     msg("Registration complete.", "success");
   } catch (e) {
     let detail =
@@ -1421,7 +1421,7 @@ async function reload({ preserveDraft = false } = {}) {
   await refreshReplica();
   await loadVaultSettings();
   let data = await call("/api/v1/vaults");
-  $("joining-vault-check").textContent = data.vaultEnvelopes?.some(row => !row.retired) ? "✓ You have an active vault." : "Create your first vault using New vault.";
+  if ($("joining-vault-check")) $("joining-vault-check").textContent = data.vaultEnvelopes?.some(row => !row.retired) ? "✓ You have an active vault." : "Create your first vault using New vault.";
   await publishVaultLifecycle(data);
   updateSessionDates();
   if (!data.directory || !data.vaultEnvelopes.some((row) => !row.retired)) {
@@ -2771,19 +2771,20 @@ window.__vaultsActions = {
   },
 };
 $("setup").onclick = setup;
+if ($("joining-help")) {
 $("joining-help").onclick = () => {
   $("joining-approve").hidden = !root;
-  $("recovery-noted").checked = localStorage.getItem('127vaults.recovery-checklist') === 'saved';
+  try { $("recovery-noted").checked = localStorage.getItem('127vaults.recovery-checklist') === 'saved'; } catch { $("recovery-noted").checked = false; }
   $("joining-help-dialog").showModal();
 };
 $("joining-help-vault").onclick = () => $("joining-help").click();
-$("recovery-noted").onchange = event => localStorage.setItem('127vaults.recovery-checklist',event.target.checked?'saved':'');
+$("recovery-noted").onchange = event => { try { localStorage.setItem('127vaults.recovery-checklist',event.target.checked?'saved':''); } catch { /* Optional personal checklist. */ } };
 $("joining-help-close").onclick = () => $("joining-help-dialog").close();
 $("joining-approve").onclick = () => { $("joining-help-dialog").close(); showSettingsView('devices'); showDeviceRegistration(true); if (!$("settings").open) $("settings").showModal(); };
 $("joining-connection-check").onclick = async () => {
   try {
     if(location.protocol !== 'https:') throw Error('TLS required');
-    const response = await fetch('/api/v1/setup', {credentials:'omit', cache:'no-store',redirect:'error'});
+    const response = await fetch('/api/v1/setup', {credentials:'omit', cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
     if(!response.ok) throw Error('SERVER_UNREACHABLE');
     const data=await response.json(); if(typeof data.ownerRequired !== 'boolean') throw Error('SERVER_UNREACHABLE');
     $("joining-connection-status").textContent='This browser trusts the HTTPS connection and can reach this server. Device approval is a separate step.';
@@ -2794,6 +2795,7 @@ $("joining-report").onclick = () => {
   const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
   const link=document.createElement('a');link.href=url;link.download='127vaults-browser-report.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
+}
 $("cloud-member-verification")?.addEventListener("submit", finishMemberSetup);
 $("cloud-member-resend")?.addEventListener("click", async event => {
   if (!memberAttempt || memberAttempt.completed) return;

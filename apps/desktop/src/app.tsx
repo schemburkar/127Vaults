@@ -1,3 +1,4 @@
+import { accountInvitation } from "./onboarding.mjs";
 import { connectionHelp, diagnosticReport } from '../../../packages/domain/src/connection-help.mjs';
 import { ConfirmationProvider, useConfirmation } from "./components/confirmation-dialog";
 import { ItemTabs, tabKey, markerClass } from "@127vaults/ui";
@@ -1256,7 +1257,9 @@ function DesktopApp() {
   });
   useEffect(() => {
     setOwnerRequired(false);
-    if (desktopInfo?.registrationUrl) void invoke<{ownerRequired:boolean}>("server_setup_status").then(result => setOwnerRequired(result.ownerRequired)).catch(() => undefined);
+    let cancelled = false;
+    if (desktopInfo?.registrationUrl) void invoke<{ownerRequired:boolean}>("server_setup_status").then(result => { if (!cancelled) setOwnerRequired(result.ownerRequired); }).catch(() => undefined);
+    return () => { cancelled = true; };
   }, [desktopInfo?.registrationUrl]);
   const exportConnectionReport = () => {
     const report = diagnosticReport("desktop", { error: status || offlineReason, trustConfigured: Boolean(desktopInfo?.registrationUrl), deviceEnrolled: Boolean(desktopInfo?.deviceId), networkReachable: online, unlocked });
@@ -1265,9 +1268,8 @@ function DesktopApp() {
   };
   const openMemberInvitation = async () => {
     try {
-      const invitation = new URL(memberInvitation.trim());
-      if (!desktopInfo?.registrationUrl || invitation.origin !== new URL(desktopInfo.registrationUrl).origin || invitation.username || invitation.password || !/^#memberInvite=127V-I1\./.test(invitation.hash)) throw Error("Use the account invitation from this server’s administrator.");
-      await openUrl(invitation.href); setMemberInvitation("");
+      if (!desktopInfo?.registrationUrl) throw Error("Connect to your server first.");
+      await openUrl(accountInvitation(memberInvitation.trim(), desktopInfo.registrationUrl)); setMemberInvitation("");
     } catch (error) { setStatus(friendlyError(error)); }
   };
   const readServerConnection = async (file?: File) => {
@@ -1348,7 +1350,7 @@ function DesktopApp() {
           throw Error(progress.message || "Desktop registration failed");
       }
     } catch (e) {
-      setStatus(String(e));
+      setStatus(friendlyError(e));
     } finally {
       setApprovalLink(null);
       setApprovalCode(null);
@@ -1471,12 +1473,6 @@ function DesktopApp() {
               </div>
               <ol aria-label="Setup progress" className="mb-5 flex flex-wrap gap-3 text-xs"><li>{desktopInfo?.registrationUrl ? "✓" : "1"} Connect server</li><li>{desktopInfo?.deviceId ? "✓" : "2"} Account and approval</li><li>3 Unlock vault</li></ol>
               <div className="grid gap-5">
-                {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
-                  <details><summary className="font-bold cursor-pointer">Connect to an existing Cloud family vault</summary>
-                  <p className="mb-3 mt-1 text-sm text-slate-400">Copy the address from Settings → Devices in your web vault. It includes your family name after /t/.</p>
-                  <Input aria-label="Cloud family vault address" placeholder="https://cloud.127vaults.com/t/your-family/" value={cloudUrl} onChange={event => setCloudUrl(event.target.value)} />
-                  <Button className="mt-3 w-full" disabled={trustBusy || !cloudUrl.trim()} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button></details>
-                </section>}
                 {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-5">
                   <h2 className="font-bold">Connect to your private server</h2>
                   <p className="mb-3 mt-1 text-sm text-slate-400">Ask your administrator for a server connection file. Receive it through a channel you trust, then import it here. The same file works across supported desktop platforms.</p>
@@ -1500,6 +1496,12 @@ function DesktopApp() {
                     <Input aria-label="Expected CA SHA-256 fingerprint" placeholder="64-character SHA-256 fingerprint" value={trustFingerprint} onChange={event => setTrustFingerprint(event.target.value)} />
                   </div>
                   <Button className="mt-3 w-full" disabled={trustBusy || !trustUrl || !trustServerId || !trustCaPath || !trustFingerprint} onClick={() => void configureTrust()}>{trustBusy ? "Checking server…" : "Verify and save server trust"}</Button></details>
+                </section>}
+                {!desktopInfo?.registrationUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
+                  <details><summary className="font-bold cursor-pointer">Connect to an existing Cloud family vault</summary>
+                  <p className="mb-3 mt-1 text-sm text-slate-400">Copy the address from Settings → Devices in your web vault. It includes your family name after /t/.</p>
+                  <Input aria-label="Cloud family vault address" placeholder="https://cloud.127vaults.com/t/your-family/" value={cloudUrl} onChange={event => setCloudUrl(event.target.value)} />
+                  <Button className="mt-3 w-full" disabled={trustBusy || !cloudUrl.trim()} onClick={() => void configureTrust(true)}>Connect to a Cloud vault</Button></details>
                 </section>}
                 {desktopInfo?.registrationUrl && <section className="rounded-2xl border border-white/8 bg-white/3 p-5">
                   <p className="mb-3 break-all text-sm">Connected server: {desktopInfo.serverAddress}</p>

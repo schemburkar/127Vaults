@@ -9,7 +9,8 @@ use zeroize::Zeroizing;
 
 pub struct Lease {
     owner: String,
-    _token: String,
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    token: String,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     active: Arc<AtomicBool>,
     expires: Instant,
@@ -35,25 +36,22 @@ impl ClipboardState {
         write(&value, &token, active.clone())?;
         *lease = Some(Lease {
             owner,
-            _token: token,
+            token,
             active,
             expires: Instant::now() + Duration::from_secs(30),
         });
         Ok(())
     }
     pub fn clear(&self, owner: Option<&str>, force: bool) {
-        if let Ok(mut saved) = self.0.lock() {
-            if saved
+        if let Ok(mut saved) = self.0.lock()
+            && saved
                 .as_ref()
                 .is_some_and(|lease| should_clear(lease, owner, force, Instant::now()))
-            {
-                if saved
-                    .as_ref()
-                    .is_some_and(|lease| clear_owned(lease).is_ok())
-                {
-                    saved.take();
-                }
-            }
+            && saved
+                .as_ref()
+                .is_some_and(|lease| clear_owned(lease).is_ok())
+        {
+            saved.take();
         }
     }
 }
@@ -141,7 +139,7 @@ fn clear_owned(lease: &Lease) -> Result<(), String> {
             .Lookup(&key)?
             .cast::<IPropertyValue>()?
             .GetString()?;
-        if marker.to_string() == lease._token {
+        if marker == lease.token.as_str() {
             Clipboard::Clear()?;
         }
         Ok(())
@@ -166,7 +164,7 @@ mod tests {
         let now = Instant::now();
         let lease = Lease {
             owner: "detached".into(),
-            _token: "synthetic".into(),
+            token: "synthetic".into(),
             active: Arc::new(AtomicBool::new(true)),
             expires: now + Duration::from_secs(30),
         };

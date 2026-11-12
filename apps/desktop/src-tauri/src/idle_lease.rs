@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-pub const IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+pub const IDLE_TIMEOUT: Duration = Duration::from_mins(30);
 
 pub struct IdleLease {
     epoch: u64,

@@ -14,7 +14,7 @@ async function fixture() {
   const repository = join(directory, 'repo');
   await mkdir(repository);
   const files = {
-    'apps/extension/manifest.json': JSON.stringify({ manifest_version: 3, name: 'fixture', version: '0.1.0', background: { service_worker: 'src/background.mjs', type: 'module' } }),
+    'apps/extension/manifest.json': JSON.stringify({ manifest_version: 3, name: 'fixture', version: '0.1.0', permissions:[], optional_host_permissions:[], icons:{}, background: { service_worker: 'src/background.mjs', type: 'module' } }),
     'apps/extension/package.json': JSON.stringify({ name: 'fixture', type: 'module' }),
     'apps/extension/popup.html': '<html>fixture</html>',
     'apps/extension/src/background.mjs': 'export const snapshotValue = "committed";\n',
@@ -24,6 +24,7 @@ async function fixture() {
     'LICENSE.md': 'Fixture source terms.\n',
     'COMMERCIAL-LICENSE.md': 'Fixture commercial terms.\n',
     'unrelated.txt': 'one\n',
+    'packages/domain/src/connection-help.mjs': 'export const connectionHelp = () => null;\n',
     'packages/domain/src/passkey-metadata.mjs': 'export const PASSKEY_META = "fixture";\n',
   };
   for (const [name, contents] of Object.entries(files)) {

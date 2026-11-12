@@ -281,7 +281,13 @@ fn execute(mut args: Args) -> Result<()> {
             .clone()
             .or_else(|| dirs::data_local_dir().map(|path| path.join("127Vaults/installer")))
             .ok_or("Local installation directory unavailable")?;
+        if root.join("installer.lock").exists() {
+            return Err("Finish the running installation before reviewing its checklist".into());
+        }
         let state = State::load(&root)?;
+        if state.records.is_empty() {
+            return Err("No installed components recorded here; use --directory with the original installer state location".into());
+        }
         return journey::review(
             &root,
             &state
@@ -965,7 +971,8 @@ fn execute(mut args: Args) -> Result<()> {
         .components
         .iter()
         .map(|product| {
-            journey::next_step(
+            journey::progress_step(
+                &root,
                 *product,
                 state
                     .records

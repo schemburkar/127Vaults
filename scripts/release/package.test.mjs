@@ -25,7 +25,7 @@ test('extension handoff excludes tests and developer installers; manifest detect
   const directory = await mkdtemp(join(tmpdir(), '127vaults-package-'));
   try {
     await packageExtension(directory);
-    assert.deepEqual((await readdir(join(directory, '127vaults-extension'))).sort(), ['COMMERCIAL-LICENSE.md', 'LICENSE.md', 'README.md', 'manifest.json', 'popup.html', 'src']);
+    assert.deepEqual((await readdir(join(directory, '127vaults-extension'))).sort(), ['COMMERCIAL-LICENSE.md', 'LICENSE.md', 'README.md', 'manifest.json', 'popup.html', 'src', 'store-review.json']);
     const extension = JSON.parse(await readFile(join(directory, '127vaults-extension/manifest.json'), 'utf8'));
     assert.equal(extension.manifest_version, 3);
     const canonical = await readFile(new URL('../../packages/domain/src/passkey-metadata.mjs', import.meta.url), 'utf8');

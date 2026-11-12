@@ -76,11 +76,11 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 10. Server ownership
 
-- [ ] 10.1 Guided encrypted-backup scheduling.
-- [ ] 10.2 Backup success/failure/restore visibility.
-- [ ] 10.3 Certificate expiry and guided renewal.
-- [ ] 10.4 Update compatibility/backup/downtime preview.
-- [ ] 10.5 Guarded restore/migration preserving identity.
+- [x] 10.1 Guided encrypted-backup scheduling.
+- [x] 10.2 Backup success/failure/restore visibility.
+- [x] 10.3 Certificate expiry and guided renewal.
+- [x] 10.4 Update compatibility/backup/downtime preview.
+- [x] 10.5 Guarded restore/migration preserving identity.
 
 
 Batch 1 evidence: installer journey module, role recommendations, bounded public connection import, prerequisite preview/restart instructions and existing atomic installation receipts; protected client-download grants with expiry/revocation and explicit denial of server/license/billing endpoints; joining page with OS recommendations and non-secret checklist. `cargo test -p vaults-installer`, installer Clippy, client-download unit tests and the Worker HTTP authorization regression pass. Remaining handoff details stay open below.
@@ -90,3 +90,11 @@ Batch 2 evidence: Add a person reuses the fresh-password, idempotent invitation 
 Batch 3 evidence: Desktop starts incomplete profiles in staged onboarding, previews the server name/address, gates owner setup on a pinned HTTPS check, displays approval codes, and resumes from trust/device receipts without retaining setup credentials. Web invitations and first-owner gates already pass the enrollment suite; added post-registration guidance and an accessible recovery/vault/device checklist with the existing reviewed approval flow. Shared error guidance retains trust and local data; reports contain only allowlisted status categories/booleans. Admin exports the public CA with its exact-file fingerprint; browser trust guides cover Windows/Linux and future macOS, and the web app checks only its own HTTPS server without bypassing TLS. Desktop check +51 tests, web check +95 tests and diagnostic redaction tests pass.
 
 Batch 4 evidence: extension source detection now preserves an explicit non-secret preference across popup restarts, explains fallback, and retains existing safe open/unlock/reconnect controls. Repair instructions lead to the existing installer connector-registration flow; redacted reports are opt-in. Packaging prepares a permission/asset-validated store review manifest without publishing or inventing store IDs. Installer saves per-component handoff after each durable state change, separates installed from needs-setup and user-confirmed ready, supports a no-credential local checklist review, and launches installed Desktop with only a validated public connection file that still requires review in the app. Installer tests/Clippy, extension tests, and store-preparation regression pass.
+
+Batch 5 evidence: `node install.mjs maintain` guides daily encrypted database/identity backup scheduling (limited current-user Windows task or Linux systemd user timer), first-run backup verification, isolated restore rehearsal, same-CA leaf renewal, schema/license-aware update preview and new-target recovery. Host key paths never enter the browser. Backup attempts retain earlier successful receipts and expose only outcome/operation/timestamps. Recovery delegates to existing authenticated-envelope, matching-installation and empty-database guards. New tests cover cancellation, literal scheduler argument quoting, safe key/destination selection, matching backup pairs, redacted failures, unchanged CA before restart, V0-to-V1 compatibility/V2 refusal, and rehearsal isolation. Packaging tests pass (68), maintenance/administration/upgrade regressions pass, server checks pass.
+
+All 50 implementation points are covered. Verification limits: current-host builds and automated regressions are complete; new clean-machine Windows/Linux installer acceptance, native scheduled-task execution over time, and a real disaster-recovery rehearsal remain release/host acceptance checks. Store submission, macOS distribution and Cloudflare/package publication were not performed. No production email was sent.
+
+Final regression pass: full workspace Clippy with warnings denied and full serial workspace Rust tests pass. Web tests (95), Desktop tests (52), extension tests (38), current-host builds, server checks, site separation (23), scoped access and diagnostic-redaction regressions pass. The agent authorization/logout test retains its short explicit idle-expiry tests separately and now uses a realistic deadline for the logout ceremony on a busy test host. Final review also binds Desktop account invitation links to the exact configured server/tenant path and preserves the legacy web shell when optional onboarding controls are absent.
+
+The final standard `pnpm test:packaging` run passes all 78 tests, including the maintenance tests. Its log is retained locally at `.tools/self-hosted-ease/packaging.log`.

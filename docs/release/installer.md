@@ -187,3 +187,9 @@ with `pacman -T` and installs missing prerequisites through the same transaction
 `--no-install-prerequisites` refuses missing dependencies with setup instructions.
 An unlocked desktop Secret Service must be configured separately; the installer
 does not replace the user's keyring provider. See [Omarchy client setup](client-install.md#omarchy--arch-linux-x64).
+
+## Resume the setup handoff
+
+After packages are installed, the combined installer saves `next-steps.json` beside `installation.json`. It records package installation separately from remaining setup. Run `127vaults-install --review-setup` (plus `--directory` for a custom installer location) to review what is working without another setup link. Ready means you explicitly confirmed that component is working; it is not a live server-health claim. The Desktop launch offer passes only the public connection file and still asks you to review the server before trusting it. Account invitations, passwords and purchaser setup credentials are not handed over.
+
+Server maintenance lives in the extracted server bundle: `node install.mjs maintain` guides backups, isolated restore checks, certificate renewal, update preview and new-target recovery. Keep recovery keys separate and preserve the original installation identity.

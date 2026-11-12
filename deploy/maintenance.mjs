@@ -228,6 +228,8 @@ export async function maintenanceWizard(directory,{ask,run=localRun,log=console.
       const plan=restorePlan({bundle:directory,identityDestination,databaseBackup,identityBackup,keyFile,installationId,endpoint,hostname,engine});
       log('This preserves the original CA, signing identity and database installation ID in a NEW project. Stop the original server before starting the replacement; never run both identities concurrently. Keep the original host and all backups intact.');
       log(JSON.stringify(plan,null,2));await confirm('Original server is stopped, destination is new, and both backups belong to this installation. Restore?');
+      // A recovery host may be offline with no cached images. Use the verified bundle archive.
+      await run(engine,['load','-i','postgres-image.tar'],directory);
       for(const command of plan)await run(process.execPath,command,directory);
       log('Restore completed. Verify an existing client login, vault read and sync before retiring the original host.');
     } else throw Error('Choose a listed maintenance action.');

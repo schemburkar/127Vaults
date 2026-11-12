@@ -417,6 +417,7 @@ fn with_session<T>(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_lines)] // One ordered unlock ceremony and its isolated blocking worker.
 async fn unlock(
     state: tauri::State<'_, DesktopState>,
     username: String,
@@ -1145,7 +1146,7 @@ fn schedule_clipboard_clear(app: &tauri::AppHandle, owner: Option<String>, force
     let _ = app.run_on_main_thread(move || {
         handle
             .state::<clipboard::ClipboardState>()
-            .clear(owner.as_deref(), force)
+            .clear(owner.as_deref(), force);
     });
 }
 
@@ -1161,14 +1162,14 @@ async fn clipboard_copy(
     let (sender, mut receiver) = tauri::async_runtime::channel(1);
     app.run_on_main_thread(move || {
         let state = handle.state::<DesktopState>();
-        let result = if state.epoch.current() != epoch {
-            Err("Vault is locked".into())
-        } else {
+        let result = if state.epoch.current() == epoch {
             with_session(&state, |_| {
                 handle
                     .state::<clipboard::ClipboardState>()
                     .copy(owner, value)
             })
+        } else {
+            Err("Vault is locked".into())
         };
         let _ = sender.try_send(result);
     })
@@ -1257,6 +1258,7 @@ fn run_embedded_connector() -> bool {
     false
 }
 
+#[allow(clippy::too_many_lines)] // Tauri startup, event handlers and explicit command registration stay together.
 fn main() {
     if run_embedded_connector() {
         return;
@@ -1288,7 +1290,7 @@ fn main() {
                     schedule_clipboard_clear(&handle, None, false);
                     let state = handle.state::<DesktopState>();
                     let epoch = state.epoch.current();
-                    let expired = state.idle.lock().ok().is_some_and(|lease| {
+                    let expired = state.idle.lock().is_ok_and(|lease| {
                         lease
                             .as_ref()
                             .is_some_and(|lease| lease.expired(epoch, std::time::Instant::now()))

@@ -102,3 +102,12 @@ test('isolated rehearsal is explicitly reviewed and records the restore result s
   assert.equal(receipt.operation,'restore');assert.equal(receipt.outcome,'success');
   assert.ok(f.calls.some(call=>call.args.includes('rehearse')));assert.ok(!f.calls.some(call=>call.args.includes('init')));
 });
+test('fresh-host recovery loads the verified bundled database image before isolated rehearsal',async t=>{
+  const f=await fixture(t),target=join(f.root,'fresh-bundle');await mkdir(target);
+  const answers=['5','podman',join(f.root,'restored-identity'),join(f.root,'database-backup'),join(f.root,'identity-backup'),f.keyFile,id,'127.0.0.1','','YES'];
+  await maintenanceWizard(target,{ask:async()=>answers.shift(),run:f.run,log:()=>{},verify:async directory=>assert.equal(directory,target)});
+  assert.equal(f.calls[0].program,'podman');assert.deepEqual(f.calls[0].args,['load','-i','postgres-image.tar']);
+  assert.ok(f.calls.findIndex(call=>call.args.includes('rehearse'))<f.calls.findIndex(call=>call.args.includes('init')));
+  assert.ok(f.calls.find(call=>call.args.includes('identity')&&call.args.includes('restore')).args.includes(id));
+  await access(join(f.bundle,'.env'));
+});
