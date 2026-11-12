@@ -15,27 +15,27 @@ The draft uses the existing CSS, branding, seven-step sidebar, disclosures, comm
 
 Use simplified technical English for the procedures, with a small software-specific vocabulary. It makes the sequence and actor clearer. Strict dictionary substitutions can make UI instructions less recognizable, so preserve actual product labels and command names.
 
-This draft applies short imperative sentences, one action per instruction, conditions before applicable actions and consistent technical terms. A conservative text check found no paragraph/list-item sentence above 20 words. This check is not the ASD word-counting algorithm or a complete vocabulary/grammar conformity check. The draft is **STE-style**, not a claim of formal ASD-STE100 conformance.
+The revised draft uses complete sentences, clear actions and consistent technical terms. Sentence length is a guide, not a pass/fail limit: do not remove necessary words or split connected explanations into fragments. The draft is **STE-style**, not a claim of formal ASD-STE100 conformance. Editorial qualifications belong in this memo, never in the customer-facing HTML.
 
 The [official Issue 9 specification](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf) and [official FAQs](https://www.asd-ste100.org/faq.html) are the language references. Final adoption needs a dictionary/approved-meaning pass and review of the software technical vocabulary.
 
 ## Wording changes
 
-- Short numbered actions replace paragraphs with multiple commands or tasks.
-- Manual procedures are behind disclosures; the combined installer is the normal entry.
-- “Server operator” consistently identifies the person who runs the installation.
+- The original page structure, paragraph grouping and visible manual procedures are retained.
+- The first step starts with computer requirements, Node.js and the container engine, as in the original.
+- Connected explanations stay in paragraphs. Short sentences must still read as natural, complete English.
 - Commands, options, filenames and actual UI labels remain recognizable.
 - The review retains every original command block. A source comparison found no missing original command block.
-- The draft contains approximately 2,906 words versus 2,356 in the original, before final terminology review. Explicit steps and new role guidance increase length. The next editorial pass should remove repeated explanations without merging actions.
+- Removed the extra role selector, installer-first introduction, comparison control and all rendered review metadata after user feedback.
 
 ## Content changes that need review
 
 These are intentional corrections or additions, not just language substitutions:
 
-1. Separate new-server, existing-server and joining-user entry paths.
-2. Lead with the combined installer and retain manual setup as an alternative.
+1. Preserve the existing seven-step sequence and disclosure placement.
+2. Keep the combined installer's optional certificate-trust help in the existing browser-trust section.
 3. Change “Activate your trial” to “Install the license.” Paid orders and trials have different instructions.
-4. State that Manage, local operator and vault owner accounts have different purposes.
+4. Explain that Manage handles orders and downloads while vault accounts belong to the private server.
 5. Explain approval from a trusted browser session on the same computer. A second physical device is not always necessary.
 6. Explain the public connection file, account invitation and device approval as separate steps.
 7. Preserve the separate Windows current-user trust confirmation and per-computer browser trust instructions.
@@ -63,7 +63,7 @@ This list records intended meanings; it does not establish that every term is an
 ## Reviewer checklist
 
 - [ ] The wording feels clear without sounding mechanical.
-- [ ] The role entry points send a joining user directly to the correct procedure.
+- [ ] The first step matches the original layout and keeps its main instructions visible.
 - [ ] Actual screen labels agree with the distributed product version.
 - [ ] Paid and trial instructions describe the supported flow accurately.
 - [ ] Every platform-specific trust instruction is understandable before the browser can load the server.
