@@ -4,6 +4,7 @@ mod backups;
 mod discovery;
 mod enrollment_email;
 mod extension_setup;
+mod journey;
 mod prerequisites;
 mod transport;
 
@@ -27,6 +28,12 @@ use vaults_installer::{Artifact, Invitation, Product, Result, select_artifact};
     about = "Install and upgrade your licensed 127Vaults apps"
 )]
 struct Args {
+    /// Set up a server, join one, or update/repair installed components.
+    #[arg(long, value_enum)]
+    intent: Option<journey::Intent>,
+    /// Public server connection file shared by your administrator.
+    #[arg(long)]
+    connection_file: Option<PathBuf>,
     /// Private setup link from Manage. Prefer `VAULTS_INSTALL_SETUP_LINK` to avoid shell history.
     #[arg(
         long = "setup-link",
@@ -254,7 +261,40 @@ fn execute(mut args: Args) -> Result<()> {
                     .into(),
             );
         }
-        args.components = cliclack::multiselect("Which apps belong on this machine?")
+        let intent = match args.intent {
+            Some(value) => value,
+            None => cliclack::select("What would you like to do?")
+                .item(
+                    journey::Intent::Host,
+                    "Set up my server",
+                    "I run the private server",
+                )
+                .item(
+                    journey::Intent::Join,
+                    "Join an existing server",
+                    "Someone shared a server with me",
+                )
+                .item(
+                    journey::Intent::Repair,
+                    "Update or repair",
+                    "Keep my existing identity and data",
+                )
+                .interact()?,
+        };
+        args.intent = Some(intent);
+        let existing_root = args
+            .directory
+            .clone()
+            .or_else(|| dirs::data_local_dir().map(|p| p.join("127Vaults/installer")));
+        let existing = existing_root
+            .map(|p| State::load(&p))
+            .transpose()?
+            .unwrap_or_default()
+            .records
+            .iter()
+            .map(|r| r.product)
+            .collect::<Vec<_>>();
+        args.components = cliclack::multiselect("Recommended apps — adjust if needed")
             .item(
                 Product::Server,
                 "Server",
@@ -272,8 +312,33 @@ fn execute(mut args: Args) -> Result<()> {
                 "PWA",
                 "Install the server web app through your browser",
             )
-            .initial_values(vec![Product::Server])
+            .initial_values(journey::recommended(intent, &existing))
             .interact()?;
+    }
+    if args.intent == Some(journey::Intent::Join) && args.components.contains(&Product::Server) {
+        return Err("Joining does not install a server. Choose Set up my server instead.".into());
+    }
+    if args.intent == Some(journey::Intent::Join)
+        && args.connection_file.is_none()
+        && interactive
+        && !args.yes
+    {
+        let path: String =
+            cliclack::input("Path to the server connection file from your administrator")
+                .interact()?;
+        args.connection_file = Some(PathBuf::from(path.trim()));
+    }
+    let connection = args
+        .connection_file
+        .as_deref()
+        .map(journey::Connection::read)
+        .transpose()?;
+    if let Some(value) = &connection {
+        args.server_url = Some(value.server_url.clone());
+        cliclack::log::info(format!(
+            "Server: {} · {}. Desktop will ask you to confirm this identity before trusting it.",
+            value.server_name, value.server_url
+        ))?;
     }
     args.components.sort_by_key(|p| match p {
         Product::Server => 0,
@@ -292,7 +357,7 @@ fn execute(mut args: Args) -> Result<()> {
     let invitation = match args.invitation.take().or_else(|| std::env::var("VAULTS_INSTALL_INVITATION").ok()) {
         Some(value) => Invitation::parse(&value)?,
         None if interactive => {
-            Invitation::parse(&cliclack::password("Paste your setup link from Manage (Downloads and license)").interact()?)?
+            Invitation::parse(&cliclack::password(if args.intent==Some(journey::Intent::Join) {"Paste the client-only joining link from your administrator"} else {"Paste your setup link from Manage (Downloads and license)"}).interact()?)?
         }
         None => return Err("Get a setup link from Manage → Downloads and license, then provide VAULTS_INSTALL_SETUP_LINK or --setup-link".into()),
     };
@@ -354,6 +419,9 @@ fn execute(mut args: Args) -> Result<()> {
             engine: args.engine.clone(),
             provider: args.compose_provider.clone(),
         });
+    }
+    if invitation.client_only && args.components.contains(&Product::Server) {
+        return Err("This joining link downloads clients only. The server operator uses their own setup link.".into());
     }
     let api = transport::Api::new(invitation)?;
     let release: Release = api.request("installer", None)?.json()?;
@@ -503,11 +571,19 @@ fn execute(mut args: Args) -> Result<()> {
             "PWA uses the server's web app; no separate runtime or download is needed",
         )?;
     }
+    for check in prerequisites::preview(
+        args.components.contains(&Product::Server),
+        args.engine.as_deref(),
+    ) {
+        cliclack::log::info(check)?;
+    }
     if args.plan {
         cliclack::outro("Plan complete; no local installation changes made")?;
         return Ok(());
     }
-    let confirmation = if state
+    let confirmation = if !args.components.contains(&Product::Server) {
+        "Install client apps only? Server data, billing and license activation are unchanged."
+    } else if state
         .records
         .iter()
         .any(|r| r.product == Product::Server && r.complete)
@@ -524,6 +600,9 @@ fn execute(mut args: Args) -> Result<()> {
         );
     }
     fs::create_dir_all(&root)?;
+    if let Some(value) = &connection {
+        value.save(&root)?;
+    }
     let lock = root.join("installer.lock");
     let mut file = OpenOptions::new().write(true).create_new(true).open(&lock).map_err(|_| "Installer lock exists. If no installer is running, inspect the interrupted installation before removing installer.lock")?;
     let _lock = Lock(lock);
@@ -834,7 +913,35 @@ fn execute(mut args: Args) -> Result<()> {
             ),
         )?;
     }
-    cliclack::outro("Setup complete. Keep the installed folders and your protected backups.")?;
+    let steps = args
+        .components
+        .iter()
+        .map(|product| {
+            journey::next_step(
+                *product,
+                state
+                    .records
+                    .iter()
+                    .any(|r| r.product == *product && r.complete),
+            )
+        })
+        .collect::<Vec<_>>();
+    journey::save_progress(&root, &steps)?;
+    for step in &steps {
+        cliclack::log::info(format!(
+            "{} · {}\n{}",
+            step.component, step.state, step.action
+        ))?;
+    }
+    if connection.is_some() {
+        cliclack::log::info(format!(
+            "Your public connection file is ready to import: {}",
+            root.join("server-connection.127vaults-server").display()
+        ))?;
+    }
+    cliclack::outro(
+        "Installation finished. Follow the next steps above; your checklist is saved in next-steps.json.",
+    )?;
     Ok(())
 }
 

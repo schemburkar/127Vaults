@@ -13,6 +13,7 @@ pub struct Invitation {
     pub origin: String,
     pub id: String,
     pub token: String,
+    pub client_only: bool,
 }
 
 impl Invitation {
@@ -24,7 +25,7 @@ impl Invitation {
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some_and(|q| q != "open=1")
-            || !["/trial", "/trial.html"].contains(&url.path())
+            || !["/trial", "/trial.html", "/join", "/join.html"].contains(&url.path())
         {
             return Err(
                 "Use the HTTPS setup link from Manage or your approved trial invitation".into(),
@@ -49,6 +50,7 @@ impl Invitation {
             origin: url.origin().ascii_serialization(),
             id: id.into(),
             token: token.into(),
+            client_only: ["/join", "/join.html"].contains(&url.path()),
         })
     }
 }

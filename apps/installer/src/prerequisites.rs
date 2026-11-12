@@ -6,10 +6,38 @@ use std::{
     time::{Duration, Instant},
 };
 use vaults_installer::Result;
+pub fn preview(server: bool, engine: Option<&str>) -> Vec<String> {
+    let mut rows = vec![format!(
+        "Platform: {} / {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    )];
+    if server {
+        rows.push("Server needs a private Node.js 24 runtime, a running container engine and Compose. Missing prerequisites are handled after you accept the plan.".into());
+        if let Some(engine) = engine {
+            rows.push(if probe(Command::new(engine).arg("info")) {
+                format!("{engine}: running")
+            } else {
+                format!("{engine}: not ready; start its machine/service before continuing")
+            });
+        }
+    } else {
+        rows.push(
+            "Client-only setup does not install a database, Node runtime or container engine."
+                .into(),
+        );
+    }
+    rows.push("If the operating system requests a restart, reboot and rerun the same installer. Completed installation receipts and server identity are preserved.".into());
+    rows
+}
 
 pub fn run(command: &mut Command) -> Result<()> {
     let label = command.get_program().to_string_lossy().into_owned();
-    if !command.status()?.success() {
+    let status = command.status()?;
+    if cfg!(windows) && matches!(status.code(), Some(3010 | 1641)) {
+        return Err("A prerequisite requires a restart. Restart Windows, then rerun this installer to resume; do not reset your server.".into());
+    }
+    if !status.success() {
         return Err(
             format!("{label} failed; correct the reported issue and rerun the installer").into(),
         );

@@ -1,3 +1,4 @@
+import { clientGrant, clientArtifact } from './client-downloads.mjs';
 import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { validateRequest } from '../src/validate-request.mjs';
 import { validIntakeOrigin } from '../src/intake-origin.mjs';
@@ -187,13 +188,13 @@ async function dispatch(request, env, now, schedule) {
     if (!['GET', 'HEAD'].includes(request.method)) fail(405, 'method_not_allowed');
     return env.ASSETS.fetch(request);
   }
-  const artifactHead = request.method === 'HEAD' && (/^\/api\/trials\/[a-f0-9]{64}\/artifacts\/[a-z0-9-]+$/.test(path) || /^\/api\/access-admin\/releases\/artifacts\/[a-z0-9-]+$/.test(path));
+  const artifactHead = request.method === 'HEAD' && (/^\/api\/trials\/[a-f0-9]{64}\/(?:artifacts|client-artifacts)\/[a-z0-9-]+$/.test(path) || /^\/api\/access-admin\/releases\/artifacts\/[a-z0-9-]+$/.test(path));
   if (path === '/api/billing/webhook' && request.method === 'POST') {
     const store = await setup(env, now);
     return json(200, await billingWebhook(request, env, store, release, now(), fetch, schedule));
   }
   if (!['GET', 'POST'].includes(request.method) && !artifactHead) fail(405, 'method_not_allowed');
-  const machineRefresh = !request.headers.has('origin') && /^\/api\/billing\/[a-f0-9]{64}\/refresh$/.test(path);
+  const machineRefresh = !request.headers.has('origin') && /^\/api\/billing\/[a-f0-9]{64}\/(?:refresh|client-link)$/.test(path);
   if (request.method === 'POST' && ((!machineRefresh && request.headers.get('origin') !== env.PUBLIC_INTAKE_ORIGIN)
     || request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json')) fail(403, 'forbidden');
   const store = await setup(env, now), at = now();
@@ -282,11 +283,24 @@ async function dispatch(request, env, now, schedule) {
       automaticCustomerEmail: resendCustomerEmailEnabled(env),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|subscription|public-keys|ticket|installer|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|subscription|public-keys|ticket|installer|client-installer|client-artifacts\/[a-z0-9-]+|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
   const input = request.method === 'POST' ? await body(request) : null;
+  if (!admin && (action==='client-installer'||action?.startsWith('client-artifacts/'))) {
+    if (!['GET','HEAD'].includes(request.method)) fail(405,'method_not_allowed');
+    if (!row?.contact||!retained(row,at)||!await clientGrant(record,bearer,at)) fail(401,'client_link_unavailable');
+    if (!await store.allow('client-downloads',ip,120,3600000)) fail(429,'rate_limited');
+    const version=request.headers.get('X-127Vaults-Installer-Version');
+    if(version!==null&&!installerPolicy(version,env.INSTALLER_MIN_VERSION??'0.1.0')) fail(426,'installer_update_required');
+    const {catalogue}=await entitledRelease(env,record);
+    const artifacts=catalogue.artifacts.filter(clientArtifact);
+    if (action==='client-installer') return json(200,{protocolVersion:1,sourceRevision:catalogue.sourceRevision,installationId:null,clientOnly:true,artifacts:artifacts.map(publicArtifact)});
+    const asset=artifacts.find(v=>v.id===action.slice('client-artifacts/'.length));
+    if (!asset) fail(404,'not_found');
+    return serveArtifact(env,asset,request);
+  }
   if (admin) {
     if (!row?.contact || !retained(row,at)) fail(404, 'not_found');
     if (record?.convertedPurchaseId && request.method === 'POST' && !['archive', 'unarchive'].includes(action)) fail(409, 'converted_installation');

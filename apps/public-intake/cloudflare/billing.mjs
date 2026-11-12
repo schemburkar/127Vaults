@@ -1,4 +1,5 @@
 import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
+import { issueClientLink } from './client-downloads.mjs';
 import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation } from './dodo.mjs';
 import { equal, hash, token, signEnvelope, from64, seal, unseal, limitIdentity } from './crypto.mjs';
 import { customerCanAccess, customerPrincipal } from './customer-portal.mjs';
@@ -256,18 +257,22 @@ export async function handleBilling(request, env, store, release, now, operatorA
     fields(await input(request), []);
     await dodo(env, `/discounts/${revokeCoupon[1]}`, 'DELETE', undefined, fetcher); return { revoked: true };
   }
-  const match = /^\/api\/(?:access-admin\/)?billing\/([a-f0-9]{64})(?:\/(offer|checkout|portal|cancel|refresh|license|payments|recover-checkout|rotate-refresh))?$/.exec(path);
+  const match = /^\/api\/(?:access-admin\/)?billing\/([a-f0-9]{64})(?:\/(offer|checkout|portal|cancel|refresh|license|payments|recover-checkout|rotate-refresh|client-link))?$/.exec(path);
   if (!match) reject(404, 'not_found');
   const [, id, action] = match;
   const row = await store.get(id), record = row?.trial;
   if (!record || record.state !== 'approved' || (['offer', 'checkout', 'license'].includes(action) && (record.replacementRequest || record.revocation))) reject(404, 'not_found');
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get('authorization') ?? '')?.[1];
   // Machine refresh credentials cannot open checkout or customer billing sessions.
-  const machine = action === 'refresh' && record.billing?.refreshHash && await equal(await hash(bearer ?? ''), record.billing.refreshHash);
+  const machine = ['refresh','client-link'].includes(action) && record.billing?.refreshHash && await equal(await hash(bearer ?? ''), record.billing.refreshHash);
   if (action === 'refresh' && request.method === 'POST' && !request.headers.has('origin') && !machine) reject(401, 'access_required');
   const portalAuthorized = !admin && !machine && await customerCanAccess(request, env, store, row, now, 'billing');
   if (!admin && !machine && !portalAuthorized && (!bearer || !await equal(await hash(bearer), record.tokenHash)
     || Date.parse(record.linkExpiresAt) <= now)) reject(401, 'access_required');
+  if (action==='client-link' && request.method==='POST' && (machine||portalAuthorized||admin)) {
+    const value=await input(request); fields(value,['revoke']);
+    return issueClientLink(store,row,env,now,{revoke:value.revoke===true});
+  }
   if (admin && action === 'offer' && request.method === 'POST') {
     const v = await input(request); fields(v, ['plan']); const plan = config.plans[v.plan];
     if (plan?.plan !== 'commercial' || ['development', 'personal-purchase'].includes(record.kind)) reject(409, 'offer_unavailable');

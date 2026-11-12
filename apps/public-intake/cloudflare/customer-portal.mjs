@@ -4,6 +4,7 @@ import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
 import { productionRecipient } from '../src/resend-email.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail } from './customer-email.mjs';
 import { handlePasskeys } from './customer-passkeys.mjs';
+import { issueClientLink } from './client-downloads.mjs';
 
 const cookieName = '__Host-127v-portal', lifetime = 12 * 3600000;
 const normalize = email => typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -159,6 +160,13 @@ export async function handleCustomerPortal(request, env, store, now) {
   }
   const principal = await customerPrincipal(request, env, store, now);
   if (!principal) reject(401, 'access_required');
+  if (path === '/api/customer/client-link' && request.method === 'POST') {
+    const input=await body(request,['requestId','revoke']);
+    if (principal.kind!=='email'||!idPattern.test(input.requestId??'')) reject(403,'access_required');
+    const row=await store.get(input.requestId);
+    if (!await customerCanAccess(request,env,store,row,now)) reject(404,'not_found');
+    return json(200,await issueClientLink(store,row,env,now,{revoke:input.revoke===true}));
+  }
   if (path === '/api/customer/installer-link' && request.method === 'POST') {
     const input = await body(request, ['requestId']);
     if (!idPattern.test(input.requestId ?? '')) reject(400, 'invalid_request');

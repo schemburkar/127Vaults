@@ -4,19 +4,19 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 1. Combined installer
 
-- [ ] 1.1 Role-based entry: server, join, update/repair.
-- [ ] 1.2 Recommended components with customization.
-- [ ] 1.3 Import shared connection file during joining.
-- [ ] 1.4 Preflight prerequisites and restart guidance.
-- [ ] 1.5 Resume installation without repeating completed steps.
+- [x] 1.1 Role-based entry: server, join, update/repair.
+- [x] 1.2 Recommended components with customization.
+- [x] 1.3 Import shared connection file during joining.
+- [x] 1.4 Preflight prerequisites and restart guidance.
+- [x] 1.5 Resume installation without repeating completed steps.
 
 ## 2. Joining users
 
-- [ ] 2.1 Protected client downloads without purchaser setup credentials.
-- [ ] 2.2 Shareable joining page and instructions.
-- [ ] 2.3 Explain invitation, connection and approval separately.
-- [ ] 2.4 OS choice and recommended installer.
-- [ ] 2.5 Joining completion checklist.
+- [x] 2.1 Protected client downloads without purchaser setup credentials.
+- [x] 2.2 Shareable joining page and instructions.
+- [x] 2.3 Explain invitation, connection and approval separately.
+- [x] 2.4 OS choice and recommended installer.
+- [x] 2.5 Joining completion checklist.
 
 ## 3. Desktop
 
@@ -52,7 +52,7 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 
 ## 7. Installation handoff
 
-- [ ] 7.1 Component-specific completion results.
+- [x] 7.1 Component-specific completion results.
 - [ ] 7.2 Installed, needs setup and ready states.
 - [ ] 7.3 Correct next action after installation.
 - [ ] 7.4 Safe connection handoff without credentials.
@@ -82,3 +82,5 @@ User-selected scope: all 50 points. Implement and commit in coherent batches. Ke
 - [ ] 10.4 Update compatibility/backup/downtime preview.
 - [ ] 10.5 Guarded restore/migration preserving identity.
 
+
+Batch 1 evidence: installer journey module, role recommendations, bounded public connection import, prerequisite preview/restart instructions and existing atomic installation receipts; protected client-download grants with expiry/revocation and explicit denial of server/license/billing endpoints; joining page with OS recommendations and non-secret checklist. `cargo test -p vaults-installer`, installer Clippy, client-download unit tests and the Worker HTTP authorization regression pass. Remaining handoff details stay open below.

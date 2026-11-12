@@ -135,6 +135,11 @@ function renderOrders(value) {
         installer.replaceWith(link('Open setup link', result.link));
       }));
       if (!row.conversion) actions.append(installer);
+      if (value.scope==='email') {
+        const share=element('button','Share client downloads','button secondary');
+        share.onclick=()=>run(async()=>{const result=await portalApi('client-link',{requestId:row.id});share.replaceWith(link('Open joining page (clients only)',result.link));});
+        actions.append(share);
+      }
     }
     if (row.billingStatus && value.scope !== 'installer') {
       const label = ['offered', 'checkout_pending'].includes(row.billingStatus) ? 'Continue checkout'

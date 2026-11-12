@@ -11,7 +11,7 @@ export const publicAssets = ['index.html', 'product.html', 'security.html', 'sec
   'terms.html', 'privacy.html', 'refunds.html', 'support.html',
   'tour.mjs', 'access.mjs', 'downloads.mjs', 'cloud-pricing.mjs', 'setup-guide.mjs', 'releases.json', ...sharedAssets];
 export const adminAssets = ['access-admin.html', 'access-admin.mjs', 'billing-admin.mjs', 'admin-shell.mjs', 'admin.css', 'subscriptions.html', 'coupons.html', 'licenses.html', 'licenses.mjs', 'releases.html', 'releases.mjs', 'customer-mail.html', 'customer-mail.mjs', 'cloud-tenants.html', 'cloud-tenants.mjs', 'trial.css', ...sharedAssets];
-export const customerAssets = ['portal.html', 'portal.mjs', 'portal.css', 'portal-client.mjs', 'passkeys.mjs', 'trial.html', 'trial.mjs', 'billing.html', 'billing.mjs', 'trial.css', 'setup-guide.html', 'setup-guide.mjs', ...sharedAssets];
+export const customerAssets = ['join.html', 'join.mjs', 'portal.html', 'portal.mjs', 'portal.css', 'portal-client.mjs', 'passkeys.mjs', 'trial.html', 'trial.mjs', 'billing.html', 'billing.mjs', 'trial.css', 'setup-guide.html', 'setup-guide.mjs', ...sharedAssets];
 export const siteAssets = { public: publicAssets, admin: adminAssets, customer: customerAssets };
 const common = new Set([...sharedAssets, 'trial.css', 'setup-guide.html', 'setup-guide.mjs']);
 export function assetDirectory(surface, name) {

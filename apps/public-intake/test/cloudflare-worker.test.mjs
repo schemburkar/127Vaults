@@ -1,3 +1,4 @@
+import { issueClientLink } from '../cloudflare/client-downloads.mjs';
 import { testWorker } from '../../../scripts/cloudflare/test-worker.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -530,6 +531,7 @@ async function fixture(t, options = {}) {
     ...(options.serverMajorVersion === undefined ? {} : { serverMajorVersion: options.serverMajorVersion }),
     artifacts: [{ id: 'server', filename: 'server.tar', label: 'Server', sizeBytes: Buffer.byteLength(archive), sha256,
       objectKey: 'releases/test/server.tar', etag: createHash('md5').update(archive).digest('hex') }] };
+  if(options.clientArtifacts)catalogue.artifacts.push({...catalogue.artifacts[0],id:'desktop',filename:'desktop.zip',product:'desktop',platform:'windows-amd64'});
   const catalogueSource = JSON.stringify(catalogue);
   const bindings = { PUBLIC_INTAKE_ORIGIN: origin, OPERATOR_TOKEN: operatorToken, INTAKE_KEY: intakeKey,
     TRIAL_ISSUER_KEY_ID: 'trial', TRIAL_ISSUER_PRIVATE_KEY: issuerPrivateKey, TRIAL_CATALOGUE_KEY: 'releases/test/catalogue.json',
@@ -1115,4 +1117,24 @@ test('operator extends active and expired trials with signed monotonic licenses 
   assert.equal((await inbox.json()).requests.length, 1);
   await prune(f.env, {now:()=>Date.parse(renewed.expiresAt) + 1});
   assert.equal((await f.db.prepare('SELECT contact FROM access_requests WHERE id = ?').bind(id).first()).contact, null);
+});
+
+test('client-only joining grants download clients but cannot open licenses, server packages, activation or billing',async t=>{
+  const f=await fixture(t,{clientArtifacts:true});
+  const id=await f.submit();await f.approve(id);
+  const store=new TrialStore(f.db,await encryptionKey(f.intakeKey,'contacts'),await encryptionKey(f.intakeKey,'trials'),()=>Date.now(),await limiterKey(f.intakeKey));
+  const row=await store.get(id);
+  const result=await issueClientLink(store,row,f.env,Date.now());
+  const bearer=new URL(result.link).hash.split('.').at(-1);
+  const metadata=await f.get(`/api/trials/${id}/client-installer`,bearer);
+  assert.equal(metadata.status,200,await metadata.clone().text());
+  const list=await metadata.json();assert.equal(list.clientOnly,true);assert.equal(list.installationId,null);
+  assert.deepEqual(list.artifacts.map(v=>v.id),['desktop']);
+  assert.equal(await(await f.get(`/api/trials/${id}/client-artifacts/desktop`,bearer)).text(),f.archive);
+  assert.equal((await f.get(`/api/trials/${id}/client-artifacts/server`,bearer)).status,404);
+  for(const action of ['installer','license','public-keys','subscription'])assert.notEqual((await f.get(`/api/trials/${id}/${action}`,bearer)).status,200);
+  assert.notEqual((await f.post(`/api/trials/${id}/activate`,{installationId:randomUUID()},bearer)).status,200);
+  assert.notEqual((await f.get(`/api/billing/${id}`,bearer)).status,200);
+  await issueClientLink(store,row,f.env,Date.now(),{revoke:true});
+  assert.equal((await f.get(`/api/trials/${id}/client-installer`,bearer)).status,401);
 });

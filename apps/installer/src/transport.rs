@@ -20,6 +20,21 @@ impl Api {
         })
     }
     pub fn request(&self, action: &str, body: Option<&serde_json::Value>) -> Result<Response> {
+        let client_action;
+        let action = if self.invitation.client_only {
+            client_action = if action == "installer" {
+                "client-installer".to_owned()
+            } else if action.starts_with("artifacts/") {
+                format!("client-{action}")
+            } else {
+                return Err(
+                    "Client download links cannot access server licensing or billing".into(),
+                );
+            };
+            &client_action
+        } else {
+            action
+        };
         let url = format!(
             "{}/api/trials/{}/{}",
             self.invitation.origin, self.invitation.id, action
