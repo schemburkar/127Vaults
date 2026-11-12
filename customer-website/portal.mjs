@@ -16,6 +16,7 @@ function showLogin() {
   $('portal-login').hidden = false;
   $('portal-signup').hidden = !subscribing;
   $('portal-existing-title').hidden = !subscribing;
+  $('portal-signup-alternative').hidden = subscribing;
 }
 if (subscribing) {
   $('portal-title').textContent = 'Get Personal Self-Hosted.';
@@ -203,6 +204,7 @@ async function account() {
   }
   $('portal-login').hidden = true; $('portal-account').hidden = false;
   $('portal-signup').hidden = true; $('portal-existing-title').hidden = true;
+  $('portal-signup-alternative').hidden = true;
   $('portal-identity').textContent = value.email ? `Signed in as ${value.email}` : value.scope === 'installer' ? 'Signed in with an installer setup link. This session opens installation downloads and licensing only.' : 'Signed in with an invitation. This session opens only that invitation.';
   const cloud = $('portal-cloud');
   const tenants = value.cloudTenants ?? [];
