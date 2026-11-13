@@ -10,6 +10,7 @@ export async function portalApi(path, value) {
       : path.startsWith('passkeys') && response.status === 403 ? 'The passkey could not be verified. Try again or use an email code.'
       : response.status === 403 ? 'The code is invalid, expired, or already used. Request another code.'
       : response.status === 429 ? 'Too many attempts. Please try again later.' : response.status === 401 ? 'Sign in to the customer portal or reopen your invitation.' : 'Customer sign-in is temporarily unavailable.');
+    if(typeof document!=='undefined'&&response.status===401&&(path==='me'||path.startsWith('passkeys')))document.dispatchEvent(new Event('manage-session-ended'));
     error.status = response.status; throw error;
   }
   return response.json();

@@ -1,27 +1,58 @@
+import {availableManageViews,accountSummary,selectManageView} from './manage-state.mjs';
 import { portalApi, establishInvitationSession, parseInvitation } from './portal-client.mjs';
 import { mountBilling } from './billing.mjs';
 import { setupPasskeys, renderPasskeys } from './passkeys.mjs';
 const $ = id => document.getElementById(id);
-let challengeId;
-async function run(work) {
-  const buttons = [...document.querySelectorAll('button')]; buttons.forEach(button => { button.disabled = true; });
-  try { await work(); } catch (error) { $('portal-status').textContent = error.message; }
-  finally { buttons.forEach(button => { button.disabled = false; }); }
+let challengeId,accountSerial=0,accountValue,activeView='overview',initialViewApplied=false,authSerial=0;
+async function run(work,output=$('portal-status')) {
+  const buttons = [...document.querySelectorAll('button')].filter(button=>!button.closest('form[method="dialog"]')).map(button=>[button,button.disabled]); buttons.forEach(([button])=>{button.disabled=true;});document.querySelector('main').setAttribute('aria-busy','true');
+  try { output.textContent='';await work(); } catch (error) { output.textContent = error.message; }
+  finally { buttons.forEach(([button,disabled])=>{if(button.isConnected)button.disabled=disabled;});document.querySelector('main').setAttribute('aria-busy','false'); }
 }
 function link(label, path, primary = false) { const node = document.createElement('a'); node.className = `button ${primary ? 'primary' : 'secondary'}`; node.textContent = label; node.href = path; return node; }
 const query = new URLSearchParams(location.search);
-const subscribing = query.get('subscribe') === 'personal';
+const subscribing = query.get('subscribe') === 'personal';let authMode=subscribing?'signup':'signin';
 let signupChallengeId;
 function showLogin() {
-  $('portal-login').hidden = false;
-  $('portal-signup').hidden = !subscribing;
-  $('portal-existing-title').hidden = !subscribing;
-  $('portal-signup-alternative').hidden = subscribing;
+  $('portal-status').after($('passkey-status'));document.body.dataset.manageState='auth';$('manage-auth').hidden=false;$('portal-account').hidden=true;
+  $('portal-login').hidden=authMode!=='signin';$('portal-signup').hidden=authMode!=='signup';
+  $('portal-existing-title').hidden=true;$('portal-signup-alternative').hidden=true;
+  $('portal-title').textContent='127Vaults Manage';
+  $('portal-description').textContent=authMode==='signup'?'Verify your email, then review your Personal subscription.':'Sign in for your subscriptions, downloads and account security.';
+  for(const button of document.querySelectorAll('[data-auth-mode]'))button.setAttribute('aria-pressed',String(button.dataset.authMode===authMode));
 }
-if (subscribing) {
-  $('portal-title').textContent = 'Get Personal Self-Hosted.';
-  $('portal-description').textContent = 'Start with your email, review your subscription, then pay securely. Your downloads and license setup will be available here after payment is confirmed.';
+function resetEmailStep(signup=false){
+  authSerial++;
+  const start=$(signup?'signup-start':'email-start'),complete=$(signup?'signup-complete':'email-complete');start.hidden=false;complete.hidden=true;
+  $(signup?'signup-code':'code').value='';if(signup)signupChallengeId=null;else challengeId=null;
 }
+for(const button of document.querySelectorAll('[data-auth-mode]'))button.addEventListener('click',()=>{authMode=button.dataset.authMode;const url=new URL(location.href);if(authMode==='signup')url.searchParams.set('subscribe','personal');else url.searchParams.delete('subscribe');history.replaceState(null,'',url.pathname+url.search);resetEmailStep();resetEmailStep(true);$('portal-status').textContent='';$('signup-status').textContent='';showLogin();$(authMode==='signup'?'signup-email':'email').focus();});
+$('signin-change-email').addEventListener('click',()=>{resetEmailStep();$('portal-status').textContent='';$('email').focus();});
+$('signup-change-email').addEventListener('click',()=>{resetEmailStep(true);$('signup-status').textContent='';$('signup-email').focus();});
+function setAccountView(name){
+  if(!accountValue)return;activeView=selectManageView(name,accountValue);
+  const sections={overview:'manage-overview',subscriptions:'portal-orders',cloud:'portal-cloud',security:'passkey-settings',plans:'portal-plans'};
+  for(const [view,id]of Object.entries(sections))$(id).hidden=view!==activeView;
+  for(const button of $('manage-account-nav').querySelectorAll('button'))button.setAttribute('aria-current',button.dataset.view===activeView?'page':'false');
+  const url=new URL(location.href);url.searchParams.set('view',activeView);history.replaceState(null,'',url.pathname+url.search);
+}
+function renderWorkspace(value){
+  accountValue=value;const labels={overview:'Overview',subscriptions:'Subscriptions & access',cloud:'Cloud workspaces',security:'Sign-in & security',plans:'Plans'};
+  $('manage-account-nav').replaceChildren();for(const view of availableManageViews(value)){const button=element('button',labels[view]);button.type='button';button.dataset.view=view;button.addEventListener('click',()=>setAccountView(view));$('manage-account-nav').append(button);}
+  const summary=accountSummary(value),overview=$('manage-overview');overview.replaceChildren();
+  const metrics=element('div','', 'manage-summary-grid');
+  for(const [label,count,view]of [['Self-hosted access',summary.access,'subscriptions'],['Active subscriptions',summary.activeSubscriptions,'subscriptions'],['Cloud workspaces',summary.cloud,'cloud']]){const card=element('button','', 'manage-summary-card');card.type='button';card.append(element('span',label),element('strong',String(count??'—')));if(availableManageViews(value).includes(view))card.addEventListener('click',()=>setAccountView(view));else card.disabled=true;metrics.append(card);}overview.append(metrics);
+  const next=element('section','', 'access-card manage-next-step');next.append(element('span','YOUR NEXT STEP','trial-section-label'));
+  const current=value.requests.find(row=>row.state==='approved')??value.requests.find(row=>row.billingStatus)??value.requests[0];
+  if(current){next.append(element('h2',planName(current.plan)),element('p',orderStatus(current)));if(current.state==='approved')next.append(link('Downloads and setup','/trial?request='+encodeURIComponent(current.id),true));else if(current.billingStatus)next.append(orderLink(current,'Review subscription'));else next.append(element('p','Your access request is being reviewed. You can check its status under Subscriptions & access.'));}
+  else if(value.cloudTenants?.length){next.append(element('h2','Your Cloud workspace'),element('p','Review your family workspace and access its settings.'),viewButton('View Cloud workspaces','cloud'));}
+  else if(value.cloudUnavailable){next.append(element('h2','Cloud details are unavailable'),element('p','Your account is signed in. Open Cloud workspaces for the current status, or try again later.'),viewButton('View Cloud status','cloud'));}
+  else{next.append(element('h2','Your account is ready'),element('p',value.scope==='email'?'Choose a plan or open an invitation to get started.':'This invitation has no available access. Contact your inviter for help.'));if(value.scope==='email')next.append(viewButton('Explore plans','plans'));}
+  overview.append(next);
+  if(value.scope!=='email')overview.append(element('p','This session is limited to the invitation you opened. Sign out and verify your email to see all of your account.','manage-scope-note'));
+  function viewButton(text,view){const button=element('button',text,'button primary');button.type='button';button.addEventListener('click',()=>setAccountView(view));return button;}
+}
+function clearAccount(){activeView='overview';initialViewApplied=false;accountSerial++;accountValue=null;$('portal-account').hidden=true;$('portal-requests').replaceChildren();$('portal-cloud-tenants').replaceChildren();$('passkey-list').replaceChildren();$('manage-overview').replaceChildren();$('portal-identity').textContent='';$('personal-consent').checked=false;const panel=$('billing-panel');if(panel.open)panel.close();panel.replaceWith(billingPanel.cloneNode(true));}
 function element(tag, label, className) {
   const node = document.createElement(tag);
   if (label) node.textContent = label;
@@ -58,19 +89,28 @@ function renderPlans(value) {
     : ' and agree to annual billing at $20 USD plus applicable tax.';
 }
 const billingPanel = $('billing-panel').cloneNode(true);
+$('portal-account').prepend(document.querySelector('.portal-session'));document.querySelector('.portal-session').after($('portal-return'));
 function orderLink(row, label) {
-  const order = link(label, `/billing?request=${encodeURIComponent(row.id)}`);
+  const order = link(label, `${row.billingStatus?'/billing':'/portal?view=subscriptions&record=1'}${row.billingStatus?'?':'&'}request=${encodeURIComponent(row.id)}`);
   order.addEventListener('click', event => {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     const panel = billingPanel.cloneNode(true);
     $('billing-panel').replaceWith(panel);
-    panel.querySelector('#billing-reference').textContent = `Order ${row.id.slice(0, 8)} · ${orderStatus(row)}`;
+    panel.querySelector('#billing-reference').textContent = planName(row.plan)+' · Ref '+row.id.slice(0,8)+' · '+orderStatus(row);
+    const summary=element('section','', 'manage-detail-grid');for(const [title,value]of [['Access',orderKind(row)],['Users',row.maxUsers?String(row.maxUsers):'Not yet approved'],['Installation',row.installationId||'Not activated'],['End date',row.paidThrough||row.expiresAt?new Date(row.paidThrough??row.expiresAt).toLocaleDateString():'Not started']]){const field=element('div');field.append(element('small',title),element('strong',value));summary.append(field);}panel.querySelector('#billing-reference').after(summary);panel.querySelector('#billing-title').textContent=planName(row.plan);
+
     if (row.state === 'approved') {
       panel.querySelector('#billing-download').append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`));
     }
-    panel.showModal();
-    mountBilling(panel, row.id);
+    if(row.state==='approved'){
+      if(!row.conversion)addPrivateLinkAction('Get installer setup link','installer-link','Open setup link');
+      if(accountValue?.scope==='email')addPrivateLinkAction('Share client downloads','client-link','Open client joining page');
+    }
+    function addPrivateLinkAction(label,endpoint,openLabel){const button=element('button',label,'button secondary');button.type='button';button.addEventListener('click',()=>run(async()=>{const result=await portalApi(endpoint,{requestId:row.id});const url=new URL(result.link);if(url.origin!==location.origin||!['/trial','/trial.html','/join','/join.html'].includes(url.pathname))throw Error('The private link could not be verified.');const box=element('div','', 'manage-private-link');const note=element('p',endpoint==='client-link'?'Client apps only. This does not grant server administration or create a vault account.':'Use this private link in the installer. Keep it within your authorized installation.');const input=element('input');input.readOnly=true;input.value=result.link;input.setAttribute('aria-label',label);const copy=element('button','Copy link','button secondary');copy.type='button';copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(input.value);note.textContent='Link copied. Share it only with the intended recipient.';}catch{input.select();note.textContent='Select and copy the link.';}});box.append(note,input,copy,link(openLabel,result.link));button.replaceWith(box);},panel.querySelector('#status')));panel.querySelector('#billing-download').append(button);}
+    panel.addEventListener('close',()=>order.focus(),{once:true});panel.showModal();
+    if(row.billingStatus)mountBilling(panel,row.id);else panel.querySelector('#status').textContent=row.state==='requested'?'Your access request is awaiting approval.':orderStatus(row);
+
   });
   return order;
 }
@@ -94,6 +134,7 @@ function orderKind(row) {
   return 'Access request';
 }
 function renderOrders(value) {
+  const query=new URLSearchParams(location.search);
   const rows = [...value.requests].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   const returning = query.get('billing') === 'return';
   // Older hosted sessions return without the order reference.
@@ -113,6 +154,7 @@ function renderOrders(value) {
   const body = $('portal-requests');
   body.replaceChildren();
   $('portal-orders').hidden = !rows.length;
+  if(!rows.length){const tr=element('tr'),td=element('td','No subscriptions or self-hosted access requests yet.');td.colSpan=5;tr.append(td);body.append(tr);}
   if (current) {
     rows.splice(rows.indexOf(current), 1);
     rows.unshift(current);
@@ -129,37 +171,20 @@ function renderOrders(value) {
       name.append(installation);
     }
     if (row.maxUsers) name.append(element('small', `${row.maxUsers} licensed users`));
-    const kind = element('td');
+    const kind = element('td');kind.dataset.label='Access type';
     kind.append(element('span', orderKind(row), row.billingMode === 'test_mode' || row.kind === 'development' ? 'portal-state' : ''));
     const end = row.state === 'purchase_pending' ? null : row.paidThrough ?? row.expiresAt;
     const dates = element('td', end ? new Date(end).toLocaleDateString() : '—');
+    dates.dataset.label='End date';
     if (end) dates.append(element('small', row.paidThrough
       ? row.billingMode === 'test_mode' ? 'Test period ends' : 'Subscription active through'
       : 'License expires'));
-    const action = element('td');
+    const action = element('td');action.dataset.label='Actions';
     const actions = element('div', '', 'portal-table-actions');
-    if (row.state === 'approved') {
-      actions.append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`));
-      const installer = element('button', 'Get setup link', 'button secondary');
-      installer.type = 'button';
-      installer.addEventListener('click', () => run(async () => {
-        const result = await portalApi('installer-link', { requestId: row.id });
-        installer.replaceWith(link('Open setup link', result.link));
-      }));
-      if (!row.conversion) actions.append(installer);
-      if (value.scope==='email') {
-        const share=element('button','Share client downloads','button secondary');
-        share.onclick=()=>run(async()=>{const result=await portalApi('client-link',{requestId:row.id});share.replaceWith(link('Open joining page (clients only)',result.link));});
-        actions.append(share);
-      }
-    }
-    if (row.billingStatus && value.scope !== 'installer') {
-      const label = ['offered', 'checkout_pending'].includes(row.billingStatus) ? 'Continue checkout'
-        : row.state === 'approved' ? 'Manage billing' : 'Order details';
-      actions.append(orderLink(row, label));
-    }
+    if(row.state==='approved')actions.append(link('Downloads and setup','/trial?request='+encodeURIComponent(row.id),true));
+    actions.append(orderLink(row,row.billingStatus?'Manage subscription':'View access details'));
     action.append(actions);
-    entry.append(name, kind, element('td', orderStatus(row)), dates, action);
+    entry.append(name, kind, (()=>{const td=element('td');td.dataset.label='Status';td.append(element('span',orderStatus(row),'portal-state '+(row.billingStatus==='active'&&row.state==='approved'?'success':'')));return td;})(), dates, action);
     body.append(entry);
   }
 }
@@ -188,9 +213,10 @@ $('personal-buy').addEventListener('submit', event => {
   });
 });
 async function account() {
+  const serial=++accountSerial,route=new URLSearchParams(location.search);
   let value = await portalApi('me');
-  if (query.get('billing') === 'return') {
-    const selected = query.get('request');
+  if (route.get('billing') === 'return') {
+    const selected = route.get('request');
     const pending = selected && value.requests.find(row => row.id === selected && row.state === 'purchase_pending'
       && ['active', 'checkout_pending'].includes(row.billingStatus));
     if (pending) {
@@ -202,6 +228,8 @@ async function account() {
       }
     }
   }
+  if(serial!==accountSerial)return;document.body.dataset.manageState='account';$('manage-auth').hidden=true;
+  $('portal-title').textContent=value.scope==='email'?'Your account':'Your invitation';$('portal-description').textContent='Subscriptions, server setup and account security, in one place.';
   $('portal-login').hidden = true; $('portal-account').hidden = false;
   $('portal-signup').hidden = true; $('portal-existing-title').hidden = true;
   $('portal-signup-alternative').hidden = true;
@@ -231,17 +259,22 @@ async function account() {
     cloudCards.append(card);
   }
   renderPlans(value);
+  renderWorkspace(value);
   renderOrders(value);
-  await renderPasskeys(value.scope === 'email');
+  $('passkey-settings').querySelector('h2').after($('passkey-status'));
+  try{await renderPasskeys(value.scope === 'email');}catch(error){if(error.status===401)throw error;$('passkey-status').textContent='Passkey settings are temporarily unavailable. You can still use the rest of your account.';}
+  if(serial!==accountSerial)return;setAccountView(initialViewApplied?activeView:route.get('view')??(route.get('billing')==='return'?'subscriptions':null)??(authMode==='signup'&&value.canBuyPersonal?'plans':activeView));initialViewApplied=true;
   $('portal-status').textContent = value.requests.length || value.canBuyPersonal || !cloud.hidden ? '' : 'There are no available requests for this session. Verify your email or use a current invitation.';
 }
 $('email-start').addEventListener('submit', event => { event.preventDefault(); run(async () => {
-  const result = await portalApi('start', { email: $('email').value.trim() }); challengeId = result.challengeId;
+  const serial=++authSerial,email=$('email').value.trim();const result = await portalApi('start', { email });if(serial!==authSerial)return;challengeId = result.challengeId;
+  $('email-start').hidden=true;$('email-code-context').textContent='Enter the code sent to '+email+'.';
   $('email-complete').hidden = false; $('portal-status').textContent = result.message; $('code').value = ''; $('code').focus();
 }); });
 $('signup-start').addEventListener('submit', event => { event.preventDefault(); run(async () => {
-  const result = await portalApi('start', { email: $('signup-email').value.trim() });
+  const serial=++authSerial,email=$('signup-email').value.trim();const result = await portalApi('start', { email });if(serial!==authSerial)return;
   signupChallengeId = result.challengeId;
+  $('signup-start').hidden=true;$('signup-code-context').textContent='Enter the code sent to '+email+'.';
   $('signup-complete').hidden = false;
   $('signup-status').textContent = result.message;
   $('signup-code').value = ''; $('signup-code').focus();
@@ -249,7 +282,7 @@ $('signup-start').addEventListener('submit', event => { event.preventDefault(); 
 $('signup-complete').addEventListener('submit', event => { event.preventDefault(); run(async () => {
   await portalApi('complete', { challengeId: signupChallengeId, code: $('signup-code').value.trim() });
   $('signup-code').value = ''; await account();
-  $('portal-plans').scrollIntoView({ block: 'start' });
+  setAccountView('plans');$('portal-plans').scrollIntoView({ block: 'start' });
 }); });
 $('email-complete').addEventListener('submit', event => { event.preventDefault(); run(async () => {
   await portalApi('complete', { challengeId, code: $('code').value.trim() }); $('code').value = ''; await account();
@@ -259,10 +292,11 @@ $('invite-login').addEventListener('submit', event => { event.preventDefault(); 
   $('invitation').value = ''; await account();
 }); });
 $('portal-logout').addEventListener('click', () => run(async () => {
-  await portalApi('logout', {}); $('portal-account').hidden = true; showLogin();
+  await portalApi('logout', {});authMode='signin';const url=new URL(location.href);url.searchParams.delete('subscribe');url.searchParams.delete('view');history.replaceState(null,'',url.pathname+url.search);clearAccount();resetEmailStep();resetEmailStep(true);for(const id of ['email','signup-email','passkey-name'])$(id).value='';showLogin();
   $('portal-cloud').hidden = true; $('portal-cloud-tenants').replaceChildren();
   $('personal-consent').checked = false;
   $('portal-requests').replaceChildren(); $('portal-identity').textContent = ''; $('portal-status').textContent = 'Signed out.';
 }));
+document.addEventListener('manage-session-ended',()=>{clearAccount();resetEmailStep();resetEmailStep(true);showLogin();});
 setupPasskeys(account);
 account().catch(error => { showLogin(); $('portal-status').textContent = error.status === 401 ? '' : error.message; });

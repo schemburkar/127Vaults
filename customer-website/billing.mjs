@@ -1,8 +1,10 @@
+import {confirmManageAction} from './manage-shell.mjs';
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(location.hash.slice(1));
 const selected = new URLSearchParams(location.search).get('request');
 const requestId = match?.[1] ?? (/^[a-f0-9]{64}$/.test(selected ?? '') ? selected : null);
 export function mountBilling(root, requestId, bearer) {
   const $ = id => root.querySelector('#' + id);
+  let current;
   const base = requestId ? '/api/billing/' + requestId : null;
   async function api(action = '', value) {
     if (!base) throw Error('Reopen your private invitation to manage your subscription.');
@@ -10,6 +12,7 @@ export function mountBilling(root, requestId, bearer) {
       credentials: 'same-origin', headers: { ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), ...(value === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
     if (!response.ok) {
+      if(response.status===401)$('controls').hidden=true;
       const result = await response.json().catch(() => ({}));
       throw Error(response.status === 404 ? 'Subscription access is not available for this invitation.'
         : result.error === 'checkout_rejected' ? 'Checkout was declined. Check the discount code and try again.'
@@ -19,6 +22,7 @@ export function mountBilling(root, requestId, bearer) {
     return response.json();
   }
   function show(value) {
+    current=value;
     $('controls').hidden = false;
     const personal = value.plan === 'personal-annual';
     const checkout = value.status === 'offered' || (personal && value.status === 'checkout_pending') || value.canRetryPayment || value.canResubscribe;
@@ -65,7 +69,7 @@ export function mountBilling(root, requestId, bearer) {
   }
   $('checkout').addEventListener('submit', event => { event.preventDefault(); run(async () => navigate((await api('/checkout', { ...($('coupon').value.trim() ? { coupon: $('coupon').value.trim() } : {}), ...(!$('resubscribe-terms').hidden ? { acceptTerms: $('resubscribe-accept').checked } : {}) })).checkoutUrl)); });
   $('portal').addEventListener('click', () => run(async () => navigate((await api('/portal', {})).portalUrl)));
-  $('cancel').addEventListener('click', () => run(async () => { await api('/cancel', {}); show(await api()); }));
+  $('cancel').addEventListener('click', () => run(async () => { if(!await confirmManageAction('Cancel renewal',current?.paidThrough?'Stop the next renewal? Your current paid access continues through '+new Date(current.paidThrough).toLocaleDateString()+'.':'Stop this subscription’s next renewal?'))return;await api('/cancel', {}); show(await api()); }));
   $('license').addEventListener('click', () => run(async () => {
     const result = await api('/license'); if (!result.license) throw Error('No license is available yet.');
     const url = URL.createObjectURL(new Blob([result.license], { type: 'application/json' }));
@@ -78,6 +82,6 @@ export function mountBilling(root, requestId, bearer) {
 }
 if (document.getElementById('back-to-portal')) {
   history.replaceState(null, '', !match && requestId ? location.pathname + '?request=' + requestId : location.pathname);
-  if (requestId) document.getElementById('back-to-portal').href = '/portal?request=' + requestId;
+  if (requestId) {document.getElementById('back-to-portal').href = '/portal?view=subscriptions&request=' + requestId;document.getElementById('billing-reference').textContent='Subscription · Ref '+requestId.slice(0,8);}
   mountBilling(document, requestId, match?.[2]);
 }

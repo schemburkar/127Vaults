@@ -6,6 +6,20 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('./trial.mjs', import.meta.url), 'utf8');
 const startup = source.slice(0, source.indexOf('const base =')).replace(/^import .*;\r?\n/gm, '');
 
+test('paid setup opens its subscription action before rendering downloads', async () => {
+  const body=source.slice(source.indexOf('async function open()'),source.indexOf("\n$('trial-activate').addEventListener"));
+  const nodes=new Map(),links=[];
+  const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,textContent:'',after:link=>links.push(link),replaceChildren(){},addEventListener(){},setAttribute(){}});return nodes.get(id);};
+  const context=vm.createContext({requestId:'a'.repeat(64),match:null,token:undefined,
+    api:async()=>({json:async()=>({billingAvailable:true,artifacts:[],sourceRevision:'review-source'})}),
+    document:{createElement:()=>({append(){}})},$:node,status:()=>{},showInstaller:()=>{},showLicense:()=>{},renderPackages:()=>{}});
+  await vm.runInContext(body+'\nopen();',context);
+  assert.equal(node('trial-content').hidden,false);
+  assert.equal(links.length,1);
+  assert.equal(links[0].href,'/billing?request='+'a'.repeat(64));
+  assert.equal(links[0].textContent,'Manage subscription, invoices and payment methods');
+});
+
 test('recommended installer commands omit credentials and offer setup links for portal customers', () => {
   const renderer = source.slice(source.indexOf('function showInstaller'), source.indexOf("\n$('copy-installer-invitation').addEventListener"));
   for (const [artifacts, visible] of [[[{ product: 'installer', supporting: false }], true],

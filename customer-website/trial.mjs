@@ -113,7 +113,7 @@ async function open() {
   }
   const record = await (await api()).json();
   if (record.billingAvailable) {
-    const link = make('a', 'Manage subscription, invoices and payment methods');
+    const link = document.createElement('a');link.textContent = 'Manage subscription, invoices and payment methods';
     link.href = token ? `/billing#${requestId}.${token}` : `/billing?request=${requestId}`; link.className = 'button primary';
     $('trial-status').after(link);
     $('trial-terms').textContent = 'Your subscription license follows your confirmed paid period. Failed renewals stop writes, then allow 30 days for reads and exports. Your encrypted data is retained.';

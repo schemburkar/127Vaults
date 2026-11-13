@@ -1,3 +1,4 @@
+import {confirmManageAction} from './manage-shell.mjs';
 import { portalApi } from './portal-client.mjs';
 const $ = id => document.getElementById(id);
 const encode = value => btoa(String.fromCharCode(...new Uint8Array(value))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
@@ -56,7 +57,7 @@ export async function renderPasskeys(emailSession) {
       await portalApi('passkeys/rename', { id: passkey.id, name: name.value }); await renderPasskeys(true);
     }); });
     remove.addEventListener('click', () => run(async () => {
-      if (!confirm(`Remove “${passkey.name}”? You can still sign in with an email code.`)) return;
+      if (!await confirmManageAction('Remove passkey',`Remove “${passkey.name}”? You can still sign in with an email code.`)) return;
       await portalApi('passkeys/remove', { id: passkey.id });
       if (passkey.current) location.reload();
       else await renderPasskeys(true);
