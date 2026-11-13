@@ -3,6 +3,7 @@
 mod agent;
 mod desktop_profile;
 mod devices;
+pub mod namespace;
 pub use desktop_profile::desktop_profile_directory;
 pub use devices::DeviceCommand;
 mod generator;
@@ -266,19 +267,21 @@ pub enum AccountSecretCommand {
     Status {
         #[arg(long)]
         username: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Remove this CLI profile/account's remembered secret. Does not delete vault data.
     Forget {
         #[arg(long)]
         username: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Show this build's namespace and resource locations (no secrets).
+    Namespace,
     /// Rotate credentials or reconcile an interrupted rotation using the server's device proofs.
     Credential {
         #[command(subcommand)]
@@ -294,7 +297,7 @@ pub enum Command {
         vault: String,
         #[arg(long)]
         confirm: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Export all local vaults, including secrets, to a new plaintext JSON file.
@@ -305,7 +308,7 @@ pub enum Command {
         format: String,
         #[arg(long, required = true)]
         plaintext: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Generate a local cryptographically random secret (printed to stdout).
@@ -334,7 +337,7 @@ pub enum Command {
         /// Ignore a remembered secret and prompt for both credentials.
         #[arg(long)]
         no_remembered_secret: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Inspect or forget the optional OS-protected account secret.
@@ -355,7 +358,7 @@ pub enum Command {
     Unlock {
         #[arg(long)]
         username: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Encrypted vault operations.
@@ -374,12 +377,12 @@ pub enum Command {
     },
     /// Upload queued edits and refresh verified encrypted replicas.
     Sync {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// List queued item labels and changed field names without replaying writes or revealing values.
     SyncReview {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Review and resolve quarantined local edits.
@@ -389,19 +392,19 @@ pub enum Command {
     },
     /// Report the CLI's per-command lock behavior.
     Lock {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Report the CLI's per-command logout behavior.
     Logout {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Show a redacted client status.
     Status {
         #[arg(long)]
         json: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Show the server's redacted license status (online only).
@@ -414,7 +417,7 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum LicenseCommand {
     Status {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -429,7 +432,7 @@ pub enum ServerCommand {
         ca: PathBuf,
         #[arg(long)]
         server_id: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -451,7 +454,7 @@ pub struct TrustArgs {
     #[arg(long)]
     pub tailscale_ip: bool,
     /// Directory in which to create the non-secret trust profile.
-    #[arg(long, default_value = ".127vaults")]
+    #[arg(long, default_value_os_t = namespace::default_cli_directory())]
     pub config_dir: PathBuf,
 }
 
@@ -460,85 +463,85 @@ pub enum VaultCommand {
     List {
         #[command(flatten)]
         output: ListOutputArgs,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Create {
         /// Encrypted vault name.
         #[arg(default_value = "Private")]
         name: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Info {
         /// Vault name, generated V-code, or internal UUID.
         vault: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Rename {
         vault: String,
         name: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Settings {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     SettingsSync {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     SettingsReview {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     SettingsResolve {
         #[arg(long, value_parser = ["server", "local"])]
         keep: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     RemovalPreference {
         #[arg(long, value_parser = ["move", "archive"])]
         choice: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Archive {
         vault: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Move {
         vault: String,
         #[arg(long = "to")]
         destination: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     RemovalStatus {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     AbortMove {
         /// Acknowledge that destination copies may remain and must be reviewed.
         #[arg(long, required = true)]
         keep_copies: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Restore {
         vault: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     DefaultView {
         #[arg(value_parser = ["all", "vault", "collection"])]
         kind: String,
         selector: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Show, set, or clear this profile's preferred vault at unlock.
@@ -546,7 +549,7 @@ pub enum VaultCommand {
         vault: Option<String>,
         #[arg(long, conflicts_with = "vault")]
         clear: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -554,7 +557,7 @@ pub enum VaultCommand {
 #[derive(Debug, Subcommand)]
 pub enum CollectionCommand {
     List {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Save {
@@ -563,17 +566,17 @@ pub enum CollectionCommand {
         id: Option<String>,
         #[arg(long = "vault", required = true)]
         vaults: Vec<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Remove {
         id: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Items {
         id: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -585,7 +588,7 @@ pub enum ItemCommand {
         vault: Option<String>,
         /// Unique item title, generated I-code, or internal UUID.
         id: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     List {
@@ -604,7 +607,7 @@ pub enum ItemCommand {
         vault: Option<String>,
         #[arg(long, conflicts_with = "vault")]
         all: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Get {
@@ -615,7 +618,7 @@ pub enum ItemCommand {
         /// Print only the named password-class field for piping (built-in name, custom label, or custom field ID).
         #[arg(long, value_name = "FIELD")]
         password: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     Create {
@@ -623,7 +626,7 @@ pub enum ItemCommand {
         vault: Option<String>,
         #[command(flatten)]
         input: ItemInputArgs,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Replace an item's content. Supply every field to retain; omitted optional fields are cleared.
@@ -634,7 +637,7 @@ pub enum ItemCommand {
         id: String,
         #[command(flatten)]
         input: ItemInputArgs,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -651,7 +654,7 @@ pub enum ConflictCommand {
         field_sources: Vec<String>,
         #[arg(long)]
         vault: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Compare the queued draft with verified server fields without submitting it.
@@ -659,13 +662,13 @@ pub enum ConflictCommand {
         operation_id: String,
         #[arg(long)]
         vault: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     List {
         #[arg(long)]
         vault: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Show a local draft with secret fields redacted.
@@ -673,7 +676,7 @@ pub enum ConflictCommand {
         operation_id: String,
         #[arg(long)]
         vault: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Keep the verified server item or resubmit the local draft.
@@ -683,7 +686,7 @@ pub enum ConflictCommand {
         keep: String,
         #[arg(long)]
         vault: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -862,6 +865,7 @@ fn write_new_or_equal(path: &std::path::Path, bytes: &[u8]) -> Result<(), String
 /// # Errors
 /// Fails closed for TLS, HTTP, filesystem, or existing-profile mismatches.
 pub fn establish_trust(args: &TrustArgs) -> Result<String, String> {
+    namespace::Namespace::current()?.prepare_profile(&args.config_dir)?;
     let validation = validate_trust(args)?;
     let ca = fs::read(&args.ca).map_err(|_| "could not read CA certificate".to_owned())?;
     let certificate = reqwest::Certificate::from_pem(&ca)
@@ -1050,6 +1054,7 @@ pub(crate) fn configured_cloud_trust(
 /// # Errors
 /// Returns an error for invalid discovery or conflicting local trust.
 pub fn establish_cloud_trust(config_dir: &std::path::Path, url: &str) -> Result<String, String> {
+    namespace::Namespace::current()?.prepare_profile(config_dir)?;
     let origin = cloud_endpoint(url)?;
     let client = cloud_http_builder()
         .build()
@@ -1085,7 +1090,9 @@ fn configured(config_dir: &std::path::Path) -> bool {
 }
 
 fn active_profile_path() -> PathBuf {
-    PathBuf::from(".127vaults-active")
+    namespace::Namespace::current()
+        .and_then(|n| n.active_pointer())
+        .unwrap_or_else(|_| PathBuf::from("__namespace_configuration_required__"))
 }
 
 fn remember_active_profile(config_dir: &std::path::Path) -> Result<(), String> {
@@ -1097,24 +1104,55 @@ fn remember_active_profile(config_dir: &std::path::Path) -> Result<(), String> {
             .join(config_dir)
     };
     let value = format!("{}\n", absolute.display());
+    namespace::Namespace::current()?.prepare_profile(config_dir)?;
+    if let Some(parent) = active_profile_path()
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|_| "Cannot create active profile directory")?;
+    }
+    namespace::validate_profile(&active_profile_path())?;
     fs::write(active_profile_path(), &value)
         .map_err(|_| "could not remember active profile".to_owned())?;
-    if let Some(home) = dirs::home_dir() {
+    if namespace::Namespace::current()?.production()
+        && let Some(home) = dirs::home_dir()
+    {
+        namespace::validate_profile(&home.join(".127vaults-active"))?;
         fs::write(home.join(".127vaults-active"), value)
             .map_err(|_| "could not remember connector profile".to_owned())?;
     }
     Ok(())
 }
 
-fn effective_config_dir(requested: &std::path::Path) -> PathBuf {
-    if requested != std::path::Path::new(".127vaults") {
-        return requested.to_owned();
+fn effective_config_dir(requested: &std::path::Path) -> Result<PathBuf, String> {
+    let namespace = namespace::Namespace::current()?;
+    namespace.validate_profile(requested)?;
+    if requested != namespace::default_cli_directory() {
+        return Ok(requested.to_owned());
     }
-    fs::read_to_string(active_profile_path())
-        .ok()
-        .map(|value| PathBuf::from(value.trim()))
-        .filter(|path| path.join("trust.conf").is_file() && path.join("device.conf").is_file())
-        .unwrap_or_else(|| requested.to_owned())
+    let pointer = namespace.active_pointer()?;
+    namespace.validate_profile(&pointer)?;
+    let value = match fs::read_to_string(pointer) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(requested.to_owned());
+        }
+        Err(_) => return Err("Active profile pointer cannot be read".into()),
+    };
+    if value.trim().is_empty() {
+        return Err("Active profile pointer is empty".into());
+    }
+    let path = PathBuf::from(value.trim());
+    if !path.is_absolute() {
+        return Err("Active profile pointer must be absolute".into());
+    }
+    namespace.validate_profile(&path)?;
+    if !path.join("trust.conf").is_file() || !path.join("device.conf").is_file() {
+        return Err(
+            "The selected active profile is unavailable; choose an explicit profile".into(),
+        );
+    }
+    Ok(path)
 }
 
 #[derive(Serialize)]
@@ -1169,6 +1207,7 @@ struct EnrollmentReceipt {
 }
 
 fn file_profile_value(path: &std::path::Path, key: &str) -> Result<String, String> {
+    namespace::validate_profile(path)?;
     let profile = fs::read_to_string(path).map_err(|_| "client profile is missing".to_owned())?;
     profile
         .lines()
@@ -1184,7 +1223,7 @@ fn profile_value(config_dir: &std::path::Path, key: &str) -> Result<String, Stri
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn store_device_key(server_id: &str, device_id: &str, seed: &[u8]) -> Result<(), String> {
     let entry = keyring::Entry::new(
-        "127Vaults device identity",
+        &namespace::service("127Vaults device identity")?,
         &format!("{server_id}:{device_id}"),
     )
     .map_err(|_| "OS credential storage is unavailable".to_owned())?;
@@ -1970,6 +2009,7 @@ fn validate_typed_fields(fields: &[serde_json::Value], kind: &str) -> Result<(),
 /// Returns a safe diagnostic when validation fails or a command is not implemented.
 #[allow(clippy::too_many_lines)]
 pub fn run(cli: Cli) -> Result<String, String> {
+    namespace::Namespace::current()?;
     match &cli.command {
         Command::Vault {
             command: VaultCommand::List { output, .. },
@@ -1980,12 +2020,16 @@ pub fn run(cli: Cli) -> Result<String, String> {
         _ => {}
     }
     match cli.command {
+        Command::Namespace => {
+            let n = namespace::Namespace::current()?;
+            Ok(serde_json::json!({"namespace":n.id(),"name":n.name(),"root":n.root()?,"nativeHost":n.native_host(),"profile":effective_config_dir(&namespace::default_cli_directory())?}).to_string())
+        }
         Command::Generate { command } => generate_command(command),
         Command::License {
             command: LicenseCommand::Status { config_dir },
         } => {
             let mut status = agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 "license.status",
                 serde_json::json!({}),
             )?;
@@ -2048,7 +2092,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
             })
         }
         Command::Status { json, config_dir } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             let status = agent::call(&config_dir, "status", serde_json::json!({})).ok();
             let authenticated = status
                 .as_ref()
@@ -2112,7 +2156,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 } => (username, config_dir, true),
             };
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             let username = username.unwrap_or(file_profile_value(
                 &config_dir.join("device.conf"),
                 "username",
@@ -2153,20 +2197,20 @@ pub fn run(cli: Cli) -> Result<String, String> {
             command: VaultCommand::List { config_dir, output },
         } => list_output::vaults(
             &agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 "vault.list",
                 serde_json::json!({}),
             )?,
             &output,
         ),
         Command::Sync { config_dir } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "sync",
             serde_json::json!({}),
         )?)
         .map_err(|_| "could not encode sync result".to_owned()),
         Command::SyncReview { config_dir } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "sync.review",
             serde_json::json!({}),
         )?)
@@ -2219,7 +2263,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                 ),
             };
             serde_json::to_string_pretty(&agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 action,
                 body,
             )?)
@@ -2228,7 +2272,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::Create { name, config_dir },
         } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             serde_json::to_string_pretty(&agent::call(
                 &config_dir,
                 "vault.create",
@@ -2244,7 +2288,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.rename",
             serde_json::json!({"vault":vault,"name":name}),
         )?)
@@ -2252,7 +2296,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::SettingsSync { config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.settings.sync",
             serde_json::json!({}),
         )?)
@@ -2260,7 +2304,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::SettingsReview { config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.settings.review",
             serde_json::json!({}),
         )?)
@@ -2268,7 +2312,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::SettingsResolve { keep, config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.settings.resolve",
             serde_json::json!({"keep":keep}),
         )?)
@@ -2276,7 +2320,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::RemovalPreference { choice, config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.settings.preference",
             serde_json::json!({"choice":choice}),
         )?)
@@ -2284,7 +2328,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::Archive { vault, config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.archive",
             serde_json::json!({"vault":vault}),
         )?)
@@ -2297,7 +2341,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.move",
             serde_json::json!({"vault":vault,"destination":destination}),
         )?)
@@ -2305,7 +2349,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::RemovalStatus { config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.removal.status",
             serde_json::json!({}),
         )?)
@@ -2317,7 +2361,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.move.abort",
             serde_json::json!({"keep_copies":keep_copies}),
         )?)
@@ -2325,7 +2369,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::Restore { vault, config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.restore",
             serde_json::json!({"vault":vault}),
         )?)
@@ -2342,7 +2386,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                 return Err("vault or collection selector is required".to_owned());
             }
             serde_json::to_string_pretty(&agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 "vault.settings.default-view",
                 serde_json::json!({"view_kind":kind,"vault":selector,"collection_id":selector}),
             )?)
@@ -2375,7 +2419,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                 ),
             };
             serde_json::to_string_pretty(&agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 action,
                 body,
             )?)
@@ -2384,7 +2428,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::Settings { config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.settings",
             serde_json::json!({}),
         )?)
@@ -2392,7 +2436,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
         Command::Vault {
             command: VaultCommand::Info { vault, config_dir },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.info",
             serde_json::json!({"vault":vault}),
         )?)
@@ -2405,7 +2449,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => serde_json::to_string_pretty(&agent::call(
-            &effective_config_dir(&config_dir),
+            &effective_config_dir(&config_dir)?,
             "vault.default",
             serde_json::json!({"vault":vault,"clear":clear}),
         )?)
@@ -2418,7 +2462,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
             config_dir,
         } => {
             let file = fs::canonicalize(file).map_err(|_| "Import file is unavailable")?;
-            serde_json::to_string_pretty(&agent::call(&effective_config_dir(&config_dir), "migration.import", serde_json::json!({"migration_file":file,"format":format,"vault":vault,"confirm":confirm}))?).map_err(|_| "Could not encode import result".to_owned())
+            serde_json::to_string_pretty(&agent::call(&effective_config_dir(&config_dir)?, "migration.import", serde_json::json!({"migration_file":file,"format":format,"vault":vault,"confirm":confirm}))?).map_err(|_| "Could not encode import result".to_owned())
         }
         Command::Export {
             output,
@@ -2434,7 +2478,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     .join(output)
             };
             serde_json::to_string_pretty(&agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 "migration.export",
                 serde_json::json!({"migration_file":output,"format":format}),
             )?)
@@ -2453,7 +2497,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                 },
         } => list_output::items(
             &agent::call(
-                &effective_config_dir(&config_dir),
+                &effective_config_dir(&config_dir)?,
                 if all { "item.list.all" } else { "item.list" },
                 serde_json::json!({"vault":vault}),
             )?,
@@ -2472,7 +2516,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             let reveal_password = password.is_some();
             let value = agent::call(
                 &config_dir,
@@ -2496,7 +2540,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             let (title, website, username, password, custom_fields) = item_fields_from_args(input)?;
             serde_json::to_string_pretty(&agent::call(&config_dir,"item.create",serde_json::json!({"vault":vault,"title":title,"website":website,"username":username,"password":password.as_str(),"customFields":custom_fields}))?)
             .map_err(|_| "could not encode result".to_owned())
@@ -2509,7 +2553,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             serde_json::to_string_pretty(&agent::call(
                 &config_dir,
                 "item.delete",
@@ -2518,7 +2562,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
             .map_err(|_| "could not encode result".to_owned())
         }
         Command::Lock { config_dir } | Command::Logout { config_dir } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             let _ = agent::call(&config_dir, "logout", serde_json::json!({}))?;
             Ok("logged out; local keys destroyed".to_owned())
         }
@@ -2531,7 +2575,7 @@ pub fn run(cli: Cli) -> Result<String, String> {
                     config_dir,
                 },
         } => {
-            let config_dir = effective_config_dir(&config_dir);
+            let config_dir = effective_config_dir(&config_dir)?;
             let (title, website, username, password, custom_fields) = item_fields_from_args(input)?;
             serde_json::to_string_pretty(&agent::call(&config_dir,"item.edit",serde_json::json!({"vault":vault,"item":id,"title":title,"website":website,"username":username,"password":password.as_str(),"customFields":custom_fields}))?)
             .map_err(|_| "could not encode result".to_owned())
@@ -2541,6 +2585,35 @@ pub fn run(cli: Cli) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn namespace_commands_reject_an_explicit_foreign_profile() {
+        let directory = std::env::temp_dir().join(format!(
+            "vaults-command-namespace-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("namespace-owner"), "development").unwrap();
+        for command in [
+            crate::Command::Credential {
+                command: crate::CredentialCommand::Status {
+                    config_dir: directory.clone(),
+                },
+            },
+            crate::Command::Device {
+                command: crate::DeviceCommand::List {
+                    config_dir: directory.clone(),
+                },
+            },
+        ] {
+            let error = crate::run(crate::Cli { command }).unwrap_err();
+            assert!(error.contains("namespace"), "{error}");
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
     use super::*;
 
     #[test]

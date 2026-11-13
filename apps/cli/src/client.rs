@@ -270,6 +270,7 @@ pub fn unlock_offline(
 }
 
 fn profile(path: &Path, key: &str) -> Result<String, String> {
+    crate::namespace::validate_profile(path)?;
     fs::read_to_string(path)
         .map_err(|_| "client profile is missing".to_owned())?
         .lines()
@@ -394,7 +395,7 @@ fn stored_signing_key(
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     {
         let entry = keyring::Entry::new(
-            "127Vaults device identity",
+            &crate::namespace::service("127Vaults device identity")?,
             &format!("{server_id}:{device_id}"),
         )
         .map_err(|_| "OS credential storage is unavailable".to_owned())?;

@@ -55,7 +55,7 @@ fn decode(bytes: &[u8], expected: &str, at: u64) -> Option<Record> {
 }
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn entry(binding: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, binding)
+    keyring::Entry::new(&crate::namespace::service(SERVICE)?, binding)
         .map_err(|_| "OS credential storage is unavailable".to_owned())
 }
 

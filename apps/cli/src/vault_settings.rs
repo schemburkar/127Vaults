@@ -136,6 +136,7 @@ impl SettingsStore {
     /// # Errors
     /// Returns an error for unreadable, oversized or inconsistent settings.
     pub fn load(&self) -> Result<SettingsRecord, String> {
+        crate::namespace::validate_profile(&self.path)?;
         let file = match File::open(&self.path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -181,6 +182,7 @@ impl SettingsStore {
     /// # Errors
     /// Returns an error for encoding, size-limit or filesystem failures.
     pub fn commit(&self, record: &SettingsRecord) -> Result<(), String> {
+        crate::namespace::validate_profile(&self.path)?;
         let bytes =
             serde_json::to_vec(record).map_err(|_| "vault settings could not be encoded")?;
         if bytes.len() as u64 > MAX_RECORD {

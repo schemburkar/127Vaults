@@ -1,4 +1,4 @@
-import { access, stat } from 'node:fs/promises';
+import { access, stat, lstat } from 'node:fs/promises';
 import { join, isAbsolute } from 'node:path';
 import { get } from 'node:https';
 import { readFile, writeFile, chmod } from 'node:fs/promises';
@@ -55,7 +55,11 @@ export async function devStartupPlan({origin,root,identity,profile=desktopProfil
 export async function ensureRuntimeKeys(directory) {
   const names = ['token.key', 'checkpoint.key'];
   const existing = await Promise.all(names.map(async name => {
-    try { return await readFile(join(directory, name)); }
+    try {
+      const path=join(directory,name),info=await lstat(path);
+      if(!info.isFile()||info.isSymbolicLink())throw Error('Runtime keys must be regular files without redirects.');
+      return await readFile(path);
+    }
     catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   }));
   if (existing.some(Boolean) && !existing.every(Boolean)) throw Error('Existing server identity is missing a runtime key. Restore the matching identity backup instead of rotating it.');
@@ -67,6 +71,17 @@ export async function ensureRuntimeKeys(directory) {
   }
 }
 
+export async function ensureRuntimeSecret(directory,name,value) {
+  const path=join(directory,name);
+  let info;
+  try{info=await lstat(path);}catch(error){if(error.code!=='ENOENT')throw error;}
+  if(info) {
+    if(!info.isFile()||info.isSymbolicLink())throw Error('Runtime secrets must be regular files without redirects.');
+    if((await readFile(path,'utf8')).trim()!==value)throw Error('Existing runtime secret differs from namespace configuration; restore the matching configuration or rotate explicitly.');
+  }else await writeFile(path,value,{flag:'wx',mode:0o600});
+  if(process.platform!=='win32')await chmod(path,0o600);
+}
+
 export function devConfiguration(values) {
   const port = (name, fallback) => {
     const raw = values[name] ?? String(fallback), number = Number(raw);
@@ -76,7 +91,7 @@ export function devConfiguration(values) {
   const webPort = port('VAULTS_DEV_WEB_PORT', 12780), apiPort = port('VAULTS_DEV_API_PORT', 12781);
   if (webPort === apiPort) throw Error('Development UI and API ports must differ.');
   const project = values.VAULTS_MVP_PROJECT || 'vaults-acceptance';
-  if (!/^vaults-acceptance(?:-[a-z0-9-]{1,40})?$/.test(project)) throw Error('VAULTS_MVP_PROJECT must be vaults-acceptance or a vaults-acceptance-<fixture> name.');
+  if (!/^(?:vaults-acceptance(?:-[a-z0-9-]{1,40})?|vaults-development|vaults-test-[a-z0-9-]{1,40})$/.test(project)) throw Error('VAULTS_MVP_PROJECT must be vaults-acceptance or a vaults-acceptance-<fixture> name.');
   return { webPort, apiPort, project, origin: `https://127.0.0.1:${webPort}` };
 }
 

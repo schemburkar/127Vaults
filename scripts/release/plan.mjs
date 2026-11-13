@@ -9,13 +9,14 @@ const rust = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'crat
   'crates/browser-fixture/Cargo.toml', 'apps/desktop/src-tauri/Cargo.toml', 'apps/cli'];
 const node = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
 const policy = ['LICENSE.md', 'COMMERCIAL-LICENSE.md'];
+const namespaceInputs = ['apps/cli/src/namespace.rs', 'apps/cli/src/namespace-contract.json', 'scripts/runtime-namespace.mjs'];
 export const productInputs = {
-  installer: ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'apps/installer',
+  installer: [...namespaceInputs, 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'apps/installer',
     'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', ...policy, 'docs/release/installer.md'],
-  desktop: [...rust, ...node, ...policy, 'apps/desktop', 'packages/ui', 'packages/domain', 'apps/extension/src/passkeys.mjs',
+  desktop: [...namespaceInputs, ...rust, ...node, ...policy, 'apps/desktop', 'packages/ui', 'packages/domain', 'apps/extension/src/passkeys.mjs',
     'apps/extension/src/passkeys.d.mts', 'scripts/extension-assets.mjs', 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/client-install.md'],
-  cli: [...rust, ...policy, 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/cli-install.md'],
-  extension: [...policy, 'packages/domain/src/passkey-metadata.mjs', 'packages/domain/src/connection-help.mjs', 'scripts/extension-assets.mjs', 'apps/extension/package.json', 'apps/extension/manifest.json', 'apps/extension/popup.html', 'apps/extension/src', 'apps/extension/test', 'docs/release/extension-install.md'],
+  cli: [...namespaceInputs, ...rust, ...policy, 'apps/extension/install-native-host.ps1', 'apps/extension/install-native-host.sh', 'docs/release/cli-install.md'],
+  extension: [...namespaceInputs, ...policy, 'packages/domain/src/passkey-metadata.mjs', 'packages/domain/src/connection-help.mjs', 'scripts/extension-assets.mjs', 'apps/extension/package.json', 'apps/extension/manifest.json', 'apps/extension/popup.html', 'apps/extension/src', 'apps/extension/test', 'docs/release/extension-install.md'],
   server: [...rust.filter(path => path !== 'apps/cli'), 'apps/cli/Cargo.toml', 'crates/browser-fixture', ...node, ...policy, 'apps/server', 'apps/web', 'packages',
     'apps/extension/src/passkeys.mjs',
     'server.mjs', 'deploy', 'scripts/build-fixture.mjs', 'scripts/tls.mjs', 'scripts/ops', 'docs/release/server-test-install.md', '.dockerignore'],

@@ -6,9 +6,15 @@ param(
 )
 
 $repoRoot = $PSScriptRoot
+if (-not $env:VAULTS_NAMESPACE) { $env:VAULTS_NAMESPACE = 'development' }
+if ($env:VAULTS_NAMESPACE -notin @('development','test')) { throw 'Development launchers cannot target production.' }
+
+$namespaceJson = & node (Join-Path $repoRoot 'scripts/namespace.mjs') status
+if ($LASTEXITCODE -ne 0) { throw 'Namespace configuration is invalid.' }
+$namespaceInfo = $namespaceJson | ConvertFrom-Json
 
 function Start-DevelopmentService([string] $Name, [string] $Command) {
-    $logs = Join-Path $repoRoot '.tools/dev-launcher'
+    $logs = Join-Path $repoRoot (".tools/namespaces/" + $namespaceInfo.namespace + "/logs")
     New-Item -ItemType Directory -Path $logs -Force | Out-Null
     Start-Process powershell.exe -WindowStyle Hidden -WorkingDirectory $repoRoot -ArgumentList '-NoProfile', '-Command', $Command -RedirectStandardOutput (Join-Path $logs "$Name.log") -RedirectStandardError (Join-Path $logs "$Name.error.log")
     Write-Host "$Name logs: $logs"
@@ -41,8 +47,7 @@ if ('desktop' -in $Service) {
 }
 
 if ('extension' -in $Service) {
-    & node (Join-Path $repoRoot 'scripts/extension-assets.mjs')
+    & node (Join-Path $repoRoot 'scripts/extension-dev.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'Extension asset preparation failed.' }
-    Write-Host "Extension: load $repoRoot\apps\extension as an unpacked extension in chrome://extensions or edge://extensions."
     Write-Host 'After changing extension files, click Reload on its extension card.'
 }

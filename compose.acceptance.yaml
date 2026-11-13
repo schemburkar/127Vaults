@@ -2,7 +2,7 @@
 services:
   server:
     ports:
-      - '127.0.0.1:1465:1465'
+      - '127.0.0.1:${VAULTS_SMTP_CAPTURE_PORT:-1465}:1465'
     environment:
       NODE_EXTRA_CA_CERTS: /run/secrets/ca.crt
       SMTP_HOST: 127.0.0.1
@@ -10,7 +10,7 @@ services:
       SMTP_USERNAME: fixture
       SMTP_PASSWORD_FILE: /run/secrets/runtime/smtp-password
       SMTP_FROM: no-reply@example.invalid
-      VAULTS_INSTALLATION_LABEL: 127Vaults-test
+      VAULTS_INSTALLATION_LABEL: ${VAULTS_NAMESPACE:-test}
   smtp-capture:
     image: localhost/127vaults-server:experimental
     network_mode: service:server

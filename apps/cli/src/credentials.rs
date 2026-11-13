@@ -15,7 +15,7 @@ pub enum CredentialCommand {
         username: Option<String>,
         #[arg(long)]
         yes: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Change the account secret and replace this device identity; other devices need re-enrollment.
@@ -24,32 +24,32 @@ pub enum CredentialCommand {
         username: Option<String>,
         #[arg(long)]
         yes: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Inspect an interrupted credential rotation without printing secrets.
     Status {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Verify new credentials online and finish an interrupted local rotation.
     Resume {
         #[arg(long)]
         username: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Discard a pending rotation only after the server verifies the old credentials.
     Abort {
         #[arg(long)]
         username: Option<String>,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Recover access on a fresh profile through approval by an existing trusted device.
     RecoverDevice {
         username: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -98,13 +98,13 @@ fn new_secret(prompt: &mut dyn SecretPrompt) -> Result<Zeroizing<String>, String
 pub fn run(command: CredentialCommand) -> Result<String, String> {
     let (config, username, action, yes) = match command {
         CredentialCommand::Status { config_dir } => {
-            return Ok(client::rotation_status(&effective_config_dir(&config_dir))?.to_string());
+            return Ok(client::rotation_status(&effective_config_dir(&config_dir)?)?.to_string());
         }
         CredentialCommand::RecoverDevice {
             username,
             config_dir,
         } => {
-            let config = effective_config_dir(&config_dir);
+            let config = effective_config_dir(&config_dir)?;
             if config.join("device.conf").exists() {
                 return Err("Use a fresh profile for replacement enrollment. Keep the old profile and pending data intact.".into());
             }
@@ -135,7 +135,7 @@ pub fn run(command: CredentialCommand) -> Result<String, String> {
             config_dir,
         } => (config_dir, username, "abort", false),
     };
-    let config = effective_config_dir(&config);
+    let config = effective_config_dir(&config)?;
     let username = match username {
         Some(value) => value,
         None => file_profile_value(&config.join("device.conf"), "username")?,

@@ -12,6 +12,7 @@ async function sha256(path) {
 export async function verifyPackages(directory) {
   const manifest = JSON.parse(await readFile(resolve(directory, 'manifest.json'), 'utf8'));
   if (manifest.schemaVersion !== 1 || manifest.channel !== 'private-test' || !Array.isArray(manifest.files) || !manifest.files.length) throw Error('Invalid package manifest.');
+  if (manifest.namespace !== undefined && !/^(?:production|development|test-[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?)$/.test(manifest.namespace)) throw Error('Invalid package namespace.');
   const names = new Set();
   for (const file of manifest.files) {
     if (!/^[A-Za-z0-9_.-]+$/.test(file.name) || names.has(file.name) || !/^[a-f0-9]{64}$/.test(file.sha256)

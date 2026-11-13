@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "productionRoot": "127Vaults",
+  "isolatedRoot": "127Vaults Namespaces",
+  "nativeHost": "com.127vaults.connector",
+  "desktopDirectory": "127Vaults",
+  "developmentName": "127Vaults Dev"
+}

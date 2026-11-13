@@ -341,9 +341,7 @@ pub fn run_host() -> Result<(), String> {
         return Err("Request too large".to_owned());
     }
     let envelope: Value = serde_json::from_str(&input).map_err(|_| "Invalid native request")?;
-    let config = dirs::config_dir()
-        .ok_or("Desktop profile unavailable")?
-        .join("127Vaults");
+    let config = crate::desktop_profile_directory()?;
     if envelope["kind"] == "status" || envelope["kind"] == "cache" {
         let action = if envelope["kind"] == "status" {
             "status"

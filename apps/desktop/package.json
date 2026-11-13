@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "node ../../scripts/desktop-dev.mjs",
     "build": "tauri build",
     "check": "tsc --noEmit && vite build && node --check src/drag-session.mjs && cargo check --manifest-path src-tauri/Cargo.toml",
     "test": "node --test test/*.test.mjs"

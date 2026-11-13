@@ -24,7 +24,7 @@ const candidate={accountId,deviceId,username:`guest_${run}`,displayName:'Fictiti
 candidate.activationSignature=b64(sign(null,registrationActivationBytes({...candidate,opaqueRecord:b64(upload)},Buffer.from(upload)),guestKey));
 const begun=await call('/api/v1/onboarding/invitation',{method:'POST',body:{token:invitation.token,email:candidate.email,candidate}});
 await call(`/api/v1/onboarding/invitation/${begun.attemptId}/email`,{method:'POST',body:{capability:begun.capability}});
-const captured=await fetch(`http://127.0.0.1:1465/latest?to=${encodeURIComponent(candidate.email)}`).then(response=>{assert.equal(response.status,200);return response.json()});
+const captured=await fetch(`http://127.0.0.1:${process.env.VAULTS_SMTP_CAPTURE_PORT??1465}/latest?to=${encodeURIComponent(candidate.email)}`).then(response=>{assert.equal(response.status,200);return response.json()});
 await call(`/api/v1/onboarding/invitation/${begun.attemptId}/complete`,{method:'POST',body:{capability:begun.capability,code:captured.code}});
 
 await ceremony();await login(candidate.username,deviceId,secret,guestKey);

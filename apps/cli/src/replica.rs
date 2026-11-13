@@ -208,8 +208,13 @@ impl ReplicaStore {
     }
 
     fn path(&self, vault_id: &str) -> Result<PathBuf, String> {
+        crate::namespace::validate_profile(
+            self.directory.parent().ok_or("Invalid replica directory")?,
+        )?;
         uuid::Uuid::parse_str(vault_id).map_err(|_| "invalid vault identity".to_owned())?;
-        Ok(self.directory.join(format!("{vault_id}.json")))
+        let path = self.directory.join(format!("{vault_id}.json"));
+        crate::namespace::validate_profile(&path)?;
+        Ok(path)
     }
 
     pub fn load(&self, vault_id: &str) -> Result<Option<Replica>, String> {
@@ -241,6 +246,10 @@ impl ReplicaStore {
     }
 
     pub fn list(&self) -> Result<Vec<Replica>, String> {
+        crate::namespace::validate_profile(&self.directory)?;
+        crate::namespace::validate_profile(
+            self.directory.parent().ok_or("Invalid replica directory")?,
+        )?;
         let entries = match fs::read_dir(&self.directory) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -267,8 +276,8 @@ impl ReplicaStore {
         if bytes.len() as u64 > MAX_REPLICA_BYTES {
             return Err("replica exceeds the size limit".to_owned());
         }
-        fs::create_dir_all(&self.directory).map_err(|_| "replica directory is unavailable")?;
         let path = self.path(&replica.vault_id)?;
+        fs::create_dir_all(&self.directory).map_err(|_| "replica directory is unavailable")?;
         let mut file =
             AtomicWriteFile::open(path).map_err(|_| "replica temporary file is unavailable")?;
         file.write_all(&bytes)

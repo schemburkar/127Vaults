@@ -6,6 +6,9 @@ mod discovery;
 mod enrollment_email;
 mod extension_setup;
 mod journey;
+#[allow(dead_code)] // Shared namespace contract also exposes client-only operations.
+#[path = "../../cli/src/namespace.rs"]
+mod namespace;
 mod prerequisites;
 mod transport;
 
@@ -273,6 +276,25 @@ fn main() {
 
 #[allow(clippy::too_many_lines)] // Sequential orchestration; helpers own side effects.
 fn execute(mut args: Args) -> Result<()> {
+    let namespace = namespace::Namespace::current()?;
+    if !namespace.production() {
+        let root = args
+            .directory
+            .clone()
+            .unwrap_or(namespace.root()?.join("installer"));
+        namespace.validate_profile(&root)?;
+        if let Some(source) = &args.from {
+            namespace.validate_profile(source)?;
+        }
+        // Development installation must use namespace-labelled artifacts. Public catalogue artifacts are production builds.
+        return Err("Development/test installer catalogue is not configured; use namespace-labelled local packages. No installation changed".into());
+    }
+    if let Some(path) = &args.directory {
+        namespace.validate_profile(path)?;
+    }
+    if let Some(path) = &args.from {
+        namespace.validate_profile(path)?;
+    }
     if args.review_setup {
         if !std::io::stdin().is_terminal() {
             return Err("Checklist review requires an interactive terminal".into());

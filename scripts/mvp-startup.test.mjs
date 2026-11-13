@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile, unlink } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ensureTlsReady, ensureRuntimeKeys, devConfiguration, requireDevUi, ensureDevOriginIsolated, devStartupPlan } from './mvp-startup.mjs';
+import { ensureTlsReady, ensureRuntimeKeys, ensureRuntimeSecret, devConfiguration, requireDevUi, ensureDevOriginIsolated, devStartupPlan } from './mvp-startup.mjs';
 import {createHash} from 'node:crypto';
 import { createServer } from 'node:http';
 
@@ -32,7 +32,9 @@ async function fixture(t, files = []) {
     assert.ok(basename(directory).startsWith('127vaults-startup-'));
     await rm(directory, { recursive: true, force: true });
   });
-  const identity = join(directory, 'server identity with spaces');
+  const namespaceRoot=join(directory,'127Vaults Namespaces/development');
+  await mkdir(namespaceRoot,{recursive:true});await writeFile(join(namespaceRoot,'namespace-owner'),'development');
+  const identity = join(namespaceRoot,'server/identity');
   for (const file of files) {
     const path = join(identity, file);
     await mkdir(dirname(path), { recursive: true });
@@ -41,6 +43,14 @@ async function fixture(t, files = []) {
   return { directory, identity };
 }
 const required = ['live/server.crt', 'live/server.key', 'ca/ca.crt'];
+
+test('runtime secrets are created once and configuration drift never overwrites them',async t=>{
+  const {directory}=await fixture(t);
+  await ensureRuntimeSecret(directory,'password','synthetic-first');
+  await ensureRuntimeSecret(directory,'password','synthetic-first');
+  await assert.rejects(ensureRuntimeSecret(directory,'password','replacement'),/rotate explicitly/);
+  assert.equal(await readFile(join(directory,'password'),'utf8'),'synthetic-first');
+});
 
 test('a new runtime gets both independent keys and an existing identity never rotates a missing or invalid key', async t => {
   const { directory } = await fixture(t);
@@ -112,9 +122,10 @@ for (const args of [['start'], ['dev'], ['dev', '--check']]) {
 test(`actual ${args.join(' ')} exits with the TLS error before creating runtime files or starting containers`, async t => {
   const { directory, identity } = await fixture(t, ['live/server.crt', 'ca/ca.crt']);
   await mkdir(join(directory, 'scripts'));
-  for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
-  await writeFile(join(directory, '.env'), `VAULTS_TLS_DIR=${identity}\n`);
-  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', ...args], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true, env:{...process.env,VAULTS_CONFIG_DIR:join(directory,'client-profile')} });
+  await mkdir(join(directory,'apps/cli/src'),{recursive:true});await copyFile(new URL('../apps/cli/src/namespace-contract.json',import.meta.url),join(directory,'apps/cli/src/namespace-contract.json'));
+  for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs','runtime-namespace.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
+  await writeFile(join(directory,'127Vaults Namespaces/development/server.env'), `VAULTS_TLS_DIR=${identity}\n`);
+  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', ...args], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true, env:{...process.env,APPDATA:directory,XDG_CONFIG_HOME:directory,VAULTS_NAMESPACE:'development',VAULTS_MVP_ENV_FILE:join(directory,'127Vaults Namespaces/development/server.env'),VAULTS_CONFIG_DIR:join(directory,'client-profile')} });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
   assert.ok(result.stderr.replace(/\r\n/g, '\n').includes(missingMessage(identity, args[0], ['live/server.key'])), result.stderr);
@@ -126,9 +137,10 @@ test(`actual ${args.join(' ')} exits with the TLS error before creating runtime 
 test('launcher preflight accepts complete TLS files without starting containers or creating runtime secrets', async t => {
   const { directory, identity } = await fixture(t, required);
   await mkdir(join(directory, 'scripts'));
-  for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
-  await writeFile(join(directory, '.env'), `VAULTS_TLS_DIR=${identity}\n`);
-  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', 'dev', '--check'], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true, env:{...process.env,VAULTS_CONFIG_DIR:join(directory,'client-profile')} });
+  await mkdir(join(directory,'apps/cli/src'),{recursive:true});await copyFile(new URL('../apps/cli/src/namespace-contract.json',import.meta.url),join(directory,'apps/cli/src/namespace-contract.json'));
+  for (const script of ['mvp-acceptance.mjs', 'mvp-startup.mjs','runtime-namespace.mjs']) await copyFile(new URL(script, import.meta.url), join(directory, 'scripts', script));
+  await writeFile(join(directory,'127Vaults Namespaces/development/server.env'), `VAULTS_TLS_DIR=${identity}\n`);
+  const result = spawnSync(process.execPath, ['scripts/mvp-acceptance.mjs', 'dev', '--check'], { cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true, env:{...process.env,APPDATA:directory,XDG_CONFIG_HOME:directory,VAULTS_NAMESPACE:'development',VAULTS_MVP_ENV_FILE:join(directory,'127Vaults Namespaces/development/server.env'),VAULTS_CONFIG_DIR:join(directory,'client-profile')} });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Local TLS startup files are present/);
@@ -163,11 +175,12 @@ test('development selects only the recorded matching server, leaving fixture tak
  await writeFile(join(profile,'trust.conf'),`url=${origin}/\nca_sha256=${'0'.repeat(64)}\n`);
  assert.equal((await devStartupPlan(input)).legacyFingerprint,true);assert.match(await readFile(join(profile,'trust.conf'),'utf8'),new RegExp('0'.repeat(64)));
  assert.deepEqual(await devStartupPlan({...input,origin:'https://127.0.0.1:12961'}),{mode:'fixture',origin:'https://127.0.0.1:12961'});
- await mkdir(join(directory,'scripts'));for(const name of ['mvp-startup.mjs','mvp-acceptance.mjs'])await copyFile(new URL(name,import.meta.url),join(directory,'scripts',name));
- await writeFile(join(directory,'.env'),'VAULTS_TLS_DIR='+join(directory,'unrelated-missing-fixture-identity')+'\n');
- const result=spawnSync(process.execPath,['scripts/mvp-acceptance.mjs','dev','--check'],{cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,VAULTS_CONFIG_DIR:profile,VAULTS_MVP_ENV_FILE:''}});
- assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/Recorded server startup preflight passed/);
- await unlink(join(directory,'.env'));
- const noFixtureEnv=spawnSync(process.execPath,['scripts/mvp-acceptance.mjs','dev','--check'],{cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,VAULTS_CONFIG_DIR:profile,VAULTS_MVP_ENV_FILE:''}});
- assert.equal(noFixtureEnv.status,0,noFixtureEnv.stderr);assert.match(noFixtureEnv.stdout,/Recorded server startup preflight passed/);
+ await mkdir(join(directory,'apps/cli/src'),{recursive:true});await copyFile(new URL('../apps/cli/src/namespace-contract.json',import.meta.url),join(directory,'apps/cli/src/namespace-contract.json'));
+ await mkdir(join(directory,'scripts'));for(const name of ['mvp-startup.mjs','mvp-acceptance.mjs','runtime-namespace.mjs'])await copyFile(new URL(name,import.meta.url),join(directory,'scripts',name));
+ await writeFile(join(directory,'127Vaults Namespaces/development/server.env'),'VAULTS_TLS_DIR='+identity+'\n');
+ const result=spawnSync(process.execPath,['scripts/mvp-acceptance.mjs','dev','--check'],{cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,APPDATA:directory,XDG_CONFIG_HOME:directory,VAULTS_NAMESPACE:'development',VAULTS_MVP_ENV_FILE:join(directory,'127Vaults Namespaces/development/server.env'),VAULTS_CONFIG_DIR:profile}});
+ assert.equal(result.status,1);assert.match(result.stderr,/TLS startup preflight failed/);
+ await unlink(join(directory,'127Vaults Namespaces/development/server.env'));
+ const noFixtureEnv=spawnSync(process.execPath,['scripts/mvp-acceptance.mjs','dev','--check'],{cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,APPDATA:directory,XDG_CONFIG_HOME:directory,VAULTS_NAMESPACE:'development',VAULTS_MVP_ENV_FILE:join(directory,'127Vaults Namespaces/development/server.env'),VAULTS_CONFIG_DIR:profile}});
+ assert.equal(noFixtureEnv.status,1);assert.match(noFixtureEnv.stderr,/Initialize this namespace first/);
 });

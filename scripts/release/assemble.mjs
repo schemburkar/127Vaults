@@ -10,6 +10,10 @@ export async function assemble(output, inputs, zip = false) {
   const sources = await Promise.all(inputs.map(async directory => ({ directory, manifest: await verifyPackages(directory) })));
   const revisions = new Set(sources.map(source => source.manifest.revision));
   if (revisions.size !== 1) throw Error('All packages must come from the same source revision.');
+  const namespaces = new Set(sources.map(source => source.manifest.namespace ?? 'production'));
+  if (namespaces.size !== 1) throw Error('All packages must belong to the same installation namespace.');
+  const namespace = [...namespaces][0];
+  const options = namespace.startsWith('test-') ? { namespace: 'test', instance: namespace.slice(5) } : { namespace };
   const seen = new Map();
   for (const { directory, manifest } of sources) {
     for (const license of licenseFiles) {
@@ -31,7 +35,7 @@ export async function assemble(output, inputs, zip = false) {
   await writeFile(join(output, 'builds.json'), JSON.stringify(sources.map(({ manifest }) => manifest), null, 2) + '\n');
   const components = [...new Set(sources.flatMap(source => source.manifest.components.map(component =>
     component === 'desktop' ? `desktop-${source.manifest.platform}` : component)))];
-  await writeManifest(output, components);
+  await writeManifest(output, components, options);
   // Preserve the actual build provenance rather than the assembler's current Git HEAD.
   const path = join(output, 'manifest.json');
   const manifest = JSON.parse(await readFile(path, 'utf8'));

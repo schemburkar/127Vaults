@@ -113,6 +113,9 @@ fn is_profile(path: &Path) -> bool {
 }
 
 fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
+    if !vaults_cli::namespace::Namespace::current()?.production() {
+        return Ok(false);
+    }
     if is_profile(destination) {
         return Ok(false);
     }
@@ -130,7 +133,11 @@ fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
     if let Some(home) = dirs::home_dir() {
         candidates.extend([home.join(".127vaults"), home.join(".127vaults-cli")]);
     }
-    let Some(source) = candidates.into_iter().find(|path| is_profile(path)) else {
+    let Some(source) = candidates.into_iter().find(|path| {
+        vaults_cli::namespace::Namespace::current()
+            .is_ok_and(|namespace| namespace.can_import_profile(path))
+            && is_profile(path)
+    }) else {
         return Ok(false);
     };
     fs::create_dir_all(destination)
@@ -138,6 +145,7 @@ fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
     for name in PROFILE_FILES {
         let from = source.join(name);
         let to = destination.join(name);
+        vaults_cli::namespace::validate_profile(&from)?;
         if from.is_file() && !to.exists() {
             fs::copy(from, to)
                 .map_err(|_| format!("desktop could not import {name} from the CLI profile"))?;
@@ -145,6 +153,7 @@ fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
     }
     let replica_source = source.join("replicas");
     let replica_destination = destination.join("replicas");
+    vaults_cli::namespace::validate_profile(&replica_source)?;
     if replica_source.is_dir() {
         fs::create_dir_all(&replica_destination)
             .map_err(|_| "desktop replica directory could not be created".to_owned())?;
@@ -156,6 +165,7 @@ fn adopt_cli_profile(destination: &Path) -> Result<bool, String> {
             if from.extension().and_then(|value| value.to_str()) != Some("json") {
                 continue;
             }
+            vaults_cli::namespace::validate_profile(&from)?;
             let to = replica_destination.join(entry.file_name());
             if !to.exists() {
                 fs::copy(from, to)
@@ -331,7 +341,7 @@ fn cached_account_secret(config: &Path, username: &str) -> Option<String> {
         return None;
     }
     let entry = keyring::Entry::new(
-        "127Vaults account secret",
+        &vaults_cli::namespace::service("127Vaults account secret").ok()?,
         &secret_cache_key(config, username)?,
     )
     .ok()?;
@@ -347,8 +357,11 @@ fn cached_account_secret(_config: &Path, _username: &str) -> Option<String> {
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn remember_account_secret(config: &Path, username: &str, secret: &str) -> Result<(), String> {
     let key = secret_cache_key(config, username).ok_or("device identity is unavailable")?;
-    let entry = keyring::Entry::new("127Vaults account secret", &key)
-        .map_err(|_| "OS credential storage is unavailable")?;
+    let entry = keyring::Entry::new(
+        &vaults_cli::namespace::service("127Vaults account secret")?,
+        &key,
+    )
+    .map_err(|_| "OS credential storage is unavailable")?;
     entry
         .set_secret(secret.as_bytes())
         .map_err(|_| "account secret could not be protected by the OS")?;
@@ -1260,6 +1273,10 @@ fn run_embedded_connector() -> bool {
 
 #[allow(clippy::too_many_lines)] // Tauri startup, event handlers and explicit command registration stay together.
 fn main() {
+    if let Err(error) = vaults_cli::namespace::Namespace::current() {
+        eprintln!("{error}");
+        std::process::exit(2);
+    }
     if run_embedded_connector() {
         return;
     }
@@ -1282,6 +1299,12 @@ fn main() {
             }
         })
         .setup(|app| {
+            let namespace = vaults_cli::namespace::Namespace::current()?;
+            if !namespace.production()
+                && let Some(window) = app.get_webview_window("main")
+            {
+                window.set_title(&format!("{} Desktop", namespace.name()))?;
+            }
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut confirmation = vaults_cli::ConnectorLockConfirmation::default();

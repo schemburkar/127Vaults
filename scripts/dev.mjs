@@ -1,6 +1,7 @@
+import { ensureRuntimeKeys, ensureRuntimeSecret } from './mvp-startup.mjs';
+import { runtimeNamespace, assertNamespacePath, assertServerIdentity } from './runtime-namespace.mjs';
 import { spawn } from 'node:child_process';
-import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { access, chmod, mkdir, readFile } from 'node:fs/promises';
 import { get as httpsGet } from 'node:https';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -8,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const action = process.argv[2] ?? 'up';
-const project = 'vaults-experimental';
+const namespace = runtimeNamespace(process.env,{launcher:true});
+Object.assign(process.env,namespace.environment);
+const project = namespace.project;
 const server = `${project}_server_1`;
 let credentials = {};
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
@@ -65,12 +68,10 @@ function run(executable, args, { optional = false, timeout = 600000 } = {}) {
   });
 }
 async function loadCredentials(create) {
-  const path = join(root, '.env');
+  const path = process.env.VAULTS_MVP_ENV_FILE || namespace.serverEnvironment;
+  await assertNamespacePath(namespace,path,{owned:true});
   if (!await exists(path)) {
-    if (!create) throw new Error('No .env found. Run pnpm dev:up first.');
-    throw new Error('No .env found. Copy .env.example, set a TLS directory outside the repository, and run pnpm tls:init -- 127.0.0.1 <directory>.');
-    await writeFile(path, contents, { flag: 'wx', mode: 0o600 });
-    console.log('Created ignored .env with independent development credentials.');
+    throw new Error(`No namespace environment found. Run node scripts/namespace.mjs init to preview fresh setup${create ? ', then init --confirm' : ''}. Existing default-path data was preserved.`);
   }
   const found = {};
   for (const line of (await readFile(path, 'utf8')).split(/\r?\n/)) {
@@ -80,7 +81,10 @@ async function loadCredentials(create) {
     found[match[1]] = match[2];
   }
   if (!/^[a-f0-9]{64}$/.test(found.POSTGRES_PASSWORD) || !/^[a-f0-9]{64}$/.test(found.VAULTS_READINESS_TOKEN)) throw new Error('Incomplete .env. Set both 64-character lowercase hex credentials.');
-  found.VAULTS_TLS_DIR ||= join(root, '..', '127Vaults-local-mvp');
+  await assertServerIdentity(namespace,found.VAULTS_TLS_DIR);
+  if(found.VAULTS_NAMESPACE && found.VAULTS_NAMESPACE!==namespace.name)throw Error('Server namespace mismatch');
+  found.VAULTS_PUBLISH_PORT ||= '12880';
+  found.VAULTS_NETWORK_PREFIX = '10.127.'+(1+[...namespace.id].reduce((a,c)=>(a*31+c.charCodeAt(0))%250,0));
   const tlsDir = resolve(found.VAULTS_TLS_DIR);
   const fromTemp = relative(resolve(tmpdir()), tlsDir);
   if (!fromTemp || (fromTemp !== '..' && !fromTemp.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(fromTemp)))
@@ -95,15 +99,13 @@ async function ensureRuntimeSecrets() {
   const checkpointKey = join(runtime, 'checkpoint.key');
   const databasePassword = join(runtime, 'postgres-password');
   const readinessToken = join(runtime, 'readiness-token');
+  await assertNamespacePath(namespace,runtime,{owned:true});
+  await assertNamespacePath(namespace,output,{owned:true});
   await mkdir(runtime, { recursive: true, mode: 0o700 });
   await mkdir(output, { recursive: true, mode: 0o700 });
-  if (!await exists(key)) await writeFile(key, randomBytes(32), { flag: 'wx', mode: 0o600 });
-  if (!await exists(checkpointKey)) {
-    if (await exists(key)) throw new Error('Existing server identity is missing runtime/checkpoint.key. Restore that key from the matching identity backup; a new key would break replica verification.');
-    await writeFile(checkpointKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
-  }
-  await writeFile(databasePassword, credentials.POSTGRES_PASSWORD, { mode: 0o600 });
-  await writeFile(readinessToken, credentials.VAULTS_READINESS_TOKEN, { mode: 0o600 });
+  await ensureRuntimeKeys(runtime);
+  await ensureRuntimeSecret(runtime,'postgres-password',credentials.POSTGRES_PASSWORD);
+  await ensureRuntimeSecret(runtime,'readiness-token',credentials.VAULTS_READINESS_TOKEN);
   if ((await readFile(key)).length !== 32) throw new Error('Runtime authentication token key must contain exactly 32 bytes.');
   if ((await readFile(checkpointKey)).length !== 32) throw new Error('Runtime checkpoint signing key must contain exactly 32 bytes.');
   if (process.platform !== 'win32') await Promise.all([chmod(runtime, 0o700), chmod(output, 0o700), chmod(key, 0o600), chmod(checkpointKey, 0o600), chmod(databasePassword, 0o600), chmod(readinessToken, 0o600)]);
@@ -124,9 +126,9 @@ async function engine() {
 }
 async function provider(podman) {
   const local = join(root, '.tools', 'compose', process.platform === 'win32' ? 'Scripts/podman-compose.exe' : 'bin/podman-compose');
-  if (await exists(local)) return args => run(local, ['--podman-path', podman, '-p', project, ...args]);
+  if (await exists(local)) return args => run(local, ['--podman-path', podman, '--env-file', process.env.VAULTS_MVP_ENV_FILE || namespace.serverEnvironment, '-p', project, ...args]);
   if (await run(podman, ['compose', 'version'], { optional: true, timeout: 15000 }) === null) throw new Error('A Compose provider is required. Install podman-compose or Docker Compose; see docs/release/experimental-development.md.');
-  return args => run(podman, ['compose', '-p', project, ...args]);
+  return args => run(podman, ['compose', '--env-file', process.env.VAULTS_MVP_ENV_FILE || namespace.serverEnvironment, '-p', project, ...args]);
 }
 async function status(podman) {
   const headers = { authorization: `Bearer ${credentials.VAULTS_READINESS_TOKEN}` };
@@ -135,7 +137,7 @@ async function status(podman) {
     try {
       const ca = await readFile(join(credentials.VAULTS_TLS_DIR, 'ca', 'ca.crt'));
       response = await new Promise((resolve, reject) => {
-        const request = httpsGet({ hostname: credentials.VAULTS_ENDPOINT_HOST ?? '127.0.0.1', port: 12780,
+        const request = httpsGet({ hostname: credentials.VAULTS_ENDPOINT_HOST ?? '127.0.0.1', port: Number(credentials.VAULTS_PUBLISH_PORT),
           path: `/health/${path}`, headers: auth, ca, timeout: 5000 }, incoming => {
           let data = ''; incoming.on('data', chunk => { data += chunk; });
           incoming.on('end', () => resolve({ status: incoming.statusCode, json: async () => JSON.parse(data) }));

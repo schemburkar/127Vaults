@@ -19,6 +19,7 @@ fn path(config: &Path) -> std::path::PathBuf {
     config.join("pending-credential-rotation.json")
 }
 fn load(config: &Path) -> Result<Option<Pending>, String> {
+    crate::namespace::validate_profile(&path(config))?;
     match fs::metadata(path(config)) {
         Ok(value) if value.len() > 65536 => {
             return Err("Credential rotation journal is invalid".into());
@@ -43,6 +44,7 @@ fn load(config: &Path) -> Result<Option<Pending>, String> {
     Ok(Some(pending))
 }
 fn reserve(config: &Path, pending: &Pending) -> Result<(), String> {
+    crate::namespace::validate_profile(&path(config))?;
     let temporary = config.join(format!(".credential-rotation-{}.tmp", uuid::Uuid::new_v4()));
     let result = (|| {
         let mut file = OpenOptions::new()
@@ -130,7 +132,7 @@ pub fn abort_rotation(
     if pending.record.device_id != pending.old_device_id {
         let server = profile(&config.join("trust.conf"), "server_id")?;
         let _ = keyring::Entry::new(
-            "127Vaults device identity",
+            &crate::namespace::service("127Vaults device identity")?,
             &format!("{server}:{}", pending.record.device_id),
         )
         .map(|entry| entry.delete_credential());
@@ -639,7 +641,7 @@ mod tests {
             worker.join().unwrap();
             if kind == "account-secret" {
                 keyring::Entry::new(
-                    "127Vaults device identity",
+                    &crate::namespace::service("127Vaults device identity").unwrap(),
                     &format!("{tenant}:{}", committed_device.lock().unwrap()),
                 )
                 .unwrap()

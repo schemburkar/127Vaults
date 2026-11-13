@@ -14,18 +14,18 @@ pub enum DeviceCommand {
     Enroll {
         #[arg(long)]
         username: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// List this account's trusted devices (online only; JSON output).
     List {
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Review a pending enrollment without approving it.
     Inspect {
         code: String,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Approve a reviewed enrollment after comparing the new client's identity.
@@ -40,7 +40,7 @@ pub enum DeviceCommand {
         /// Confirm the trust change without an interactive prompt.
         #[arg(long)]
         yes: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
     /// Revoke another device and its online sessions; cannot revoke this device.
@@ -49,7 +49,7 @@ pub enum DeviceCommand {
         /// Confirm the trust change without an interactive prompt.
         #[arg(long)]
         yes: bool,
-        #[arg(long, default_value = ".127vaults")]
+        #[arg(long, default_value_os_t = crate::namespace::default_cli_directory())]
         config_dir: PathBuf,
     },
 }
@@ -206,12 +206,12 @@ fn execute(
             config_dir,
         } => return crate::enroll_device(&config_dir, &username),
         DeviceCommand::List { config_dir } => call(
-            &crate::effective_config_dir(&config_dir),
+            &crate::effective_config_dir(&config_dir)?,
             "device.list",
             json!({}),
         )?,
         DeviceCommand::Inspect { code, config_dir } => call(
-            &crate::effective_config_dir(&config_dir),
+            &crate::effective_config_dir(&config_dir)?,
             "device.inspect",
             json!({"code":normalize_code(&code)?}),
         )?,
@@ -225,7 +225,7 @@ fn execute(
             let code = normalize_code(&code)?;
             let expected_device = device_id(&expected_device)?;
             let expected_fingerprint = fingerprint(&expected_fingerprint)?;
-            let profile = crate::effective_config_dir(&config_dir);
+            let profile = crate::effective_config_dir(&config_dir)?;
             let review = call(&profile, "device.inspect", json!({"code":code}))?;
             let enrollment_id = device_id(
                 review["enrollmentId"]
@@ -255,7 +255,7 @@ fn execute(
             config_dir,
         } => {
             let target = device_id(&target)?;
-            let profile = crate::effective_config_dir(&config_dir);
+            let profile = crate::effective_config_dir(&config_dir)?;
             let list = call(&profile, "device.list", json!({}))?;
             let target = revoke_target(
                 &target,

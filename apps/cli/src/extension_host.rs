@@ -50,17 +50,49 @@ fn profile(source: &str) -> Result<PathBuf, String> {
         "desktop" => crate::desktop_profile_directory(),
         "cli" => {
             let home = dirs::home_dir().ok_or("CLI profile is unavailable")?;
-            let pointer = home.join(".127vaults-active");
-            let configured = fs::read_to_string(pointer).unwrap_or_default();
-            let path = PathBuf::from(configured.trim());
-            if path.is_absolute() && path.join("device.conf").is_file() {
-                Ok(path)
+            let namespace = crate::namespace::Namespace::current()?;
+            let pointer = if namespace.production() {
+                home.join(".127vaults-active")
             } else {
-                Ok(home.join(".127vaults"))
-            }
+                namespace.active_pointer()?
+            };
+            namespace.validate_profile(&pointer)?;
+            let fallback = if namespace.production() {
+                home.join(".127vaults")
+            } else {
+                namespace.cli_directory()?
+            };
+            selected_cli_profile(&namespace, &pointer, &fallback)
         }
         _ => Err("unsupported connector source".to_owned()),
     }
+}
+
+fn selected_cli_profile(
+    namespace: &crate::namespace::Namespace,
+    pointer: &std::path::Path,
+    fallback: &std::path::Path,
+) -> Result<PathBuf, String> {
+    namespace.validate_profile(pointer)?;
+    let configured = match fs::read_to_string(pointer) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            namespace.validate_profile(fallback)?;
+            return Ok(fallback.to_owned());
+        }
+        Err(_) => return Err("CLI active profile pointer cannot be read".into()),
+    };
+    let path = PathBuf::from(configured.trim());
+    if !path.is_absolute() {
+        return Err("CLI active profile pointer must contain an absolute path".into());
+    }
+    namespace.validate_profile(&path)?;
+    namespace.validate_profile(&path.join("device.conf"))?;
+    namespace.validate_profile(&path.join("trust.conf"))?;
+    if !path.join("device.conf").is_file() || !path.join("trust.conf").is_file() {
+        return Err("The selected CLI profile is unavailable; choose it explicitly".into());
+    }
+    Ok(path)
 }
 
 fn configured(path: &Path) -> bool {
@@ -579,6 +611,42 @@ pub fn run() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn invalid_connector_pointer_never_falls_back_to_another_profile() {
+        let root = std::env::temp_dir().join(format!(
+            "127v-connector-pointer-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let namespace = crate::namespace::Namespace::parse("production", None).unwrap();
+        let pointer = root.join("active-profile");
+        let fallback = root.join("fallback");
+        assert_eq!(
+            super::selected_cli_profile(&namespace, &pointer, &fallback).unwrap(),
+            fallback
+        );
+        for value in [
+            "",
+            "relative-profile",
+            root.join("missing").to_str().unwrap(),
+        ] {
+            std::fs::write(&pointer, value).unwrap();
+            assert!(super::selected_cli_profile(&namespace, &pointer, &fallback).is_err());
+        }
+        let profile = root.join("selected");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(profile.join("device.conf"), "synthetic").unwrap();
+        std::fs::write(profile.join("trust.conf"), "synthetic").unwrap();
+        std::fs::write(&pointer, profile.to_str().unwrap()).unwrap();
+        assert_eq!(
+            super::selected_cli_profile(&namespace, &pointer, &fallback).unwrap(),
+            profile
+        );
+        std::fs::write(profile.join("namespace-owner"), "development").unwrap();
+        assert!(super::selected_cli_profile(&namespace, &pointer, &fallback).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
     use super::*;
 
     #[test]

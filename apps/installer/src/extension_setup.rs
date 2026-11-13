@@ -209,6 +209,26 @@ pub fn setup(
     if !host.is_file() {
         return Err("Native connector executable does not exist".into());
     }
+    let mut probe = Command::new(&host);
+    probe.arg("--namespace");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        probe.creation_flags(0x0800_0000);
+    }
+    let identity = probe.output()?;
+    let identity: serde_json::Value = if identity.status.success() {
+        serde_json::from_slice(&identity.stdout)?
+    } else {
+        return Err(
+            "Update the connector first; its installation namespace could not be verified".into(),
+        );
+    };
+    if identity["namespace"] != crate::namespace::Namespace::current()?.id() {
+        return Err(
+            "Connector and installer namespaces differ; no browser registration was changed".into(),
+        );
+    }
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(directory.join("manifest.json"))?)?;
     if let Some(required) = manifest["version"].as_str().and_then(parse_version)

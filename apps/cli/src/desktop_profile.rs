@@ -21,7 +21,15 @@ fn resolve_profile(
 /// # Errors
 /// Rejects relative explicit paths, which depend on the launching process's cwd.
 pub fn desktop_profile_directory() -> Result<PathBuf, String> {
-    resolve_profile(std::env::var_os("VAULTS_CONFIG_DIR"), dirs::config_dir())
+    let namespace = crate::namespace::Namespace::current()?;
+    let fallback = if namespace.production() {
+        dirs::config_dir()
+    } else {
+        Some(namespace.root()?)
+    };
+    let path = resolve_profile(std::env::var_os("VAULTS_CONFIG_DIR"), fallback)?;
+    namespace.prepare_profile(&path)?;
+    Ok(path)
 }
 
 #[cfg(test)]

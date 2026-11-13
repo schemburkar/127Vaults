@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
-import { outputDirectory, packageExtension, writeManifest, macSigningReady } from './package.mjs';
+import { outputDirectory, packageExtension, writeManifest, macSigningReady, desktopPackageIdentity, desktopInstallerCandidates, main } from './package.mjs';
 import { verifyPackages } from './verify.mjs';
 import { assemble } from './assemble.mjs';
 
@@ -20,6 +20,45 @@ test('packaging refuses output in the source checkout', () => {
   assert.throws(() => outputDirectory(resolve('.')));
   assert.throws(() => outputDirectory(resolve('dist/release')));
   assert.equal(outputDirectory(join(tmpdir(), '127vaults-test-output')), resolve(tmpdir(), '127vaults-test-output'));
+});
+
+test('missing or misspelled namespace options fail before creating a package directory',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'127vaults-package-arguments-'));
+  try {
+    const output=join(base,'not-created');
+    await assert.rejects(main(['--out',output,'--namespace']),/Missing value/);
+    await assert.rejects(main(['--out',output,'--namespce','development']),/Unknown packaging option/);
+    await assert.rejects(readdir(output),{code:'ENOENT'});
+  } finally {await rm(base,{recursive:true,force:true});}
+});
+
+test('development packages have distinct application and Linux executable identities',()=>{
+  const prod=desktopPackageIdentity(),dev=desktopPackageIdentity({namespace:'development'});
+  assert.deepEqual(prod.config,{});
+  assert.equal(dev.config.productName,'127Vaults Dev Desktop');
+  assert.notEqual(dev.config.identifier,'com.127vaults.desktop.poc');
+  assert.equal(dev.config.mainBinaryName,'127vaults-desktop-development');
+  assert.ok(dev.sidecars.every(d=>!prod.sidecars.some(p=>p.name===d.name)));
+});
+
+test('stale production installers are never selected for a development package at the same version',()=>{
+  const files=['127Vaults Desktop_1.2.3_x64-setup.exe','127Vaults Dev Desktop_1.2.3_x64-setup.exe'];
+  assert.deepEqual(desktopInstallerCandidates(files,'1.2.3','.exe',['127Vaults Dev Desktop']),[files[1]]);
+  assert.deepEqual(desktopInstallerCandidates([files[0]],'1.2.3','.exe',['127Vaults Dev Desktop']),[]);
+  assert.deepEqual(desktopInstallerCandidates(['127vaults-desktop_1.2.3_amd64.deb','127vaults-dev-desktop_1.2.3_amd64.deb'],
+    '1.2.3','.deb',['127Vaults Dev Desktop']),['127vaults-dev-desktop_1.2.3_amd64.deb']);
+});
+
+test('development extension package selects its own native host and keeps production source intact',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'127vaults-dev-package-'));
+  try {
+    await packageExtension(directory,{namespace:'development'});
+    const background=await readFile(join(directory,'127vaults-extension/src/background.mjs'),'utf8');
+    assert.ok(background.includes("connectNative('com.127vaults.connector.development')"));
+    const manifest=JSON.parse(await readFile(join(directory,'127vaults-extension/manifest.json'),'utf8'));
+    assert.equal(manifest.name,'127Vaults Dev');
+    assert.ok((await readFile(new URL('../../apps/extension/src/background.mjs',import.meta.url),'utf8')).includes("connectNative('com.127vaults.connector')"));
+  } finally {await rm(directory,{recursive:true,force:true});}
 });
 test('extension handoff excludes tests and developer installers; manifest detects corruption', async () => {
   const directory = await mkdtemp(join(tmpdir(), '127vaults-package-'));
@@ -70,6 +109,10 @@ test('assembler collects verified artifacts in a ZIP and refuses mixed revisions
     assert.match(await readFile(`${output}.zip.sha256`, 'utf8'), /^[a-f0-9]{64}  combined.zip\n$/);
     const path = join(second, 'manifest.json');
     const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.namespace = 'development';
+    await writeFile(path, JSON.stringify(manifest));
+    await assert.rejects(assemble(join(directory, 'mixed-namespace'), [first, second]), /same installation namespace/);
+    manifest.namespace = 'production';
     manifest.revision = 'different-revision';
     await writeFile(path, JSON.stringify(manifest));
     await assert.rejects(assemble(join(directory, 'mixed'), [first, second]), /same source revision/);

@@ -192,6 +192,7 @@ impl Drop for LeaseCleanup {
 }
 
 fn profile(path: &Path, key: &str) -> Result<String, String> {
+    crate::namespace::validate_profile(path)?;
     fs::read_to_string(path)
         .map_err(|_| "client profile is missing".to_owned())?
         .lines()
@@ -206,8 +207,11 @@ fn identity(config_dir: &Path) -> Result<String, String> {
 }
 
 fn entry(config_dir: &Path) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(CAPABILITY_SERVICE, &profile_identity(config_dir)?)
-        .map_err(|_| "OS credential storage is unavailable".to_owned())
+    keyring::Entry::new(
+        &crate::namespace::service(CAPABILITY_SERVICE)?,
+        &profile_identity(config_dir)?,
+    )
+    .map_err(|_| "OS credential storage is unavailable".to_owned())
 }
 
 fn profile_identity(config_dir: &Path) -> Result<String, String> {
@@ -222,8 +226,11 @@ fn profile_identity(config_dir: &Path) -> Result<String, String> {
 }
 
 fn legacy_entry(config_dir: &Path) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(CAPABILITY_SERVICE, &identity(config_dir)?)
-        .map_err(|_| "OS credential storage is unavailable".to_owned())
+    keyring::Entry::new(
+        &crate::namespace::service(CAPABILITY_SERVICE)?,
+        &identity(config_dir)?,
+    )
+    .map_err(|_| "OS credential storage is unavailable".to_owned())
 }
 
 fn state_path(config_dir: &Path) -> PathBuf {
@@ -889,6 +896,8 @@ mod startup_tests {
 
 #[allow(clippy::needless_pass_by_value)]
 pub fn call(config_dir: &Path, action: &str, fields: Value) -> Result<Value, String> {
+    crate::namespace::validate_profile(config_dir)?;
+    crate::namespace::validate_profile(&state_path(config_dir))?;
     let mut fields = SensitiveValue(fields);
     let state = fs::read_to_string(state_path(config_dir))
         .map_err(|_| "not logged in; run login first".to_owned())?;
