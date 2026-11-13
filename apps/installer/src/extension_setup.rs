@@ -322,7 +322,24 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("vaults-extension-test-{id}"));
         fs::create_dir(&directory).unwrap();
         let host = directory.join("127vaults-extension-host.exe");
-        fs::write(&host, b"registration fixture; never executed").unwrap();
+        let fixture = directory.join("host.rs");
+        fs::write(
+            &fixture,
+            r#"fn main() {
+            assert_eq!(std::env::args().nth(1).as_deref(), Some("--namespace"));
+            println!("{{\"nativeHost\":\"com.127vaults.connector\"}}");
+        }"#,
+        )
+        .unwrap();
+        assert!(
+            Command::new("rustc")
+                .arg(&fixture)
+                .arg("-o")
+                .arg(&host)
+                .status()
+                .unwrap()
+                .success()
+        );
         let key = format!(r"HKCU:\Software\127Vaults\InstallerTests\{id}");
         let script = directory.join("register.ps1");
         // Run the real registration/verification logic without touching browser keys.
