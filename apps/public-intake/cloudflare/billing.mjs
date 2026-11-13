@@ -1,3 +1,4 @@
+import { retrieveSettlement } from './settlement-provider.mjs';
 import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { issueClientLink } from './client-downloads.mjs';
 import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation } from './dodo.mjs';
@@ -32,7 +33,9 @@ const canResubscribe = record => record.kind === 'personal-purchase' && !record.
   && Boolean(record.billing.subscriptionId) && ['cancelled', 'expired', 'failed'].includes(record.billing.status);
 const publicStatus = b => ({ status: b.status, plan: b.planSlug, paidThrough: b.paidThrough ?? null,
   graceUntil: b.paidThrough ? iso(Date.parse(b.paidThrough) + 30 * day) : null,
-  cancelAtPeriodEnd: Boolean(b.cancelAtPeriodEnd), lastCheckedAt: b.lastCheckedAt ?? null });
+  cancelAtPeriodEnd: Boolean(b.cancelAtPeriodEnd), lastCheckedAt: b.lastCheckedAt ?? null,
+  settlement: b.settlement ? { state:b.settlement.state, amount:b.settlement.amount, currency:b.settlement.currency, normalAmount:b.settlement.normalAmount??null, discountAmount:b.settlement.discountAmount??null, discounts:b.settlement.discounts?.map(d=>({subscriptionCycles:d.subscriptionCycles,cyclesRemaining:d.cyclesRemaining}))??[] } : null,
+  settlementReason:b.settlementCheck?.reason??null });
 async function input(request) {
   let value; try { value = JSON.parse(await rawBody(request, 4096)); } catch { reject(400, 'invalid_request'); }
   if (!value || Array.isArray(value) || typeof value !== 'object') reject(400, 'invalid_request');
@@ -44,12 +47,40 @@ function safeLink(value) {
   if (url.protocol !== 'https:' || !/(^|\.)dodopayments\.com$/.test(url.hostname) || url.username || url.password) throw Error('Invalid billing URL');
   return url.href;
 }
+async function suspendSubscription(env, store, row, next, release, now, fetcher, status) {
+  if (row.trial.billing.suspended && !row.trial.billing.cancelPending) return;
+  next.billing.suspended = true;
+  next.billing.status = status;
+  next.billing.cancelPending = true;
+  await store.save(row, next);
+  if (next.license && !next.billing.revocation) {
+    const { signingKey } = await release(env), license = payload(next.license);
+    next.billing.revocation = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license revocation v1', {
+      revocationId: crypto.randomUUID(), installationId: next.installationId, licenseId: license.licenseId,
+      issuedAt: iso(now), revokedAt: iso(now),
+    });
+  }
+  // Save the denial/revocation before cancellation. A provider timeout cannot lose
+  // the security decision or force another license/revocation sequence.
+  await store.save(row, next);
+  try {
+    await dodo(env, `/subscriptions/${encodeURIComponent(next.billing.subscriptionId)}`, 'PATCH', { status: 'cancelled' }, fetcher);
+  } catch(error) {
+    if(error instanceof DodoError || ['TimeoutError','AbortError','TypeError'].includes(error.name)) return;
+    throw error;
+  }
+  await store.save(row, { ...row.trial, billing: { ...row.trial.billing, cancelPending: false } });
+}
 export async function syncSubscription(env, store, row, release, now, fetcher = fetch, subscriptionId, eventPayment) {
   const b = row.trial?.billing;
   if (!b) reject(409, 'billing_unavailable');
-  if (b.suspended) return row;
   const { mode, plans } = billingConfig(env);
   if (b.mode !== mode) throw Error('Billing environment mismatch');
+  if (b.suspended) {
+    if (b.cancelPending) await suspendSubscription(env, store, row,
+      { ...row.trial, billing: { ...b } }, release, now, fetcher, b.status);
+    return row;
+  }
   if (!subscriptionId && !b.subscriptionId && b.sessionId) {
     const checkout = await dodo(env, `/checkouts/${encodeURIComponent(b.sessionId)}`, 'GET', undefined, fetcher);
     subscriptionId = checkout.subscription_id;
@@ -78,31 +109,22 @@ export async function syncSubscription(env, store, row, release, now, fetcher = 
   if (sub.status === 'active') {
     const end = Date.parse(sub.next_billing_date);
     if (!Number.isFinite(end) || end <= now || end > now + 370 * day) throw Error('Invalid subscription period');
-    next.billing.paidThrough = iso(end);
-    // The signed expiry is the paid period boundary. Failure never advances it.
     const personal = next.kind === 'personal-purchase';
-    if (personal && eventPayment?.subscription_id === subscriptionId
-      && (!b.lastPayment || Date.parse(eventPayment.created_at) >= Date.parse(b.lastPayment.createdAt))
-      && eventPayment.metadata?.order_id === b.orderId && eventPayment.metadata?.access_request_id === row.id
-      && eventPayment.metadata?.billing_mode === mode && eventPayment.status === 'succeeded' && eventPayment.total_amount > 0
-      && !eventPayment.refunds?.some(refund => refund.status === 'succeeded' && refund.is_partial === false)) {
-      next.billing.lastPayment = { id: eventPayment.payment_id, createdAt: eventPayment.created_at,
-        amount: eventPayment.total_amount, currency: eventPayment.currency, status: eventPayment.status };
-    }
-    if (personal && !next.billing.lastPayment && b.sessionId && !eventPayment) {
-      const checkout = await dodo(env, `/checkouts/${encodeURIComponent(b.sessionId)}`, 'GET', undefined, fetcher);
-      if (checkout.payment_id) {
-        const payment = await dodo(env, `/payments/${encodeURIComponent(checkout.payment_id)}`, 'GET', undefined, fetcher);
-        if (payment.payment_id === checkout.payment_id && payment.subscription_id === subscriptionId
-          && payment.metadata?.order_id === b.orderId && payment.metadata?.access_request_id === row.id
-          && payment.metadata?.billing_mode === mode && payment.status === 'succeeded' && payment.total_amount > 0
-          && !payment.refunds?.some(refund => refund.status === 'succeeded' && refund.is_partial === false)) {
-          next.billing.lastPayment = { id: payment.payment_id, createdAt: payment.created_at,
-            amount: payment.total_amount, currency: payment.currency, status: payment.status };
-        }
+    if(personal) {
+      const settlement=await retrieveSettlement(env,row,sub,plan,now,fetcher,eventPayment);
+      next.billing.settlementCheck={state:settlement.state,reason:settlement.reason,at:iso(now)};
+      if(settlement.entitled) {
+        next.billing.settlement=settlement;
+        next.billing.paidThrough=settlement.periodEnd;
+        next.billing.currency=settlement.currency;
+        next.billing.lastPayment={id:settlement.paymentId,createdAt:settlement.createdAt,amount:settlement.amount,currency:settlement.currency,status:'succeeded'};
+      } else if(settlement.state==='suspended') {
+        await suspendSubscription(env, store, row, next, release, now, fetcher, settlement.reason==='payment_refunded'?'refunded':'disputed');
+        return row;
       }
-    }
-    if (next.installationId && (!personal || paidPersonalAccess(next, now)) &&
+    } else next.billing.paidThrough=iso(end);
+    // Only a confirmed service period can advance a signed license.
+    if (next.installationId && (!personal || (paidPersonalAccess(next, now) && next.billing.paidThrough === iso(end))) &&
       (!next.license || next.billing.issuedOrderId !== b.orderId || payload(next.license).expiresAt !== iso(end)
       || payload(next.license).plan !== plan.plan || payload(next.license).maxActiveUsers !== (personal ? next.maxUsers : plan.maxUsers))) {
       const { signingKey } = await release(env);
@@ -164,23 +186,15 @@ async function processBillingEvent(id, event, env, store, release, now, fetcher)
       const b = row.trial.billing;
       const current = !b.lastPayment || Date.parse(payment.created_at) >= Date.parse(b.lastPayment.createdAt);
       if (current && payment.status === 'succeeded') {
-        const next = { ...row.trial, billing: { ...b, lastPayment: { id: payment.payment_id, createdAt: payment.created_at,
-          amount: payment.total_amount, currency: payment.currency, status: payment.status } } };
+        const next = { ...row.trial, billing: { ...b } };
         const fullyRefunded = payment.refunds?.some(v => v.status === 'succeeded' && v.is_partial === false);
         const coversCurrentPeriod = payment.service_periods?.some(v => v.subscription_id === subId
           && Date.parse(v.ends_at) >= Date.parse(b.paidThrough));
         if ((fullyRefunded || event.type === 'dispute.lost') && coversCurrentPeriod && (next.license || next.kind === 'personal-purchase')) {
-          next.billing.suspended = true; next.billing.status = fullyRefunded ? 'refunded' : 'disputed';
-          if (next.license) {
-            const { signingKey } = await release(env), license = payload(next.license);
-            next.billing.revocation = await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license revocation v1', {
-            revocationId: crypto.randomUUID(), installationId: next.installationId, licenseId: license.licenseId,
-            issuedAt: iso(now), revokedAt: iso(now),
-            });
-          }
-          await dodo(env, `/subscriptions/${encodeURIComponent(subId)}`, 'PATCH', { status: 'cancelled' }, fetcher);
+          await suspendSubscription(env, store, row, next, release, now, fetcher, fullyRefunded ? 'refunded' : 'disputed');
+        } else {
+          await store.save(row, next);
         }
-        await store.save(row, next);
       }
     }
   }
@@ -329,7 +343,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
     const v = await input(request); fields(v, ['coupon', 'acceptTerms']);
     if (v.coupon !== undefined && !/^[A-Za-z0-9_-]{3,16}$/.test(v.coupon)) reject(400, 'invalid_coupon');
     const personal = record.kind === 'personal-purchase';
-    if (personal && (!portalAuthorized || v.coupon !== undefined)) reject(403, 'access_required');
+    if (personal && !portalAuthorized) reject(403, 'access_required');
     if (record.billing.mode !== config.mode || config.plans[record.billing.planSlug]?.productId !== record.billing.productId) reject(409, 'checkout_unavailable');
     let billing = record.billing;
     let billingHistory = record.billingHistory;
@@ -363,7 +377,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
       customer: { email: row.contact.email }, subscription_data: { trial_period_days: 0 },
       metadata: { access_request_id: id, order_id: billing.orderId, billing_mode: config.mode },
       ...(v.coupon ? { discount_codes: [v.coupon.toUpperCase()] } : {}),
-      feature_flags: { allow_discount_code: !personal }, return_url: `${customerOrigin}/portal?billing=return&request=${id}`,
+      feature_flags: { allow_discount_code: true, allow_customer_editing_email: false }, return_url: `${customerOrigin}/portal?billing=return&request=${id}`,
     }, fetcher); }
     catch (error) {
       if (error instanceof DodoError && [400, 422].includes(error.providerStatus)) {

@@ -26,19 +26,23 @@ export function mountBilling(root, requestId, bearer) {
     $('billing-test').hidden = value.mode !== 'test_mode';
     $('details').textContent = ({
       offered: 'Continue to Dodo Payments to complete checkout.',
-      checkout_pending: 'Payment is pending. Your order updates when Dodo confirms payment.',
+      checkout_pending: 'Checkout is pending. Your order updates when Dodo confirms your subscription.',
       failed: value.canRetryPayment ? 'Payment did not complete. Retry to open a fresh checkout with Dodo.'
         : 'Payment did not complete. Contact support if you need help with this order.',
       cancelled: 'This subscription is cancelled.',
       expired: 'This subscription has expired.',
     })[value.status] ?? (value.paidThrough
-      ? `${value.mode === 'test_mode' ? 'Test period ends' : 'Paid through'} ${new Date(value.paidThrough).toLocaleDateString()}.`
-      : 'Payment has not been confirmed.');
+      ? `${value.mode === 'test_mode' ? 'Test period ends' : 'Subscription active through'} ${new Date(value.paidThrough).toLocaleDateString()}.`
+      : 'Your subscription has not been confirmed.');
     if (personal && value.status === 'active' && !value.accessReady) {
-      $('details').textContent = 'We’re verifying your payment. Downloads and license setup will appear in the portal when access is ready.';
+      $('details').textContent = 'We’re confirming your subscription. Downloads and license setup will appear in the portal when access is ready.';
+    }
+    if(value.settlement?.state==='settled_discounted') {
+      const s=value.settlement,format=amount=>new Intl.NumberFormat(undefined,{style:'currency',currency:s.currency}).format(amount/(10**(new Intl.NumberFormat(undefined,{style:'currency',currency:s.currency}).resolvedOptions().maximumFractionDigits)));
+      $('details').textContent += ' Normal plan price: '+format(s.normalAmount)+'. Discount applied: '+format(s.discountAmount)+'. Amount due for this period: '+format(s.amount)+'.';
     }
     if (value.cancelAtPeriodEnd) $('details').textContent += ' Cancellation is scheduled for the end of the paid period.';
-    $('coupon').closest('label').hidden = personal;
+    $('coupon').closest('label').hidden = false;
     $('checkout').hidden = !checkout;
     $('resubscribe-terms').hidden = !value.canResubscribe || value.canRetryPayment;
     $('resubscribe-accept').required = !$('resubscribe-terms').hidden;

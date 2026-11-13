@@ -197,6 +197,7 @@ export async function handleCustomerPortal(request, env, store, now) {
         checkoutStartedAt: row.trial?.billing?.checkoutStartedAt ?? null,
         installationId: row.trial?.installationId ?? null, expiresAt: row.trial?.expiresAt ?? null,
         billingStatus: row.trial?.billing?.status ?? null, paidThrough: row.trial?.billing?.paidThrough ?? null,
+        settlement:row.trial?.billing?.settlement ? {state:row.trial.billing.settlement.state,amount:row.trial.billing.settlement.amount,currency:row.trial.billing.settlement.currency,normalAmount:row.trial.billing.settlement.normalAmount??null,discountAmount:row.trial.billing.settlement.discountAmount??null} : null,
         cancelAtPeriodEnd: Boolean(row.trial?.billing?.cancelAtPeriodEnd), maxUsers: row.trial?.maxUsers ?? null });
     }
     const cloud = principal.kind === 'email' ? await cloudCustomerTenants(env, principal.email) : { tenants: [], unavailable: false };

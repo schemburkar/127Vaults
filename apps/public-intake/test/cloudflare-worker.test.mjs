@@ -355,6 +355,7 @@ test('Dodo full refund of the current payment revokes service and cancels collec
 for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal checkout and licensing (${conversion ?? 'new installation'})`, { timeout: 20000 }, async t => {
   const messages = [];
   const secret = Buffer.alloc(32, 7);
+  const paidFrom = new Date(Date.now()-1000).toISOString();
   const paidThrough = new Date(Date.now() + 365 * 86400000).toISOString();
   let metadata;
   let failedMetadata;
@@ -391,16 +392,19 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
     });
     if (url.pathname === '/subscriptions/sub_personal') return Response.json({
       subscription_id: 'sub_personal', status: providerStatus, metadata: checkoutCalls > 2 ? previousMetadata : metadata, product_id: 'pdt_personal',
-      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
+      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal', email:'buyer@customer-domain.dev' }, currency:'USD', previous_billing_date:paidFrom, next_billing_date: paidThrough,
     });
     if (url.pathname === '/subscriptions/sub_personal3') return Response.json({
       subscription_id: 'sub_personal3', status: 'active', metadata, product_id: 'pdt_personal',
-      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal' }, next_billing_date: paidThrough,
+      quantity: 1, trial_period_days: 0, customer: { customer_id: 'cus_personal', email:'buyer@customer-domain.dev' }, currency:'USD', previous_billing_date:paidFrom, next_billing_date: paidThrough,
     });
     if (url.pathname === '/checkouts/cks_personal3') return Response.json({ payment_id: 'pay_personal' });
     if (url.pathname === '/checkouts/cks_personal2') return Response.json({ payment_id: 'pay_personal' });
+    if(url.pathname==='/payments')return Response.json({items:providerPaid?[{payment_id:'pay_personal'}]:[]});
     assert.equal(url.pathname, '/payments/pay_personal');
     return Response.json({ payment_id: 'pay_personal', subscription_id: checkoutCalls > 2 ? 'sub_personal3' : 'sub_personal', status: providerPaid ? 'succeeded' : 'processing', metadata,
+      business_id:'biz_personal',customer:{customer_id:'cus_personal'},charge_type:'new',checkout_session_id:'cks_personal'+checkoutCalls,
+      service_periods:[{subscription_id:checkoutCalls>2?'sub_personal3':'sub_personal',starts_at:paidFrom,ends_at:paidThrough}],
       total_amount: 2000, currency: 'USD', created_at: new Date().toISOString() });
   } });
   const started = await (await f.post('/api/customer/start', { email: 'buyer@customer-domain.dev' })).json();

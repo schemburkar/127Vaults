@@ -75,7 +75,7 @@ function orderLink(row, label) {
   return order;
 }
 function orderStatus(row) {
-  if (row.billingStatus === 'active' && row.state === 'purchase_pending') return 'Verifying payment';
+  if (row.billingStatus === 'active' && row.state === 'purchase_pending') return 'Verifying subscription';
   if (row.cancelAtPeriodEnd && row.billingStatus === 'active') return 'Cancellation scheduled';
   return ({
     offered: 'Ready for checkout', checkout_pending: 'Payment pending', active: 'Active',
@@ -105,9 +105,9 @@ function renderOrders(value) {
   notice.hidden = !returning || !current;
   if (!notice.hidden) {
     const confirmed = current.state === 'approved' && Boolean(current.paidThrough);
-    const detail = confirmed ? `${current.billingMode === 'test_mode' ? 'Test payment' : 'Payment'} confirmed. Your downloads and license setup are ready.`
+    const detail = confirmed ? `${current.billingMode === 'test_mode' ? 'Test subscription' : 'Subscription'} confirmed. Your downloads and license setup are ready.`
       : current.billingStatus === 'failed' ? 'Payment did not complete. Access is still locked.'
-      : 'We’re verifying your payment. Downloads will appear here once access is ready.';
+      : 'We’re confirming your subscription. Downloads will appear here once access is ready.';
     notice.textContent = `${planName(current.plan)} — ${detail}`;
   }
   const body = $('portal-requests');
@@ -134,7 +134,7 @@ function renderOrders(value) {
     const end = row.state === 'purchase_pending' ? null : row.paidThrough ?? row.expiresAt;
     const dates = element('td', end ? new Date(end).toLocaleDateString() : '—');
     if (end) dates.append(element('small', row.paidThrough
-      ? row.billingMode === 'test_mode' ? 'Test period ends' : 'Paid through'
+      ? row.billingMode === 'test_mode' ? 'Test period ends' : 'Subscription active through'
       : 'License expires'));
     const action = element('td');
     const actions = element('div', '', 'portal-table-actions');

@@ -1,0 +1,95 @@
+# Personal subscription settlement
+
+## Provider contract checked on 2026-11-13
+
+Official references:
+
+- [Payment detail](https://docs.dodopayments.com/api-reference/payments/get-payments-1)
+- [Subscription detail](https://docs.dodopayments.com/api-reference/subscriptions/get-subscriptions)
+- [Invoice detail](https://docs.dodopayments.com/api-reference/invoices/get-invoice)
+- [Payment discovery](https://docs.dodopayments.com/api-reference/payments/get-payments)
+- [Discount retrieval](https://docs.dodopayments.com/api-reference/discounts/validate-discount)
+- [Card-optional subscriptions](https://docs.dodopayments.com/changelog/v1.113.28)
+
+Payment detail supplies applied discount snapshots, customer/business identifiers,
+checkout/subscription references, charge type, currency, amount and service periods.
+Subscription detail supplies current state and period boundaries. Structured
+invoice retrieval uses `/billing/invoices/{invoice_id}`, not the invoice PDF
+endpoint. Payment listings are discovery only; candidates require detail retrieval.
+
+The original implementation session could not resolve provider hosts from the shell. An
+observed Dodo Test-mode checkout was **not** completed. `settlement.test.mjs`
+contains synthetic documented-schema fixtures, not captured provider events.
+
+## Shared decision
+
+`settlement.mjs` owns the decision; `settlement-provider.mjs` retrieves evidence
+for webhooks, reconciliation and customer/server license refresh. Downloads,
+setup links, installation activation and customer views share the resulting
+entitlement predicate through `paidPersonalAccess`.
+
+Positive payments require an active normal subscription, matching
+business/customer/order/environment/product/quantity/currency, a successful
+period charge, a matching initial checkout and an exact service period. A prior
+payment cannot extend a future period. Refunded/disputed evidence cannot grant
+a new period.
+
+Zero additionally requires a paid invoice with zero balance/customer payment,
+no wallet credit or refund/dispute indicators, one matching subscription line,
+a positive configured normal unit price and matching applied discount snapshots.
+Exact integer percentage/flat stacking must cover that charge. Unknown rounding,
+mixed carts, proration and incomplete evidence stay pending with bounded reasons.
+A trial, mandate, attached coupon or zero amount alone cannot grant access.
+
+Configure supported normal prices in the server-owned plan, for example:
+
+```json
+{"personal-annual":{"productId":"pdt_example","plan":"personal","majorVersion":0,"maxUsers":5,"prices":{"USD":2000}}}
+```
+
+This example does not change production configuration. Country-localized prices
+that differ within one currency require a verified pricing adapter; an unmatched
+normal price stays pending. Zero tax and integer currency minor units are checked
+rather than guessed. Mixed-product invoices are unsupported.
+
+Applied payment snapshots remain valid after coupon redemption expiry or when
+future cycle count reaches zero. Every renewal requires a newly confirmed period.
+If Dodo omits a payment object, or structured invoice evidence is unavailable,
+the adapter remains pending; it does not guess an invoice-only representation.
+
+Confirmed periods use ordinary Personal licenses, existing seats/version policy,
+the selected installation and monotonic sequences. Duplicate events do not
+reissue a period. Test decisions cannot grant production Personal downloads or
+licenses. Previously confirmed positive-payment periods remain usable during
+migration; that compatibility path cannot advance expiry.
+
+Missed refund/dispute notifications can be recovered by reconciliation. It
+persists suspension and the signed revocation before requesting provider
+cancellation. Provider outages leave a durable cancellation retry marker without
+preventing a server from receiving its revocation. Retries retain the same
+revocation instead of producing duplicate signatures.
+
+## Checkout and presentation
+
+Customer-entered codes are enabled in hosted checkout and the authenticated
+billing form. Dodo enforces eligibility; product and quantity remain server-owned.
+Email editing is disabled and the returned customer email must match the order.
+Durable reservations still precede provider calls, preventing ambiguous retries
+from creating duplicate subscriptions. There is no owner-email exception,
+complimentary plan or browser entitlement override.
+
+Private codes must have provider customer/product restrictions. Creating the
+owner's live recurring discount requires separate explicit authorization.
+Customer status exposes price, discount and zero due amount without codes or
+unnecessary PII, and confirms subscription settlement rather than positive
+payment. Billing identity does not create a local operator or grant vault access.
+
+## Remaining acceptance
+
+Before rollout, observe and sanitize Test initial/renewal events, verify invoice
+line pricing semantics, zero-charge event order, card/mandate configuration,
+finite/indefinite cycles and provider fees. Run Worker integration outside this
+socket-restricted environment. The local review has now passed the mocked Worker
+integration suite, including new purchases, conversions and normal billing
+lifecycle regressions. This is not observed provider acceptance. No live billing object, production sign-in code,
+probe email or production test signup was created during implementation.

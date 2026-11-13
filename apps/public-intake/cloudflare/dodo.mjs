@@ -1,3 +1,4 @@
+import { settledPersonalAccess } from './settlement.mjs';
 import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { bytes, from64, equal } from './crypto.mjs';
 
@@ -6,9 +7,7 @@ export class BillingError extends Error {
 }
 export const reject = (status, code) => { throw new BillingError(status, code); };
 export class DodoError extends Error { constructor(status) { super('Billing provider unavailable'); this.providerStatus = status; } }
-export const paidPersonalAccess = (record, now) => record?.kind === 'personal-purchase'
-  && !record.billing?.suspended && record.billing?.lastPayment?.status === 'succeeded'
-  && record.billing.lastPayment.amount > 0 && Date.parse(record.billing.paidThrough) > now;
+export const paidPersonalAccess = settledPersonalAccess;
 export function convertibleInstallation(record, plan) {
   return Boolean(plan && record?.state === 'approved' && [undefined, 'trial', 'development'].includes(record.kind)
     && record.installationId && record.license && !record.billing && !record.revocation
@@ -21,6 +20,8 @@ export function billingConfig(env) {
   if (env.DODO_ENABLED !== '1') reject(404, 'not_found');
   const mode = env.DODO_MODE ?? 'test_mode';
   if (!['test_mode', 'live_mode'].includes(mode) || !env.DODO_API_KEY || !env.DODO_WEBHOOK_SECRET || !env.DODO_BUSINESS_ID) throw Error('Billing configuration incomplete');
+  if ((env.DODO_API_KEY.startsWith('dodo_test_') && mode !== 'test_mode')
+    || (env.DODO_API_KEY.startsWith('dodo_live_') && mode !== 'live_mode')) throw Error('Billing API key environment mismatch');
   const plans = JSON.parse(env.DODO_PLANS ?? '{}');
   if (!plans || Array.isArray(plans) || typeof plans !== 'object' || Object.keys(plans).length === 0) throw Error('Billing plans missing');
   const products = new Set();
@@ -29,6 +30,7 @@ export function billingConfig(env) {
       || !['personal', 'commercial'].includes(plan.plan)
       || (plan.plan === 'personal' && (!Number.isSafeInteger(plan.majorVersion) || plan.majorVersion < 0))
       || !Number.isSafeInteger(plan.maxUsers) || plan.maxUsers < 1 || plan.maxUsers > 100000) throw Error('Invalid billing plan');
+    if (plan.prices && (typeof plan.prices!=='object'||Array.isArray(plan.prices)||Object.entries(plan.prices).some(([currency,amount])=>!/^[A-Z]{3}$/.test(currency)||!Number.isSafeInteger(amount)||amount<=0))) throw Error('Invalid billing price evidence configuration');
     if (products.has(plan.productId)) throw Error('Duplicate billing product');
     products.add(plan.productId);
   }
