@@ -4,6 +4,7 @@ mod agent;
 mod desktop_profile;
 mod devices;
 pub mod namespace;
+mod namespace_cleanup;
 pub use desktop_profile::desktop_profile_directory;
 pub use devices::DeviceCommand;
 mod generator;
@@ -282,6 +283,13 @@ pub enum AccountSecretCommand {
 pub enum Command {
     /// Show this build's namespace and resource locations (no secrets).
     Namespace,
+    /// Preview isolated profile credential removal; confirmed removal is controlled by namespace cleanup.
+    NamespaceCredentials {
+        #[arg(long)]
+        config_dir: PathBuf,
+        #[arg(long)]
+        confirm: bool,
+    },
     /// Rotate credentials or reconcile an interrupted rotation using the server's device proofs.
     Credential {
         #[command(subcommand)]
@@ -2024,6 +2032,10 @@ pub fn run(cli: Cli) -> Result<String, String> {
             let n = namespace::Namespace::current()?;
             Ok(serde_json::json!({"namespace":n.id(),"name":n.name(),"root":n.root()?,"nativeHost":n.native_host(),"profile":effective_config_dir(&namespace::default_cli_directory())?}).to_string())
         }
+        Command::NamespaceCredentials {
+            config_dir,
+            confirm,
+        } => namespace_cleanup::run(&config_dir, confirm),
         Command::Generate { command } => generate_command(command),
         Command::License {
             command: LicenseCommand::Status { config_dir },

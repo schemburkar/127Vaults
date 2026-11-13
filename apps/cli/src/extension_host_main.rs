@@ -12,6 +12,13 @@ fn main() {
         }
         return;
     }
+    let _lease = match vaults_cli::namespace::Namespace::current().and_then(|n| n.process_lease()) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
     if let Err(error) = vaults_cli::extension_host::run() {
         eprintln!("127vaults extension host: {error}");
         std::process::exit(2);

@@ -39,7 +39,7 @@ $calls | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $PSScriptRoot 'calls.j
   assert.equal(calls.length, 2);
   for (const call of calls) { assert.equal(call.cwd, root); assert.equal(call.executable, 'powershell.exe');assert.equal(call.style,'Hidden');assert.ok(call.log.startsWith(root)); }
   assert.deepEqual(calls.map(call => call.args.at(-1)), ['pnpm mvp:dev', 'pnpm --filter @127vaults/desktop dev']);
-  assert.equal(await readFile(join(root, '.tools/namespaces/development/extension/src/shared/passkey-metadata.mjs'), 'utf8'), await readFile(new URL('../packages/domain/src/passkey-metadata.mjs', import.meta.url), 'utf8'));
+  assert.equal(await readFile(join(namespaceRoot, 'extension/src/shared/passkey-metadata.mjs'), 'utf8'), await readFile(new URL('../packages/domain/src/passkey-metadata.mjs', import.meta.url), 'utf8'));
   await run('powershell.exe', ['-NoProfile', '-File', join(root, 'dev.ps1'), 'extension', '-Check'], { windowsHide: true });
   await assert.rejects(run('powershell.exe', ['-NoProfile', '-File', join(root, 'dev.ps1'), 'web'], { windowsHide: true }));
 });

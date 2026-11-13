@@ -15,7 +15,7 @@ owns selection; application code must not invent independent development flags.
 | Remembered Desktop/CLI secrets and agent capabilities | Existing protected services | Service suffix plus existing profile/account binding; no plaintext fallback |
 | Agent state/lock and discovery | Selected profile | Selected namespace profile; cross-namespace calls fail before capability lookup |
 | Browser native host, per user | `com.127vaults.connector` | `.development` or `.test_<instance>` suffix; scripts query the executable rather than trust a caller-selected name |
-| Unpacked extension | Source / production package | `.tools/namespaces/<namespace>/extension`; distinct directory/ID and separate browser profile |
+| Unpacked extension | Source / production package | `<namespace root>/extension`; distinct directory/ID and separate browser profile |
 | Desktop package/OS identity | Existing product and `com.127vaults.desktop.poc` | `127Vaults Dev Desktop` / `com.127vaults.desktop.development` (test includes instance) |
 | NSIS uninstall registration | Existing package | Namespace-specific Tauri identity/name and generated namespace-specific uninstall hook |
 | Installer catalogue | Protected production catalogue | Combined installer refuses development/test catalogue use; it cannot install production artifacts into development |
@@ -71,8 +71,9 @@ acceptance CA files and logs also have separate per-instance paths.
 
 Direct local client packaging supports `--namespace development --components
 desktop,extension` on `scripts/release/package.mjs`. Standard coordinated releases
-remain production. Development combined-installer catalogue distribution is
-deliberately blocked pending namespace-labelled catalogue artifacts. Native
+remain production. Development combined-installer distribution is deliberately unsupported. Run the
+server, Desktop, CLI and extension with their development commands. This is the
+agreed workflow, not a missing release feature. Native
 passkey provider registration remains disabled by the existing product policy.
 
 ## Existing mixed-use machine and reset
@@ -92,9 +93,14 @@ remain stopped and intact as the rollback route.
 `pnpm mvp:reset` previews the selected namespace, exact identity/project and
 database volume. It refuses production and redirected/unowned paths. After
 `pnpm mvp:stop`, `pnpm mvp:reset -- --confirm` removes only that project's database
-volume. Identity/profile files and OS credentials are retained. Full profile/OS
-credential removal and automatic legacy migration are not provided: do not use
-build-cache cleanup as an application reset tool.
+volume. Identity/profile files and OS credentials are retained. For full isolated cleanup, stop selected apps, agents and containers, then run
+`node scripts/namespace.mjs cleanup --cli target/debug/127vaults.exe` to preview.
+Add `--confirm` after reviewing the targets; on Linux use the matching CLI path.
+Cleanup removes owned profiles, known bound OS credentials, connector registrations,
+staged extension and labelled container resources. Production, unowned/redirected
+paths and running instances are refused. Credential-store failures retain profiles
+for retry. Manually deleting identity metadata first can leave credentials that
+cannot be derived. Legacy migration remains deliberate.
 
 ## Acceptance boundary
 
@@ -110,5 +116,7 @@ The local review also runs the full Rust CLI library tests, mocked Worker
 integration and PowerShell launcher checks through
 `node scripts/verify-isolation-settlement.mjs`. Connector discovery now rejects
 unreadable, empty, relative, missing and foreign active-profile pointers instead
-of silently choosing another account. These checks do not replace side-by-side
-native installer acceptance or provide the unfinished full-profile reset.
+of silently choosing another account. Windows cleanup was exercised on a disposable owned profile using the actual
+credential backend, registration lookup and Podman inventory. Namespace and cleanup
+tests also passed in Ubuntu WSL. Native installer acceptance remains a separate
+release activity; Dev installer distribution is outside the agreed workflow.

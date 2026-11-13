@@ -1,5 +1,5 @@
 import { ensureTlsReady, ensureRuntimeKeys, ensureRuntimeSecret, devConfiguration, requireDevUi, ensureDevOriginIsolated, devStartupPlan } from './mvp-startup.mjs';
-import { runtimeNamespace, assertNamespacePath, assertServerIdentity } from './runtime-namespace.mjs';
+import { runtimeNamespace, assertNamespacePath, assertServerIdentity, namespaceProcessLease } from './runtime-namespace.mjs';
 import { spawnSync } from 'node:child_process';
 import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
@@ -19,6 +19,7 @@ for (const key of ['VAULTS_DEV_WEB_PORT','VAULTS_DEV_API_PORT','VAULTS_MVP_PROJE
 if(values.VAULTS_NAMESPACE && values.VAULTS_NAMESPACE!==namespace.name)throw Error('Server environment namespace conflicts with launcher.');
 if(values.VAULTS_TEST_INSTANCE && values.VAULTS_TEST_INSTANCE!==process.env.VAULTS_TEST_INSTANCE)throw Error('Server test instance conflicts with launcher.');
 await assertServerIdentity(namespace,values.VAULTS_TLS_DIR);
+await namespaceProcessLease(namespace); // A stale dead PID record is safe; cleanup checks liveness.
 if(values.VAULTS_MVP_PROJECT && values.VAULTS_MVP_PROJECT!==namespace.project)throw Error('Compose project conflicts with namespace.');
 if(namespace.name==='test'&&(!values.VAULTS_DEV_WEB_PORT||!values.VAULTS_DEV_API_PORT||!values.VAULTS_SMTP_CAPTURE_PORT))throw Error('Parallel test instances require explicit independent VAULTS_DEV_WEB_PORT, VAULTS_DEV_API_PORT and VAULTS_SMTP_CAPTURE_PORT.');
 values.VAULTS_MVP_PROJECT=namespace.project;

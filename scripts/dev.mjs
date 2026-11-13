@@ -1,5 +1,5 @@
 import { ensureRuntimeKeys, ensureRuntimeSecret } from './mvp-startup.mjs';
-import { runtimeNamespace, assertNamespacePath, assertServerIdentity } from './runtime-namespace.mjs';
+import { runtimeNamespace, assertNamespacePath, assertServerIdentity, namespaceProcessLease } from './runtime-namespace.mjs';
 import { spawn } from 'node:child_process';
 import { access, chmod, mkdir, readFile } from 'node:fs/promises';
 import { get as httpsGet } from 'node:https';
@@ -163,10 +163,12 @@ async function statusAfterStartup(podman) {
   }
   throw last;
 }
+let releaseProcessLease;
 try {
   if (!['up', 'status', 'down'].includes(action)) throw new Error('Usage: node scripts/dev.mjs up|status|down');
   console.log('127Vaults experimental development — disposable data only.');
   await loadCredentials(action === 'up');
+  releaseProcessLease=await namespaceProcessLease(namespace);
   if (action === 'up') await ensureRuntimeSecrets();
   const podman = await engine();
   if (action === 'status') await status(podman);
@@ -188,4 +190,6 @@ try {
 } catch (error) {
   console.error(scrub(error.message));
   process.exitCode = 1;
+} finally {
+  await releaseProcessLease?.();
 }

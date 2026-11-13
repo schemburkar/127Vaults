@@ -5,9 +5,15 @@ import { randomBytes } from 'node:crypto';
 
 const namespace = runtimeNamespace(process.env, { launcher:true });
 const action = process.argv[2] ?? 'status';
-if (!['status','init'].includes(action)) throw Error('Use namespace.mjs status|init. Initialization is preview-only without --confirm.');
+if (!['status','init','cleanup'].includes(action)) throw Error('Use namespace.mjs status|init|cleanup. Changes are preview-only without --confirm.');
 console.log(JSON.stringify({namespace:namespace.id,root:namespace.root,profile:namespace.profile,cliProfile:namespace.cliProfile,
   serverIdentity:namespace.serverIdentity,environmentFile:namespace.serverEnvironment,composeProject:namespace.project,nativeHost:namespace.nativeHost},null,2));
+if(action==='cleanup') {
+  const {cleanupNamespace}=await import('./namespace-cleanup.mjs');
+  const args=process.argv.slice(3),value=flag=>args.includes(flag)?args[args.indexOf(flag)+1]:undefined;
+  for(let i=0;i<args.length;i++){if(args[i]==='--confirm')continue;if(!['--engine','--cli'].includes(args[i])||!args[++i]||args[i].startsWith('--'))throw Error('Use cleanup [--confirm] [--engine podman|docker] [--cli PATH]');}
+  console.log(JSON.stringify(await cleanupNamespace(namespace,{confirm:args.includes('--confirm'),engine:value('--engine')??'podman',cli:value('--cli')}),null,2));
+}
 if (action === 'init') {
   console.log('Creates fresh development/test configuration only. Existing profiles, database and identity are never adopted.');
   if (process.argv.includes('--confirm')) {

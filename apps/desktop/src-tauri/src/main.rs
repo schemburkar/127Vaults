@@ -1273,6 +1273,14 @@ fn run_embedded_connector() -> bool {
 
 #[allow(clippy::too_many_lines)] // Tauri startup, event handlers and explicit command registration stay together.
 fn main() {
+    let _namespace_lease =
+        match vaults_cli::namespace::Namespace::current().and_then(|n| n.process_lease()) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        };
     if let Err(error) = vaults_cli::namespace::Namespace::current() {
         eprintln!("{error}");
         std::process::exit(2);

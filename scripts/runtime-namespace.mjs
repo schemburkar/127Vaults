@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
-import { lstat, readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
+import { lstat, readFile, readdir, mkdir, writeFile, unlink } from 'node:fs/promises';
 
 const contract=JSON.parse(readFileSync(new URL('../apps/cli/src/namespace-contract.json',import.meta.url),'utf8'));
 // Rust clients embed the same contract.
@@ -45,6 +45,8 @@ export async function assertNamespacePath(namespace, path, { owned = false } = {
 }
 
 export async function prepareNamespace(namespace) {
+  try {await lstat(join(namespace.root,'cleanup.lock'));throw Error('Namespace cleanup is running');}
+  catch(error){if(error.code!=='ENOENT')throw error;}
   await assertNamespacePath(namespace, join(namespace.root, 'cli'));
   try {
     await lstat(join(namespace.root,'namespace-owner'));
@@ -57,6 +59,18 @@ export async function prepareNamespace(namespace) {
   try { await writeFile(join(namespace.root, 'namespace-owner'), namespace.id, { flag: 'wx', mode: 0o600 }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
   await assertNamespacePath(namespace, namespace.root, { owned: true });
+}
+
+export async function namespaceProcessLease(namespace) {
+  await prepareNamespace(namespace);
+  const directory=join(namespace.root,'processes');await assertNamespacePath(namespace,directory,{owned:true});
+  await mkdir(directory,{recursive:true,mode:0o700});
+  const file=join(directory,`${process.pid}.json`);await assertNamespacePath(namespace,file,{owned:true});
+  await writeFile(file,JSON.stringify({namespace:namespace.id,pid:process.pid}),{mode:0o600});
+  const release=()=>unlink(file).catch(error=>{if(error.code!=='ENOENT')throw error;});
+  try {await lstat(join(namespace.root,'cleanup.lock'));await release();throw Error('Namespace cleanup is running');}
+  catch(error){if(error.code!=='ENOENT')throw error;}
+  return release;
 }
 
 export async function assertServerIdentity(namespace, path) {

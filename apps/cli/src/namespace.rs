@@ -7,6 +7,12 @@ use std::{
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Namespace(String);
+pub struct ProcessLease(PathBuf);
+impl Drop for ProcessLease {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
 fn contract(key: &str) -> String {
     serde_json::from_str::<serde_json::Value>(include_str!("namespace-contract.json"))
         .expect("embedded namespace contract must be valid")[key]
@@ -16,6 +22,37 @@ fn contract(key: &str) -> String {
 }
 
 impl Namespace {
+    /// Record isolated running processes so cleanup never removes their data.
+    /// # Errors
+    /// Rejects unowned storage or an active cleanup operation.
+    pub fn process_lease(&self) -> Result<Option<ProcessLease>, String> {
+        if self.production() {
+            return Ok(None);
+        }
+        self.prepare_profile(&self.root()?.join("cli"))?;
+        let lock = self.root()?.join("cleanup.lock");
+        if lock.exists() {
+            return Err("Namespace cleanup is running".into());
+        }
+        let directory = self.root()?.join("processes");
+        self.validate_profile(&directory)?;
+        fs::create_dir_all(&directory).map_err(|_| "Cannot record namespace process")?;
+        let file = directory.join(format!("{}.json", std::process::id()));
+        self.validate_profile(&file)?;
+        fs::write(
+            &file,
+            serde_json::to_vec(
+                &serde_json::json!({"namespace":self.id(),"pid":std::process::id()}),
+            )
+            .map_err(|_| "Invalid process record")?,
+        )
+        .map_err(|_| "Cannot record namespace process")?;
+        let lease = ProcessLease(file);
+        if lock.exists() {
+            return Err("Namespace cleanup is running".into());
+        }
+        Ok(Some(lease))
+    }
     /// # Errors
     /// Rejects invalid namespace configuration, incompatible paths or unavailable storage.
     pub fn parse(name: &str, instance: Option<&str>) -> Result<Self, String> {
@@ -210,6 +247,9 @@ impl Namespace {
     pub fn prepare_profile(&self, path: &Path) -> Result<(), String> {
         self.validate_profile(path)?;
         if !self.production() {
+            if self.root()?.join("cleanup.lock").exists() {
+                return Err("Namespace cleanup is running".into());
+            }
             let root = self.root()?;
             if root.exists()
                 && !root.join("namespace-owner").exists()
