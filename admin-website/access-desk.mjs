@@ -3,7 +3,7 @@ import { loadRequests, billingModeLabel } from './request-data.mjs';
 import { adminFetch } from './admin-shell.mjs';
 export function mountAccessDesk(root, { selected = null, embedded = false, onChange = async () => {} } = {}) {
 const $ = id => root.querySelector('#' + id);
-let selectedRequest = selected;
+let selectedRequest = selected; let refreshSerial=0;
 
 let emailDryRun = false;
 let automaticCustomerEmail = false;
@@ -74,7 +74,9 @@ function clearInvitation() {
   $('invitation').hidden = true;
 }
 async function refresh() {
+  const serial=++refreshSerial,selection=selectedRequest;
   const data = await loadRequests(adminFetch);
+  if(serial!==refreshSerial||selection!==selectedRequest)return;
   emailDryRun = data.emailDryRun === true;
   automaticCustomerEmail = data.automaticCustomerEmail === true;
   $('customer-email-status').textContent = automaticCustomerEmail
@@ -93,7 +95,7 @@ async function refresh() {
     $('customer-email-status').append(document.createTextNode(' '), all);
   }
   const rows = data.requests.filter(row => (!selected || row.id === selected)).filter(row => selected || view === 'all' || (view === 'archived' ? Boolean(row.archivedAt) : !row.archivedAt)).reverse();
-  status(`Operator access - ${rows.length} request${rows.length === 1 ? '' : 's'}`);
+  if (!embedded) status(`Operator access - ${rows.length} request${rows.length === 1 ? '' : 's'}`);
   if (!rows.length) {
     const empty = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 9;
     cell.className = 'desk-empty'; cell.textContent = view === 'archived' ? 'No archived requests.' : 'No requests to show.';
@@ -159,7 +161,7 @@ async function refresh() {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.dataset.action = action;
       button.setAttribute('role', 'menuitem'); button.tabIndex = -1;
       button.addEventListener('click', async () => {
-        if (actionPending) return;
+        if (actionPending || (embedded && selectedRequest!==row.id)) return;
         actionPending = true;
         closeMenu();
         button.disabled = true;
@@ -174,8 +176,10 @@ async function refresh() {
             status('Install this revocation on the trial server to stop its licensed writes. Download access alone cannot revoke an offline server.'); return;
           }
           const data = await response.json();
+          if(embedded&&selectedRequest!==row.id){await onChange();return;}
           await refresh();
           await onChange();
+          if(embedded&&selectedRequest!==row.id)return;
           if (action === 'extend-link') {
             clearInvitation();
             root.querySelector('#request-actions-' + row.id + ' [data-action="invitation"]')?.click();
@@ -216,7 +220,7 @@ async function refresh() {
             status(action === 'invitation' ? 'Invitation preview opened. No email sent.' : `${label} completed. ${emailEffect(action, row)} Refresh to check the submission result.`);
           } else if (action === 'replace-installation') status('Replacement license issued. The customer can use the existing private link to download it. Review and send the replacement invitation if needed.');
           else status(`${label} completed. ${emailEffect(action, row)}${data.hasRevocation ? ' Download and apply the signed revocation on the trial server to revoke its installed license.' : ''}`);
-        } catch (error) { status(error.message); }
+        } catch (error) { if(!embedded||selectedRequest===row.id)status(error.message); }
         finally { button.disabled = false; actionPending = false; }
       });
       menuItems.append(button);
@@ -263,6 +267,14 @@ async function refresh() {
     }
     if (row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);
     act(row.archivedAt ? 'Restore to inbox' : 'Archive', row.archivedAt ? 'unarchive' : 'archive', {});
+    if (embedded) {
+      const slot=root.closest('.workspace-drawer')?.querySelector('.drawer-actions');
+      if(slot){slot.replaceChildren();const label=document.createElement('span');label.className='record-action-label';label.textContent='Record actions';slot.append(label);
+        const preview=menuItems.querySelector('[data-action="approve"]')||menuItems.querySelector('[data-action="invitation"]');
+        if(preview){const shortcut=document.createElement('button');shortcut.className='button primary';shortcut.type='button';shortcut.textContent=preview.dataset.action==='approve'?'Approve request':'Preview invitation';shortcut.addEventListener('click',()=>preview.click());slot.append(shortcut);}
+        slot.append(menuLabel);actionCell.hidden=true;
+      }
+    }
     $('requests').append(card);
   }
 }
@@ -281,6 +293,6 @@ $('copy-invite').addEventListener('click', async () => {
   catch { $('invite-message').select(); status('Select and copy the message manually.'); }
 });
 
-return { select: async id => { selectedRequest = id; clearInvitation(); await refresh(); }, close: () => { closeMenu(); clearInvitation(); } };
+return { select: async id => { selectedRequest = id; closeMenu(); root.querySelectorAll('.request-menu-items').forEach(node=>node.remove()); $('requests').replaceChildren();root.closest('.workspace-drawer')?.querySelector('.drawer-actions')?.replaceChildren();status('Loading request…');clearInvitation();await refresh();if(selectedRequest===id)status(''); }, close: () => { refreshSerial++;selectedRequest=null;closeMenu(); clearInvitation(); } };
 
 }

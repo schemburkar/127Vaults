@@ -13,17 +13,35 @@ const main = document.querySelector('main'); main.id = 'main'; main.classList.ad
 const content = document.createElement('div'); content.className = 'admin-content'; content.hidden = true;
 content.append(...main.childNodes); main.append(content);
 const sidebar = document.createElement('aside'); sidebar.className = 'admin-sidebar';
-sidebar.innerHTML = '<a class="admin-brand" href="/access-admin"><img src="brand-mark.svg" width="36" height="36" alt=""><span>127Vaults<strong>Admin</strong></span></a><p class="admin-nav-label">WORKSPACE</p><nav aria-label="Admin navigation"></nav><div class="admin-sidebar-foot"><span class="admin-dot"></span>Private workspace</div>';
-for (const [id, label, hint, number] of pages) {
+sidebar.innerHTML = '<a class="admin-brand" href="/access-admin"><img src="brand-mark.svg" width="36" height="36" alt=""><span>127Vaults<strong>Admin</strong></span></a><label class="nav-finder"><span>Find a page</span><input type="search" placeholder="Find a page…" aria-label="Find an admin page"></label><nav aria-label="Admin navigation"></nav><div class="admin-sidebar-foot"><span aria-hidden="true">◇</span> Operator workspace</div>';
+const navigationOrder = ['access-admin','licenses','cloud-tenants','subscriptions','coupons','releases','customer-mail'];
+for (const id of navigationOrder) {
+  const [,label,hint,number] = pages.find(item=>item[0]===id);
+  const group = id === 'access-admin' ? 'CUSTOMERS' : id === 'subscriptions' ? 'BILLING' : id === 'releases' ? 'OPERATIONS' : null;
+  if (group) { const heading=document.createElement('p'); heading.className='admin-nav-label'; heading.textContent=group; sidebar.querySelector('nav').append(heading); }
+
   const a = document.createElement('a'); a.href = `/${id}`;
   if (id === current[0]) a.setAttribute('aria-current', 'page');
-  a.innerHTML = `<span class="admin-nav-number" aria-hidden="true">${number}</span><span>${label}<small>${hint}</small></span>`;
+  a.innerHTML = `<span class="admin-nav-icon" aria-hidden="true">${({"access-admin":"▤",licenses:"◇","cloud-tenants":"▦",subscriptions:"↻",coupons:"%",releases:"↓","customer-mail":"✉"})[id]}</span><span>${label}</span>`;
   sidebar.querySelector('nav').append(a);
 }
+const navStatus=document.createElement('p');navStatus.className='nav-search-status';navStatus.setAttribute('role','status');navStatus.hidden=true;sidebar.querySelector('nav').after(navStatus);
+sidebar.querySelector('input').addEventListener('input', event => {
+  const term=event.target.value.toLowerCase();
+  for (const a of sidebar.querySelectorAll('nav a')) a.hidden=!a.textContent.toLowerCase().includes(term);
+  for(const heading of sidebar.querySelectorAll('nav .admin-nav-label'))heading.hidden=Boolean(term);
+  navStatus.hidden=!term;navStatus.textContent=sidebar.querySelectorAll('nav a:not([hidden])').length+' matching pages';
+});
 const top = document.createElement('header'); top.className = 'admin-topbar';
-top.innerHTML = `<span>Admin <span aria-hidden="true">/</span> <strong>${current[1]}</strong></span><button class="desk-button" id="admin-logout" type="button" hidden>Sign out</button>`;
+top.innerHTML = `<div class="workspace-breadcrumb"><button class="nav-toggle desk-button" type="button" aria-label="Toggle admin navigation" aria-expanded="false">☰</button><span>Workspace</span><span aria-hidden="true">/</span><strong>${current[1]}</strong></div><div class="topbar-tools"><span class="workspace-badge">Private admin</span><button class="desk-button" id="admin-logout" type="button" hidden>Sign out</button></div>`;
 const layout = document.createElement('div'); layout.className = 'admin-workspace';
 main.before(sidebar, layout); layout.append(top, main);
+top.querySelector('.nav-toggle').addEventListener('click',event=>{const expanded=document.body.classList.toggle('nav-open');event.currentTarget.setAttribute('aria-expanded',String(expanded));});
+const pageHeader=document.createElement('header');pageHeader.className='workspace-page-header';
+const pageCopy=document.createElement('div');const h1=content.querySelector('h1');const kicker=content.querySelector('.kicker');const description=h1?.nextElementSibling?.tagName==='P'?h1.nextElementSibling:null;
+if(kicker)kicker.remove();if(h1)pageCopy.append(h1);if(description)pageCopy.append(description);
+const pageActions=document.createElement('div');pageActions.className='page-actions';pageHeader.append(pageCopy,pageActions);content.prepend(pageHeader);
+if(document.querySelector('meta[name="admin-review"]')){const notice=document.createElement('span');notice.className='workspace-badge warning';notice.textContent='LOCAL REVIEW · SAMPLE DATA';top.querySelector('.topbar-tools').prepend(notice);}
 const login = document.createElement('form'); login.className = 'access-card admin-login';
 login.innerHTML = '<h2>Operator sign-in</h2><p>Use your operator access key to open the private workspace. Sessions last one hour.</p><label class="access-field" for="admin-key">Operator access key<input id="admin-key" type="password" autocomplete="off" required></label><button class="button primary" type="submit">Sign in</button><p role="status" aria-live="polite" id="admin-login-status"></p>';
 login.hidden = true; main.prepend(login);

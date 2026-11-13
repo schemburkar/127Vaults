@@ -12,3 +12,9 @@ test('unavailable billing details are shown as unverified instead of live', asyn
   const result=await loadRequests(async path=>({ok:path==='/api/access-admin/requests',json:async()=>({requests:[{id:'x',billingStatus:'active'}]})}));
   assert.equal(billingModeLabel(result.requests[0]),'Billing mode unverified');
 });
+
+test('request summary carries billing metadata without per-customer billing reads',async()=>{
+ const rows=[{id:'customer',billingStatus:'active',billingMode:'live_mode',billingPaidThrough:'2027-01-01T00:00:00Z'}];let calls=0;
+ const data=await loadRequests(async()=>{calls++;return{ok:true,json:async()=>({requests:rows})};});
+ assert.equal(calls,1);assert.equal(data.requests[0].billingMode,'live_mode');assert.equal(data.requests[0].billingDetails.paidThrough,rows[0].billingPaidThrough);
+});

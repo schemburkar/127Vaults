@@ -1196,3 +1196,12 @@ test('explicit Resend resend uses a new durable event while keeping the old URL'
   assert.equal((await f.post(`${admin}/${id}/resend-invitation`,input,f.operatorToken)).status,409);
   assert.equal(messages.length,2);
 });
+
+test('operator coupon directory is read-only, paginated and strips provider-private metadata',async t=>{
+ const f=await billingFixture(t);let calls=0;
+ const provider=async(url,options)=>{calls++;assert.equal(url,'https://test.dodopayments.com/discounts?page_size=50&page_number=2');assert.equal(options.method,'GET');return Response.json({items:[{discount_id:'dsc_one',code:'WELCOME',type:'percentage',amount:2000,expires_at:new Date(Date.now()+86400000).toISOString(),times_used:2,usage_limit:10,subscription_cycles:12,restricted_to:['pdt_test'],metadata:{private:'never return this'},business_id:'private-business'}]});};
+ const result=await handleBilling(f.req('/api/access-admin/billing/coupons?page=2'),f.env,f.store,f.release,Date.now(),true,provider);
+ assert.equal(result.page,2);assert.equal(result.hasMore,false);assert.equal(result.coupons[0].status,'Available');assert.deepEqual(result.coupons[0].plans,['commercial-monthly']);assert.equal(JSON.stringify(result).includes('private'),false);
+ await assert.rejects(handleBilling(f.req('/api/access-admin/billing/coupons?page=0'),f.env,f.store,f.release,Date.now(),true,provider));
+ await assert.rejects(handleBilling(f.req('/api/access-admin/billing/coupons'),f.env,f.store,f.release,Date.now(),false,provider));assert.equal(calls,1);
+});

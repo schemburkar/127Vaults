@@ -253,6 +253,18 @@ export async function handleBilling(request, env, store, release, now, operatorA
     return { reconciliation: await store.db.prepare('SELECT checked_at, checked, failed FROM billing_health WHERE singleton = 1').first(),
       pendingEvents: (await store.db.prepare('SELECT COUNT(*) AS count FROM billing_events WHERE processed_at IS NULL').first()).count };
   }
+  if (path === '/api/access-admin/billing/coupons' && request.method === 'GET') {
+    const page = Number(new URL(request.url).searchParams.get('page') ?? 1);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10000) reject(400, 'invalid_page');
+    const response = await dodo(env, '/discounts?page_size=50&page_number=' + page, 'GET', undefined, fetcher);
+    if (!Array.isArray(response.items)) throw Error('Invalid coupon directory response');
+    return { mode: config.mode, page, hasMore: response.items.length === 50, coupons: response.items.map(item => ({
+      id: item.discount_id, code: item.code, type: item.type, amount: item.amount,
+      expiresAt: item.expires_at, startsAt: item.starts_at, usageLimit: item.usage_limit, used: item.times_used,
+      cycles: item.subscription_cycles, restricted: Boolean(item.restricted_to?.length), plans: Object.entries(config.plans).filter(([,p]) => item.restricted_to?.includes(p.productId)).map(([id])=>id),
+      status: item.expires_at && Date.parse(item.expires_at) <= now ? 'Expired' : item.usage_limit && item.times_used >= item.usage_limit ? 'Exhausted' : item.starts_at && Date.parse(item.starts_at) > now ? 'Scheduled' : 'Available'
+    })) };
+  }
   if (path === '/api/access-admin/billing/coupons' && request.method === 'POST') {
     const v = await input(request); fields(v, ['plan', 'basisPoints', 'cycles', 'usageLimit', 'expiresAt']);
     const plan = config.plans[v.plan];

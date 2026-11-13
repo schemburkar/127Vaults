@@ -65,7 +65,7 @@ function summary(record, mailer) {
     expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
     replacementRequest: record?.replacementRequest ? { installationId: record.replacementRequest.installationId, requestedAt: record.replacementRequest.requestedAt, reason: record.replacementRequest.reason } : null,
     replacementCount: record?.replacementCount ?? 0,
-    billingStatus: record?.billing?.status ?? null, billingLastCheckedAt: record?.billing?.lastCheckedAt ?? null,
+    billingStatus: record?.billing?.status ?? null, billingMode: record?.billing?.mode ?? null, billingPaidThrough: record?.billing?.paidThrough ?? null, billingLastCheckedAt: record?.billing?.lastCheckedAt ?? null,
     requestAlertState: record?.requestAlertState, requestAlertAttemptedAt: record?.requestAlertAttemptedAt };
 }
 async function setup(env, now) {

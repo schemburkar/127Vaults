@@ -1,27 +1,12 @@
-import { adminReady, adminFetch } from './admin-shell.mjs';
-const messages = document.getElementById('messages'), status = document.getElementById('mail-status');
-let expiry;
-async function refresh() {
-  clearTimeout(expiry); messages.replaceChildren();
-  const response = await adminFetch('/api/access-admin/customer-mail');
-  if (!response.ok) throw Error('Messages could not be loaded.');
-  const data = await response.json();
-  status.textContent = data.messages.length ? 'Only unexpired, unused sign-in codes appear here.' : 'No pending sign-in messages.';
-  for (const message of data.messages) {
-    const card = document.createElement('article'); card.className = 'access-card';
-    const heading = document.createElement('h2'); heading.textContent = message.to;
-    const until = document.createElement('p'); until.textContent = `Expires: ${new Date(message.expiresAt).toLocaleString()}`;
-    const content = `To: ${message.to}\nSubject: ${message.subject}\n\n${message.text}`;
-    const text = document.createElement('textarea'); text.readOnly = true; text.rows = 9; text.value = content; text.setAttribute('aria-label', `Email for ${message.to}`);
-    const copy = document.createElement('button'); copy.className = 'button'; copy.textContent = 'Copy message';
-    copy.addEventListener('click', async () => {
-      if (Date.parse(message.expiresAt) <= Date.now()) { await refresh(); return; }
-      try { await navigator.clipboard.writeText(content); status.textContent = 'Copied. Send it only to the displayed recipient.'; }
-      catch { text.select(); status.textContent = 'Select and copy the message above.'; }
-    });
-    card.append(heading, until, text, copy); messages.append(card);
-  }
-  if (data.messages.length) expiry = setTimeout(() => refresh().catch(error => { messages.replaceChildren(); status.textContent = error.message; }), Math.max(0, Math.min(...data.messages.map(value => Date.parse(value.expiresAt))) - Date.now()) + 50);
-}
-document.getElementById('refresh').addEventListener('click', () => refresh().catch(error => { status.textContent = error.message; }));
-adminReady.then(ready => { if (ready) return refresh(); }).catch(error => { status.textContent = error.message; });
+import {adminReady,adminFetch} from './admin-shell.mjs';
+import {createDataView,createDrawer,identity,actionButton,el} from './workspace-ui.mjs';
+const host=document.getElementById('messages'),status=document.getElementById('mail-status');
+const drawer=createDrawer();let expiry,selected;
+const refreshButton=document.getElementById('refresh');refreshButton.hidden=true;
+const grid=createDataView(host,{title:'Messages',searchLabel:'Search pending messages by recipient or subject',searchText:r=>[r.to,r.subject].join(' '),columns:[{key:'to',label:'Recipient',render:r=>identity(r.to,'Customer sign-in')},{key:'subject',label:'Subject'},{key:'expiresAt',label:'Expires',render:r=>new Date(r.expiresAt).toLocaleString()}],toolbarActions:[actionButton('Refresh',refresh)],empty:'No unused, unexpired sign-in messages.',onOpen:(message,button)=>{
+  selected=message;drawer.setTitle(message.to,'Sign-in message · expires '+new Date(message.expiresAt).toLocaleString(),'CUSTOMER MESSAGES');
+  const text=el('textarea');text.readOnly=true;text.rows=12;text.value=`To: ${message.to}\nSubject: ${message.subject}\n\n${message.text}`;text.setAttribute('aria-label','Message for '+message.to);
+  const note=el('p','Send this message only to the displayed recipient. It is removed when used or expired.','context-note');drawer.body.replaceChildren(note,text);drawer.footer.replaceChildren(actionButton('Copy message',async()=>{if(Date.parse(message.expiresAt)<=Date.now()){drawer.close();await refresh();return;}try{await navigator.clipboard.writeText(text.value);note.textContent='Copied. Share only with '+message.to+'.';}catch{text.select();note.textContent='Select and copy the message.';}},true));drawer.open(button,message.id??message.to);
+}});
+async function refresh(){try{clearTimeout(expiry);const response=await adminFetch('/api/access-admin/customer-mail');if(!response.ok)throw Error('Messages could not be loaded.');const data=await response.json();grid.setRows(data.messages.map(r=>({...r,id:r.id??r.to})));status.textContent='Only unused, unexpired sign-in messages are shown.';if(selected&&(Date.parse(selected.expiresAt)<=Date.now()||!data.messages.some(message=>message.to===selected.to&&message.text===selected.text))){drawer.close();drawer.body.replaceChildren();}if(data.messages.length)expiry=setTimeout(refresh,Math.max(0,Math.min(...data.messages.map(r=>Date.parse(r.expiresAt)))-Date.now())+50);}catch(error){grid.setRows([]);drawer.close();drawer.body.replaceChildren();status.textContent=error.message;}}
+adminReady.then(ready=>{if(ready)return refresh();});
