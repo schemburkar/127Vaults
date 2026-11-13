@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.22",
+    "date": "2026-11-13",
+    "summary": "Isolated development and confirmed discounted subscriptions.",
+    "changes": [
+      "Keep development and Test profiles, credentials and browser connectors separate from existing installations.",
+      "Preview and clean up stopped development and Test instances.",
+      "Recognize confirmed fully discounted Personal subscription periods and renewals with normal license checks."
+    ]
+  },
+  {
     "version": "0.1.21",
     "date": "2026-11-12",
     "summary": "Personal subscriptions and clearer self-hosted setup.",
