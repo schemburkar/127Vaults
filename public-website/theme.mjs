@@ -33,3 +33,14 @@ button?.addEventListener('click', () => {
   } catch { /* The current page still updates if storage is unavailable. */ }
   updateTheme();
 });
+
+const subscriptionOptions = document.querySelector('.subscribe-options');
+document.addEventListener('click', event => {
+  if (subscriptionOptions && !subscriptionOptions.parentElement.contains(event.target)) subscriptionOptions.open = false;
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && subscriptionOptions?.open) {
+    subscriptionOptions.open = false;
+    subscriptionOptions.querySelector('summary').focus();
+  }
+});

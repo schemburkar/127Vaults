@@ -60,3 +60,12 @@ testing, including its test-recipient addresses. Do not request production
 customer sign-in codes or submit synthetic production signups as a verification
 step. Provider activation checks must not send probe emails. Keep delivery
 disabled until the account, verified sender domain and sending-only key are ready.
+
+## Release monitoring handoff
+
+For future full installer/package publications, prepare, check, commit and push
+release source and notes, then dispatch `.github/workflows/release-publish.yml`
+on main with the coordinated version. Give the user the Actions run link and
+ask them to monitor it. Do not poll, watch or track the run's progress; the user
+will report failures. Dispatch is a handoff, not proof of publication success.
+The workflow must still perform all release gates and retain verification receipts.

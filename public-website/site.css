@@ -351,3 +351,11 @@ button.plan-cta:disabled { cursor: default; filter: none; }
 .setup-wizard ol { padding-left: 22px; }
 .setup-wizard .setup-sidebar ol { padding-left: 0; }
 @media (max-width: 760px) { .setup-wizard { grid-template-columns: 1fr; gap: 20px; } .setup-sidebar { position: static; } .setup-sidebar ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.subscribe-split { display: inline-flex; position: relative; align-items: stretch; }
+.subscribe-split > .button { border-radius: 8px 0 0 8px; }
+.subscribe-options > summary { display: flex; align-items: center; justify-content: center; height: 100%; min-width: 44px; padding: 12px; cursor: pointer; list-style: none; background: var(--brand-red); color: white; border-left: 1px solid #ffffff45; border-radius: 0 8px 8px 0; }
+.subscribe-options > summary::-webkit-details-marker { display: none; }
+.subscribe-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 10; width: max-content; max-width: calc(100vw - 48px); padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 30px #0004; }
+.subscribe-menu a { display: block; padding: 12px; border-radius: 6px; }
+.subscribe-menu a:hover, .subscribe-menu a:focus-visible { background: color-mix(in srgb, var(--text) 10%, transparent); }

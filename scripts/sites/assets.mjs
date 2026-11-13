@@ -48,8 +48,8 @@ export async function stageSite(surface, directory, { publicOrigin, personalBuyU
           .replace('</article>', '<p class="plan-trial-link"><a href="get-started.html?plan=personal">Request trial access</a></p></article>')
         : article);
       if (name === 'index.html') updated = updated.replace(
-        '<a class="button primary" href="get-started.html">Get access</a>',
-        `<a class="button primary" href="${personalBuyUrl}">Subscribe now</a>`);
+        '<a class="button primary" data-personal-subscribe href="get-started.html?plan=personal">Subscribe to Personal</a>',
+        `<a class="button primary" data-personal-subscribe href="${personalBuyUrl}">Subscribe to Personal</a>`);
       sources.set(name, Buffer.from(updated));
     }
     const downloads = sources.get('downloads.html').toString('utf8');

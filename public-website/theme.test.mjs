@@ -9,7 +9,7 @@ function page(saved, storageBlocked = false) {
   let click;
   const button = { setAttribute: (key, value) => { attributes[key] = value; }, addEventListener: (_, handler) => { click = handler; } };
   vm.runInNewContext(source, {
-    document: { documentElement: root, querySelector: selector => selector === '[data-theme-toggle]' ? button : { setAttribute: (key, value) => { metadata[key] = value; } } },
+    document: { addEventListener() {}, documentElement: root, querySelector: selector => selector === '[data-theme-toggle]' ? button : { setAttribute: (key, value) => { metadata[key] = value; } } },
     localStorage: {
       getItem: () => { if (storageBlocked) throw Error('unavailable'); return saved; },
       setItem: (_, value) => { if (storageBlocked) throw Error('unavailable'); saved = value; },

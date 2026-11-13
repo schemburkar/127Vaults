@@ -402,3 +402,12 @@ differing assets are never deleted or overwritten. Upload responses are verified
 the same way. Repeating the command verifies and reuses matching attachments.
 The attachment command preserves existing notes except for correcting the old
 notes-only release sentence. Assets retain the private repository's visibility.
+
+## Release monitoring handoff
+
+For future full installer/package publications, prepare, check, commit and push
+release source and notes, then dispatch `.github/workflows/release-publish.yml`
+on main with the coordinated version. Give the user the Actions run link and
+ask them to monitor it. Do not poll, watch or track the run's progress; the user
+will report failures. Dispatch is a handoff, not proof of publication success.
+The workflow must still perform all release gates and retain verification receipts.

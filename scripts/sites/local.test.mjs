@@ -39,7 +39,9 @@ test('live Personal purchase is primary on pricing, home and downloads while tri
     assert.ok(personal.indexOf('Five users included') < personal.indexOf('<ul>'));
     assert.ok(personal.indexOf('</ul>') < personal.indexOf('Request trial access'));
     if (name === 'index.html') {
-      assert.match(html, /class="button primary" href="https:\/\/manage.example.com\/portal">Subscribe now/);
+      assert.match(html, /class="button primary" data-personal-subscribe href="https:\/\/manage.example.com\/portal">Subscribe to Personal/);
+      assert.match(html, /<summary aria-label="More subscription options">/);
+      assert.match(html, /plan=commercial">Request Commercial Access<\/a>/);
       assert.doesNotMatch(html, />Get access<\/a>/);
     }
     assert.match(html, /plan=commercial">Request access/);
