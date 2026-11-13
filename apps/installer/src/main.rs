@@ -496,6 +496,19 @@ fn execute(mut args: Args) -> Result<()> {
             provider: args.compose_provider.clone(),
         });
     }
+    // Refuse a stopped existing installation before requesting release metadata,
+    // downloading packages, preparing recovery keys or recording a pending upgrade.
+    if args.components.contains(&Product::Server)
+        && let Some(record) = state
+            .records
+            .iter()
+            .find(|r| r.product == Product::Server && r.complete)
+    {
+        discovery::check_existing_runtime(
+            &record.directory,
+            record.engine.as_deref().unwrap_or_default(),
+        )?;
+    }
     if invitation.client_only && args.components.contains(&Product::Server) {
         return Err("This joining link downloads clients only. The server operator uses their own setup link.".into());
     }

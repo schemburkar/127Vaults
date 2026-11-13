@@ -120,3 +120,22 @@ of silently choosing another account. Windows cleanup was exercised on a disposa
 credential backend, registration lookup and Podman inventory. Namespace and cleanup
 tests also passed in Ubuntu WSL. Native installer acceptance remains a separate
 release activity; Dev installer distribution is outside the agreed workflow.
+
+## Retiring a reviewed legacy workstation installation
+
+Namespace support does not automatically migrate pre-existing installations.
+For a machine confirmed by its owner to contain only legacy development data,
+stop the old server with its recorded bundle's install.mjs stop command. Run
+scripts/ops/retire-legacy-installations.ps1 for a preview and add -Confirm to
+archive the reviewed legacy installer/client/profile/recovery directories under
+the owned development namespace. The script refuses running Vaults apps or
+containers, redirected paths and foreign connector registrations; it removes
+only the legacy production-name Chrome/Edge connector registrations and saves
+their paths in its receipt. Data and recovery keys are retained, not erased.
+
+The archive is retirement evidence, not a runnable migrated installation:
+absolute references inside old receipts retain their original locations.
+Existing database volumes and external identity directories remain preserved.
+Use the normal development launchers for a fresh isolated development instance.
+A first live installation must use an unused live setup link; a link already
+bound to a legacy installation must not silently rebind to a new server.

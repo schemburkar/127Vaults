@@ -36,3 +36,17 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible { 
 .request-confirm button:disabled { opacity:.45; cursor:not-allowed; }
 
 .admin-main .access-card .billing-action { width:auto; display:inline-flex; padding:10px 16px; }.admin-main .billing-action:disabled { cursor:not-allowed; opacity:.5; }
+
+.license-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(880px, 94vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-left: 1px solid var(--border); padding: 0; background: var(--page); color: var(--text); }
+.license-drawer::backdrop { background: #0007; }
+.license-drawer-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.license-drawer-header h2 { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
+.license-drawer-content { padding: 24px; }
+.license-drawer-content > h1, .license-drawer-content > .kicker, .license-drawer-content .desk-toolbar { display: none; }
+.license-drawer-content .request-table { min-width: 0; }
+.license-drawer-content .request-table thead { display: none; }
+.license-drawer-content .request-table tr { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
+.license-drawer-content .request-table td { overflow-wrap: anywhere; white-space: normal; }
+@media(max-width:600px) { .license-drawer { width:100vw; }.license-drawer-content .request-table tr { grid-template-columns: 1fr; } }
+
+.license-drawer-content .request-table td::before { content: attr(data-label); display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); font-weight: 700; }

@@ -202,7 +202,15 @@ pub fn check_fresh_port(endpoint: Option<&str>, tailscale: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn existing_license(directory: &Path, engine: &str) -> Result<Value> {
+fn require_single_running(ids: &str, service: &str, directory: &Path) -> Result<String> {
+    let ids: Vec<_> = ids.split_whitespace().collect();
+    if ids.len() != 1 {
+        return Err(format!("Existing installation needs exactly one running {service} container (found {}). Start/recover the existing bundle at {} with node install.mjs start, then rerun. No upgrade or license change was started; do not initialize a replacement server", ids.len(), directory.display()).into());
+    }
+    Ok(ids[0].into())
+}
+
+fn running_service(directory: &Path, engine: &str, service: &str) -> Result<String> {
     if !["podman", "docker"].contains(&engine) {
         return Err("Select the existing server engine".into());
     }
@@ -213,26 +221,29 @@ pub fn existing_license(directory: &Path, engine: &str) -> Result<Value> {
             "--filter",
             &format!("label=com.docker.compose.project={project}"),
             "--filter",
-            "label=com.docker.compose.service=server",
+            &format!("label=com.docker.compose.service={service}"),
             "--format",
             "{{.ID}}",
         ])
         .bounded_output()?;
     if !output.status.success() {
-        return Err("Cannot inspect the licensed server".into());
+        return Err("Cannot inspect the existing server engine; use the same Windows account and engine connection as the original installation".into());
     }
-    let ids = String::from_utf8(output.stdout)?;
-    let ids: Vec<_> = ids.split_whitespace().collect();
-    if ids.len() != 1 {
-        return Err(
-            "Keeping a license requires exactly one healthy running server for this installation"
-                .into(),
-        );
-    }
+    require_single_running(&String::from_utf8(output.stdout)?, service, directory)
+}
+
+pub fn check_existing_runtime(directory: &Path, engine: &str) -> Result<()> {
+    running_service(directory, engine, "server")?;
+    running_service(directory, engine, "database")?;
+    Ok(())
+}
+
+pub fn existing_license(directory: &Path, engine: &str) -> Result<Value> {
+    let server = running_service(directory, engine, "server")?;
     let output = Command::new(engine)
         .args([
             "exec",
-            ids[0],
+            &server,
             "node",
             "apps/server/src/entry.mjs",
             "provision",
@@ -272,6 +283,23 @@ pub fn license_identity(status: &Value, identity: &str) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn runtime_preflight_refuses_stopped_and_ambiguous_services() {
+        let directory = Path::new("existing-bundle");
+        for service in ["server", "database"] {
+            for ids in ["", "one\ntwo"] {
+                let error = require_single_running(ids, service, directory)
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains("node install.mjs start"));
+                assert!(error.contains("No upgrade or license change was started"));
+            }
+            assert_eq!(
+                require_single_running("one\n", service, directory).unwrap(),
+                "one"
+            );
+        }
+    }
     #[test]
     fn preserving_a_license_requires_active_matching_server_evidence() {
         let status = serde_json::json!({"installationId":"this-machine","license":{

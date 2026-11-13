@@ -28,6 +28,7 @@ const login = document.createElement('form'); login.className = 'access-card adm
 login.innerHTML = '<h2>Operator sign-in</h2><p>Use your operator access key to open the private workspace. Sessions last one hour.</p><label class="access-field" for="admin-key">Operator access key<input id="admin-key" type="password" autocomplete="off" required></label><button class="button primary" type="submit">Sign in</button><p role="status" aria-live="polite" id="admin-login-status"></p>';
 login.hidden = true; main.prepend(login);
 export function requireSignIn(message = 'Your session has ended. Sign in to continue.') {
+  document.dispatchEvent(new Event('admin-session-ended'));
   content.hidden = true; login.hidden = false;
   document.getElementById('admin-logout').hidden = true;
   document.getElementById('admin-login-status').textContent = message;

@@ -1,3 +1,4 @@
+import { loadRequests, billingModeLabel } from './request-data.mjs';
 import { adminReady, adminFetch } from './admin-shell.mjs';
 const isCoupons = document.body.dataset.adminPage === 'coupons';
 const inbox = document.getElementById('inbox');
@@ -81,12 +82,10 @@ adminReady.then(async ready => {
   inbox.append(panel);
   if (!isCoupons) {
     try {
-      const response = await adminFetch('/api/access-admin/requests');
-      if (!response.ok) throw Error('Customers could not be loaded. Refresh to try again.');
-      const result = await response.json();
+      const result = await loadRequests(adminFetch);
       const placeholder = new Option('Choose an approved customer', ''); requestId.append(placeholder);
       for (const row of result.requests.filter(row => row.state === 'approved')) {
-        requestId.append(new Option(`${row.email} · ${row.plan} · ${row.billingStatus || 'No subscription'}`, row.id));
+        requestId.append(new Option(`${row.email} · ${row.plan} · ${row.billingStatus ? row.billingStatus + ' · ' + billingModeLabel(row) : 'No subscription'}`, row.id));
       }
       if (requestId.options.length === 1) status.textContent = 'Approve an access request before offering a subscription.';
     } catch (error) { status.textContent = error.message; }
