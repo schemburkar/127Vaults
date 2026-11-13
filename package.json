@@ -60,7 +60,8 @@
     "website:release-notes": "node public-website/build-release-notes.mjs",
     "sites:local": "node scripts/sites/local.mjs",
     "test:sites": "node scripts/sites/check.mjs",
-    "sites:mail": "node scripts/sites/mail.mjs"
+    "sites:mail": "node scripts/sites/mail.mjs",
+    "test:isolation-settlement": "node scripts/verify-isolation-settlement.mjs"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1152.0",
