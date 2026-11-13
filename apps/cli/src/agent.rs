@@ -993,12 +993,15 @@ mod tests {
         let send = |capability: &str| {
             use std::io::{BufRead, Write};
             let mut stream = std::net::TcpStream::connect(address).unwrap();
-            writeln!(
-                stream,
-                "{}",
+            stream.set_nodelay(true).unwrap();
+            // Match call(): serialize first and send one buffered line. Display
+            // formatting otherwise performs many tiny writes against the
+            // agent's three-second request deadline on Windows.
+            let request = format!(
+                "{}\n",
                 serde_json::json!({"action":"logout","capability":capability})
-            )
-            .unwrap();
+            );
+            stream.write_all(request.as_bytes()).unwrap();
             let mut line = String::new();
             std::io::BufReader::new(stream)
                 .read_line(&mut line)
