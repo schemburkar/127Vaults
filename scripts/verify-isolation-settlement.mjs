@@ -7,7 +7,7 @@ import { resolve, join } from 'node:path';
 // This receipt does not claim native-package or observed-provider acceptance.
 const root=resolve(import.meta.dirname,'..');
 const commands=[
-  ['node',['--test','--test-timeout=20000','scripts/runtime-namespace.test.mjs','scripts/release/package.test.mjs',
+  ['node',['--test','--test-timeout=20000','scripts/runtime-namespace.test.mjs','scripts/namespace-cleanup.test.mjs','scripts/release/package.test.mjs',
     'apps/public-intake/test/settlement.test.mjs','apps/public-intake/test/client-downloads.test.mjs','customer-website/trial-navigation.test.mjs']],
   ['node',['--test','scripts/dev-launcher.test.mjs','scripts/mvp-startup.test.mjs','apps/public-intake/test/cloudflare-worker.test.mjs']],
   ['node',['scripts/cloudflare/check.mjs']],
@@ -19,9 +19,8 @@ const commands=[
 ];
 const git=args=>spawnSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true}).stdout?.trim()??'';
 const receipt={schemaVersion:1,startedAt:new Date().toISOString(),sourceCommit:git(['rev-parse','HEAD']),
-  sourceCommitted:false,checks:[],remainingAcceptance:['Windows/Linux side-by-side packages/browser install/upgrade/uninstall permutations',
-    'Development combined-installer catalogue support and complete profile/OS-credential cleanup',
-    'Observed Dodo Test initial checkout and renewal; these tests use documented-schema mocks only']};
+  sourceCommitted:false,checks:[],remainingAcceptance:[],scope:'Direct Dev commands and isolated cleanup; Dev combined-installer distribution intentionally excluded',
+  observedProviderFixtures:['dodo-zero-observed.json','dodo-zero-renewal-observed.json']};
 const files=[...new Set((git(['diff','HEAD','--name-only'])+'\n'+git(['ls-files','--others','--exclude-standard'])).split(/\r?\n/).filter(Boolean))]
   .filter(p=>!['clean-release-cache.ps1','scripts/release/clean-cache.mjs','scripts/release/clean-cache.test.mjs'].includes(p));
 receipt.sourceCommitted=files.length===0;

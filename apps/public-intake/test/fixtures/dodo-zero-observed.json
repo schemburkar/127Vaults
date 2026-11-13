@@ -1,0 +1,223 @@
+{
+  "businessId": "bus_fixture_0",
+  "mode": "test_mode",
+  "order": {
+    "access_request_id": "586f35db4679cb9c70b377ee57f9a7b860c17e5dbe17d40cc5c36d4a65da8f02_fixture_1",
+    "order_id": "8cece5e0-74b7-445b-8e08-e25cbc8ad95a_fixture_2",
+    "billing_mode": "test_mode",
+    "mode": "test_mode",
+    "orderId": "8cece5e0-74b7-445b-8e08-e25cbc8ad95a_fixture_2",
+    "productId": "pdt_fixture_3",
+    "sessionId": "cks_fixture_4"
+  },
+  "requestId": "586f35db4679cb9c70b377ee57f9a7b860c17e5dbe17d40cc5c36d4a65da8f02_fixture_1",
+  "customerEmail": "synthetic@example.invalid",
+  "subscription": {
+    "subscription_id": "sub_fixture_5",
+    "recurring_pre_tax_amount": 0,
+    "tax_inclusive": false,
+    "currency": "USD",
+    "status": "active",
+    "created_at": "2026-11-13T05:51:42.618974Z",
+    "expires_at": "2046-11-13T05:51:42.793413Z",
+    "product_id": "pdt_fixture_3",
+    "quantity": 1,
+    "trial_period_days": 0,
+    "trial_amount": null,
+    "subscription_period_interval": "Year",
+    "payment_frequency_interval": "Year",
+    "subscription_period_count": 20,
+    "payment_frequency_count": 1,
+    "next_billing_date": "2027-11-13T05:51:42.793413Z",
+    "previous_billing_date": "2026-11-13T05:51:42.619278Z",
+    "customer": {
+      "customer_id": "cus_fixture_6",
+      "name": "redacted",
+      "email": "synthetic@example.invalid",
+      "phone_number": null,
+      "metadata": {
+        "acceptance_run": "ca54c04a-4657-448f-bbf0-c0facea452e9_fixture_7"
+      }
+    },
+    "tax_id": null,
+    "customer_business_name": null,
+    "metadata": {
+      "order_id": "8cece5e0-74b7-445b-8e08-e25cbc8ad95a_fixture_2",
+      "access_request_id": "586f35db4679cb9c70b377ee57f9a7b860c17e5dbe17d40cc5c36d4a65da8f02_fixture_1",
+      "billing_mode": "test_mode"
+    },
+    "discount_id": "dsc_fixture_8",
+    "discount_cycles_remaining": null,
+    "discounts": [
+      {
+        "position": 0,
+        "discount_id": "dsc_fixture_8",
+        "business_id": "bus_fixture_0",
+        "name": null,
+        "type": "percentage",
+        "code": "redacted",
+        "amount": 10000,
+        "usage_limit": 1,
+        "times_used": 1,
+        "expires_at": null,
+        "restricted_to": [
+          "pdt_fixture_3"
+        ],
+        "created_at": "2026-11-13T05:51:42.318693Z",
+        "subscription_cycles": null,
+        "preserve_on_plan_change": false,
+        "metadata": {
+          "acceptance_run": "ca54c04a-4657-448f-bbf0-c0facea452e9_fixture_7"
+        },
+        "cycles_remaining": null
+      }
+    ],
+    "cancelled_at": null,
+    "paused_at": null,
+    "cancel_at_next_billing_date": false,
+    "cancellation_feedback": null,
+    "cancellation_comment": null,
+    "cancelled_by": null,
+    "billing": {
+      "country": "US",
+      "state": "redacted",
+      "city": "redacted",
+      "street": "redacted",
+      "zipcode": "redacted"
+    },
+    "on_demand": false,
+    "addons": [],
+    "meters": [],
+    "payment_method_id": null,
+    "has_payment_method": false,
+    "custom_field_responses": null,
+    "credit_entitlement_cart": [],
+    "meter_credit_entitlement_cart": [],
+    "scheduled_change": null,
+    "brand_id": "bus_fixture_0",
+    "billing_mode": "normal",
+    "collection_method": null,
+    "payment_terms_days": null
+  },
+  "payment": {
+    "payment_id": "pay_fixture_9",
+    "business_id": "bus_fixture_0",
+    "status": "succeeded",
+    "total_amount": 0,
+    "currency": "USD",
+    "payment_method": null,
+    "payment_method_type": null,
+    "payment_method_id": null,
+    "is_update_payment_method": false,
+    "created_at": "2026-11-13T05:51:42.619278Z",
+    "updated_at": null,
+    "disputes": [],
+    "refunds": [],
+    "refund_status": null,
+    "customer": {
+      "customer_id": "cus_fixture_6",
+      "name": "redacted",
+      "email": "synthetic@example.invalid",
+      "phone_number": null,
+      "metadata": {
+        "acceptance_run": "ca54c04a-4657-448f-bbf0-c0facea452e9_fixture_7"
+      }
+    },
+    "subscription_id": "sub_fixture_5",
+    "is_multi_subscription": false,
+    "subscription_ids": [
+      "sub_fixture_5"
+    ],
+    "charge_type": "new",
+    "includes_usage": false,
+    "service_periods": [
+      {
+        "subscription_id": "sub_fixture_5",
+        "starts_at": "2026-11-13T05:51:42.619278Z",
+        "ends_at": "2027-11-13T05:51:42.793413Z",
+        "proration_factor": "1"
+      }
+    ],
+    "product_cart": null,
+    "payment_link": "https://example.invalid",
+    "tax": 0,
+    "metadata": {
+      "access_request_id": "586f35db4679cb9c70b377ee57f9a7b860c17e5dbe17d40cc5c36d4a65da8f02_fixture_1",
+      "billing_mode": "test_mode",
+      "order_id": "8cece5e0-74b7-445b-8e08-e25cbc8ad95a_fixture_2"
+    },
+    "error_message": null,
+    "error_code": null,
+    "discount_id": "dsc_fixture_8",
+    "discounts": [
+      {
+        "position": 0,
+        "discount_id": "dsc_fixture_8",
+        "business_id": "bus_fixture_0",
+        "name": null,
+        "type": "percentage",
+        "code": "redacted",
+        "amount": 10000,
+        "usage_limit": 1,
+        "times_used": 1,
+        "expires_at": null,
+        "restricted_to": [
+          "pdt_fixture_3"
+        ],
+        "created_at": "2026-11-13T05:51:42.318693Z",
+        "subscription_cycles": null,
+        "preserve_on_plan_change": false,
+        "metadata": {
+          "acceptance_run": "ca54c04a-4657-448f-bbf0-c0facea452e9_fixture_7"
+        },
+        "cycles_remaining": null
+      }
+    ],
+    "settlement_amount": 0,
+    "settlement_tax": 0,
+    "settlement_currency": "USD",
+    "billing": {
+      "country": "US",
+      "state": "redacted",
+      "city": "redacted",
+      "street": "redacted",
+      "zipcode": "redacted"
+    },
+    "card_last_four": null,
+    "card_issuing_country": null,
+    "card_type": null,
+    "card_network": null,
+    "card_exp_month": null,
+    "card_exp_year": null,
+    "three_ds_status": null,
+    "three_ds_flow": null,
+    "three_ds_version": null,
+    "card_holder_name": null,
+    "brand_id": "bus_fixture_0",
+    "digital_products_delivered": false,
+    "checkout_session_id": "cks_fixture_4",
+    "invoice_id": "inv_fixture_10",
+    "invoice_url": "https://example.invalid",
+    "custom_field_responses": null,
+    "retry_attempt": 0,
+    "payment_provider": "dodo"
+  },
+  "lineItems": {
+    "currency": "USD",
+    "items": [
+      {
+        "items_id": "pdt_fixture_3",
+        "name": "redacted",
+        "description": "redacted",
+        "amount": 0,
+        "tax": 0,
+        "refundable_amount": 0
+      }
+    ],
+    "partial_refund_allowed": true
+  },
+  "prices": {
+    "USD": 2000
+  },
+  "now": 1794549103619
+}

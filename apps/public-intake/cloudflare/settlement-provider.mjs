@@ -5,8 +5,8 @@ import { subscriptionSettlement } from './settlement.mjs';
 // adapter. It retrieves detail resources; payment list summaries are discovery only.
 export async function retrieveSettlement(env,row,sub,plan,now,fetcher,eventPayment) {
   const b=row.trial.billing;
-  const decision=(payment,invoice)=>subscriptionSettlement({businessId:env.DODO_BUSINESS_ID,mode:env.DODO_MODE??'test_mode',
-    order:b,requestId:row.id,customerEmail:row.contact.email,subscription:sub,payment,invoice,prices:plan.prices,now});
+  const decision=(payment,invoice,lineItems)=>subscriptionSettlement({businessId:env.DODO_BUSINESS_ID,mode:env.DODO_MODE??'test_mode',
+    order:b,requestId:row.id,customerEmail:row.contact.email,subscription:sub,payment,invoice,lineItems,prices:plan.prices,now});
   const seen=new Set();
   let last=decision();
   async function inspect(id) {
@@ -14,12 +14,13 @@ export async function retrieveSettlement(env,row,sub,plan,now,fetcher,eventPayme
     seen.add(id);
     const payment=await dodo(env,`/payments/${encodeURIComponent(id)}`,'GET',undefined,fetcher);
     if(payment.payment_id!==id)throw Error('Provider payment identity mismatch');
-    let invoice;
+    let invoice,lineItems;
     if(payment.total_amount===0 && payment.status==='succeeded' && payment.invoice_id) {
       try {invoice=await dodo(env,`/billing/invoices/${encodeURIComponent(payment.invoice_id)}`,'GET',undefined,fetcher);}
       catch(error) {if(![404,422].includes(error.providerStatus))throw error;}
+      if(!invoice)lineItems=await dodo(env,`/payments/${encodeURIComponent(id)}/line-items?currency=${encodeURIComponent(payment.currency)}`,'GET',undefined,fetcher);
     }
-    last=decision(payment,invoice);
+    last=decision(payment,invoice,lineItems);
     return last.entitled || last.state==='suspended';
   }
   if(await inspect(eventPayment?.payment_id))return last;

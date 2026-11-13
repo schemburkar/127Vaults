@@ -8,7 +8,7 @@ const sameBinding = (metadata, order, requestId, mode) => metadata?.order_id ===
 const samePeriod = (start, end, subscription) => instant(start) !== null && instant(end) !== null
   && instant(start) === instant(subscription.previous_billing_date) && instant(end) === instant(subscription.next_billing_date);
 
-export function subscriptionSettlement({ businessId, mode, order, requestId, subscription: sub, payment, invoice, prices, now, customerEmail }) {
+export function subscriptionSettlement({ businessId, mode, order, requestId, subscription: sub, payment, invoice, lineItems, prices, now, customerEmail }) {
   if (order.mode !== mode || !['live_mode','test_mode'].includes(mode)) return no('rejected','environment_mismatch');
   if (!sameBinding(sub?.metadata,order,requestId,mode) || sub.product_id !== order.productId
     || (customerEmail && sub.customer?.email?.toLowerCase() !== customerEmail.toLowerCase())
@@ -45,7 +45,27 @@ export function subscriptionSettlement({ businessId, mode, order, requestId, sub
 
   // A successful zero transaction still needs a settled invoice and applied
   // discount snapshots. Merely attaching a coupon to a subscription is insufficient.
-  if (!invoice) return no('pending','zero_invoice_unavailable');
+  if (!invoice) {
+    // Legacy subscription payments have a payment invoice ID but no resource in
+    // /billing/invoices. Use authenticated payment line items, never manufacture
+    // a paid invoice. Restrict this path to one fully discounted fixed product.
+    const normal=prices?.[payment.currency], items=lineItems?.items, discounts=payment.discounts;
+    if (!payment.invoice_id || lineItems?.currency!==payment.currency || items?.length!==1
+      || items[0].items_id!==order.productId || items[0].amount!==0 || items[0].tax!==0
+      || items[0].refundable_amount!==0 || payment.tax!==0 || sub.recurring_pre_tax_amount!==0
+      || sub.addons?.length!==0 || sub.meters?.length!==0 || !money(normal) || normal===0)
+      return no('pending','zero_invoice_unavailable');
+    // A single applied 100% percentage snapshot proves the complete discount
+    // without relying on mutable coupon eligibility or unknown rounding rules.
+    const d=discounts?.length===1?discounts[0]:null;
+    if (!d || d.position!==0 || !d.discount_id || d.business_id!==businessId
+      || d.type!=='percentage' || d.amount!==10000
+      || (d.restricted_to?.length && !d.restricted_to.includes(order.productId)))
+      return no('pending','full_discount_unconfirmed');
+    return {...result,state:'settled_discounted',reason:'full_discount',evidence:'payment_line_items',
+      invoiceId:payment.invoice_id,normalAmount:normal,discountAmount:normal,
+      discounts:[{id:d.discount_id,type:d.type,amount:d.amount,subscriptionCycles:d.subscription_cycles??null,cyclesRemaining:d.cycles_remaining??null}]};
+  }
   if (!payment.invoice_id || invoice.invoice_id!==payment.invoice_id || invoice.business_id!==businessId
     || invoice.customer?.customer_id!==sub.customer.customer_id || invoice.currency!==payment.currency
     || invoice.subscription_ids?.length!==1 || invoice.subscription_ids[0]!==sub.subscription_id)

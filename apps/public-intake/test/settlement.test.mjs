@@ -3,6 +3,26 @@ import assert from 'node:assert/strict';
 import { subscriptionSettlement, settledPersonalAccess } from '../cloudflare/settlement.mjs';
 import { retrieveSettlement } from '../cloudflare/settlement-provider.mjs';
 import { syncSubscription } from '../cloudflare/billing.mjs';
+import { readFileSync } from 'node:fs';
+
+const observed=JSON.parse(readFileSync(new URL('./fixtures/dodo-zero-observed.json',import.meta.url),'utf8'));
+test('observed Dodo Test zero renewal confirms a distinct new service period',()=>{
+  const renewal=JSON.parse(readFileSync(new URL('./fixtures/dodo-zero-renewal-observed.json',import.meta.url),'utf8'));
+  assert.equal(renewal.payment.charge_type,'renewal');
+  assert.equal(subscriptionSettlement(renewal).state,'settled_discounted');
+  assert.notEqual(renewal.payment.created_at,observed.payment.created_at);
+  const stale=structuredClone(renewal);stale.payment.service_periods=observed.payment.service_periods;
+  assert.equal(subscriptionSettlement(stale).entitled,false);
+});
+test('observed Dodo Test zero checkout settles using authenticated legacy payment line items',()=>{
+  assert.equal(subscriptionSettlement(observed).state,'settled_discounted');
+  for(const mutate of [f=>delete f.lineItems,f=>f.lineItems.items[0].items_id='other',
+    f=>f.payment.discounts[0].amount=9900,f=>f.payment.discounts=[],f=>f.subscription.recurring_pre_tax_amount=2000,
+    f=>f.payment.tax=1,f=>f.lineItems.items[0].tax=1,f=>f.subscription.addons=[{}],
+    f=>f.payment.customer.customer_id='other',f=>f.payment.service_periods[0].ends_at='2028-01-01T00:00:00Z']) {
+    const f=structuredClone(observed);mutate(f);assert.equal(subscriptionSettlement(f).entitled,false);
+  }
+});
 
 const now=Date.parse('2026-11-13T00:00:00Z'),start='2026-11-12T00:00:00.000Z',end='2027-11-12T00:00:00.000Z';
 function fixture({zero=true}={}) {
@@ -89,6 +109,21 @@ test('access uses one bounded settlement and Test evidence cannot create product
 
 function environment() {return {DODO_ENABLED:'1',DODO_MODE:'live_mode',DODO_BUSINESS_ID:'biz_one',DODO_API_KEY:'mock-only',DODO_WEBHOOK_SECRET:'mock-only',
   DODO_PLANS:JSON.stringify({'personal-annual':{productId:'pdt_one',plan:'personal',majorVersion:0,maxUsers:5,prices:{USD:2000}}})};}
+
+test('legacy invoice 404 retrieves currency-bound payment line items through the provider adapter',async()=>{
+  const f=structuredClone(observed),calls=[];
+  const env={...environment(),DODO_MODE:'test_mode',DODO_BUSINESS_ID:f.businessId};
+  const row={id:f.requestId,contact:{email:f.customerEmail},trial:{billing:f.order}};
+  const provider=async url=>{const u=new URL(url);calls.push(u.pathname);
+    if(u.pathname===`/payments/${f.payment.payment_id}`)return Response.json(f.payment);
+    if(u.pathname.startsWith('/billing/invoices/'))return Response.json({message:'not found'},{status:404});
+    if(u.pathname.endsWith('/line-items')){assert.equal(u.searchParams.get('currency'),'USD');return Response.json(f.lineItems);}
+    throw Error('Unexpected provider call '+u.pathname);
+  };
+  const result=await retrieveSettlement(env,row,f.subscription,{prices:f.prices},f.now,provider,f.payment);
+  assert.equal(result.entitled,true);assert.equal(result.evidence,'payment_line_items');
+  assert.equal(calls.length,3);
+});
 
 test('reconciliation discovers a missed zero renewal and retrieves authenticated detail rather than list summaries',async()=>{
   const f=fixture();f.payment.charge_type='renewal';const calls=[];

@@ -17,9 +17,11 @@ Subscription detail supplies current state and period boundaries. Structured
 invoice retrieval uses `/billing/invoices/{invoice_id}`, not the invoice PDF
 endpoint. Payment listings are discovery only; candidates require detail retrieval.
 
-The original implementation session could not resolve provider hosts from the shell. An
-observed Dodo Test-mode checkout was **not** completed. `settlement.test.mjs`
-contains synthetic documented-schema fixtures, not captured provider events.
+An actual Dodo Test checkout and recurring renewal were observed on 2026-11-13.
+Both succeeded at zero with a customer-restricted, product-restricted indefinite
+100% discount. Sanitized authenticated resource fixtures are committed under
+`apps/public-intake/test/fixtures/dodo-zero*-observed.json`. No card was required.
+The synthetic subscription was cancelled after verification.
 
 ## Shared decision
 
@@ -54,8 +56,12 @@ rather than guessed. Mixed-product invoices are unsupported.
 
 Applied payment snapshots remain valid after coupon redemption expiry or when
 future cycle count reaches zero. Every renewal requires a newly confirmed period.
-If Dodo omits a payment object, or structured invoice evidence is unavailable,
-the adapter remains pending; it does not guess an invoice-only representation.
+Legacy subscription invoice IDs can return 404 from the structured invoice API.
+That observed path uses authenticated `/payments/{id}/line-items`: one matching
+product, zero line amount/tax/refundable balance, zero payment tax, no subscription
+add-ons/meters, zero recurring amount, a positive configured normal price and one
+applied 100% percentage snapshot. All normal binding and period checks still apply.
+Other missing evidence remains pending.
 
 Confirmed periods use ordinary Personal licenses, existing seats/version policy,
 the selected installation and monotonic sequences. Duplicate events do not
@@ -84,12 +90,12 @@ Customer status exposes price, discount and zero due amount without codes or
 unnecessary PII, and confirms subscription settlement rather than positive
 payment. Billing identity does not create a local operator or grant vault access.
 
-## Remaining acceptance
+## Verification boundary
 
-Before rollout, observe and sanitize Test initial/renewal events, verify invoice
-line pricing semantics, zero-charge event order, card/mandate configuration,
-finite/indefinite cycles and provider fees. Run Worker integration outside this
-socket-restricted environment. The local review has now passed the mocked Worker
-integration suite, including new purchases, conversions and normal billing
-lifecycle regressions. This is not observed provider acceptance. No live billing object, production sign-in code,
-probe email or production test signup was created during implementation.
+Observed Test resources cover initial and indefinite-discount renewal settlement.
+The fixtures retain their resource shapes and period semantics while removing
+customer information and provider identifiers. Reordered/duplicate notifications,
+finite cycles, refund recovery and ordinary license issuance use local integration
+tests. API observations do not claim an observed webhook delivery sequence or
+provider fee guarantees. No live billing object, production sign-in code, probe
+email or production test signup was created. No deployment is part of this review.
