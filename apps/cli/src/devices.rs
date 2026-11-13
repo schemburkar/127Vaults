@@ -309,7 +309,7 @@ mod tests {
                 .unwrap()
                 .to_ascii_uppercase(),
             yes,
-            config_dir: PathBuf::from("test-profile"),
+            config_dir: std::env::temp_dir().join("127vaults-device-unit-profile"),
         }
     }
 
@@ -424,7 +424,10 @@ mod tests {
         let output = execute(
             approve(true),
             &mut |profile, action, body| {
-                assert_eq!(profile, Path::new("test-profile"));
+                assert_eq!(
+                    profile,
+                    std::env::temp_dir().join("127vaults-device-unit-profile")
+                );
                 calls.push((action.to_owned(), body));
                 Ok(if action == "device.inspect" {
                     review.clone()
@@ -492,7 +495,7 @@ mod tests {
                 DeviceCommand::Revoke {
                     device_id: target.to_ascii_uppercase(),
                     yes: false,
-                    config_dir: PathBuf::from("test-profile"),
+                    config_dir: std::env::temp_dir().join("127vaults-device-unit-profile"),
                 },
                 &mut |_, action, body| {
                     actions.push(action.to_owned());
@@ -525,14 +528,14 @@ mod tests {
         for (command, action) in [
             (
                 DeviceCommand::List {
-                    config_dir: PathBuf::from("test-profile"),
+                    config_dir: std::env::temp_dir().join("127vaults-device-unit-profile"),
                 },
                 "device.list",
             ),
             (
                 DeviceCommand::Inspect {
                     code: "abcdefgh".to_owned(),
-                    config_dir: PathBuf::from("test-profile"),
+                    config_dir: std::env::temp_dir().join("127vaults-device-unit-profile"),
                 },
                 "device.inspect",
             ),

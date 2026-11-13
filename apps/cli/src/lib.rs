@@ -2890,7 +2890,15 @@ mod tests {
     }
     #[test]
     fn status_is_redacted() {
-        let output = run(Cli::parse_from(["127vaults", "status", "--json"])).unwrap();
+        let profile = std::env::temp_dir().join("127vaults-status-unit-profile");
+        let output = run(Cli::parse_from([
+            "127vaults",
+            "status",
+            "--json",
+            "--config-dir",
+            profile.to_str().unwrap(),
+        ]))
+        .unwrap();
         assert!(output.contains("redacted"));
         assert!(!output.contains("token"));
     }
