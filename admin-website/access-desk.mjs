@@ -1,3 +1,4 @@
+import { invitationStatus } from './invitation-status.mjs';
 import { loadRequests, billingModeLabel } from './request-data.mjs';
 import { adminFetch } from './admin-shell.mjs';
 export function mountAccessDesk(root, { selected = null, embedded = false, onChange = async () => {} } = {}) {
@@ -8,10 +9,10 @@ let emailDryRun = false;
 let automaticCustomerEmail = false;
 let actionPending = false;
 const emailStates = { not_sent: 'Not sent', accepted: 'Submitted', queued: 'Queued — delivery not confirmed', bounced: 'Bounced', sending: 'Submitting', claimed: 'Submitting', unknown: 'Unconfirmed — review before resending', unconfirmed: 'Unconfirmed — review before resending', limited: 'Quota limit — manual delivery needed', expired: 'Expired — manual review needed', suppressed: 'Manual delivery only' };
-const emailAction = action => ['approve', 'rotate', 'update-release', 'extend', 'replace-installation', 'close', 'reject', 'send-invitation'].includes(action);
+const emailAction = action => ['approve', 'rotate', 'update-release', 'extend', 'replace-installation', 'close', 'reject', 'send-invitation', 'resend-invitation'].includes(action);
 function emailEffect(action, row) {
   if (!emailAction(action) || row.kind === 'development') return 'No customer email will be sent by this action.';
-  if (automaticCustomerEmail || (action === 'send-invitation' && !emailDryRun)) return `A customer email will be submitted to ${row.email}. Submission does not guarantee inbox delivery.`;
+  if (automaticCustomerEmail || (['send-invitation', 'resend-invitation'].includes(action) && !emailDryRun)) return `A customer email will be submitted to ${row.email}. Submission does not guarantee inbox delivery.`;
   return emailDryRun ? 'Only a local email simulation will be captured. No real email will be sent.' : 'Automatic customer email is off. You must share the customer message manually.';
 }
 async function confirmAction(label, action, row, input, details) {
@@ -60,6 +61,7 @@ async function api(path = '', value) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     if (response.status === 401) { $('inbox').hidden = true; clearInvitation(); $('requests').replaceChildren(); }
+    if (error.error === 'link_retention_limit') throw Error('The requested link expiry exceeds this request’s retention period. Choose fewer days.');
     if (error.error === 'email_not_configured') throw Error('Customer email is not configured. Copy the invitation and send it manually.');
     if (error.error === 'email_already_attempted') throw Error('Email was already attempted. Refresh its status. If needed, replace the private link before sending another invitation.');
     throw Error(error.error === 'owner_required' ? 'This action requires owner access.' : error.error === 'access_required' ? 'Access key not accepted.' : error.error === 'state_changed'
@@ -154,7 +156,7 @@ async function refresh() {
       }
     });
     const act = (label, action, value, confirmation) => {
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.dataset.action = action;
       button.setAttribute('role', 'menuitem'); button.tabIndex = -1;
       button.addEventListener('click', async () => {
         if (actionPending) return;
@@ -174,6 +176,11 @@ async function refresh() {
           const data = await response.json();
           await refresh();
           await onChange();
+          if (action === 'extend-link') {
+            clearInvitation();
+            root.querySelector('#request-actions-' + row.id + ' [data-action="invitation"]')?.click();
+            return;
+          }
           if (action === 'send-invitation') {
             if (emailDryRun) { status(`Dry-run email result: ${data.emailState}. Saved locally; no real email was sent.`); return; }
             status(data.emailState === 'accepted' ? 'Invitation accepted by the recipient mail server.'
@@ -184,10 +191,28 @@ async function refresh() {
           }
           if (data.message && data.email) {
             clearInvitation(); $('invite-to').value = data.email; $('invite-subject').value = data.subject; $('invite-message').value = data.message;
-            $('invitation').hidden = false; $('invite-message').focus();
+            let context = $('invitation-context');
+            if (!context) { context = document.createElement('div'); context.id = 'invitation-context'; $('invite-heading').after(context); }
+            const previewRow = { ...row, ...data };
+            const info = invitationStatus(previewRow);
+            context.replaceChildren();
+            for (const text of [info.label + ' — ' + info.detail, 'Link expiry: ' + (previewRow.linkExpiresAt ? new Date(previewRow.linkExpiresAt).toLocaleString() : 'Unavailable'), row.installationId ? 'Activated installation: ' + row.installationId : 'Not activated — the trial starts when a server is activated.', row.expiresAt ? 'License expiry: ' + new Date(row.expiresAt).toLocaleString() + '. Extending this link does not extend the license.' : 'Link expiry and trial duration are separate.']) {
+              const line = document.createElement('p'); line.textContent = text; context.append(line);
+            }
+            const actions = document.createElement('div'); actions.className = 'invitation-actions';
+            for (const original of (root.querySelector('#request-actions-' + row.id) ?? menuItems).querySelectorAll('[data-action="extend-link"], [data-action="send-invitation"], [data-action="resend-invitation"], [data-action="rotate"]')) {
+              const shortcut = document.createElement('button'); shortcut.type = 'button'; shortcut.className = 'desk-button'; shortcut.textContent = original.textContent; shortcut.disabled = original.disabled; shortcut.addEventListener('click', () => original.click()); actions.append(shortcut);
+            }
+            if (!actions.querySelector('button') || !Array.from(actions.querySelectorAll('button')).some(button => /Send|Resend/.test(button.textContent))) {
+              const unavailable = document.createElement('button'); unavailable.type = 'button'; unavailable.className = 'desk-button'; unavailable.disabled = true; unavailable.textContent = 'Send existing invitation'; actions.append(unavailable);
+              const reason = document.createElement('p'); reason.textContent = !info.usable ? 'Sending is unavailable until the link is valid.' : ['sending','claimed','unknown','unconfirmed'].includes(previewRow.emailState) ? 'Review the previous delivery outcome before sending another copy. An uncertain attempt is not retried automatically.' : 'Email delivery is unavailable for this request. Check sender configuration, or copy the message for manual delivery.';
+              context.append(reason);
+            }
+            context.append(actions);
+            $('invitation').hidden = false; $('invite-heading').tabIndex = -1; $('invite-heading').focus();
             $('invitation-guidance').textContent = automaticCustomerEmail && row.kind !== 'development'
               ? 'The customer notification is automatic. Check its status in the request grid; copying this preview is optional and can cause a duplicate if sent manually.'
-              : 'Automatic delivery is unavailable for this request. Copy and send this message yourself.';
+              : 'Automatic delivery is off. Use Send or Resend existing invitation when available, or copy the message for manual delivery.';
             status(action === 'invitation' ? 'Invitation preview opened. No email sent.' : `${label} completed. ${emailEffect(action, row)} Refresh to check the submission result.`);
           } else if (action === 'replace-installation') status('Replacement license issued. The customer can use the existing private link to download it. Review and send the replacement invitation if needed.');
           else status(`${label} completed. ${emailEffect(action, row)}${data.hasRevocation ? ' Download and apply the signed revocation on the trial server to revoke its installed license.' : ''}`);
@@ -223,10 +248,17 @@ async function refresh() {
       });
       if (row.replacementRequest) act('Issue replacement license', 'replace-installation', { installationId: row.replacementRequest.installationId, retired: true }, `Issue a replacement license for ${row.replacementRequest.installationId}? The customer confirmed the old installation is retired. Preserve the original expiry and limits. The signed old-license revocation must be applied on an old server if reachable.`);
       if ((row.replacementRequest || row.replacementCount)) act('Download old license revocation', 'revocation', undefined);
-      if (row.canPreviewInvitation) act('Review invitation', 'invitation', undefined);
-      if (row.canSendEmail) act(emailDryRun ? 'Send invitation (dry run)' : 'Send invitation', 'send-invitation', {}, `Submit the current invitation to ${row.email}? Previously attempted messages are protected against automatic duplicates.`);
-      act('Replace private link', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
-      if (row.updateAvailable === true) act('Offer updated packages', 'update-release', {}, `Offer the current verified packages and replace the private link? Preserve the existing installation, license, trial activation and expiry. This does not start another trial.`);
+      if (row.canPreviewInvitation) act('Preview existing invitation', 'invitation', undefined);
+      if (row.canPreviewInvitation) act('Extend link expiry (keep URL)', 'extend-link', () => {
+        const answer = prompt('Extra days for this link (1–60). Keeps the same URL and does not extend the license or trial.', '30');
+        if (answer === null) return null;
+        const days = Number(answer); if (!Number.isSafeInteger(days) || days < 1 || days > 60) throw Error('Enter 1–60 whole days.');
+        return { days, expectedLinkExpiresAt: row.linkExpiresAt };
+      }, 'Extend the existing link from the later of now or its current expiry? The URL, installation binding, license and trial duration stay the same. No email is sent.');
+      if (row.canResendEmail && invitationStatus(row).usable) act('Resend existing invitation', 'resend-invitation', { expectedEmailAttemptedAt: row.emailAttemptedAt ?? null }, 'Send the same link again? Its URL and expiry stay the same. The recipient may receive a duplicate.');
+      if (row.canSendEmail && invitationStatus(row).usable) act(emailDryRun ? 'Send invitation (dry run)' : 'Send existing invitation', 'send-invitation', {}, `Submit the current invitation to ${row.email}? Previously attempted messages are protected against automatic duplicates.`);
+      act('Replace link (invalidate old URL)', 'rotate', {}, 'Invalidate the old link and create a replacement? The trial expiry and installation binding stay unchanged.');
+      if (row.updateAvailable === true) act('Update downloads and replace link', 'update-release', {}, `Offer the current verified packages and replace the private link? Preserve the existing installation, license, trial activation and expiry. The old URL stops working; the replacement offers updated downloads. This does not start another trial.`);
       if (!row.billingStatus) act('Close trial access', 'close', {}, 'Close downloads and activation? An installed license needs the signed revocation installed on its server.');
     }
     if (row.state === 'closed' && row.installationId) act('Download revocation', 'revocation', undefined);

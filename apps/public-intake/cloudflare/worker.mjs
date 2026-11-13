@@ -59,6 +59,7 @@ function summary(record, mailer) {
     linkExpiresAt: record?.linkExpiresAt, emailState: record?.emailState ?? 'not_sent',
     emailAttemptedAt: record?.emailAttemptedAt, canSendEmail: Boolean(mailer && record?.invitation && !record.emailState && !record.replacementRequest
       && (mailer.provider !== 'resend' || record.kind !== 'development')),
+    canResendEmail: Boolean(mailer && record?.invitation && record.emailState && !record.replacementRequest && !['sending', 'claimed', 'unknown', 'unconfirmed'].includes(record.emailState) && (mailer.provider !== 'resend' || record.kind !== 'development')),
     canPreviewInvitation: Boolean(record?.invitation), activatedAt: record?.activatedAt,
     serverMajorVersion: record?.state === 'approved' ? entitledMajor(record) : undefined,
     expiresAt: record?.expiresAt, installationId: record?.installationId, sourceRevision: record?.sourceRevision, upgradeOfferedAt: record?.upgradeOfferedAt,
@@ -123,18 +124,18 @@ export function customerInvitation(invitation, env) {
     } catch { return value; }
   }) };
 }
-async function sendResendInvitation(env, store, row, record, at) {
+async function sendResendInvitation(env, store, row, record, at, resendId = null) {
   if (!resendCustomerEmailEnabled(env) || record?.kind === 'development' || !record?.invitation) return { state: 'suppressed' };
   const current = await store.get(row.id);
   if (!current?.contact || current.trial?.state !== 'approved' || current.trial?.tokenHash !== record.tokenHash
     || current.trial?.invitation?.text !== record.invitation.text) return { state: 'suppressed' };
   const invitation = customerInvitation(record.invitation, env);
-  const result = await sendCustomerEmail(env, store, { requestId: row.id, event: await hash(JSON.stringify(invitation)), purpose: 'invitation',
+  const result = await sendCustomerEmail(env, store, { requestId: row.id, event: await hash(JSON.stringify(invitation)) + (resendId ? ':' + resendId : ''), purpose: 'invitation',
     message: { to: row.contact.email, ...invitation }, recordKind: record.kind });
   if (result.state !== 'already_attempted' && result.state !== 'suppressed') {
     const fresh = await store.get(row.id);
     if (fresh?.contact && fresh.trial?.tokenHash === record.tokenHash && fresh.trial?.invitation?.text === record.invitation.text) {
-      try { await store.save(fresh, { ...fresh.trial, emailState: result.state, emailAttemptedAt: new Date(at).toISOString() }); }
+      try { await store.save(fresh, { ...fresh.trial, emailState: result.state, emailAttemptedAt: resendId ? record.emailAttemptedAt : new Date(at).toISOString() }); }
       catch (error) { if (!(error instanceof Conflict)) throw error; }
     }
   }
@@ -283,7 +284,7 @@ async function dispatch(request, env, now, schedule) {
       automaticCustomerEmail: resendCustomerEmailEnabled(env),
       sourceRevision: catalogue.sourceRevision, requestAlertsEnabled: requestAlertsEnabled(env) });
   }
-  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|subscription|public-keys|ticket|installer|client-installer|client-artifacts\/[a-z0-9-]+|artifacts\/[a-z0-9-]+))?$/.exec(path);
+  const match = /^\/api\/(access-admin\/requests|trials)\/([a-f0-9]{64})(?:\/(approve|approve-development|extend|rotate|update-release|archive|unarchive|invitation|send-invitation|resend-invitation|extend-link|close|reject|erase|revocation|replacement-request|replace-installation|replacement-revocation|activate|license|subscription|public-keys|ticket|installer|client-installer|client-artifacts\/[a-z0-9-]+|artifacts\/[a-z0-9-]+))?$/.exec(path);
   if (!match) fail(404, 'not_found');
   const [, , id, action] = match;
   const row = await store.get(id); let record = row?.trial;
@@ -307,7 +308,7 @@ async function dispatch(request, env, now, schedule) {
     if (record?.billing && ['approve', 'approve-development', 'extend', 'close', 'reject', 'erase'].includes(action)) fail(409, 'manage_billing_subscription');
     if (action === 'invitation' && request.method === 'GET' && record?.state === 'approved' && record.invitation) {
       const invitation = customerInvitation(record.invitation, env);
-      return json(200, { email: row.contact.email, subject: invitation.subject, message: invitation.text });
+      return json(200, { ...summary(record, mailer), email: row.contact.email, subject: invitation.subject, message: invitation.text });
     }
     if (action === 'revocation' && request.method === 'GET' && (record?.revocation || record?.previousRevocation)) return attachment('trial-revocation.json', record.revocation ?? record.previousRevocation);
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
@@ -354,6 +355,18 @@ async function dispatch(request, env, now, schedule) {
       await store.save(row, record);
       await notifyInvitation(env, store, row, record, at, schedule);
       return json(200, { ...summary(record, mailer), link, email: row.contact.email, subject: record.invitation.subject, message: record.invitation.text });
+    } else if (action === 'extend-link') {
+      if (record?.state !== 'approved' || !record.invitation || !record.tokenHash || record.revocation || record.replacementRequest) fail(409, 'invitation_unavailable');
+      if (Object.keys(input).sort().join(',') !== 'days,expectedLinkExpiresAt' || !Number.isSafeInteger(input.days) || input.days < 1 || input.days > 60) fail(400, 'invalid_request');
+      if (input.expectedLinkExpiresAt !== record.linkExpiresAt) fail(409, 'state_changed');
+      await entitledRelease(env, record);
+      const nextLinkExpiry = Math.max(at, Date.parse(record.linkExpiresAt)) + input.days * day;
+      const retentionEnd = record.billing ? Infinity : Math.max(row.receivedAt + 90 * day,
+        Date.parse(record.entitlementExpiresAt) || 0, record.extendedAt ? Date.parse(record.expiresAt) || 0 : 0);
+      if (nextLinkExpiry > retentionEnd) fail(409, 'link_retention_limit');
+      record = { ...record, linkExpiresAt: new Date(nextLinkExpiry).toISOString() };
+      await store.save(row, record);
+      return json(200, summary(record, mailer));
     } else if (action === 'extend') {
       if (record?.state !== 'approved' || record.kind === 'development' || !record.license || record.replacementRequest || record.revocation) fail(409, 'extension_unavailable');
       if (Object.keys(input).sort().join(',') !== 'days,expectedExpiresAt' || !Number.isSafeInteger(input.days) || input.days < 1 || input.days > 60) fail(400, 'invalid_request');
@@ -398,21 +411,32 @@ async function dispatch(request, env, now, schedule) {
         record.invitation = { subject: 'Your replacement 127Vaults license is ready',
           text: `Your replacement license is ready. Open your private link:\n${link}\n\nDownload the replacement license and install it on the approved replacement server. Your original expiry, user limit and major-version access are unchanged. Retire the previous server. Its signed revocation is available from your private page; apply it there if reachable. This does not start another trial. Reissuing a license does not recover lost encrypted vault data.` };
       }
-    } else if (action === 'send-invitation') {
-      empty(input);
+     } else if (action === 'send-invitation' || action === 'resend-invitation') {
+      const resending = action === 'resend-invitation';
+      if (resending) {
+        if (Object.keys(input).join(',') !== 'expectedEmailAttemptedAt') fail(400, 'invalid_request');
+        if (!record?.emailState || input.expectedEmailAttemptedAt !== (record.emailAttemptedAt ?? null)) fail(409, 'state_changed');
+        if (['sending', 'claimed', 'unknown', 'unconfirmed'].includes(record.emailState)) fail(409, 'email_already_attempted');
+      } else empty(input);
       if (!mailer) fail(503, 'email_not_configured');
       await entitledRelease(env, record);
       if (record?.state !== 'approved' || !record.invitation || record.replacementRequest || at >= Date.parse(record.linkExpiresAt)) fail(409, 'invitation_unavailable');
+      if (mailer.provider === 'resend' && record.kind === 'development') fail(409, 'manual_delivery_only');
+      if (mailer.provider !== 'resend' && !await store.allow('trial-email', id, 3, 3600000)) fail(429, 'rate_limited');
+      if (resending) {
+        if (!await store.allow('trial-manual-resend', id, 3, 3600000)) fail(429, 'rate_limited');
+        record = { ...record, emailState: 'sending', emailAttemptedAt: new Date(Math.max(at, (Date.parse(record.emailAttemptedAt) || 0) + 1)).toISOString(), manualResendId: crypto.randomUUID() };
+        await store.save(row, record);
+      }
       if (mailer.provider === 'resend') {
         if (record.kind === 'development') fail(409, 'manual_delivery_only');
-        await sendResendInvitation(env, store, row, record, at);
+        await sendResendInvitation(env, store, row, record, at, resending ? record.manualResendId : null);
         const fresh = await store.get(row.id);
         return json(200, summary(fresh.trial, mailer));
       }
-      if (record.emailState) fail(409, 'email_already_attempted');
-      if (!await store.allow('trial-email', id, 3, 3600000)) fail(429, 'rate_limited');
+      if (record.emailState && !resending) fail(409, 'email_already_attempted');
       const attempt = crypto.randomUUID();
-      record = { ...record, emailState: 'sending', emailAttemptId: attempt, emailAttemptedAt: new Date(at).toISOString() };
+      record = { ...record, emailState: 'sending', emailAttemptId: attempt, emailAttemptedAt: resending ? record.emailAttemptedAt : new Date(at).toISOString() };
       await store.save(row, record); // Claim durably before external I/O; never auto-resend an ambiguous attempt.
       let state = 'unknown';
       try { const result = await mailer.sendInvitation({ to: row.contact.email, ...customerInvitation(record.invitation, env) });

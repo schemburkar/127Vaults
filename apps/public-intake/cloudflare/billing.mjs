@@ -247,7 +247,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
     return { requestId: id };
   }
   if (path === '/api/access-admin/billing/plans' && request.method === 'GET') {
-    return { mode: config.mode, plans: Object.entries(config.plans).map(([id, value]) => ({ id, maxUsers: value.maxUsers })) };
+    return { mode: config.mode, plans: Object.entries(config.plans).map(([id, value]) => ({ id, maxUsers: value.maxUsers, plan: value.plan })) };
   }
   if (path === '/api/access-admin/billing/health' && request.method === 'GET') {
     return { reconciliation: await store.db.prepare('SELECT checked_at, checked, failed FROM billing_health WHERE singleton = 1').first(),

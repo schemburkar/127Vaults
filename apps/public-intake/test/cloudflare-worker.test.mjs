@@ -1151,3 +1151,48 @@ test('client-only joining grants download clients but cannot open licenses, serv
   await issueClientLink(store,row,f.env,Date.now(),{revoke:true});
   assert.equal((await f.get(`/api/trials/${id}/client-installer`,bearer)).status,401);
 });
+
+test('link expiry extension retains the URL, activation binding and signed license without email', async t => {
+  const f = await fixture(t), id = await f.submit(), a = await f.approve(id), installationId = randomUUID();
+  assert.equal((await f.post(`${a.base}/activate`, {installationId}, a.token)).status, 200);
+  const key = await encryptionKey(f.intakeKey,'trials');
+  const before = await unseal((await f.db.prepare('SELECT trial FROM access_requests WHERE id = ?').bind(id).first()).trial,key,`trial:${id}`);
+  const response = await f.post(`${admin}/${id}/extend-link`,{days:10,expectedLinkExpiresAt:before.linkExpiresAt},f.operatorToken);
+  assert.equal(response.status,200,await response.clone().text());
+  const after = await unseal((await f.db.prepare('SELECT trial FROM access_requests WHERE id = ?').bind(id).first()).trial,key,`trial:${id}`);
+  assert.equal(after.tokenHash,before.tokenHash);assert.deepEqual(after.invitation,before.invitation);
+  assert.equal(after.license,before.license);assert.equal(after.installationId,installationId);
+  assert.equal(Date.parse(after.linkExpiresAt)-Date.parse(before.linkExpiresAt),10*86400000);
+  assert.equal((await f.get(a.base,a.token)).status,200);
+  assert.equal((await f.post(`${admin}/${id}/extend-link`,{days:10,expectedLinkExpiresAt:before.linkExpiresAt},f.operatorToken)).status,409);
+  assert.equal((await f.post(`${admin}/${id}/extend-link`,{days:61,expectedLinkExpiresAt:after.linkExpiresAt},f.operatorToken)).status,400);
+});
+
+test('explicit resend keeps the same invitation and prevents concurrent duplicate resends', {timeout:15000}, async t => {
+  let sent = 0;
+  const f = await fixture(t,{bindings:{CF_ACCOUNT_ID:'a'.repeat(32),TRIAL_EMAIL_FROM:'trials@example.com',TRIAL_EMAIL_API_TOKEN:'x'.repeat(32)},outboundService:async()=>{sent++;return Response.json({success:true,result:{queued:['friend@example.com']}});}});
+  const id=await f.submit(),a=await f.approve(id);
+  assert.equal((await f.post(`${admin}/${id}/send-invitation`,{},f.operatorToken)).status,200);
+  const before=(await (await f.get(admin,f.operatorToken)).json()).requests.find(r=>r.id===id);
+  const request={expectedEmailAttemptedAt:before.emailAttemptedAt};
+  const responses=await Promise.all([f.post(`${admin}/${id}/resend-invitation`,request,f.operatorToken),f.post(`${admin}/${id}/resend-invitation`,request,f.operatorToken)]);
+  assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);assert.equal(sent,2);
+  const preview=await (await f.get(`${admin}/${id}/invitation`,f.operatorToken)).json();
+  assert.ok(preview.message.includes(a.link));assert.equal(preview.linkExpiresAt,a.linkExpiresAt);
+});
+
+test('explicit Resend resend uses a new durable event while keeping the old URL', {timeout:15000}, async t => {
+  const messages=[];
+  const f=await fixture(t,{bindings:{SITE_SURFACE:'admin',CUSTOMER_EMAIL_PROVIDER:'resend',CUSTOMER_EMAIL_MODE:'production',CUSTOMER_EMAIL_FROM:'accounts@127vaults.com',RESEND_API_KEY:'re_'+'fake'.repeat(8),CUSTOMER_EMAIL_STORAGE:'1'},outboundService:async request=>{messages.push(await request.json());return Response.json({id:'mock-resend-'+messages.length});}});
+  const store=new TrialStore(f.db,await encryptionKey(f.intakeKey,'contacts'),await encryptionKey(f.intakeKey,'trials'),()=>Date.now(),await limiterKey(f.intakeKey));
+  const id='e'.repeat(64);await store.insert(id,{...f.requestInput,email:'customer@customer-domain.dev'});
+  const a=await f.approve(id);
+  // Wait only for the local mocked transport's persisted result.
+  for(let i=0;i<100;i++){const r=await store.get(id);if(r.trial.emailState==='queued')break;await new Promise(r=>setTimeout(r,20));}
+  const before=await store.get(id);assert.equal(before.trial.emailState,'queued');
+  const input={expectedEmailAttemptedAt:before.trial.emailAttemptedAt};
+  assert.equal((await f.post(`${admin}/${id}/resend-invitation`,input,f.operatorToken)).status,200);
+  assert.equal(messages.length,2);assert.equal(messages[1].text,messages[0].text);assert.ok(messages[1].text.includes(a.link));
+  assert.equal((await f.post(`${admin}/${id}/resend-invitation`,input,f.operatorToken)).status,409);
+  assert.equal(messages.length,2);
+});
