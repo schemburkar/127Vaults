@@ -86,6 +86,9 @@ pub fn project(directory: &Path) -> Result<String> {
 }
 
 pub fn candidate(value: &Value, engine: &str) -> Result<Server> {
+    if !production_container(value) {
+        return Err("Development/test installations are excluded from the live installer".into());
+    }
     let labels = &value["Config"]["Labels"];
     let directory = labels["com.docker.compose.project.working_dir"]
         .as_str()
@@ -105,6 +108,37 @@ pub fn candidate(value: &Value, engine: &str) -> Result<Server> {
         engine: engine.into(),
         project: configured,
     })
+}
+
+fn production_container(value: &Value) -> bool {
+    if let Some(project) = value["Config"]["Labels"]["com.docker.compose.project"].as_str() {
+        // Production bundles retain the historical vaults-test-<12 hex> name.
+        // Do not mistake that legacy prefix for a test namespace.
+        if project == "vaults-development"
+            || project.strip_prefix("vaults-test-").is_some_and(|suffix| {
+                suffix.len() != 12 || !suffix.bytes().all(|c| c.is_ascii_hexdigit())
+            })
+        {
+            return false;
+        }
+    }
+    if value["Config"]["Env"].as_array().is_some_and(|env| {
+        env.iter().filter_map(Value::as_str).any(|entry| {
+            entry
+                .strip_prefix("VAULTS_NAMESPACE=")
+                .is_some_and(|name| name != "production")
+        })
+    }) {
+        return false;
+    }
+    let Some(directory) =
+        value["Config"]["Labels"]["com.docker.compose.project.working_dir"].as_str()
+    else {
+        return true;
+    };
+    crate::namespace::Namespace::parse("production", None)
+        .and_then(|namespace| namespace.validate_profile(Path::new(directory)))
+        .is_ok()
 }
 
 pub fn discover(selected_engine: Option<&str>) -> Result<Vec<Server>> {
@@ -137,6 +171,9 @@ pub fn discover(selected_engine: Option<&str>) -> Result<Vec<Server>> {
             }
             let relay: Vec<Value> = serde_json::from_slice(&output.stdout)?;
             let relay = relay.first().ok_or("Missing relay inspection")?;
+            if !production_container(relay) {
+                continue;
+            }
             // Discover published installations, excluding isolated release rehearsals.
             let published = relay["NetworkSettings"]["Ports"]
                 .as_object()
@@ -180,7 +217,11 @@ pub fn discover(selected_engine: Option<&str>) -> Result<Vec<Server>> {
                 return Err("Cannot inspect published server".into());
             }
             let values: Vec<Value> = serde_json::from_slice(&output.stdout)?;
-            let server = candidate(values.first().ok_or("Missing server inspection")?, engine)?;
+            let value = values.first().ok_or("Missing server inspection")?;
+            if !production_container(value) {
+                continue;
+            }
+            let server = candidate(value, engine)?;
             if !servers
                 .iter()
                 .any(|s: &Server| s.directory == server.directory && s.project == server.project)
@@ -283,6 +324,31 @@ pub fn license_identity(status: &Value, identity: &str) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_discovery_excludes_development_and_test_namespaces() {
+        for project in ["vaults-development", "vaults-test-review"] {
+            assert!(!production_container(
+                &serde_json::json!({"Config":{"Labels":{"com.docker.compose.project":project}}})
+            ));
+        }
+        assert!(production_container(
+            &serde_json::json!({"Config":{"Labels":{"com.docker.compose.project":"vaults-test-123456abcdef"}}})
+        ));
+        for name in ["development", "test", "test-review"] {
+            let value = serde_json::json!({"Config":{"Env":[format!("VAULTS_NAMESPACE={name}")]}});
+            assert!(!production_container(&value));
+            assert!(candidate(&value, "docker").is_err());
+        }
+        assert!(production_container(
+            &serde_json::json!({"Config":{"Env":["VAULTS_NAMESPACE=production"]}})
+        ));
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("namespace-owner"), "development").unwrap();
+        let value = serde_json::json!({"Config":{"Labels":{"com.docker.compose.project.working_dir":root}}});
+        assert!(!production_container(&value));
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn runtime_preflight_refuses_stopped_and_ambiguous_services() {
         let directory = Path::new("existing-bundle");
