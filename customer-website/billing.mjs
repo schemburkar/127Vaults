@@ -1,3 +1,4 @@
+import {formatManageDate} from './manage-state.mjs';
 import {confirmManageAction} from './manage-shell.mjs';
 const match = /^([a-f0-9]{64})\.([A-Za-z0-9_-]{43})$/.exec(location.hash.slice(1));
 const selected = new URLSearchParams(location.search).get('request');
@@ -36,7 +37,7 @@ export function mountBilling(root, requestId, bearer) {
       cancelled: 'This subscription is cancelled.',
       expired: 'This subscription has expired.',
     })[value.status] ?? (value.paidThrough
-      ? `${value.mode === 'test_mode' ? 'Test period ends' : 'Subscription active through'} ${new Date(value.paidThrough).toLocaleDateString()}.`
+      ? `${value.mode === 'test_mode' ? 'Test period ends' : 'Subscription active through'} ${formatManageDate(value.paidThrough)}.`
       : 'Your subscription has not been confirmed.');
     if (personal && value.status === 'active' && !value.accessReady) {
       $('details').textContent = 'We’re confirming your subscription. Downloads and license setup will appear in the portal when access is ready.';
@@ -55,6 +56,7 @@ export function mountBilling(root, requestId, bearer) {
     $('cancel').hidden = checkout || !value.hasSubscription
       || !['active', 'on_hold', 'past_due', 'paused'].includes(value.status) || value.cancelAtPeriodEnd;
     $('license').hidden = checkout || !value.hasLicense;
+    for(const id of ['portal','cancel','license'])$(id).closest('.manage-action').hidden=$(id).hidden;
     $('billing-actions').hidden = $('portal').hidden && $('cancel').hidden && $('license').hidden;
   }
   async function run(work) {
@@ -69,7 +71,7 @@ export function mountBilling(root, requestId, bearer) {
   }
   $('checkout').addEventListener('submit', event => { event.preventDefault(); run(async () => navigate((await api('/checkout', { ...($('coupon').value.trim() ? { coupon: $('coupon').value.trim() } : {}), ...(!$('resubscribe-terms').hidden ? { acceptTerms: $('resubscribe-accept').checked } : {}) })).checkoutUrl)); });
   $('portal').addEventListener('click', () => run(async () => navigate((await api('/portal', {})).portalUrl)));
-  $('cancel').addEventListener('click', () => run(async () => { if(!await confirmManageAction('Cancel renewal',current?.paidThrough?'Stop the next renewal? Your current paid access continues through '+new Date(current.paidThrough).toLocaleDateString()+'.':'Stop this subscription’s next renewal?'))return;await api('/cancel', {}); show(await api()); }));
+  $('cancel').addEventListener('click', () => run(async () => { if(!await confirmManageAction('Cancel renewal',current?.paidThrough?'Stop the next renewal? Your current paid access continues through '+formatManageDate(current.paidThrough)+'.':'Stop this subscription’s next renewal?'))return;await api('/cancel', {}); show(await api()); }));
   $('license').addEventListener('click', () => run(async () => {
     const result = await api('/license'); if (!result.license) throw Error('No license is available yet.');
     const url = URL.createObjectURL(new Blob([result.license], { type: 'application/json' }));

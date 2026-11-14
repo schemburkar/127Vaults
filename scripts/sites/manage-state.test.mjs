@@ -24,3 +24,5 @@ test('account totals distinguish live active access, pending purchases and unava
   assert.deepEqual(accountSummary(value), {access:5,activeSubscriptions:1,cloud:null});
   assert.equal(accountSummary({...value,cloudUnavailable:false,cloudTenants:[{}]}).cloud,1);
 });
+
+ test('customer dates use an explicit month name',async()=>{const {formatManageDate}=await import('../../customer-website/manage-state.mjs');assert.equal(formatManageDate('2027-07-12T12:00:00Z'),'12 July 2027');assert.equal(formatManageDate('invalid'),'—');assert.equal(formatManageDate(null),'—');assert.deepEqual(availableManageViews({scope:'email',cloudTenants:[]}),['overview','subscriptions','security','plans']);});

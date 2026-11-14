@@ -1,3 +1,4 @@
+import {formatManageDate} from './manage-state.mjs';
 import {availableManageViews,accountSummary,selectManageView} from './manage-state.mjs';
 import { portalApi, establishInvitationSession, parseInvitation } from './portal-client.mjs';
 import { mountBilling } from './billing.mjs';
@@ -41,7 +42,7 @@ function renderWorkspace(value){
   $('manage-account-nav').replaceChildren();for(const view of availableManageViews(value)){const button=element('button',labels[view]);button.type='button';button.dataset.view=view;button.addEventListener('click',()=>setAccountView(view));$('manage-account-nav').append(button);}
   const summary=accountSummary(value),overview=$('manage-overview');overview.replaceChildren();
   const metrics=element('div','', 'manage-summary-grid');
-  for(const [label,count,view]of [['Self-hosted access',summary.access,'subscriptions'],['Active subscriptions',summary.activeSubscriptions,'subscriptions'],['Cloud workspaces',summary.cloud,'cloud']]){const card=element('button','', 'manage-summary-card');card.type='button';card.append(element('span',label),element('strong',String(count??'—')));if(availableManageViews(value).includes(view))card.addEventListener('click',()=>setAccountView(view));else card.disabled=true;metrics.append(card);}overview.append(metrics);
+  for(const [label,count,view]of [['Self-hosted access',summary.access,'subscriptions'],['Active subscriptions',summary.activeSubscriptions,'subscriptions'],['Cloud workspaces',summary.cloud,'cloud']]){if(view==='cloud'&&!availableManageViews(value).includes('cloud'))continue;const card=element('button','', 'manage-summary-card');card.type='button';card.append(element('span',label),element('strong',String(count??'—')));if(availableManageViews(value).includes(view))card.addEventListener('click',()=>setAccountView(view));else card.disabled=true;metrics.append(card);}overview.append(metrics);
   const next=element('section','', 'access-card manage-next-step');next.append(element('span','YOUR NEXT STEP','trial-section-label'));
   const current=value.requests.find(row=>row.state==='approved')??value.requests.find(row=>row.billingStatus)??value.requests[0];
   if(current){next.append(element('h2',planName(current.plan)),element('p',orderStatus(current)));if(current.state==='approved')next.append(link('Downloads and setup','/trial?request='+encodeURIComponent(current.id),true));else if(current.billingStatus)next.append(orderLink(current,'Review subscription'));else next.append(element('p','Your access request is being reviewed. You can check its status under Subscriptions & access.'));}
@@ -98,14 +99,15 @@ function orderLink(row, label) {
     const panel = billingPanel.cloneNode(true);
     $('billing-panel').replaceWith(panel);
     panel.querySelector('#billing-reference').textContent = planName(row.plan)+' · Ref '+row.id.slice(0,8)+' · '+orderStatus(row);
-    const summary=element('section','', 'manage-detail-grid');for(const [title,value]of [['Access',orderKind(row)],['Users',row.maxUsers?String(row.maxUsers):'Not yet approved'],['Installation',row.installationId||'Not activated'],['End date',row.paidThrough||row.expiresAt?new Date(row.paidThrough??row.expiresAt).toLocaleDateString():'Not started']]){const field=element('div');field.append(element('small',title),element('strong',value));summary.append(field);}panel.querySelector('#billing-reference').after(summary);panel.querySelector('#billing-title').textContent=planName(row.plan);
+    const summary=element('section','', 'manage-detail-grid');for(const [title,value]of [['Access',orderKind(row)],['Users',row.maxUsers?String(row.maxUsers):'Not yet approved'],['Installation',row.installationId||'Not activated'],['End date',row.paidThrough||row.expiresAt?formatManageDate(row.paidThrough??row.expiresAt):'Not started']]){const field=element('div');field.append(element('small',title),element('strong',value));summary.append(field);}panel.querySelector('#billing-reference').after(summary);panel.querySelector('#billing-title').textContent=planName(row.plan);
 
     if (row.state === 'approved') {
-      panel.querySelector('#billing-download').append(link('Downloads and license', `/trial?request=${encodeURIComponent(row.id)}`));
+      panel.querySelector('#billing-download').append(element('h3','Install and connect'),element('p','Open packages and setup instructions, or create a private link to use in the installer. Client download links are for other computers joining your server.'));
+      panel.querySelector('#billing-download').append(link('Open downloads & setup', `/trial?request=${encodeURIComponent(row.id)}`));
     }
     if(row.state==='approved'){
-      if(!row.conversion)addPrivateLinkAction('Get installer setup link','installer-link','Open setup link');
-      if(accountValue?.scope==='email')addPrivateLinkAction('Share client downloads','client-link','Open client joining page');
+      if(!row.conversion)addPrivateLinkAction('Create installer setup link','installer-link','Open setup link');
+      if(accountValue?.scope==='email')addPrivateLinkAction('Create client download link','client-link','Open client joining page');
     }
     function addPrivateLinkAction(label,endpoint,openLabel){const button=element('button',label,'button secondary');button.type='button';button.addEventListener('click',()=>run(async()=>{const result=await portalApi(endpoint,{requestId:row.id});const url=new URL(result.link);if(url.origin!==location.origin||!['/trial','/trial.html','/join','/join.html'].includes(url.pathname))throw Error('The private link could not be verified.');const box=element('div','', 'manage-private-link');const note=element('p',endpoint==='client-link'?'Client apps only. This does not grant server administration or create a vault account.':'Use this private link in the installer. Keep it within your authorized installation.');const input=element('input');input.readOnly=true;input.value=result.link;input.setAttribute('aria-label',label);const copy=element('button','Copy link','button secondary');copy.type='button';copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(input.value);note.textContent='Link copied. Share it only with the intended recipient.';}catch{input.select();note.textContent='Select and copy the link.';}});box.append(note,input,copy,link(openLabel,result.link));button.replaceWith(box);},panel.querySelector('#status')));panel.querySelector('#billing-download').append(button);}
     panel.addEventListener('close',()=>order.focus(),{once:true});panel.showModal();
@@ -174,7 +176,7 @@ function renderOrders(value) {
     const kind = element('td');kind.dataset.label='Access type';
     kind.append(element('span', orderKind(row), row.billingMode === 'test_mode' || row.kind === 'development' ? 'portal-state' : ''));
     const end = row.state === 'purchase_pending' ? null : row.paidThrough ?? row.expiresAt;
-    const dates = element('td', end ? new Date(end).toLocaleDateString() : '—');
+    const dates = element('td', end ? formatManageDate(end) : '—');
     dates.dataset.label='End date';
     if (end) dates.append(element('small', row.paidThrough
       ? row.billingMode === 'test_mode' ? 'Test period ends' : 'Subscription active through'

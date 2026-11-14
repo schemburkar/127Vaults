@@ -25,7 +25,7 @@ export async function createManageReview(port=12970){
   if(url.pathname==='/api/customer/me'){
    if(!scope)return json({error:'access_required'},401);
    const requests=scope==='new'?[]:scope==='pending'?[{...rows[0],state:'purchase_pending',billingStatus:'checkout_pending',paidThrough:null,installationId:null}]:scope==='invitation'?[rows[1]]:rows;
-   return json({scope:scope==='invitation'?'invitation':'email',email:scope==='invitation'?undefined:'alex@example.invalid',requests,canBuyPersonal:scope==='new',purchaseMode:'live_mode',cloudTenants:['invitation','new'].includes(scope)?[]:[{slug:'northwind-family',canonicalUrl:'https://cloud.127vaults.com/t/northwind-family/',state:'active',maxActiveUsers:5}]});
+   return json({scope:scope==='invitation'?'invitation':'email',email:scope==='invitation'?undefined:'alex@example.invalid',requests,canBuyPersonal:scope==='new',purchaseMode:'live_mode',cloudTenants:scope!=='cloud'?[]:[{slug:'northwind-family',canonicalUrl:'https://cloud.127vaults.com/t/northwind-family/',state:'active',maxActiveUsers:5}]});
   }
   if(url.pathname==='/api/customer/passkeys')return scope?json({recentSignIn:true,passkeys:[]}):json({error:'access_required'},401);
   if(/^\/api\/billing\/[a-f0-9]{64}$/.test(url.pathname)&&req.method==='GET')return scope?json({status:'active',plan:'personal-annual',mode:'live_mode',paidThrough:rows[0].paidThrough,hasLicense:true,accessReady:true,hasSubscription:true,hasCustomerPortal:true,cancelAtPeriodEnd:false}):json({error:'access_required'},401);
@@ -33,7 +33,7 @@ export async function createManageReview(port=12970){
   if(/^\/api\/trials\/[a-f0-9]{64}\/client-installer$/.test(url.pathname))return json({artifacts});
   if(url.pathname.startsWith('/api/'))return json({error:'not_available_in_local_review'},405);
   if(req.method!=='GET')return json({error:'read_only_review'},405);
-  const scenario=url.searchParams.get('review');if(!url.searchParams.has('view')){if(['email','invitation','pending','new'].includes(scenario))cookie(scenario);if(scenario==='signedout')cookie('');}
+  const scenario=url.searchParams.get('review');if(!url.searchParams.has('view')){if(['email','invitation','pending','new','cloud'].includes(scenario))cookie(scenario);if(scenario==='signedout')cookie('');}
   let name=url.pathname.slice(1)||'portal';if(!name.includes('.'))name+='.html';
   if(!customerAssets.includes(name))return json({},404);
   try{const body=await readFile(resolve(assetDirectory('customer',name),name));res.writeHead(200,{'Content-Type':name.endsWith('.mjs')?'text/javascript':name.endsWith('.css')?'text/css':name.endsWith('.svg')?'image/svg+xml':name.endsWith('.html')?'text/html':'application/json'});res.end(body);}catch{json({},404);}
