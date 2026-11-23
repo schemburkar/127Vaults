@@ -42,6 +42,12 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
     });
     return source ? unseal(source, key) : null;
   }
+  async function activeSession(email, token) {
+    const record = await read(email);
+    if (!record?.sessionHash || now().getTime() >= record.sessionExpiresAt
+      || !timingSafeEqual(Buffer.from(record.sessionHash, 'hex'), Buffer.from(hash(token), 'hex'))) return null;
+    return record;
+  }
   async function save(email, record) {
     await mkdir(dataDir, { recursive: true, mode: 0o700 });
     const temporary = join(dataDir, `${hash(email)}.${randomUUID()}.tmp`);
@@ -125,11 +131,8 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
       if (!emailPattern.test(email ?? '') || !/^[A-Za-z0-9_-]{43}$/.test(token ?? '')) {
         return reply(res, 401, { error: 'access_required' });
       }
-      const record = await read(email);
-      if (!record?.sessionHash || now().getTime() >= record.sessionExpiresAt
-        || !timingSafeEqual(Buffer.from(record.sessionHash, 'hex'), Buffer.from(hash(token), 'hex'))) {
-        return reply(res, 401, { error: 'access_required' });
-      }
+      const record = await activeSession(email, token);
+      if (!record) return reply(res, 401, { error: 'access_required' });
       if (path === '/api/customer/me' && req.method === 'GET') {
         return reply(res, 200, { email, createdAt: record.createdAt, verifiedAt: record.verifiedAt,
           orders: await ordersFor(email) });
@@ -139,7 +142,8 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
         if (Object.keys(body).join(',') !== 'orderId' || !/^[0-9a-f-]{36}$/i.test(body.orderId)) {
           return reply(res, 400, { error: 'invalid_request' });
         }
-        return withFileLock(join(orderDir, `${body.orderId}.lock`), async () => {
+        return serialized(email, () => withFileLock(join(orderDir, `${body.orderId}.lock`), async () => {
+          if (!await activeSession(email, token)) return reply(res, 401, { error: 'access_required' });
           const orderPath = join(orderDir, `${body.orderId}.json`);
           const order = unseal(await readFile(orderPath, 'utf8'), orderKey);
           if (order.email !== email || order.id !== body.orderId) return reply(res, 404, { error: 'not_found' });
@@ -149,25 +153,29 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
           await writeFile(temporary, seal(order, orderKey), { flag: 'wx', mode: 0o600 });
           await rename(temporary, orderPath);
           return reply(res, 200, { orderId: body.orderId, accessToken });
-        });
+        }));
       }
       if (path === '/api/customer/logout' && req.method === 'POST') return serialized(email, async () => {
-        const latest = await read(email);
+        const latest = await activeSession(email, token);
+        if (!latest) return reply(res, 401, { error: 'access_required' });
         delete latest.sessionHash;
         delete latest.sessionExpiresAt;
         await save(email, latest);
         return reply(res, 200, { signedOut: true }, { 'Set-Cookie': '__Host-127v-customer=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
       });
-      if (path === '/api/customer/erase' && req.method === 'POST') return serialized(email, async () => {
+      if (path === '/api/customer/erase' && req.method === 'POST') {
         const body = await input(req);
         if (Object.keys(body).join(',') !== 'confirm' || body.confirm !== 'ERASE') {
           return reply(res, 400, { error: 'invalid_request' });
         }
-        const orders = await ordersFor(email, true);
-        await unlink(pathFor(email));
-        return reply(res, 200, { erased: true, installedLicensesUnaffected: true, ordersRemoved: orders.length },
-          { 'Set-Cookie': '__Host-127v-customer=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
-      });
+        return serialized(email, async () => {
+          if (!await activeSession(email, token)) return reply(res, 401, { error: 'access_required' });
+          const orders = await ordersFor(email, true);
+          await unlink(pathFor(email));
+          return reply(res, 200, { erased: true, installedLicensesUnaffected: true, ordersRemoved: orders.length },
+            { 'Set-Cookie': '__Host-127v-customer=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
+        });
+      }
       return reply(res, 404, { error: 'not_found' });
     } catch {
       if (!res.headersSent) reply(res, 503, { error: 'unavailable' });

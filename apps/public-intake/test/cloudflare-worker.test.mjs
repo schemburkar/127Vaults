@@ -569,7 +569,7 @@ async function fixture(t, options = {}) {
   const dispose = () => { if (!disposed) { disposed = true; return mf.dispose(); } };
   t.after(dispose);
   const db = await mf.getD1Database('DB'), bucket = await mf.getR2Bucket('ARTIFACTS');
-  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql', '0007_customer_passkeys.sql']) {
+  for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql', '0007_customer_passkeys.sql', '0008_operator_sessions.sql']) {
     const sql = await readFile(new URL(`../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.split(';').map(v => v.trim()).filter(Boolean)) await db.prepare(statement).run();
   }
@@ -922,10 +922,14 @@ test('operator key exchange survives refresh via scoped cookie and refuses cross
   const renew = await f.mf.dispatchFetch(origin + '/api/access-admin/session', { method: 'POST',
     headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
   assert.equal(renew.status, 401);
+  const other = await f.post('/api/access-admin/session', {}, f.operatorToken);
+  assert.equal(other.status, 200);
   const logout = await f.mf.dispatchFetch(origin + '/api/access-admin/logout', { method: 'POST',
     headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
   assert.equal(logout.status, 200);
   assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
+  assert.equal((await f.get(admin, undefined, cookie)).status, 401);
+  assert.equal((await f.get(admin, undefined, other.headers.get('set-cookie').split(';')[0])).status, 200);
 });
 
 test('fixed-recipient request alerts are durable, contain only a review summary, and fail without losing the request', async t => {

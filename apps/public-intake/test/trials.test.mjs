@@ -42,6 +42,20 @@ test('real request → operator approval → private downloads → durable 10-da
   try {
     assert.equal((await post('/api/waitlist', { email: 'friend@example.com', organization: '', plan: 'personal', requestedSeats: 3, website: '', consent: true })).status, 202);
     assert.equal((await get(admin)).status, 401);
+    const signIn = async () => {
+      const result = await post('/api/access-admin/session', {}, operatorToken);
+      assert.equal(result.status, 200);
+      return result.headers.get('set-cookie').split(';')[0];
+    };
+    const operatorCookie = await signIn();
+    const otherOperatorCookie = await signIn();
+    assert.equal((await get(admin, null, operatorCookie)).status, 200);
+    const logout = await fetch(root + '/api/access-admin/logout', { method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: operatorCookie }, body: '{}' });
+    assert.equal(logout.status, 200);
+    assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
+    assert.equal((await get(admin, null, operatorCookie)).status, 401);
+    assert.equal((await get(admin, null, otherOperatorCookie)).status, 200);
     const inbox = await (await get(admin, operatorToken)).json();
     assert.equal(inbox.requests[0].email, 'friend@example.com');
     assert.equal(inbox.requests[0].requestedSeats, 3);

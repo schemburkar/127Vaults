@@ -124,7 +124,7 @@ export async function createLocalSites({ directory = join(repository, '.tools', 
       ] });
     const database = await mf.getD1Database('DB', 'admin');
     await database.prepare('CREATE TABLE IF NOT EXISTS local_site_migrations (name TEXT PRIMARY KEY)').run();
-    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql', '0007_customer_passkeys.sql']) {
+    for (const name of ['0001_trials.sql', '0002_billing.sql', '0003_customer_portal.sql', '0004_manual_customer_mail.sql', '0005_customer_email.sql', '0006_intake_protection.sql', '0007_customer_passkeys.sql', '0008_operator_sessions.sql']) {
       if (await database.prepare('SELECT name FROM local_site_migrations WHERE name = ?').bind(name).first()) continue;
       const sql = await readFile(join(repository, 'apps/public-intake/cloudflare/migrations', name), 'utf8');
       await database.batch([...sql.split(';').map(v => v.trim()).filter(Boolean).map(v => database.prepare(v)),

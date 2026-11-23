@@ -2,7 +2,19 @@ import { limitIdentity, seal, unseal } from './crypto.mjs';
 
 export class Conflict extends Error {}
 export class TrialStore {
+  #database;
+
+  operatorSessions() {
+    return {
+      add: (nonce, expires) => this.db.prepare('INSERT INTO operator_sessions (nonce, expires_at) VALUES (?, ?)').bind(nonce, expires).run(),
+      has: async (nonce, now) => Boolean(await this.#database.withSession('first-primary')
+        .prepare('SELECT 1 FROM operator_sessions WHERE nonce = ? AND expires_at > ?').bind(nonce, now).first()),
+      remove: nonce => this.db.prepare('DELETE FROM operator_sessions WHERE nonce = ?').bind(nonce).run(),
+    };
+  }
+
   constructor(db, contactKey, trialKey, now = () => Date.now(), limiterKey) {
+    this.#database = db;
     // Authorization decisions must read current primary state, even if read replication is enabled later.
     this.db = db.withSession('first-primary');
     this.contactKey = contactKey; this.trialKey = trialKey; this.now = now; this.limiterKey = limiterKey;

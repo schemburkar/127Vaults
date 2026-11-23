@@ -11,7 +11,7 @@ import { issueLicenseRevocation } from '../../../scripts/ops/issue-license-revoc
 import { validIntakeOrigin } from './intake-origin.mjs';
 import { verifyLicenseFile } from '../../server/src/license-status.mjs';
 import { installerPolicy, installerProtocol } from '../cloudflare/installer.mjs';
-import { createOperatorSession, validOperatorSession, clearOperatorSession } from './operator-session.mjs';
+import { createOperatorSession, validOperatorSession, revokeOperatorSession, clearOperatorSession, memoryOperatorSessions } from './operator-session.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const idPattern = /^[a-f0-9]{64}$/;
@@ -129,6 +129,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
     await rename(temporary, pathFor(id));
   }
   const allow = createDurableLimit({ directory: join(dataDir, 'request-limits'), now: () => now().getTime() });
+  const operatorSessions = memoryOperatorSessions();
   const summary = record => ({ state: record?.state ?? 'requested', maxUsers: record?.maxUsers,
     archivedAt: record?.archivedAt ?? null,
     approvedAt: record?.approvedAt, linkExpiresAt: record?.linkExpiresAt,
@@ -142,7 +143,7 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       if (!path.startsWith('/api/access-admin/') && !path.startsWith('/api/trials/')) return json(res, 404, { error: 'not_found' });
       const admin = path.startsWith('/api/access-admin/');
       const bearer = /^Bearer ([A-Za-z0-9_-]{43,128})$/.exec(req.headers.authorization ?? '')?.[1];
-      if (admin && !equal(bearer, operatorToken) && !await validOperatorSession(req.headers.cookie, operatorToken, Date.now())) {
+      if (admin && !equal(bearer, operatorToken) && !await validOperatorSession(req.headers.cookie, operatorToken, Date.now(), operatorSessions)) {
         if (!await allow('admin-auth', req.socket.remoteAddress ?? 'unknown', 20, 3600000)) return json(res, 429, { error: 'rate_limited' });
         return json(res, 401, { error: 'access_required' });
       }
@@ -152,10 +153,11 @@ export function createTrialHandler({ origin, key, dataFile, dataDir, operatorTok
       if (path === '/api/access-admin/session' && req.method === 'POST') {
         if (Object.keys(await body(req)).length) return json(res, 400, { error: 'invalid_request' });
         if (!equal(bearer, operatorToken)) return json(res, 401, { error: 'access_required' });
-        return json(res, 200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(operatorToken, Date.now()) });
+        return json(res, 200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(operatorToken, Date.now(), operatorSessions) });
       }
       if (path === '/api/access-admin/logout' && req.method === 'POST') {
         if (Object.keys(await body(req)).length) return json(res, 400, { error: 'invalid_request' });
+        await revokeOperatorSession(req.headers.cookie, operatorToken, Date.now(), operatorSessions);
         return json(res, 200, { signedIn: false }, { 'Set-Cookie': clearOperatorSession() });
       }
       await mkdir(dataDir, { recursive: true, mode: 0o700 });

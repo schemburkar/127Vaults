@@ -9,7 +9,7 @@ import { validateCatalogue, catalogueIdentity, publicArtifact, serverMajor } fro
 import { byteRange } from './download.mjs';
 import { installerPolicy, installerProtocol } from './installer.mjs';
 import { developmentPolicy } from './development.mjs';
-import { createOperatorSession, validOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
+import { createOperatorSession, validOperatorSession, revokeOperatorSession, clearOperatorSession } from '../src/operator-session.mjs';
 import { notifyNewAccessRequest, notifyRequestVolume, requestAlertsEnabled } from '../src/request-alerts.mjs';
 import { BillingError, paidPersonalAccess } from './dodo.mjs';
 import { billingWebhook, handleBilling, reconcileBilling, issuePersonalLicense, claimPersonalConversion } from './billing.mjs';
@@ -222,7 +222,9 @@ async function dispatch(request, env, now, schedule) {
   }
   const admin = path.startsWith('/api/access-admin/');
   if (!admin && !path.startsWith('/api/trials/') && !path.startsWith('/api/billing/')) fail(404, 'not_found');
-  const operatorAuthorized = admin && (await equal(bearer, env.OPERATOR_TOKEN) || await validOperatorSession(request.headers.get('cookie'), env.OPERATOR_TOKEN, at));
+  const operatorSessions = store.operatorSessions();
+  const operatorCookie = request.headers.get('cookie');
+  const operatorAuthorized = admin && (await equal(bearer, env.OPERATOR_TOKEN) || await validOperatorSession(operatorCookie, env.OPERATOR_TOKEN, at, operatorSessions));
   if (admin && !operatorAuthorized) {
     if (!await store.allow('admin-auth', ip, 20, 3600000)) fail(429, 'rate_limited');
     fail(401, 'access_required');
@@ -238,10 +240,11 @@ async function dispatch(request, env, now, schedule) {
   if (path === '/api/access-admin/session' && request.method === 'POST') {
     empty(await body(request));
     if (!await equal(bearer, env.OPERATOR_TOKEN)) fail(401, 'access_required');
-    return json(200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(env.OPERATOR_TOKEN, at) });
+    return json(200, { signedIn: true }, { 'Set-Cookie': await createOperatorSession(env.OPERATOR_TOKEN, at, operatorSessions) });
   }
   if (path === '/api/access-admin/logout' && request.method === 'POST') {
     empty(await body(request));
+    await revokeOperatorSession(operatorCookie, env.OPERATOR_TOKEN, at, operatorSessions);
     return json(200, { signedIn: false }, { 'Set-Cookie': clearOperatorSession() });
   }
   // Bound trial guessing and abusive downloads, without exposing contact identifiers in the limiter.
@@ -591,6 +594,7 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(rows.length<100)break;
   }
   await store.pruneLimits();
+  await store.db.prepare('DELETE FROM operator_sessions WHERE expires_at <= ?').bind(now()).run();
   if (env.CUSTOMER_PORTAL_ENABLED === '1') await pruneCustomerPortal(store, now(),
     env.CUSTOMER_MANUAL_MAIL === '1' || env.CUSTOMER_EMAIL_PROVIDER === 'resend' || env.CLOUD_CUSTOMER_PILOT_MANUAL_LOGIN === '1');
   await pruneCustomerEmail(env, store, now());
