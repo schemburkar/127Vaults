@@ -52,12 +52,19 @@ export async function pruneMockOrders({ dataDir, key, now = new Date() }) {
   })) {
     if (!/^[0-9a-f-]{36}\.json$/i.test(name)) continue;
     const path = join(dataDir, name);
-    const record = unseal(await readFile(path, 'utf8'), key);
-    const licenseExpiry = record.license
-      ? JSON.parse(Buffer.from(JSON.parse(record.license).payload, 'base64url').toString('utf8')).expiresAt : null;
-    const until = licenseExpiry ? Date.parse(licenseExpiry) + 90 * 86400000
-      : Date.parse(record.createdAt) + 30 * 86400000;
-    if (Number.isFinite(until) && now.getTime() >= until) { await unlink(path); removed++; }
+    await withFileLock(join(dataDir, `${name.slice(0, -5)}.lock`), async () => {
+      const source = await readFile(path, 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (source === null) return;
+      const record = unseal(source, key);
+      const licenseExpiry = record.license
+        ? JSON.parse(Buffer.from(JSON.parse(record.license).payload, 'base64url').toString('utf8')).expiresAt : null;
+      const until = licenseExpiry ? Date.parse(licenseExpiry) + 90 * 86400000
+        : Date.parse(record.createdAt) + 30 * 86400000;
+      if (Number.isFinite(until) && now.getTime() >= until) { await unlink(path); removed++; }
+    });
   }
   return removed;
 }

@@ -31,7 +31,10 @@ export function createCustomerAccountHandler({ origin, key, dataDir, orderDir, o
   const queues = new Map();
   async function serialized(email, work) {
     const prior = queues.get(email) ?? Promise.resolve();
-    const next = prior.catch(() => {}).then(work);
+    const next = prior.catch(() => {}).then(async () => {
+      await mkdir(dataDir, { recursive: true, mode: 0o700 });
+      return withFileLock(`${pathFor(email)}.lock`, work);
+    });
     queues.set(email, next);
     try { return await next; } finally { if (queues.get(email) === next) queues.delete(email); }
   }
@@ -189,10 +192,17 @@ export async function pruneCustomerAccounts({ dataDir, key, now = new Date() }) 
   for (const name of await readdir(dataDir).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
     if (!/^[0-9a-f]{64}\.json$/.test(name)) continue;
     const path = join(dataDir, name);
-    const account = unseal(await readFile(path, 'utf8'), key);
-    const last = Date.parse(account.verifiedAt ?? account.createdAt);
-    const retention = account.verifiedAt ? 365 * 86400000 : 86400000;
-    if (Number.isFinite(last) && now.getTime() - last >= retention) { await unlink(path); removed++; }
+    await withFileLock(`${path}.lock`, async () => {
+      const source = await readFile(path, 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (source === null) return;
+      const account = unseal(source, key);
+      const last = Date.parse(account.verifiedAt ?? account.createdAt);
+      const retention = account.verifiedAt ? 365 * 86400000 : 86400000;
+      if (Number.isFinite(last) && now.getTime() - last >= retention) { await unlink(path); removed++; }
+    });
   }
   return removed;
 }

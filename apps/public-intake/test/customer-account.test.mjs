@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMockSelfHostHandler } from '../src/mock-selfhost.mjs';
-import { createCustomerAccountHandler } from '../src/customer-account.mjs';
+import { createCustomerAccountHandler, pruneCustomerAccounts } from '../src/customer-account.mjs';
 
 test('verified customer account lists only its orders, opens one, and erases its public data', async () => {
   const dir = await mkdtemp(join(tmpdir(), '127v-customer-'));
@@ -19,8 +19,10 @@ test('verified customer account lists only its orders, opens one, and erases its
   const mailer = { sendCode: async value => { code = value.code; } };
   const mock = createMockSelfHostHandler({ origin, key: orderKey, dataDir: orderDir, bundleFile: bundle,
     issuerPrivateKey: generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' }), mailer });
-  const customer = createCustomerAccountHandler({ origin, key: randomBytes(32), orderDir,
-    dataDir: join(dir, 'customers'), orderKey, mailer });
+  const customerKey = randomBytes(32);
+  const customerDir = join(dir, 'customers');
+  const customer = createCustomerAccountHandler({ origin, key: customerKey, orderDir,
+    dataDir: customerDir, orderKey, mailer });
   const server = createServer((req, res) => req.url.startsWith('/api/customer/') ? customer(req, res) : mock(req, res));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const root = `http://127.0.0.1:${server.address().port}`;
@@ -42,6 +44,9 @@ test('verified customer account lists only its orders, opens one, and erases its
     const renewed = await post('/api/customer/complete', { email: 'owner@example.com', code });
     assert.equal(renewed.status, 200);
     const cookie = renewed.headers.get('set-cookie').split(';')[0];
+    assert.equal((await post('/api/customer/start', { email: 'other@example.com', consent: true })).status, 202);
+    assert.equal(await pruneCustomerAccounts({ dataDir: customerDir, key: customerKey,
+      now: new Date(Date.now() + 2 * 86400000) }), 1);
     assert.equal((await post('/api/customer/open-order', { orderId: order.orderId }, previousCookie)).status, 401);
     assert.equal((await post('/api/customer/logout', {}, previousCookie)).status, 401);
     assert.equal((await post('/api/customer/erase', { confirm: 'ERASE' }, previousCookie)).status, 401);
