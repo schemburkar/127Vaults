@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.23",
+    "date": "2026-11-27",
+    "summary": "In-app license status and simpler account management.",
+    "changes": [
+      "View your server license and expiry in Desktop and web Settings, and open Manage even when your vault is locked.",
+      "Improve subscription, installation setup, and invitation management.",
+      "Add support for a 15-day Personal trial through Manage when its one-time checkout product is configured.",
+      "Harden operator sessions and update dependencies, including Linux Desktop fixes."
+    ]
+  },
+  {
     "version": "0.1.22",
     "date": "2026-11-13",
     "summary": "Isolated development and confirmed discounted subscriptions.",
