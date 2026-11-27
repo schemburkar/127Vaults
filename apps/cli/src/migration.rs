@@ -678,10 +678,12 @@ pub fn parse_selected(
             let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
                 .map_err(|_| "Choose a 1Password .1pux export")?;
             // Attachment payloads are never opened or extracted.
-            skipped_attachments = archive
-                .file_names()
-                .filter(|name| name.starts_with("files/") && !name.ends_with('/'))
-                .count();
+            for name in archive.file_names() {
+                let name = name.map_err(|_| "Invalid name in 1Password export")?;
+                if name.starts_with("files/") && !name.ends_with('/') {
+                    skipped_attachments += 1;
+                }
+            }
             let file = archive
                 .by_name("export.data")
                 .map_err(|_| "Missing 1Password export.data")?;

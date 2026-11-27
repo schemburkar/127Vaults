@@ -52,7 +52,8 @@ pub fn extract(source: &Path, target: &Path, node_only: bool) -> Result<()> {
         let mut archive = zip::ZipArchive::new(File::open(source)?)?;
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i)?;
-            let path = PathBuf::from(entry.name());
+            let name = entry.name()?;
+            let path = PathBuf::from(name.as_ref());
             if !safe_path(&path) {
                 return Err("Unsafe ZIP path".into());
             }
