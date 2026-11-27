@@ -9,6 +9,25 @@ installer generation, verification and Cloudflare publication. If a repeated tas
 is missing from those scripts, extend and test the scripts rather than repeat a
 manual workaround. Run the scripted workflow and retain its verification receipts.
 
+## Security definition of done
+
+- Reuse reviewed cryptographic helpers. Trace every new or changed production
+  key, salt, and nonce from its source to its use. Check that entropy and
+  derivation failures stop the operation. Name public protocol labels clearly
+  and keep them separate from secret inputs.
+- Generate fresh credentials for ordinary test round trips. Use fixed inputs
+  only for exact-byte vectors, shared fixtures, or deliberate invalid inputs.
+  Identify these fixtures and keep them in dedicated test modules where practical.
+- Pass data to test drivers and subprocesses through structured arguments.
+  Keep fixture values out of executable strings.
+- For security-sensitive input, identify who can supply it, enforce size limits
+  before parsing, validate its shape before use, and test the relevant failure path.
+- Review security-sensitive diffs against these rules, run the relevant tests,
+  and report what was verified and what remains unverified.
+- Before release, review CodeQL results for the exact source commit. Resolve new
+  findings with a source fix or document the source evidence explaining why the
+  flagged behavior is safe. Keep production cryptography in scan coverage.
+
 ## Standard package publication
 
 Use the established `release-set.ps1 build` and `release-set.ps1 publish`
