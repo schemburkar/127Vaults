@@ -22,6 +22,10 @@ unsafe_code = "forbid"
 all = "warn"
 pedantic = "warn"
 
+[patch.crates-io]
+# GTK3 still requires glib 0.18. Backport the upstream RUSTSEC-2024-0429 fix.
+glib = { path = ".cargo/vendor/glib-0.18.5" }
+
 # Desktop dev uses native crypto, whereas the browser fixture is built with
 # --release. Keep application debugging while avoiding unoptimized password
 # derivation and curve arithmetic. The frozen KDF parameters are unchanged.
