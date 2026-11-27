@@ -11,10 +11,12 @@ test('read-only history remains available across modes while mutations do not',(
   const customer={kind:'personal-purchase',billingStatus:'active',billingMode:'test_mode'};
   assert.equal(reason({...base,customer,label:'Show payment history'}),'');
   assert.match(reason({...base,customer,label:'Rotate server renewal credential'}),/another billing mode/);
+  assert.match(reason({...base,customer,label:'Reconcile subscription'}),/another billing mode/);
   assert.match(reason({...base,customer:{...customer,billingMode:'live_mode'},label:'Recover interrupted checkout'}),/only for an interrupted checkout/);
 });
 test('checkout recovery needs a pending checkout and its actual session identifier',()=>{
   const customer={billingStatus:'checkout_pending',billingMode:'live_mode'};
   assert.match(reason({...base,customer,label:'Recover interrupted checkout',sessionId:''}),/session ID/);
   assert.equal(reason({...base,customer,label:'Recover interrupted checkout'}),'');
+  assert.equal(reason({...base,customer,label:'Reconcile subscription',sessionId:''}),'');
 });

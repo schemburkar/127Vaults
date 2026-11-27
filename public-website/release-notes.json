@@ -7,6 +7,7 @@
       "View your server license and expiry in Desktop and web Settings, and open Manage even when your vault is locked.",
       "Improve subscription, installation setup, and invitation management.",
       "Confirm eligible fully discounted Personal checkouts in localized currencies.",
+      "Reconcile subscriptions from Admin and view checkout status in Manage.",
       "Add support for a 15-day Personal trial through Manage when its one-time checkout product is configured.",
       "Harden operator sessions and update dependencies, including Linux Desktop fixes."
     ]

@@ -251,28 +251,9 @@ $('personal-buy').addEventListener('submit', event => {
 });
 async function account() {
   const serial=++accountSerial,route=new URLSearchParams(location.search);
-  let value = await portalApi('me');
-  if (route.get('trial') === 'return' && value.trialAction === 'continue') {
-    try {
-      await billingPost('personal-trial', { checkOnly: true });
-      value = await portalApi('me');
-    } catch {
-      // A delayed confirmation can still be retried from Plans.
-    }
-  }
-  if (route.get('billing') === 'return') {
-    const selected = route.get('request');
-    const pending = selected && value.requests.find(row => row.id === selected && row.state === 'purchase_pending'
-      && ['active', 'checkout_pending'].includes(row.billingStatus));
-    if (pending) {
-      try {
-        await billingPost(`${encodeURIComponent(pending.id)}/refresh`, {});
-        value = await portalApi('me');
-      } catch {
-        // A delayed confirmation should still show the order and its current status.
-      }
-    }
-  }
+  // Hosted return parameters may select an owned row for display. Fulfillment
+  // runs through provider webhooks and reconciliation, independent of page loads.
+  const value = await portalApi('me');
   if(serial!==accountSerial)return;document.body.dataset.manageState='account';$('manage-auth').hidden=true;
   $('portal-title').textContent=value.scope==='email'?'Your account':'Your invitation';$('portal-description').textContent='Subscriptions, server setup and account security, in one place.';
   $('portal-login').hidden = true; $('portal-account').hidden = false;

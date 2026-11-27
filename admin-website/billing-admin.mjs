@@ -85,6 +85,7 @@ if (isCoupons) {
   groups.offer = section('Subscription offers', 'Commercial subscription offers are created here. Personal customers subscribe through Manage. Creating an offer does not charge anyone; the customer must complete checkout.');
   groups.offer.append(plan.parentElement);
   groups.payments = section('Payment history', 'Read recorded payment events for the selected customer. This does not refresh or charge their subscription.');
+  groups.reconcile = section('Reconcile subscription', 'Verify the selected order with Dodo and apply the current billing status. This does not start a checkout or charge the customer.');
   groups.recovery = section('Recover a checkout', 'Use only when checkout was interrupted. Paste the actual Dodo checkout session ID for this customer.', true);
   groups.recovery.append(session.parentElement);
   groups.renewal = section('Replace the server renewal key', 'Invalidates the server’s old renewal credential and downloads a replacement. The server operator must install the new file.', true);
@@ -96,6 +97,7 @@ const definitions = {
   'Rotate server renewal credential': ['renewal', 'Replace renewal key'],
   'Recover interrupted checkout': ['recovery', 'Recover checkout'],
   'Show payment history': ['payments', 'View payment history'],
+  'Reconcile subscription': ['reconcile', 'Reconcile with Dodo'],
   'Generate coupon': ['create', 'Create coupon'],
   'Revoke coupon': ['revoke', 'Revoke coupon'],
 };
@@ -142,6 +144,22 @@ action('Show configured plans', async () => { const result = await api('plans');
 action('Check reconciliation', async () => { const result = await api('health'); status.textContent = result.reconciliation
   ? `Last check: ${new Date(result.reconciliation.checked_at).toLocaleString()}. Checked: ${result.reconciliation.checked}. Failed: ${result.reconciliation.failed}. Pending events: ${result.pendingEvents}.`
   : 'Reconciliation has not run yet.'; });
+action('Reconcile subscription', async () => {
+  const id = requestId.value;
+  const version = recordVersion;
+  const result = await api(`${id}/reconcile`, {});
+  const customer = customers.find(row => row.id === id);
+  if (customer) {
+    customer.billingStatus = result.status;
+    customer.billingDetails = { ...customer.billingDetails, paidThrough: result.paidThrough };
+    grid.setRows(customers);
+  }
+  if (version !== recordVersion) return;
+  requestId.dispatchEvent(new Event('change'));
+  status.textContent = result.accessReady && result.paidThrough
+    ? `Access confirmed through ${new Date(result.paidThrough).toLocaleDateString()}.`
+    : `Dodo status: ${result.status}. ${result.settlementReason ? 'Settlement: ' + result.settlementReason.replaceAll('_', ' ') + '.' : 'No access period confirmed.'}`;
+});
 action('Offer subscription', async () => {
   if (!/^[a-f0-9]{64}$/.test(requestId.value.trim())) throw Error('Choose an approved customer.');
   const result = await api(`${requestId.value.trim()}/offer`, { plan: plan.value.trim() });

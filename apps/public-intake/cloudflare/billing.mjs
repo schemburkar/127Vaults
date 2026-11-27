@@ -308,11 +308,20 @@ export async function handleBilling(request, env, store, release, now, operatorA
     fields(await input(request), []);
     await dodo(env, `/discounts/${revokeCoupon[1]}`, 'DELETE', undefined, fetcher); return { revoked: true };
   }
-  const match = /^\/api\/(?:access-admin\/)?billing\/([a-f0-9]{64})(?:\/(offer|checkout|portal|cancel|refresh|license|payments|recover-checkout|rotate-refresh|client-link))?$/.exec(path);
+  const match = /^\/api\/(?:access-admin\/)?billing\/([a-f0-9]{64})(?:\/(offer|checkout|portal|cancel|refresh|license|payments|reconcile|recover-checkout|rotate-refresh|client-link))?$/.exec(path);
   if (!match) reject(404, 'not_found');
   const [, id, action] = match;
+  if (action === 'reconcile' && !admin) reject(404, 'not_found');
   const row = await store.get(id), record = row?.trial;
   if (!record || record.state !== 'approved' || (['offer', 'checkout', 'license'].includes(action) && (record.replacementRequest || record.revocation))) reject(404, 'not_found');
+  if (action === 'reconcile' && request.method === 'POST') {
+    if (request.headers.get('origin') !== new URL(request.url).origin) reject(403, 'forbidden');
+    fields(await input(request), []);
+    const billing = record.billing;
+    if (billing?.mode !== config.mode || (!billing.sessionId && !billing.subscriptionId)) reject(409, 'reconciliation_unavailable');
+    await syncSubscription(env, store, row, release, now, fetcher);
+    return { ...publicStatus(row.trial.billing), accessReady: record.kind !== 'personal-purchase' || paidPersonalAccess(row.trial, now) };
+  }
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get('authorization') ?? '')?.[1];
   // Machine refresh credentials cannot open checkout or customer billing sessions.
   const machine = ['refresh','client-link'].includes(action) && record.billing?.refreshHash && await equal(await hash(bearer ?? ''), record.billing.refreshHash);

@@ -163,6 +163,31 @@ test('Dodo customer portal sessions can manage billing and cancel only their own
   await assert.rejects(handleBilling(request('portal'), env, f.store, f.release, now, false, provider), /access_required/);
 });
 
+test('Dodo operator reconciliation uses the stored checkout and refuses browser-supplied provider IDs', async t => {
+  const f = await billingFixture(t);
+  const row = await f.store.get(f.id);
+  await f.store.save(row, { ...row.trial, billing: { ...row.trial.billing, sessionId: 'cks_test', status: 'checkout_pending' } });
+  const route = `/api/access-admin/billing/${f.id}/reconcile`;
+  const paths = [];
+  const provider = async (url, options) => {
+    assert.equal(options.method, 'GET');
+    const { pathname } = new URL(url);
+    paths.push(pathname);
+    if (pathname === '/checkouts/cks_test') return Response.json({ subscription_id: 'sub_test' });
+    assert.equal(pathname, '/subscriptions/sub_test');
+    return Response.json(f.sub);
+  };
+  const call = (request, authorized) => handleBilling(request, f.env, f.store, f.release, Date.now(), authorized, provider);
+  await assert.rejects(call(f.req(route, {}), false), /access_required/);
+  await assert.rejects(call(f.req(route, { sessionId: 'cks_other' }), true), /invalid_request/);
+  await assert.rejects(call(f.req(route.replace('/access-admin', ''), {}), false), /not_found/);
+  assert.equal(paths.length, 0);
+  const result = await call(f.req(route, {}), true);
+  assert.equal(result.status, 'active');
+  assert.equal(result.paidThrough, f.sub.next_billing_date);
+  assert.deepEqual(paths, ['/checkouts/cks_test', '/subscriptions/sub_test']);
+});
+
 test('Cloud-only control owners can use manual Manage sign-in and see only their Cloud directory', async t => {
   const f = await billingFixture(t);
   const now = Date.now();
