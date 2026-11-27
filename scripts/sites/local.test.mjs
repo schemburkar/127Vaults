@@ -98,25 +98,38 @@ test('local HTTP listeners bind only loopback and enforce their own Host, pages 
   const dir = await mkdtemp(join(tmpdir(), '127v-site-http-')); let local;
   t.after(async () => { await local?.close(); await rm(dir, { recursive: true, force: true }); });
   local = await createLocalSites({ directory: dir, origins }); await local.listen();
-  const home = await fetch(origins.admin); assert.equal(home.status, 200); assert.ok((await home.text()).includes('127Vaults Admin'));
+  // Connect to the listener's actual bind address while preserving each
+  // virtual host. Windows name resolution can send *.localhost to IPv6.
+  const request = (surface, path = '/', { method = 'GET', headers = {}, body } = {}) => {
+    const url = new URL(origins[surface]);
+    return new Promise((resolve, reject) => {
+      const req = httpRequest({ hostname: '127.0.0.1', port: url.port, path, method,
+        headers: { Host: url.host, ...headers } }, res => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('error', reject);
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => req.destroy(new Error('Loopback HTTP request timed out')));
+      req.end(body);
+    });
+  };
+  const home = await request('admin'); assert.equal(home.status, 200); assert.match(home.body, /127Vaults Admin/);
   for (const surface of ['public', 'customer']) {
-    const wrongSurface = await new Promise((done, reject) => {
-      const req = httpRequest(origins.admin, { headers: { Host: new URL(origins[surface]).host } }, res => { res.resume(); res.on('end', () => done(res.statusCode)); });
-      req.on('error', reject); req.end();
-    }); assert.equal(wrongSurface, 403);
+    const wrongSurface = await request('admin', '/', { headers: { Host: new URL(origins[surface]).host } });
+    assert.equal(wrongSurface.status, 403);
   }
-  const wrongHost = await new Promise((done, reject) => {
-    const req = httpRequest(origins.public, { headers: { Host: 'malicious.example.com' } }, res => { res.resume(); res.on('end', () => done(res.statusCode)); });
-    req.on('error', reject); req.end();
-  }); assert.equal(wrongHost, 403);
-  assert.equal((await fetch(origins.public + '/access-admin')).status, 404);
-  assert.equal((await fetch(origins.admin + '/trial')).status, 404);
-  assert.equal((await fetch(origins.customer + '/access-admin')).status, 404);
+  const wrongHost = await request('public', '/', { headers: { Host: 'malicious.example.com' } });
+  assert.equal(wrongHost.status, 403);
+  assert.equal((await request('public', '/access-admin')).status, 404);
+  assert.equal((await request('admin', '/trial')).status, 404);
+  assert.equal((await request('customer', '/access-admin')).status, 404);
   const input = { email: 'http@example.com', plan: 'personal', requestedSeats: 2, consent: true, organization: '', website: '' };
-  const submitted = await fetch(origins.public + '/api/waitlist', { method: 'POST', headers: { Origin: origins.public, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-  assert.equal(submitted.status, 202, await submitted.clone().text());
-  const inbox = await fetch(origins.admin + '/api/access-admin/requests', { headers: { Authorization: `Bearer ${local.operatorToken}` } });
-  assert.equal(inbox.status, 200); assert.equal((await inbox.json()).requests[0].email, input.email);
+  const submitted = await request('public', '/api/waitlist', { method: 'POST', headers: { Origin: origins.public, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  assert.equal(submitted.status, 202, submitted.body);
+  const inbox = await request('admin', '/api/access-admin/requests', { headers: { Authorization: `Bearer ${local.operatorToken}` } });
+  assert.equal(inbox.status, 200); assert.equal(JSON.parse(inbox.body).requests[0].email, input.email);
 });
 test('local public request reaches the private admin; public and customer routes reject all operator capabilities', async t => {
   const dir = await mkdtemp(join(tmpdir(), '127v-local-sites-')); let resumed;
