@@ -25,6 +25,7 @@ jobs:
           rustup show
       - name: Check native Keychain and shared client code
         run: |
+          export TMPDIR="$(cd -- "$TMPDIR" && pwd -P)"
           cargo check --locked -p vaults-cli
           cargo test --locked -p vaults-cli --lib
           pnpm --filter @127vaults/desktop check

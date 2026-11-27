@@ -319,14 +319,16 @@ mod tests {
     }
     #[test]
     fn profile_import_requires_explicit_production_classification() {
-        let directory = std::env::temp_dir().join(format!(
-            "vaults-import-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let directory = fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!(
+                "vaults-import-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
         fs::create_dir_all(&directory).unwrap();
         let production = Namespace::parse("production", None).unwrap();
         assert!(!production.can_import_profile(&directory));

@@ -387,7 +387,9 @@ mod tests {
     }
     #[test]
     fn discovery_requires_matching_bundle_and_project() {
-        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let root = fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(uuid::Uuid::new_v4().to_string());
         fs::create_dir(&root).unwrap();
         fs::write(
             root.join(".env"),
