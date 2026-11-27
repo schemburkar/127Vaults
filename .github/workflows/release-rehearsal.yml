@@ -12,7 +12,12 @@ concurrency:
 
 jobs:
   rehearse:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'schemburkar/127Vaults' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'schemburkar' &&
+      github.triggering_actor == 'schemburkar'
     runs-on: [self-hosted, Windows, X64, vaults-release]
     timeout-minutes: 720
     steps:
