@@ -328,7 +328,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
     await store.save(row, { ...record, billing: { ...record.billing,
       customerRecheck: { count: (record.billing.customerRecheck?.count ?? 0) + 1, at: now } } });
     await syncSubscription(env, store, row, release, now, fetcher);
-    return publicStatus(row.trial.billing);
+    return { ...publicStatus(row.trial.billing), accessReady: paidPersonalAccess(row.trial, now) };
   }
   if (action === 'reconcile' && request.method === 'POST') {
     if (request.headers.get('origin') !== new URL(request.url).origin) reject(403, 'forbidden');

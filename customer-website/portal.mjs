@@ -230,7 +230,7 @@ function renderOrders(value) {
             try {
               const result = await billingPost(`${encodeURIComponent(row.id)}/recheck`, {});
               await account();
-              $('portal-status').textContent = result.paidThrough
+              $('portal-status').textContent = result.accessReady
                 ? 'Subscription confirmed.' : 'Dodo has not confirmed access yet.';
             } catch (error) {
               await account();
