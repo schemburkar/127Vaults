@@ -22,7 +22,8 @@ function Invoke-GitHubJson([string[]]$Arguments) {
     } finally { $env:GH_DEBUG = $previousDebug }
 }
 $repo = Invoke-GitHubJson @('repo','view','--json','nameWithOwner,isPrivate,viewerPermission,url')
-if (-not $repo.isPrivate -or $repo.viewerPermission -ne 'ADMIN') { throw 'Runner registration requires administration access to this private repository.' }
+if ($repo.viewerPermission -ne 'ADMIN') { throw 'Runner management requires repository administration access.' }
+if ($Action -eq 'register' -and -not $repo.isPrivate) { throw 'New runner registration requires a private repository.' }
 if (-not $RunnerDirectory) { $RunnerDirectory = Join-Path (Split-Path $repository) '127Vaults-Runner' }
 $runnerRoot = [IO.Path]::GetFullPath($RunnerDirectory).TrimEnd('\')
 if ($runnerRoot -eq [IO.Path]::GetPathRoot($runnerRoot).TrimEnd('\') -or $runnerRoot -eq $repository -or $repository.StartsWith("$runnerRoot\",[StringComparison]::OrdinalIgnoreCase) -or $runnerRoot.StartsWith("$repository\",[StringComparison]::OrdinalIgnoreCase)) { throw 'Choose a dedicated runner directory outside the checkout.' }
@@ -79,6 +80,13 @@ if ($Action -eq 'register') {
 }
 if ($Action -in @('register','start')) {
     Assert-LocalRegistration
+    if (-not $repo.isPrivate) {
+        $registered = @(Get-RegisteredRunner)
+        $localSettings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+        if ($registered.Count -ne 1 -or $localSettings.agentId -ne $registered[0].id -or 'vaults-release' -notin $registered[0].labels.name) {
+            throw 'The existing local runner must match the GitHub registration and release label.'
+        }
+    }
     foreach ($tool in @('pwsh','node','pnpm','git','cargo','podman','wsl')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Required release tool is missing from this account's PATH: $tool" }
     }
