@@ -562,27 +562,28 @@ mod tests {
 
     #[test]
     fn split_production_boundary_and_context_tamper() {
+        let account_secret = crate::random_test_bytes();
+        let password = crate::random_test_bytes();
         let setup = server_setup().unwrap();
         let mut binding = binding();
         binding.server_public_key = server_public_key(&setup).unwrap();
-        let registration =
-            client_registration_start(&[7; 32], b"fictitious password only").unwrap();
+        let registration = client_registration_start(&account_secret, &password).unwrap();
         let response = server_registration_start(&setup, &registration.message, binding).unwrap();
         let upload = client_registration_finish(
             &registration.state,
-            &[7; 32],
-            b"fictitious password only",
+            &account_secret,
+            &password,
             &response,
             binding,
         )
         .unwrap();
         let record = server_registration_finish(&upload).unwrap();
-        let login = client_login_start(&[7; 32], b"fictitious password only").unwrap();
+        let login = client_login_start(&account_secret, &password).unwrap();
         let challenge = server_login_start(&setup, Some(&record), &login.message, binding).unwrap();
         let finish = client_login_finish(
             &login.state,
-            &[7; 32],
-            b"fictitious password only",
+            &account_secret,
+            &password,
             &challenge.message,
             binding,
         )

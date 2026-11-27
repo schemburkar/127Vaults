@@ -1098,23 +1098,27 @@ mod tests {
     }
     #[test]
     fn credential_rotation_rewraps_same_root_and_preserves_old_vaults() {
+        let old_password = crate::random_test_bytes();
+        let old_secret = crate::random_test_bytes();
+        let new_password = crate::random_test_bytes();
+        let new_secret = crate::random_test_bytes();
         let mut core = Core::new();
         let original = core
-            .create_root(&template(1), b"old fictitious password", &[9; 32])
+            .create_root(&template(1), &old_password, &old_secret)
             .unwrap();
         let root = original.handle.unwrap();
         let vault = core.create_vault(root, &template(2)).unwrap();
         let mut next = template(1);
         next[69..77].copy_from_slice(&2u64.to_be_bytes());
         let wrapped = core
-            .rewrap_root(root, &next, b"new fictitious password", &[8; 32])
+            .rewrap_root(root, &next, &new_password, &new_secret)
             .unwrap();
         assert!(
             core.unwrap_root(
                 &wrapped.envelope,
                 &wrapped.context,
-                b"old fictitious password",
-                &[9; 32]
+                &old_password,
+                &old_secret
             )
             .is_err()
         );
@@ -1122,8 +1126,8 @@ mod tests {
             .unwrap_root(
                 &wrapped.envelope,
                 &wrapped.context,
-                b"new fictitious password",
-                &[8; 32],
+                &new_password,
+                &new_secret,
             )
             .unwrap();
         assert!(
@@ -1131,12 +1135,12 @@ mod tests {
                 .is_ok()
         );
         assert!(
-            core.rewrap_root(root, &template(1), b"new fictitious password", &[8; 32])
+            core.rewrap_root(root, &template(1), &new_password, &new_secret)
                 .is_err()
         );
         next[1..17].copy_from_slice(&uuid(9));
         assert!(
-            core.rewrap_root(root, &next, b"new fictitious password", &[8; 32])
+            core.rewrap_root(root, &next, &new_password, &new_secret)
                 .is_err()
         );
     }
@@ -1163,8 +1167,12 @@ mod tests {
     }
     #[test]
     fn hierarchy_round_trip_and_rejections() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut c = Core::new();
-        let r = c.create_root(&template(1), b"password", &[9; 32]).unwrap();
+        let r = c
+            .create_root(&template(1), &password, &account_secret)
+            .unwrap();
         let rh = r.handle.unwrap();
         let mut foreign = Core::new();
         assert_eq!(
@@ -1199,9 +1207,11 @@ mod tests {
     }
     #[test]
     fn bounded_creation_budget_does_not_invalidate_existing_ciphertext() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut core = Core::new();
         let root = core
-            .create_root(&template(1), b"password", &[9; 32])
+            .create_root(&template(1), &password, &account_secret)
             .unwrap()
             .handle
             .unwrap();
@@ -1231,15 +1241,19 @@ mod tests {
     }
     #[test]
     fn private_publication_composes_exact_records() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut c = Core::new();
-        let r = c.create_root(&template(1), b"password", &[9; 32]).unwrap();
+        let r = c
+            .create_root(&template(1), &password, &account_secret)
+            .unwrap();
         let rh = r.handle.unwrap();
         let empty = c.create_empty_directory(rh).unwrap();
         let made = c.create_private_vault(rh, &empty).unwrap();
         let vault_id: [u8; 16] = made.vault.context[33..49].try_into().unwrap();
         c.lock();
         let reopened_root = c
-            .unwrap_root(&r.envelope, &r.context, b"password", &[9; 32])
+            .unwrap_root(&r.envelope, &r.context, &password, &account_secret)
             .unwrap();
         let reopened = c
             .open_private_vault(
@@ -1309,9 +1323,11 @@ mod tests {
     }
     #[test]
     fn private_item_deletion_authenticates_and_preserves_siblings() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut core = Core::new();
         let root = core
-            .create_root(&template(1), b"password", &[9; 32])
+            .create_root(&template(1), &password, &account_secret)
             .unwrap()
             .handle
             .unwrap();
@@ -1366,9 +1382,11 @@ mod tests {
     }
     #[test]
     fn private_directory_keeps_existing_vault_when_appending() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut core = Core::new();
         let root = core
-            .create_root(&template(1), b"password", &[9; 32])
+            .create_root(&template(1), &password, &account_secret)
             .unwrap();
         let handle = root.handle.unwrap();
         let empty = core.create_empty_directory(handle).unwrap();
@@ -1388,9 +1406,11 @@ mod tests {
     }
     #[test]
     fn private_vault_capacity_refuses_without_invalidating_existing_vaults() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut core = Core::new();
         let root = core
-            .create_root(&template(1), b"password", &[9; 32])
+            .create_root(&template(1), &password, &account_secret)
             .unwrap();
         let handle = root.handle.unwrap();
         let mut directory = core.create_empty_directory(handle).unwrap();
@@ -1414,9 +1434,11 @@ mod tests {
     }
     #[test]
     fn account_settings_are_root_scoped_and_authenticated() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut core = Core::new();
         let root = core
-            .create_root(&template(1), b"password", &[9; 32])
+            .create_root(&template(1), &password, &account_secret)
             .unwrap();
         let handle = root.handle.unwrap();
         let sealed = core
@@ -1443,17 +1465,21 @@ mod tests {
     }
     #[test]
     fn parser_bounds_and_wrong_secret() {
+        let password = crate::random_test_bytes();
+        let account_secret = crate::random_test_bytes();
         let mut c = Core::new();
-        let r = c.create_root(&template(1), b"password", &[9; 32]).unwrap();
+        let r = c
+            .create_root(&template(1), &password, &account_secret)
+            .unwrap();
         assert_eq!(
-            c.unwrap_root(&r.envelope, &r.context, b"wrong", &[9; 32])
+            c.unwrap_root(&r.envelope, &r.context, b"wrong", &account_secret)
                 .unwrap_err(),
             Error::AuthenticationFailed
         );
         let mut trailing = r.envelope.clone();
         trailing.push(0);
         assert_eq!(
-            c.unwrap_root(&trailing, &r.context, b"password", &[9; 32])
+            c.unwrap_root(&trailing, &r.context, &password, &account_secret)
                 .unwrap_err(),
             Error::InvalidInput
         );
@@ -1461,7 +1487,7 @@ mod tests {
             let mut unknown = r.envelope.clone();
             unknown[offset] ^= 1;
             assert_eq!(
-                c.unwrap_root(&unknown, &r.context, b"password", &[9; 32])
+                c.unwrap_root(&unknown, &r.context, &password, &account_secret)
                     .unwrap_err(),
                 Error::UnsupportedFormat
             );

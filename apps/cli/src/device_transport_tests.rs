@@ -2,6 +2,7 @@
 //! clients still construct HTTPS-only, pinned-CA transports during unlock.
 use super::*;
 use ed25519_dalek::{Signature, Verifier};
+use rand_core::{OsRng, RngCore};
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
@@ -16,6 +17,7 @@ const ENROLLMENT: &str = "ef333333-3333-4333-8333-333333333333";
 #[test]
 fn cli_browsing_reads_encrypted_offline_indexes_without_opening_item_bodies() {
     use crate::list_output::{ListFormat, ListOutputArgs, items, vaults};
+    let password = uuid::Uuid::new_v4().to_string();
     let (mut session, vault, item) = session_with_editable_item("http://127.0.0.1:1");
     session.online = false;
     let fields = vec![
@@ -29,7 +31,7 @@ fn cli_browsing_reads_encrypted_offline_indexes_without_opening_item_bodies() {
             "Travel network",
             "https://router.example",
             "PRIVATE-USERNAME",
-            "PRIVATE-PASSWORD",
+            &password,
             &fields,
         )
         .unwrap();
@@ -62,7 +64,7 @@ fn cli_browsing_reads_encrypted_offline_indexes_without_opening_item_bodies() {
         assert!(result.contains(&code));
         assert!(result.contains(&vault_code));
         assert!(!result.contains("PRIVATE-USERNAME"));
-        assert!(!result.contains("PRIVATE-PASSWORD"));
+        assert!(!result.contains(&password));
         assert!(!result.contains("fixture-password"));
         assert!(
             vaults(&session.vault_list().unwrap(), &output)
@@ -79,7 +81,7 @@ fn cli_browsing_reads_encrypted_offline_indexes_without_opening_item_bodies() {
     session.replica_store.commit(&before).unwrap();
     assert_eq!(
         session.item_get(&vault, &code, Some("password")).unwrap(),
-        "PRIVATE-PASSWORD"
+        password
     );
     let mut retired = before;
     retired.retired = true;
@@ -822,8 +824,12 @@ pub(crate) fn session(origin: &str) -> Session {
     template[65..69].copy_from_slice(&1u32.to_be_bytes());
     template[69..77].copy_from_slice(&1u64.to_be_bytes());
     let mut core = Core::new();
+    let mut password = [0; 32];
+    let mut account_secret = [0; 32];
+    OsRng.fill_bytes(&mut password);
+    OsRng.fill_bytes(&mut account_secret);
     let root = core
-        .create_root(&template, b"fixture-password", &[9; 32])
+        .create_root(&template, &password, &account_secret)
         .unwrap()
         .handle
         .unwrap();

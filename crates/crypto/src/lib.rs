@@ -6,6 +6,13 @@ pub mod opaque;
 pub mod private_vault;
 pub mod secrets;
 
+#[cfg(test)]
+fn random_test_bytes() -> [u8; 32] {
+    let mut bytes = [0; 32];
+    getrandom::fill(&mut bytes).expect("test entropy");
+    bytes
+}
+
 /// Classification of a cryptographic format identifier.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CryptoFormatStatus {

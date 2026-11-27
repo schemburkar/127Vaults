@@ -410,7 +410,7 @@ mod tests {
     }
     #[test]
     fn capacity_boundaries_accept_ten_vaults_and_one_hundred_items() {
-        let key = [7; 32];
+        let key = crate::random_test_bytes();
         let mut directory = Directory {
             tenant: id(1),
             account: id(2),
@@ -470,7 +470,7 @@ mod tests {
     }
     #[test]
     fn exact_records_and_tamper() {
-        let k = [7; 32];
+        let k = crate::random_test_bytes();
         let d = Directory {
             tenant: id(1),
             account: id(2),
