@@ -33,9 +33,11 @@ async function licenseHarness() {
   const source = await readFile(new URL('../mvp-client.mjs', import.meta.url), 'utf8');
   const code = source.slice(source.indexOf('let stopLicenseStatus ='), source.indexOf('async function login() {'));
   const calls = [], events = new Map(), timers = new Map();
-  const elements = { vault: { hidden: false }, state: { textContent: 'Unlocked' } };
+  const elements = { vault: { hidden: false }, state: { textContent: 'Unlocked' },
+    'profile-license': {}, 'profile-license-status': {}, 'vault-license-warning': {}, 'login-status': {} };
   const context = vm.createContext({ root: {}, serverAuthenticated: true, sessionGeneration: 1,
     document: { hidden: false }, $: id => elements[id],
+    status: (id, message) => { elements[id].textContent = message; }, safeError: error => error.message,
     refreshEntitlement: () => new Promise(resolve => calls.push(resolve)),
     checkLicense: () => ({ mode: 'active' }), networkUnavailable: () => false,
     lock: async () => { context.root = null; elements.vault.hidden = true; context.sessionGeneration++; },
@@ -52,10 +54,13 @@ test('unlocked web session refreshes license expiry and renewal without duplicat
   h.calls[0]({ mode: 'active' }); await new Promise(setImmediate);
   h.timers.get(1)(); h.calls[1]({ mode: 'read-only' }); await new Promise(setImmediate);
   assert.match(h.elements.state.textContent, /Expired:.*writes are blocked/);
+  assert.equal(h.elements['vault-license-warning'].hidden, false);
+  assert.match(h.elements['profile-license-status'].textContent, /Read-only/);
   h.context.document.hidden = true; h.timers.get(1)(); assert.equal(h.calls.length, 2);
   h.context.document.hidden = false;
   const focused = h.events.get('focus')(); h.calls[2]({ mode: 'active', expiresAt: '2030-01-01' }); await focused;
   assert.match(h.elements.state.textContent, /Active until 2030-01-01/);
+  assert.equal(h.elements['vault-license-warning'].hidden, true);
   h.stop(); assert.equal(h.timers.size, 0); assert.equal(h.events.size, 0);
 });
 
@@ -68,6 +73,16 @@ test('web discards an old license response after locking or switching sessions',
   h.stop();
   vm.runInContext('serverAuthenticated = false; monitorLicenseStatus()', h.context);
   assert.equal(h.calls.length, 2); h.stop();
+});
+
+test('web shows the license error on the sign-in screen when verification fails', async () => {
+  const h = await licenseHarness();
+  h.calls[0]({ mode: 'active' }); await new Promise(setImmediate);
+  h.context.refreshEntitlement = async () => { throw Error('The license has expired.'); };
+  await h.events.get('focus')();
+  assert.equal(h.elements.vault.hidden, true);
+  assert.equal(h.elements['login-status'].textContent, 'The license has expired.');
+  h.stop();
 });
 
 async function deletionHarness(confirm = true) {
