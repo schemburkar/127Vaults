@@ -1,7 +1,7 @@
 import { retrieveSettlement } from './settlement-provider.mjs';
 import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { issueClientLink } from './client-downloads.mjs';
-import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation } from './dodo.mjs';
+import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation, customerRecheckStatus } from './dodo.mjs';
 import { equal, hash, token, signEnvelope, from64, seal, unseal, limitIdentity } from './crypto.mjs';
 import { customerCanAccess, customerPrincipal } from './customer-portal.mjs';
 import { serverMajor } from './catalogue.mjs';
@@ -308,12 +308,28 @@ export async function handleBilling(request, env, store, release, now, operatorA
     fields(await input(request), []);
     await dodo(env, `/discounts/${revokeCoupon[1]}`, 'DELETE', undefined, fetcher); return { revoked: true };
   }
-  const match = /^\/api\/(?:access-admin\/)?billing\/([a-f0-9]{64})(?:\/(offer|checkout|portal|cancel|refresh|license|payments|reconcile|recover-checkout|rotate-refresh|client-link))?$/.exec(path);
+  const match = /^\/api\/(?:access-admin\/)?billing\/([a-f0-9]{64})(?:\/(offer|checkout|portal|cancel|refresh|license|payments|recheck|reconcile|recover-checkout|rotate-refresh|client-link))?$/.exec(path);
   if (!match) reject(404, 'not_found');
   const [, id, action] = match;
   if (action === 'reconcile' && !admin) reject(404, 'not_found');
+  if (action === 'recheck' && admin) reject(404, 'not_found');
   const row = await store.get(id), record = row?.trial;
   if (!record || record.state !== 'approved' || (['offer', 'checkout', 'license'].includes(action) && (record.replacementRequest || record.revocation))) reject(404, 'not_found');
+  if (action === 'recheck' && request.method === 'POST') {
+    if (request.headers.get('origin') !== new URL(request.url).origin) reject(403, 'forbidden');
+    const principal = await customerPrincipal(request, env, store, now);
+    if (principal?.kind !== 'email' || principal.email !== row.contact?.email?.trim().toLowerCase()) reject(404, 'not_found');
+    fields(await input(request), []);
+    const recheck = customerRecheckStatus(record, config.mode, now);
+    if (!recheck || recheck.remaining <= 0) reject(409, 'recheck_unavailable');
+    if (now < recheck.availableAt) reject(429, 'recheck_wait');
+    // Reserve the attempt before provider I/O so retries and concurrent tabs
+    // share the same limit, even when verification fails or times out.
+    await store.save(row, { ...record, billing: { ...record.billing,
+      customerRecheck: { count: (record.billing.customerRecheck?.count ?? 0) + 1, at: now } } });
+    await syncSubscription(env, store, row, release, now, fetcher);
+    return publicStatus(row.trial.billing);
+  }
   if (action === 'reconcile' && request.method === 'POST') {
     if (request.headers.get('origin') !== new URL(request.url).origin) reject(403, 'forbidden');
     fields(await input(request), []);
@@ -325,6 +341,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get('authorization') ?? '')?.[1];
   // Machine refresh credentials cannot open checkout or customer billing sessions.
   const machine = ['refresh','client-link'].includes(action) && record.billing?.refreshHash && await equal(await hash(bearer ?? ''), record.billing.refreshHash);
+  if (action === 'refresh' && record.kind === 'personal-purchase' && !admin && !machine) reject(403, 'access_required');
   if (action === 'refresh' && request.method === 'POST' && !request.headers.has('origin') && !machine) reject(401, 'access_required');
   const portalAuthorized = !admin && !machine && await customerCanAccess(request, env, store, row, now, 'billing');
   if (!admin && !machine && !portalAuthorized && (!bearer || !await equal(await hash(bearer), record.tokenHash)

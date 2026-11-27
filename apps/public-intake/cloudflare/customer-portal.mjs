@@ -1,5 +1,5 @@
 import { encryptionKey, hash, equal, token, seal, unseal, limitIdentity } from './crypto.mjs';
-import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation, billingConfig } from './dodo.mjs';
+import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation, billingConfig, customerRecheckStatus } from './dodo.mjs';
 import { personalTrialId } from './personal-trial.mjs';
 import { personalTrialAccess } from './client-downloads.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
@@ -199,6 +199,7 @@ export async function handleCustomerPortal(request, env, store, now) {
         setupAvailable: row.trial?.state === 'approved' && personalTrialAccess(row.trial, env, now),
         billingMode: row.trial?.billing?.mode ?? null, createdAt: new Date(row.receivedAt).toISOString(),
         checkoutStartedAt: row.trial?.billing?.checkoutStartedAt ?? null,
+        customerRecheck: principal.kind === 'email' ? customerRecheckStatus(row.trial, env.DODO_MODE, now) : null,
         installationId: row.trial?.installationId ?? null, expiresAt: row.trial?.expiresAt ?? null,
         billingStatus: row.trial?.billing?.status ?? null, paidThrough: row.trial?.billing?.paidThrough ?? null,
         settlement:row.trial?.billing?.settlement ? {state:row.trial.billing.settlement.state,amount:row.trial.billing.settlement.amount,currency:row.trial.billing.settlement.currency,normalAmount:row.trial.billing.settlement.normalAmount??null,discountAmount:row.trial.billing.settlement.discountAmount??null} : null,

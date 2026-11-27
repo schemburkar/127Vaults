@@ -208,6 +208,39 @@ function renderOrders(value) {
       if (value.canBuyPersonal) actions.append(subscribe);
     }
     actions.append(orderLink(row,row.billingStatus?'Manage subscription':'View access details'));
+    if (row.customerRecheck) {
+      const { remaining, availableAt } = row.customerRecheck;
+      if (remaining <= 0) {
+        actions.append(element('small', 'Both rechecks used. Contact support if access is still pending.'));
+      } else {
+        const recheck = element('button', 'Recheck payment', 'button secondary');
+        const note = element('small');
+        recheck.type = 'button';
+        const updateAvailability = () => {
+          recheck.disabled = Date.now() < availableAt;
+          note.textContent = recheck.disabled
+            ? `Available at ${new Date(availableAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}.`
+            : `${remaining} of 2 rechecks remaining.`;
+        };
+        updateAvailability();
+        if (recheck.disabled) window.setTimeout(updateAvailability, availableAt - Date.now());
+        recheck.addEventListener('click', () => {
+          recheck.disabled = true;
+          run(async () => {
+            try {
+              const result = await billingPost(`${encodeURIComponent(row.id)}/recheck`, {});
+              await account();
+              $('portal-status').textContent = result.paidThrough
+                ? 'Subscription confirmed.' : 'Dodo has not confirmed access yet.';
+            } catch (error) {
+              await account();
+              throw error;
+            }
+          });
+        });
+        actions.append(recheck, note);
+      }
+    }
     action.append(actions);
     entry.append(name, kind, (()=>{const td=element('td');td.dataset.label='Status';td.append(element('span',orderStatus(row),'portal-state '+(row.billingStatus==='active'&&row.state==='approved'?'success':'')));return td;})(), dates, action);
     body.append(entry);
@@ -217,7 +250,10 @@ async function billingPost(path, value) {
   const response = await fetch('/api/billing/' + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
   });
-  if (!response.ok) throw Error('Checkout could not be opened. Check your order below or contact support.');
+  if (!response.ok) {
+    if (path.endsWith('/recheck')) throw Error('Recheck could not complete. See the current availability on your order.');
+    throw Error('Checkout could not be opened. Check your order below or contact support.');
+  }
   return response.json();
 }
 function openCheckout(checkoutUrl) {

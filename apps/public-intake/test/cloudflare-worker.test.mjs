@@ -186,6 +186,9 @@ test('Dodo operator reconciliation uses the stored checkout and refuses browser-
   assert.equal(result.status, 'active');
   assert.equal(result.paidThrough, f.sub.next_billing_date);
   assert.deepEqual(paths, ['/checkouts/cks_test', '/subscriptions/sub_test']);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    assert.equal((await call(f.req(route, {}), true)).status, 'active');
+  }
 });
 
 test('Cloud-only control owners can use manual Manage sign-in and see only their Cloud directory', async t => {
@@ -508,8 +511,26 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
   assert.equal((await store.get(requestId)).trial.billing.status, 'checkout_pending');
   await deliver('msg_active', 'subscription.active', { subscription_id: 'sub_personal', metadata });
   assert.equal((await f.get(`${trial}/artifacts/server`, null, cookie)).status, 403);
+  const recheck = `/api/billing/${requestId}/recheck`;
+  assert.equal((await post(`/api/billing/${requestId}/refresh`, {})).status, 403);
+  assert.equal((await post(recheck, {})).status, 429);
+  let pendingRow = await store.get(requestId);
+  await store.save(pendingRow, { ...pendingRow.trial, billing: {
+    ...pendingRow.trial.billing, checkoutStartedAt: new Date(Date.now() - 300100).toISOString(),
+  } });
+  const checks = await Promise.all([post(recheck, {}), post(recheck, {})]);
+  assert.equal(checks.filter(response => response.ok).length, 1);
+  assert.equal((await post(recheck, {})).status, 429);
+  pendingRow = await store.get(requestId);
+  assert.equal(pendingRow.trial.billing.customerRecheck.count, 1);
+  await store.save(pendingRow, { ...pendingRow.trial, billing: { ...pendingRow.trial.billing,
+    customerRecheck: { count: 1, at: Date.now() - 300100 },
+  } });
+  assert.equal((await post(recheck, {})).status, 200);
+  assert.equal((await post(recheck, {})).status, 409);
+  assert.equal((await store.get(requestId)).trial.billing.customerRecheck.count, 2);
   providerPaid = true;
-  assert.equal((await post(`/api/billing/${requestId}/refresh`, {})).status, 200);
+  await deliver('msg_paid', 'payment.succeeded', { subscription_id: 'sub_personal', payment_id: 'pay_personal', metadata });
   assert.equal(await (await f.get(`${trial}/artifacts/server`, null, cookie)).text(), f.archive);
   if (conversion) assert.equal((await post(`${trial}/activate`, { installationId: randomUUID() })).status, 409);
   const activated = await post(`${trial}/activate`, { installationId });
@@ -537,7 +558,9 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
   assert.equal((await post(`/api/billing/${requestId}/checkout`, { acceptTerms: true })).status, 409);
   assert.equal(checkoutCalls, 2);
   providerStatus = conversion === 'development' ? 'expired' : conversion === 'trial' ? 'failed' : 'cancelled';
-  await post(`/api/billing/${requestId}/refresh`, {});
+  await f.mf.dispatchFetch(refresh.refreshUrl, { method: 'POST',
+    headers: { Authorization: `Bearer ${refresh.refreshToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ installationId }) });
   assert.equal((await (await f.get(`/api/billing/${requestId}`, null, cookie)).json()).canResubscribe, true);
   assert.equal((await post(`/api/billing/${requestId}/checkout`, { acceptTerms: true })).status, 200);
   assert.equal(checkoutCalls, 3);
@@ -552,7 +575,7 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
     signingKey: await issuer(f.bindings.TRIAL_ISSUER_PRIVATE_KEY, f.publicKeys.trial),
   }), Date.now(), provider, 'sub_personal3', payment);
   assert.notEqual(row.trial.license, file);
-  assert.equal((await post(`/api/billing/${requestId}/refresh`, {})).status, 200);
+  assert.equal((await post(`/api/billing/${requestId}/refresh`, {})).status, 403);
   const renewed = await store.get(requestId);
   assert.equal(verifyLicenseFile(renewed.trial.license, f.publicKeys, installationId).sequence, license.sequence + 1);
   assert.ok(row.trial.billing.refreshHash);

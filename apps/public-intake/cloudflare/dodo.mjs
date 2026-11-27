@@ -8,6 +8,16 @@ export class BillingError extends Error {
 export const reject = (status, code) => { throw new BillingError(status, code); };
 export class DodoError extends Error { constructor(status) { super('Billing provider unavailable'); this.providerStatus = status; } }
 export const paidPersonalAccess = settledPersonalAccess;
+export function customerRecheckStatus(record, mode, now) {
+  const billing = record?.billing;
+  if (record?.kind !== 'personal-purchase' || record.state !== 'approved' || billing?.mode !== mode
+    || billing.suspended || record.revocation || (!billing.sessionId && !billing.subscriptionId)
+    || !['checkout_pending', 'active'].includes(billing.status) || paidPersonalAccess(record, now)) return null;
+  const started = Date.parse(billing.checkoutStartedAt);
+  if (!Number.isFinite(started)) return null;
+  const last = billing.customerRecheck?.at ?? started;
+  return { remaining: 2 - (billing.customerRecheck?.count ?? 0), availableAt: last + 300000 };
+}
 export function convertibleInstallation(record, plan) {
   return Boolean(plan && record?.state === 'approved' && [undefined, 'trial', 'development', 'personal-trial'].includes(record.kind)
     && (record.kind !== 'personal-trial' || record.trialCheckout?.mode === 'live_mode')
