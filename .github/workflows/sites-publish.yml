@@ -16,6 +16,7 @@ jobs:
       github.actor == 'schemburkar' &&
       github.triggering_actor == 'schemburkar'
     runs-on: [self-hosted, Windows, X64, vaults-release]
+    environment: production
     timeout-minutes: 60
     steps:
       - name: Test, back up, deploy and verify websites

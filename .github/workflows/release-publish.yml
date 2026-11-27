@@ -21,6 +21,7 @@ jobs:
       github.actor == 'schemburkar' &&
       github.triggering_actor == 'schemburkar'
     runs-on: [self-hosted, Windows, X64, vaults-release]
+    environment: production
     timeout-minutes: 720
     permissions:
       contents: write
