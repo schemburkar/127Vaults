@@ -117,12 +117,63 @@ test('legacy invoice 404 retrieves currency-bound payment line items through the
   const provider=async url=>{const u=new URL(url);calls.push(u.pathname);
     if(u.pathname===`/payments/${f.payment.payment_id}`)return Response.json(f.payment);
     if(u.pathname.startsWith('/billing/invoices/'))return Response.json({message:'not found'},{status:404});
-    if(u.pathname.endsWith('/line-items')){assert.equal(u.searchParams.get('currency'),'USD');return Response.json(f.lineItems);}
+    if(u.pathname.endsWith('/line-items')){assert.equal(u.search,'');return Response.json(f.lineItems);}
     throw Error('Unexpected provider call '+u.pathname);
   };
   const result=await retrieveSettlement(env,row,f.subscription,{prices:f.prices},f.now,provider,f.payment);
   assert.equal(result.entitled,true);assert.equal(result.evidence,'payment_line_items');
   assert.equal(calls.length,3);
+});
+
+function localizedCheckout() {
+  const f = fixture();
+  delete f.invoice;
+  delete f.prices;
+  Object.assign(f.subscription, { recurring_pre_tax_amount: 2151, addons: [], meters: [] });
+  Object.assign(f.payment, { currency: 'INR', tax: 0, settlement_currency: 'USD',
+    settlement_amount: 0, settlement_tax: 0, product_cart: null });
+  f.payment.discounts[0].position = 0;
+  f.lineItems = { currency: 'USD', items: [{ items_id: 'pdt_one', amount: 0, tax: 0, refundable_amount: 0 }] };
+  return f;
+}
+
+test('localized zero checkout verifies the current period without relying on the next renewal price', async () => {
+  const f = localizedCheckout();
+  const row = { id: f.requestId, contact: { email: f.customerEmail },
+    trial: { kind: 'personal-purchase', billing: { ...f.order, status: 'checkout_pending' } } };
+  const provider = async url => {
+    const u = new URL(url);
+    if (u.pathname === '/subscriptions/sub_one') return Response.json(f.subscription);
+    if (u.pathname === '/payments/pay_one') return Response.json(f.payment);
+    if (u.pathname === '/billing/invoices/inv_one') return new Response(null, { status: 404 });
+    if (u.pathname === '/payments/pay_one/line-items' && !u.search) return Response.json(f.lineItems);
+    throw Error('Unexpected provider request');
+  };
+  const store = { async save(row, next) { row.trial = next; } };
+  await syncSubscription(environment(), store, row, () => assert.fail('Installation is not bound'), now,
+    provider, f.subscription.subscription_id, f.payment);
+  assert.equal(row.trial.billing.status, 'active');
+  assert.equal(row.trial.billing.paidThrough, end);
+  assert.equal(row.trial.billing.settlement.currency, 'INR');
+  assert.equal(row.trial.billing.settlement.normalAmount, null);
+  assert.equal(settledPersonalAccess(row.trial, now), true);
+});
+
+test('localized zero settlement fails closed without matching product, period, discount, tax and settlement evidence', () => {
+  for (const mutate of [
+    f => { f.payment.settlement_amount = 1; }, f => { f.payment.settlement_tax = 1; },
+    f => { f.payment.tax = 1; }, f => { f.payment.settlement_currency = 'EUR'; },
+    f => { delete f.subscription.currency; delete f.payment.settlement_currency; delete f.lineItems.currency; },
+    f => { f.lineItems.currency = 'INR'; }, f => { f.lineItems.items[0].items_id = 'pdt_other'; },
+    f => { f.payment.discounts[0].restricted_to = []; }, f => { f.payment.discounts[0].amount = 9999; },
+    f => { f.payment.service_periods[0].ends_at = '2027-01-01T00:00:00Z'; },
+    f => { f.payment.service_periods.push(f.payment.service_periods[0]); },
+    f => { f.payment.total_amount = 1; }, f => { f.payment.refund_status = 'full'; },
+  ]) {
+    const f = localizedCheckout();
+    mutate(f);
+    assert.equal(subscriptionSettlement(f).entitled, false);
+  }
 });
 
 test('reconciliation discovers a missed zero renewal and retrieves authenticated detail rather than list summaries',async()=>{

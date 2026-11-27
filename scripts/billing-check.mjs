@@ -13,6 +13,7 @@ const commands = [
   ['--check', 'customer-website/billing.mjs'],
   ['--check', 'admin-website/billing-admin.mjs'],
   ['--test', '--test-name-pattern', 'Dodo', 'apps/public-intake/test/cloudflare-worker.test.mjs'],
+  ['--test', 'apps/public-intake/test/settlement.test.mjs'],
   ['--test', 'apps/server/test/subscription-refresh.test.mjs', 'apps/server/test/license-status.test.mjs',
     'apps/server/test/license-handler.test.mjs', 'apps/server/test/license-write-guard.test.mjs',
     'apps/server/test/license-seats.test.mjs', 'apps/server/test/license-clock.test.mjs',

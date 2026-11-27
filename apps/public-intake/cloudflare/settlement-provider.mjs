@@ -18,7 +18,7 @@ export async function retrieveSettlement(env,row,sub,plan,now,fetcher,eventPayme
     if(payment.total_amount===0 && payment.status==='succeeded' && payment.invoice_id) {
       try {invoice=await dodo(env,`/billing/invoices/${encodeURIComponent(payment.invoice_id)}`,'GET',undefined,fetcher);}
       catch(error) {if(![404,422].includes(error.providerStatus))throw error;}
-      if(!invoice)lineItems=await dodo(env,`/payments/${encodeURIComponent(id)}/line-items?currency=${encodeURIComponent(payment.currency)}`,'GET',undefined,fetcher);
+      if(!invoice)lineItems=await dodo(env,`/payments/${encodeURIComponent(id)}/line-items`,'GET',undefined,fetcher);
     }
     last=decision(payment,invoice,lineItems);
     return last.entitled || last.state==='suspended';

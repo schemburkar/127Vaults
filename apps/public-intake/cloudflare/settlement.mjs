@@ -22,11 +22,17 @@ export function subscriptionSettlement({ businessId, mode, order, requestId, sub
   if (!end || !start || Date.parse(start)>now || Date.parse(end)<=now || Date.parse(start)>=Date.parse(end)
     || Date.parse(end)>now+370*86400000) return no('pending','period_unconfirmed');
   if (!payment) return no('pending','payment_evidence_unavailable');
+  // Dodo can localize checkout while keeping the subscription and settlement
+  // in the merchant currency. Only the fully discounted line-item path below
+  // accepts that difference, and only when both currency amounts are zero.
+  const localizedZero = !invoice && payment.currency !== sub.currency && payment.total_amount === 0
+    && /^[A-Z]{3}$/.test(sub.currency ?? '') && payment.settlement_currency === sub.currency && payment.settlement_amount === 0
+    && payment.settlement_tax === 0;
   if (!payment.payment_id || payment.business_id !== businessId || payment.subscription_id !== sub.subscription_id
     || payment.is_multi_subscription === true
     || (payment.subscription_ids && (payment.subscription_ids.length !== 1 || payment.subscription_ids[0] !== sub.subscription_id))
     || !sameBinding(payment.metadata,order,requestId,mode) || payment.customer?.customer_id !== sub.customer.customer_id
-    || !/^[A-Z]{3}$/.test(payment.currency ?? '') || payment.currency !== sub.currency
+    || !/^[A-Z]{3}$/.test(payment.currency ?? '') || (payment.currency !== sub.currency && !localizedZero)
     || (order.currency && order.currency !== payment.currency)
     || (payment.product_cart && (payment.product_cart.length !== 1 || payment.product_cart[0].product_id !== order.productId
       || payment.product_cart[0].quantity !== 1))) return no('rejected','payment_binding');
@@ -50,20 +56,26 @@ export function subscriptionSettlement({ businessId, mode, order, requestId, sub
     // /billing/invoices. Use authenticated payment line items, never manufacture
     // a paid invoice. Restrict this path to one fully discounted fixed product.
     const normal=prices?.[payment.currency], items=lineItems?.items, discounts=payment.discounts;
-    if (!payment.invoice_id || lineItems?.currency!==payment.currency || items?.length!==1
+    const lineCurrency = localizedZero ? payment.settlement_currency : payment.currency;
+    if (!payment.invoice_id || lineItems?.currency!==lineCurrency || items?.length!==1
       || items[0].items_id!==order.productId || items[0].amount!==0 || items[0].tax!==0
-      || items[0].refundable_amount!==0 || payment.tax!==0 || sub.recurring_pre_tax_amount!==0
-      || sub.addons?.length!==0 || sub.meters?.length!==0 || !money(normal) || normal===0)
+      || items[0].refundable_amount!==0 || payment.tax!==0
+      || sub.addons?.length!==0 || sub.meters?.length!==0
+      || (!localizedZero && (sub.recurring_pre_tax_amount!==0 || !money(normal) || normal===0)))
       return no('pending','zero_invoice_unavailable');
     // A single applied 100% percentage snapshot proves the complete discount
     // without relying on mutable coupon eligibility or unknown rounding rules.
     const d=discounts?.length===1?discounts[0]:null;
     if (!d || d.position!==0 || !d.discount_id || d.business_id!==businessId
       || d.type!=='percentage' || d.amount!==10000
-      || (d.restricted_to?.length && !d.restricted_to.includes(order.productId)))
+      || (d.restricted_to?.length && !d.restricted_to.includes(order.productId))
+      || (localizedZero && (!Array.isArray(d.restricted_to) || d.restricted_to.length !== 1
+        || d.restricted_to[0] !== order.productId || payment.service_periods.length !== 1
+        || payment.includes_usage === true || payment.refund_status != null)))
       return no('pending','full_discount_unconfirmed');
     return {...result,state:'settled_discounted',reason:'full_discount',evidence:'payment_line_items',
-      invoiceId:payment.invoice_id,normalAmount:normal,discountAmount:normal,
+      invoiceId:payment.invoice_id,normalAmount:localizedZero ? null : normal,
+      discountAmount:localizedZero ? null : normal,
       discounts:[{id:d.discount_id,type:d.type,amount:d.amount,subscriptionCycles:d.subscription_cycles??null,cyclesRemaining:d.cycles_remaining??null}]};
   }
   if (!payment.invoice_id || invoice.invoice_id!==payment.invoice_id || invoice.business_id!==businessId

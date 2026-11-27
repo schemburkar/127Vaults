@@ -63,6 +63,14 @@ add-ons/meters, zero recurring amount, a positive configured normal price and on
 applied 100% percentage snapshot. All normal binding and period checks still apply.
 Other missing evidence remains pending.
 
+For an adaptive-currency zero checkout, request the native payment line items
+without a currency override. The customer-facing payment and merchant settlement
+must both be zero with zero tax. The native line must match the subscription
+currency and product, and a single applied 100% discount must be restricted to
+that product. The exact current billing period is still required. The next
+recurring amount may be positive, and the service does not infer a historical
+pre-discount price or tax from it.
+
 Confirmed periods use ordinary Personal licenses, existing seats/version policy,
 the selected installation and monotonic sequences. Duplicate events do not
 reissue a period. Test decisions cannot grant production Personal downloads or

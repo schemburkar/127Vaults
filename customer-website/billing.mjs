@@ -44,7 +44,10 @@ export function mountBilling(root, requestId, bearer) {
     }
     if(value.settlement?.state==='settled_discounted') {
       const s=value.settlement,format=amount=>new Intl.NumberFormat(undefined,{style:'currency',currency:s.currency}).format(amount/(10**(new Intl.NumberFormat(undefined,{style:'currency',currency:s.currency}).resolvedOptions().maximumFractionDigits)));
-      $('details').textContent += ' Normal plan price: '+format(s.normalAmount)+'. Discount applied: '+format(s.discountAmount)+'. Amount due for this period: '+format(s.amount)+'.';
+      if (Number.isSafeInteger(s.normalAmount) && Number.isSafeInteger(s.discountAmount)) {
+        $('details').textContent += ' Normal plan price: '+format(s.normalAmount)+'. Discount applied: '+format(s.discountAmount)+'.';
+      }
+      $('details').textContent += ' Amount due for this period: '+format(s.amount)+'.';
     }
     if (value.cancelAtPeriodEnd) $('details').textContent += ' Cancellation is scheduled for the end of the paid period.';
     $('coupon').closest('label').hidden = false;
