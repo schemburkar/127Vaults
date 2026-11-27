@@ -1006,13 +1006,16 @@ mod tests {
             std::io::BufReader::new(stream.take(4096))
                 .read_line(&mut line)
                 .unwrap();
-            assert!(line.ends_with('\n'), "invalid fixture response framing");
-            serde_json::from_str::<super::Response>(&line).unwrap()
+            line
         };
-        assert!(!send("wrong").ok);
-        let response = send("fixture-capability");
-        assert!(response.ok);
-        assert_eq!(response.value["loggedOut"], true);
+        assert_eq!(
+            send("wrong"),
+            "{\"ok\":false,\"value\":\"local agent authorization failed\"}\n"
+        );
+        assert_eq!(
+            send("fixture-capability"),
+            "{\"ok\":true,\"value\":{\"loggedOut\":true}}\n"
+        );
         assert!(worker.join().unwrap().is_ok());
         assert!(std::net::TcpStream::connect(address).is_err());
         std::fs::remove_dir_all(directory).unwrap();

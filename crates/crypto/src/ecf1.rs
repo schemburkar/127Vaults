@@ -1466,13 +1466,15 @@ mod tests {
     #[test]
     fn parser_bounds_and_wrong_secret() {
         let password = crate::random_test_bytes();
+        let mut wrong_password = password;
+        wrong_password[0] ^= 1;
         let account_secret = crate::random_test_bytes();
         let mut c = Core::new();
         let r = c
             .create_root(&template(1), &password, &account_secret)
             .unwrap();
         assert_eq!(
-            c.unwrap_root(&r.envelope, &r.context, b"wrong", &account_secret)
+            c.unwrap_root(&r.envelope, &r.context, &wrong_password, &account_secret)
                 .unwrap_err(),
             Error::AuthenticationFailed
         );
