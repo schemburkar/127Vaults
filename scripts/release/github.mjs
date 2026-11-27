@@ -60,6 +60,8 @@ export async function publishNotes([tag, revision, notesFile, mode = '--plan', i
   const match = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(remote);
   if (!match) throw Error('Expected a GitHub HTTPS origin.');
   const environment = deps.env ?? process.env;
+  const expectedVisibility = environment.RELEASE_GITHUB_VISIBILITY ?? 'private';
+  if (!['private', 'public'].includes(expectedVisibility)) throw Error('RELEASE_GITHUB_VISIBILITY must be private or public.');
   let token = environment.GITHUB_TOKEN || environment.GH_TOKEN;
   if (!token) {
     const credential = spawn('git', ['credential', 'fill'], {
@@ -81,7 +83,10 @@ export async function publishNotes([tag, revision, notesFile, mode = '--plan', i
     return response.json();
   }
   const repo = await request('');
-  if (!repo?.private) throw Error('Expected the configured private repository.');
+  if (repo?.full_name?.toLowerCase() !== `${match[1]}/${match[2]}`.toLowerCase()
+    || repo.visibility !== expectedVisibility) {
+    throw Error(`Expected the configured GitHub origin with ${expectedVisibility} visibility.`);
+  }
   if (!await request(`/commits/${revision}`)) throw Error('Push the release source commit before publishing its GitHub release.');
   const body = await (deps.readFile || readFile)(notesFile, 'utf8');
   const assets = installersRoot ? await installerAssets(installersRoot, tag, revision, deps) : [];
