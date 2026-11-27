@@ -1,5 +1,10 @@
 import { token, hash, equal } from './crypto.mjs';
 import { paidPersonalAccess, reject } from './dodo.mjs';
+export function personalTrialAccess(record, env, now) {
+  return record.kind !== 'personal-trial' || (!record.revocation && !record.convertedPurchaseId
+    && (record.trialCheckout?.mode === 'live_mode' || env.LOCAL_SITE_PREVIEW === '1')
+    && (!record.expiresAt || Date.parse(record.expiresAt) > now));
+}
 export const clientArtifact = asset => ['desktop','cli','extension','installer'].includes(asset.product);
 export function clientAccess(record, now) {
   return record?.state === 'approved' && !record.revocation && !record.billing?.suspended
@@ -15,7 +20,7 @@ export async function clientGrant(record, bearer, now) {
   return false;
 }
 export async function issueClientLink(store,row,env,now,{revoke=false}={}) {
-  if (!row?.contact || !clientAccess(row.trial,now)) reject(409,'client_downloads_unavailable');
+  if (!row?.contact || !clientAccess(row.trial,now) || !personalTrialAccess(row.trial,env,now)) reject(409,'client_downloads_unavailable');
   if (revoke) { await store.save(row,{...row.trial,clientDownloads:[]}); return {revoked:true}; }
   const value=token(), until=Math.min(now+7*86400000,row.trial.expiresAt?Date.parse(row.trial.expiresAt):Infinity);
   const grants=(row.trial.clientDownloads??[]).filter(v=>v.until>now&&v.parent===row.trial.tokenHash).slice(-9);

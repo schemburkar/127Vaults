@@ -9,7 +9,8 @@ export const reject = (status, code) => { throw new BillingError(status, code); 
 export class DodoError extends Error { constructor(status) { super('Billing provider unavailable'); this.providerStatus = status; } }
 export const paidPersonalAccess = settledPersonalAccess;
 export function convertibleInstallation(record, plan) {
-  return Boolean(plan && record?.state === 'approved' && [undefined, 'trial', 'development'].includes(record.kind)
+  return Boolean(plan && record?.state === 'approved' && [undefined, 'trial', 'development', 'personal-trial'].includes(record.kind)
+    && (record.kind !== 'personal-trial' || record.trialCheckout?.mode === 'live_mode')
     && record.installationId && record.license && !record.billing && !record.revocation
     && !record.replacementRequest && !record.convertedPurchaseId
     && compatiblePersonalMajor(record.serverMajorVersion ?? 0, plan.majorVersion) && record.maxUsers <= plan.maxUsers);
@@ -34,7 +35,15 @@ export function billingConfig(env) {
     if (products.has(plan.productId)) throw Error('Duplicate billing product');
     products.add(plan.productId);
   }
-  return { mode, plans, base: mode === 'test_mode' ? 'https://test.dodopayments.com' : 'https://live.dodopayments.com' };
+  const trial = JSON.parse(env.DODO_PERSONAL_TRIAL ?? 'null');
+  if (trial !== null && (typeof trial !== 'object' || Array.isArray(trial)
+    || Object.keys(trial).some(key => !['productId', 'coupon'].includes(key))
+    || plans['personal-annual']?.plan !== 'personal' || typeof trial.productId !== 'string'
+    || !/^pdt_[A-Za-z0-9]{1,100}$/.test(trial.productId) || products.has(trial.productId)
+    || (trial.coupon !== undefined && (typeof trial.coupon !== 'string' || !/^[A-Z0-9_-]{1,50}$/.test(trial.coupon))))) {
+    throw Error('Invalid Personal trial configuration');
+  }
+  return { mode, plans, trial, base: mode === 'test_mode' ? 'https://test.dodopayments.com' : 'https://live.dodopayments.com' };
 }
 export async function dodo(env, path, method = 'GET', value, fetcher = fetch) {
   const { base } = billingConfig(env);

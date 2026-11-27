@@ -4,7 +4,7 @@
 <p id="passkey-status" role="status" aria-live="polite"></p><section id="manage-auth" class="manage-auth" aria-label="Account access" hidden>
 <div class="manage-auth-intro"><span class="kicker">127VAULTS MANAGE</span><h2>Your account.<br>Your next step.</h2><p>Subscriptions, setup and account security in one place.</p><ul><li>Access your downloads and license</li><li>Review payments and subscription status</li><li>Keep sign-in secure with a passkey</li></ul><p class="manage-vault-note">Your vault has its own sign-in on your server.</p></div>
 <div class="manage-auth-forms"><div class="auth-switch" role="group" aria-label="Account access mode"><button type="button" data-auth-mode="signin" aria-pressed="true">Sign in</button><button type="button" data-auth-mode="signup" aria-pressed="false">Create account</button></div>
-<section id="portal-signup" class="access-card portal-signup" aria-labelledby="signup-title" hidden><span class="trial-section-label">Personal Self-Hosted</span><h2 id="signup-title">Create your account</h2><p>$20 USD per year plus applicable tax. Five users included on your own server.</p>
+<section id="portal-signup" class="access-card portal-signup" aria-labelledby="signup-title" hidden><span class="trial-section-label">Personal Self-Hosted</span><h2 id="signup-title">Create your account</h2><p>Verify your email to see your Personal options. The annual plan includes five users on your own server.</p>
 <form id="signup-start"><label class="access-field">Your email<input id="signup-email" type="email" autocomplete="email" required maxlength="255" placeholder="you@example.com"></label><button class="button primary" type="submit">Sign up with email</button></form>
 <p id="signup-status" role="status" aria-live="polite"></p><form id="signup-complete" hidden><p class="auth-code-context" id="signup-code-context"></p><label class="access-field">Six-digit email code<input id="signup-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required placeholder="000000"></label><button class="button primary" type="submit">Verify email and continue</button><button class="auth-text-button" type="button" id="signup-change-email">Use a different email</button></form><p class="auth-fine-print">Review your subscription before paying. Your billing account is separate from your vault.</p></section>
 <h2 id="portal-existing-title" class="portal-existing-title" hidden>Already have an account?</h2>
@@ -46,7 +46,12 @@
         <label class="access-field" hidden>Installation<select id="personal-installation"><option value="">Set up a new installation</option></select></label><label class="portal-consent"><input id="personal-consent" type="checkbox" required><span>I accept the <a href="terms.html">license terms</a><span id="personal-terms-copy"></span></span></label>
         <button class="button primary" type="submit">Continue to checkout</button>
       </form>
-      <div id="personal-plan-action"></div><p><a href="https://127vaults.com/get-started?plan=personal">Request trial access</a></p>
+      <div id="personal-plan-action"></div>
+      <form id="personal-trial" class="portal-buy" hidden>
+        <p>Try Personal for 15 days from server activation. No card or automatic billing.</p>
+        <label class="portal-consent"><input id="trial-consent" type="checkbox" required><span>I accept the <a href="terms.html">license terms</a>.</span></label>
+        <button id="personal-trial-button" class="button secondary" type="submit">Start 15-day trial</button>
+      </form>
     </article>
     <article class="access-card portal-plan">
       <span class="trial-section-label">Self-hosted</span>

@@ -97,3 +97,20 @@ Paid account/contact records are excluded from trial's 90-day deletion, because 
 - [Discounts, basis points, product restrictions and cycles](https://docs.dodopayments.com/api-reference/discounts/create-discount)
 
 Documentation was consulted on 2026-10-28. The local suite uses signed synthetic payloads, a mock HTTP provider and real local D1/R2 execution. It does not substitute for later Dodo account testing or a real transaction.
+## 15-day Personal self-service trial
+
+Create a separate product in each Dodo environment. Use the name **127Vaults Personal Self-Hosted Trial**, select **one-time payment**, set the fixed base price to **USD 0.00**, and use the same tax category as Personal. Leave subscriptions, pay-what-you-want, purchasing power parity, localized price overrides, add-ons, Dodo license keys, and digital delivery disabled. The base price is zero so the offer remains free if a coupon is removed or exhausted. The Worker checks the product and checkout preview before handing the customer a link.
+
+If using a fixed coupon, in **Sales → Discounts** create a **100% percentage** discount (API amount `10000`) restricted to that one trial product. Set a per-customer limit of one if available and choose expiry and overall usage limits according to the offer window. A coupon is optional because the product is already free. The Worker applies the configured code automatically after verifying the discount's business, amount, type, and product restriction. If Dodo Test rejects a coupon on an already-free product, omit the coupon field and use the native $0 price. Never add a trial discount to the annual subscription product.
+
+In each environment's deployment configuration, keep the existing `billing.mode`, credentials, business ID, and `billing.plans`. Add `personalTrial` under `billing`, for example:
+
+```json
+"personalTrial": { "productId": "pdt_YourOneTimeProduct", "coupon": "PERSONALTRIAL15" }
+```
+
+Use the Test product ID and optional Test coupon code in the Test configuration, and the Live values in the Live configuration. The existing checkout webhook should subscribe to `payment.succeeded`. Returning from hosted checkout also checks the stored session through the Dodo API. Test verification should use a separate environment and local or mocked account email. A deployed Test-mode checkout never grants production downloads or license signing.
+
+The customer verifies their email in Manage, then can use either the trial or annual checkout on the Personal plan. The first activation binds the trial license to one installation and starts 15 days of writes. Reads and exports remain available for a further 30 days under the server's existing license policy. A separate confirmed annual order can upgrade the same installation.
+
+Each normalized verified email has one durable trial order per Dodo mode, including after contact pruning. Confirmed $0 checkout records follow billing retention so an expired installation remains eligible for conversion and can receive a higher license sequence. Checkout creation is reserved before the provider call. If creation times out without a session ID, investigate the Dodo order metadata before considering any recovery. Customer retries cannot create a second session in that ambiguous state. Missing or delayed payment confirmation can be retried from Manage with the existing session.

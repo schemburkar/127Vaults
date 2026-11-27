@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { createHash, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { Miniflare } from 'miniflare';
-import { verifyLicenseFile, verifyLicenseRevocationFile } from '../../server/src/license-status.mjs';
+import { licenseStatus, verifyLicenseFile, verifyLicenseRevocationFile } from '../../server/src/license-status.mjs';
 import { encryptionKey, limiterKey, seal, unseal } from '../cloudflare/crypto.mjs';
 import { TrialStore } from '../cloudflare/store.mjs';
 import { handleRequest, prune } from '../cloudflare/worker.mjs';
@@ -533,6 +533,126 @@ for (const conversion of [null, 'trial', 'development']) test(`Dodo Personal che
   assert.ok(row.trial.billing.refreshHash);
   assert.equal(renewed.trial.billing.refreshHash, row.trial.billing.refreshHash);
   assert.equal(renewed.trial.billing.refreshToken, refresh.refreshToken);
+});
+
+test('Dodo Personal trial verifies one free transaction and signs one expiring installation license', { timeout: 20000 }, async t => {
+  const email = 'trial-buyer@customer-domain.dev';
+  const signingSecret = randomBytes(32);
+  const productId = 'pdt_Trial';
+  const cart = [{ product_id: productId, quantity: 1 }];
+  let mockCode, metadata, payment, checkoutCalls = 0, price = 1, recurring = false;
+  const f = await fixture(t, {
+    bindings: {
+      SITE_SURFACE: 'customer', CUSTOMER_PORTAL_ENABLED: '1',
+      CUSTOMER_EMAIL_PROVIDER: 'resend', CUSTOMER_EMAIL_MODE: 'production', CUSTOMER_EMAIL_FROM: 'accounts@127vaults.com',
+      RESEND_API_KEY: 're_' + randomBytes(24).toString('hex'),
+      DODO_ENABLED: '1', DODO_MODE: 'live_mode', DODO_API_KEY: 'dodo_live_' + randomBytes(24).toString('hex'),
+      DODO_WEBHOOK_SECRET: 'whsec_' + signingSecret.toString('base64'), DODO_BUSINESS_ID: 'biz_Trial',
+      DODO_PLANS: JSON.stringify({ 'personal-annual': { productId: 'pdt_Paid', plan: 'personal', majorVersion: 0, maxUsers: 5 } }),
+      DODO_PERSONAL_TRIAL: JSON.stringify({ productId, coupon: 'TRIAL15' }),
+    },
+    outboundService: async request => {
+      const url = new URL(request.url);
+      if (url.hostname === 'api.resend.com') {
+        mockCode = /code is (\d{6})/.exec((await request.json()).text)[1];
+        return Response.json({ id: 'mock-email' });
+      }
+      assert.equal(url.origin, 'https://live.dodopayments.com');
+      if (url.pathname === '/products/' + productId) return Response.json({
+        product_id: productId, is_recurring: recurring, price: { type: 'one_time_price', price, pay_what_you_want: false },
+      });
+      if (url.pathname === '/discounts/code/TRIAL15') return Response.json({
+        business_id: 'biz_Trial', type: 'percentage', amount: 10000, restricted_to: [productId],
+      });
+      if (['/checkouts/preview', '/checkouts'].includes(url.pathname)) {
+        const input = await request.json();
+        assert.deepEqual(input.product_cart, cart);
+        assert.deepEqual(input.discount_codes, ['TRIAL15']);
+        assert.equal(input.feature_flags.allow_customer_editing_email, false);
+        assert.equal(input.subscription_data, undefined);
+        if (url.pathname.endsWith('/preview')) return Response.json({
+          current_breakup: { total_amount: 0 }, payment_method_required: false,
+          product_cart: [{ ...cart[0], is_subscription: false }],
+        });
+        checkoutCalls++;
+        metadata = input.metadata;
+        return Response.json({ session_id: 'cks_Trial', checkout_url: 'https://checkout.dodopayments.com/session' });
+      }
+      if (url.pathname === '/checkouts/cks_Trial') return Response.json({ id: 'cks_Trial', payment_id: 'pay_Trial' });
+      assert.equal(url.pathname, '/payments/pay_Trial');
+      return Response.json(payment);
+    },
+  });
+  const trialPath = '/api/billing/personal-trial';
+  assert.equal((await f.post(trialPath, { acceptTerms: true })).status, 401);
+  const challenge = await (await f.post('/api/customer/start', { email })).json();
+  const login = await f.post('/api/customer/complete', { challengeId: challenge.challengeId, code: mockCode });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const post = (path, body) => f.mf.dispatchFetch(origin + path, { method: 'POST', headers: {
+    Origin: origin, Cookie: cookie, 'Content-Type': 'application/json',
+  }, body: JSON.stringify(body) });
+  assert.equal((await post(trialPath, { acceptTerms: true, productId: 'pdt_Paid' })).status, 400);
+  assert.equal((await post(trialPath, { acceptTerms: true })).status, 409);
+  price = 0; recurring = true;
+  assert.equal((await post(trialPath, { acceptTerms: true })).status, 409);
+  recurring = false;
+  const starts = await Promise.all([post(trialPath, { acceptTerms: true }), post(trialPath, { acceptTerms: true })]);
+  const started = starts.find(response => response.ok) ?? starts[0];
+  assert.equal(started.status, 200, await started.clone().text());
+  const { requestId } = await started.json();
+  const base = '/api/trials/' + requestId;
+  const installationId = randomUUID();
+  assert.equal((await post(base + '/activate', { installationId })).status, 404);
+  payment = { payment_id: 'pay_Trial', status: 'succeeded', business_id: 'biz_Trial', total_amount: 1,
+    checkout_session_id: 'cks_Trial', product_cart: cart, customer: { email }, metadata };
+  assert.equal((await (await post(trialPath, { checkOnly: true })).json()).ready, false);
+  payment.total_amount = 0;
+  payment.customer.email = 'other@customer-domain.dev';
+  assert.equal((await (await post(trialPath, { checkOnly: true })).json()).ready, false);
+  payment.customer.email = email;
+  payment.product_cart = [{ product_id: 'pdt_Paid', quantity: 1 }];
+  assert.equal((await (await post(trialPath, { checkOnly: true })).json()).ready, false);
+  payment.product_cart = cart;
+  const webhookId = randomUUID();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const event = JSON.stringify({ type: 'payment.succeeded', timestamp: new Date().toISOString(),
+    business_id: 'biz_Trial', data: { payment_id: payment.payment_id, metadata } });
+  const signature = createHmac('sha256', signingSecret).update(`${webhookId}.${timestamp}.${event}`).digest('base64');
+  const deliver = () => f.mf.dispatchFetch(origin + '/api/billing/webhook', { method: 'POST', headers: {
+    'webhook-id': webhookId, 'webhook-timestamp': timestamp, 'webhook-signature': 'v1,' + signature,
+  }, body: event });
+  assert.equal((await deliver()).status, 200);
+  assert.equal((await deliver()).status, 200);
+  assert.deepEqual(await (await post(trialPath, { acceptTerms: true })).json(), { requestId, ready: true });
+  assert.equal(checkoutCalls, 1);
+  assert.equal((await post(base + '/activate', { installationId })).status, 200);
+  assert.equal((await post(base + '/activate', { installationId: randomUUID() })).status, 409);
+  const file = await (await f.get(base + '/license', undefined, cookie)).text();
+  const license = verifyLicenseFile(file, f.publicKeys, installationId);
+  const day = 86400000;
+  const expiry = Date.parse(license.expiresAt);
+  assert.equal(expiry - Date.parse(license.issuedAt), 15 * day);
+  assert.equal(licenseStatus(license, new Date(expiry - 1)).mode, 'active');
+  assert.equal(licenseStatus(license, new Date(expiry)).mode, 'read-only');
+  assert.equal(licenseStatus(license, new Date(expiry + 30 * day)).mode, 'locked');
+  assert.equal((await post(base + '/activate', { installationId })).status, 200);
+  assert.equal(await (await f.get(base + '/license', undefined, cookie)).text(), file);
+  const store = new TrialStore(f.db, await encryptionKey(f.intakeKey, 'contacts'), await encryptionKey(f.intakeKey, 'trials'),
+    () => Date.now(), await limiterKey(f.intakeKey));
+  const row = await store.get(requestId);
+  await store.save(row, { ...row.trial, expiresAt: new Date(Date.now() - 1000).toISOString() });
+  await f.db.prepare('UPDATE access_requests SET received_at = ? WHERE id = ?').bind(Date.now() - 91 * day, requestId).run();
+  await prune(f.env);
+  assert.equal((await post(base + '/activate', { installationId })).status, 403);
+  assert.equal((await f.get(base + '/license', undefined, cookie)).status, 403);
+  assert.equal((await (await post(trialPath, { acceptTerms: true })).json()).requestId, requestId);
+  assert.equal(checkoutCalls, 1);
+  const upgrade = await post('/api/billing/personal-order', { acceptTerms: true, convertRequestId: requestId });
+  assert.equal(upgrade.status, 200, await upgrade.clone().text());
+  const paid = await store.get((await upgrade.json()).requestId);
+  assert.equal(paid.trial.conversionInstallationId, installationId);
+  assert.equal((await f.get('/api/trials/' + paid.id + '/license', undefined, cookie)).status, 403);
 });
 
 async function fixture(t, options = {}) {

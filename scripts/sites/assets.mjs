@@ -35,7 +35,7 @@ export async function readSiteAsset(surface, name) {
     return await file.readFile();
   } finally { await file.close(); }
 }
-export async function stageSite(surface, directory, { publicOrigin, personalBuyUrl } = {}) {
+export async function stageSite(surface, directory, { publicOrigin, personalBuyUrl, personalSubscriptionTrial } = {}) {
   if (!siteAssets[surface]) throw Error('Unknown site');
   const sources = new Map(await Promise.all(siteAssets[surface].map(async name => [name, await readSiteAsset(surface, name)])));
   if (surface === 'public' && personalBuyUrl) {
@@ -45,7 +45,6 @@ export async function stageSite(surface, directory, { publicOrigin, personalBuyU
       if (!content.includes(button)) throw Error(`Personal plan action missing in ${name}`);
       let updated = content.replace(/<article\b[^>]*>[\s\S]*?<\/article>/g, article => article.includes(button)
         ? article.replace(button, `<a class="plan-cta" href="${personalBuyUrl}">Subscribe now</a>`)
-          .replace('</article>', '<p class="plan-trial-link"><a href="get-started.html?plan=personal">Request trial access</a></p></article>')
         : article);
       if (name === 'index.html') updated = updated.replace(
         '<a class="button primary" data-personal-subscribe href="get-started.html?plan=personal">Subscribe to Personal</a>',
@@ -55,10 +54,27 @@ export async function stageSite(surface, directory, { publicOrigin, personalBuyU
     const downloads = sources.get('downloads.html').toString('utf8');
     sources.set('downloads.html', Buffer.from(downloads.replace(
       '<!-- personal-purchase -->',
-      `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p><p><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
+      `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p>`)));
     for (const name of ['deployment.html', 'get-started.html']) {
       sources.set(name, Buffer.from(sources.get(name).toString('utf8').replace('<!-- personal-purchase -->',
-        `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p><p><a href="get-started.html?plan=personal">Request trial access</a></p>`)));
+        `<p><a class="button primary" href="${personalBuyUrl}">Subscribe to Personal</a></p>`)));
+    }
+    if (personalSubscriptionTrial) {
+      const update = (name, edit) => sources.set(name, Buffer.from(edit(sources.get(name).toString('utf8'))));
+      update('get-started.html', html => html
+        .replace('Request a Personal trial or Commercial access below.', 'Request Commercial access below. To start a 15-day Personal trial or subscribe, open Manage.')
+        .replace(/<label><input type="radio" name="plan" value="personal" checked>.*?<\/label>\s*/, '')
+        .replace('value="commercial"', 'value="commercial" checked')
+        .replace('Choose Personal or Commercial to try self-hosting.', 'Choose Commercial for self-hosted access.'));
+      update('downloads.html', html => html.replace('Subscribe to Personal or request trial access to get started.',
+        'Choose Subscribe to Personal to start a free 15-day trial or buy an annual license.'));
+      update('deployment.html', html => html.replace('You can request a Personal trial before subscribing.',
+        'Choose Subscribe to Personal to start a free 15-day trial or buy an annual license.'));
+      update('terms.html', html => html.replace('<h2>Requesting access</h2>',
+        '<h2>Personal self-service trial</h2><p>Eligible accounts can start a free Personal trial through Manage. It runs for 15 days from activation on one self-hosted server. The one-time checkout requires no card and does not renew. A separate subscription purchase is required for continued writes.</p><h2>Invitation-based access</h2>'));
+      update('refunds.html', html => html.replace('<h2>Free trials</h2>', '<h2>Invitation-based trials</h2>')
+        .replace('The 10-day self-hosted trial', 'The invitation-based 10-day self-hosted trial')
+        .replace('<h2>Invitation-based trials</h2>', '<h2>Free trials</h2><p>The self-service Personal trial lasts 15 days from activation and ends automatically. Starting a subscription requires a separate purchase.</p>'));
     }
   }
   if (surface !== 'public') sources.set('index.html', sources.get(surface === 'admin' ? 'access-admin.html' : 'portal.html'));

@@ -5,6 +5,7 @@ import { billingConfig, dodo, reject, verifyWebhook, rawBody, DodoError, paidPer
 import { equal, hash, token, signEnvelope, from64, seal, unseal, limitIdentity } from './crypto.mjs';
 import { customerCanAccess, customerPrincipal } from './customer-portal.mjs';
 import { serverMajor } from './catalogue.mjs';
+import { confirmPersonalTrial, personalTrialId, startPersonalTrial } from './personal-trial.mjs';
 
 const day = 86400000;
 const iso = at => new Date(at).toISOString();
@@ -167,6 +168,7 @@ async function processBillingEvent(id, event, env, store, release, now, fetcher)
   let payment;
   if (event.data.payment_id && !event.type.startsWith('subscription.')) {
     payment = await dodo(env, `/payments/${encodeURIComponent(event.data.payment_id)}`, 'GET', undefined, fetcher);
+    requestId ??= payment.metadata?.access_request_id;
     subId ??= payment.subscription_id;
   }
   if (!requestId && subId) {
@@ -175,6 +177,14 @@ async function processBillingEvent(id, event, env, store, release, now, fetcher)
   }
   if (requestId && !/^[a-f0-9]{64}$/.test(requestId)) reject(400, 'invalid_event');
   if (requestId) await store.db.prepare('UPDATE billing_events SET request_id = ? WHERE id = ?').bind(requestId, id).run();
+  if (requestId && !subId && event.type === 'payment.succeeded' && payment) {
+    const row = await store.get(requestId);
+    if (row?.trial?.kind === 'personal-trial') {
+      // An early webhook can race the local checkout write. Keep it eligible for scheduled replay.
+      if (row.trial.state === 'trial_pending' && !row.trial.trialCheckout.sessionId) throw Error('Trial checkout pending');
+      await confirmPersonalTrial(env, store, row, now, fetcher, payment);
+    }
+  }
   if (requestId && subId) {
     const row = await store.get(requestId);
     if (!row?.trial?.billing) throw Error('Unknown subscription order');
@@ -209,6 +219,21 @@ export async function handleBilling(request, env, store, release, now, operatorA
   const admin = path.startsWith('/api/access-admin/');
   if (admin && !operatorAuthorized) reject(401, 'access_required');
   if (!await store.allow(admin ? 'billing-admin' : 'billing-ip', request.headers.get('cf-connecting-ip') ?? 'unknown', 120, 3600000)) reject(429, 'rate_limited');
+  if (path === '/api/billing/personal-trial' && request.method === 'POST') {
+    if (!config.trial) reject(404, 'not_found');
+    const principal = await customerPrincipal(request, env, store, now);
+    if (principal?.kind !== 'email' || !personalBuyerAllowed(env, principal.email)) reject(401, 'access_required');
+    const value = await input(request); fields(value, ['acceptTerms', 'checkOnly']);
+    if (!await store.allow('personal-trial-checkout', principal.email, 20, 3600000)) reject(429, 'rate_limited');
+    if (value.checkOnly === true) {
+      const row = await store.get(await personalTrialId(store, config.mode, principal.email));
+      if (row?.contact?.email !== principal.email || row.trial?.kind !== 'personal-trial') reject(404, 'not_found');
+      await confirmPersonalTrial(env, store, row, now, fetcher);
+      return { requestId: row.id, ready: row.trial.state === 'approved' };
+    }
+    if (value.acceptTerms !== true) reject(400, 'terms_required');
+    return startPersonalTrial(env, store, principal, config, release, now, fetcher, safeLink);
+  }
   if (path === '/api/billing/personal-order' && request.method === 'POST') {
     const principal = await customerPrincipal(request, env, store, now);
     if (principal?.kind !== 'email' || !personalBuyerAllowed(env, principal.email)) reject(401, 'access_required');
@@ -301,7 +326,7 @@ export async function handleBilling(request, env, store, release, now, operatorA
   }
   if (admin && action === 'offer' && request.method === 'POST') {
     const v = await input(request); fields(v, ['plan']); const plan = config.plans[v.plan];
-    if (plan?.plan !== 'commercial' || ['development', 'personal-purchase'].includes(record.kind)) reject(409, 'offer_unavailable');
+    if (plan?.plan !== 'commercial' || ['development', 'personal-purchase', 'personal-trial'].includes(record.kind)) reject(409, 'offer_unavailable');
     if (record.billing) {
       if (record.billing.suspended) {
         const prior = await dodo(env, `/subscriptions/${encodeURIComponent(record.billing.subscriptionId)}`, 'GET', undefined, fetcher);

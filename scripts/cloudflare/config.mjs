@@ -78,11 +78,12 @@ export function validateConfig(value, file) {
     if (value.workerName.length > 53) throw Error('Worker name is too long for separated targets');
   }
   if (value.billing) {
-    if (Object.keys(value.billing).some(key => !['mode', 'businessId', 'plans', 'testBuyer'].includes(key))
+    if (Object.keys(value.billing).some(key => !['mode', 'businessId', 'plans', 'testBuyer', 'personalTrial'].includes(key))
       || (value.billing.testBuyer !== undefined && (value.billing.mode === 'live_mode'
         || !/^[^\s@]+@[^\s@]+$/.test(value.billing.testBuyer) || value.billing.testBuyer !== value.billing.testBuyer.toLowerCase()))) throw Error('Invalid billing configuration');
     billingConfig({ DODO_ENABLED: '1', DODO_MODE: value.billing.mode ?? 'test_mode', DODO_BUSINESS_ID: value.billing.businessId,
-      DODO_PLANS: JSON.stringify(value.billing.plans), DODO_API_KEY: 'validate-only', DODO_WEBHOOK_SECRET: 'validate-only' });
+      DODO_PLANS: JSON.stringify(value.billing.plans), DODO_PERSONAL_TRIAL: JSON.stringify(value.billing.personalTrial),
+      DODO_API_KEY: 'validate-only', DODO_WEBHOOK_SECRET: 'validate-only' });
   }
   if (value.cloudAdmin !== undefined) {
     const cloud = value.cloudAdmin;
@@ -206,6 +207,7 @@ export function wranglerConfig(config, state, assetsDirectory) {
       DODO_ENABLED: config.billing ? '1' : '0',
       ...(config.billing ? { DODO_MODE: config.billing.mode ?? 'test_mode', DODO_BUSINESS_ID: config.billing.businessId,
         DODO_PLANS: JSON.stringify(config.billing.plans),
+        ...(config.billing.personalTrial ? { DODO_PERSONAL_TRIAL: JSON.stringify(config.billing.personalTrial) } : {}),
         ...(config.billing.testBuyer ? { DODO_TEST_BUYER: config.billing.testBuyer } : {}) } : {}),
       INSTALLER_MIN_VERSION: config.minimumInstallerVersion ?? '0.1.0',
       TRIAL_CATALOGUE_KEY: state.catalogueKey ?? 'not-uploaded', TRIAL_CATALOGUE_SHA256: state.catalogueSha256 ?? 'not-uploaded',

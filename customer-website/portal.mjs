@@ -53,7 +53,7 @@ function renderWorkspace(value){
   if(value.scope!=='email')overview.append(element('p','This session is limited to the invitation you opened. Sign out and verify your email to see all of your account.','manage-scope-note'));
   function viewButton(text,view){const button=element('button',text,'button primary');button.type='button';button.addEventListener('click',()=>setAccountView(view));return button;}
 }
-function clearAccount(){activeView='overview';initialViewApplied=false;accountSerial++;accountValue=null;$('portal-account').hidden=true;$('portal-requests').replaceChildren();$('portal-cloud-tenants').replaceChildren();$('passkey-list').replaceChildren();$('manage-overview').replaceChildren();$('portal-identity').textContent='';$('personal-consent').checked=false;const panel=$('billing-panel');if(panel.open)panel.close();panel.replaceWith(billingPanel.cloneNode(true));}
+function clearAccount(){activeView='overview';initialViewApplied=false;accountSerial++;accountValue=null;$('portal-account').hidden=true;$('portal-requests').replaceChildren();$('portal-cloud-tenants').replaceChildren();$('passkey-list').replaceChildren();$('manage-overview').replaceChildren();$('portal-identity').textContent='';$('personal-consent').checked=false;$('trial-consent').checked=false;$('personal-installation').value='';delete $('personal-installation').dataset.initialized;const panel=$('billing-panel');if(panel.open)panel.close();panel.replaceWith(billingPanel.cloneNode(true));}
 function element(tag, label, className) {
   const node = document.createElement(tag);
   if (label) node.textContent = label;
@@ -66,6 +66,8 @@ const planName = plan => ({
 function renderPlans(value) {
   $('portal-plans').hidden = value.scope !== 'email';
   $('personal-buy').hidden = !value.canBuyPersonal;
+  $('personal-trial').hidden = !value.trialAction || !value.canBuyPersonal;
+  $('personal-trial-button').textContent = value.trialAction === 'continue' ? 'Continue trial checkout' : 'Start 15-day trial';
   const target = $('personal-installation');
   const selected = target.value;
   const options = value.requests.filter(row => row.convertible);
@@ -77,9 +79,16 @@ function renderPlans(value) {
     target.append(option);
   }
   if (options.some(row => row.id === selected)) target.value = selected;
+  else if (!target.dataset.initialized) {
+    const trial = options.find(row => row.kind === 'personal-trial');
+    if (trial) target.value = trial.id;
+    target.dataset.initialized = '1';
+  }
   target.closest('label').hidden = !options.length;
   const order = value.requests.find(row => row.plan === 'personal' && row.billingStatus && row.billingMode === value.purchaseMode);
   $('personal-plan-action').replaceChildren();
+  const trial = value.requests.find(row => row.kind === 'personal-trial' && row.setupAvailable);
+  if (trial) $('personal-plan-action').append(link('Open trial downloads and setup', `/trial?request=${encodeURIComponent(trial.id)}`));
   if (!value.canBuyPersonal && order && value.scope === 'email') {
     const label = ({ offered: 'Continue checkout', checkout_pending: 'Continue checkout', failed: 'Retry payment', cancelled: 'Subscribe again', expired: 'Subscribe again' })[order.billingStatus] ?? 'Manage plan';
     $('personal-plan-action').append(orderLink(order, label));
@@ -101,11 +110,11 @@ function orderLink(row, label) {
     panel.querySelector('#billing-reference').textContent = planName(row.plan)+' · Ref '+row.id.slice(0,8)+' · '+orderStatus(row);
     const summary=element('section','', 'manage-detail-grid');for(const [title,value]of [['Access',orderKind(row)],['Users',row.maxUsers?String(row.maxUsers):'Not yet approved'],['Installation',row.installationId||'Not activated'],['End date',row.paidThrough||row.expiresAt?formatManageDate(row.paidThrough??row.expiresAt):'Not started']]){const field=element('div');field.append(element('small',title),element('strong',value));summary.append(field);}panel.querySelector('#billing-reference').after(summary);panel.querySelector('#billing-title').textContent=planName(row.plan);
 
-    if (row.state === 'approved') {
+    if (row.state === 'approved' && row.setupAvailable !== false) {
       panel.querySelector('#billing-download').append(element('h3','Install and connect'),element('p','Open packages and setup instructions, or create a private link to use in the installer. Client download links are for other computers joining your server.'));
       panel.querySelector('#billing-download').append(link('Open downloads & setup', `/trial?request=${encodeURIComponent(row.id)}`));
     }
-    if(row.state==='approved'){
+    if(row.state==='approved' && row.setupAvailable !== false){
       if(!row.conversion)addPrivateLinkAction('Create installer setup link','installer-link','Open setup link');
       if(accountValue?.scope==='email')addPrivateLinkAction('Create client download link','client-link','Open client joining page');
     }
@@ -129,6 +138,7 @@ function orderStatus(row) {
   })[row.state] ?? 'Pending');
 }
 function orderKind(row) {
+  if (row.kind === 'personal-trial') return '15-day Personal trial';
   if (row.billingMode === 'test_mode') return 'Test subscription';
   if (row.kind === 'development') return 'Development license';
   if (row.billingStatus) return 'Subscription';
@@ -181,9 +191,22 @@ function renderOrders(value) {
     if (end) dates.append(element('small', row.paidThrough
       ? row.billingMode === 'test_mode' ? 'Test period ends' : 'Subscription active through'
       : 'License expires'));
+    if (end && row.kind === 'personal-trial' && row.state !== 'converted') {
+      dates.append(element('small', `Reads and exports until ${formatManageDate(new Date(Date.parse(end) + 30 * 86400000).toISOString())}`));
+    }
     const action = element('td');action.dataset.label='Actions';
     const actions = element('div', '', 'portal-table-actions');
-    if(row.state==='approved')actions.append(link('Downloads and setup','/trial?request='+encodeURIComponent(row.id),true));
+    if(row.state==='approved' && row.setupAvailable !== false)actions.append(link('Downloads and setup','/trial?request='+encodeURIComponent(row.id),true));
+    if(row.kind==='personal-trial' && row.convertible) {
+      const subscribe = element('button', 'Subscribe for this server', 'button secondary');
+      subscribe.type = 'button';
+      subscribe.addEventListener('click', () => {
+        setAccountView('plans');
+        $('personal-installation').value = row.id;
+        $('personal-consent').focus();
+      });
+      if (value.canBuyPersonal) actions.append(subscribe);
+    }
     actions.append(orderLink(row,row.billingStatus?'Manage subscription':'View access details'));
     action.append(actions);
     entry.append(name, kind, (()=>{const td=element('td');td.dataset.label='Status';td.append(element('span',orderStatus(row),'portal-state '+(row.billingStatus==='active'&&row.state==='approved'?'success':'')));return td;})(), dates, action);
@@ -197,6 +220,20 @@ async function billingPost(path, value) {
   if (!response.ok) throw Error('Checkout could not be opened. Check your order below or contact support.');
   return response.json();
 }
+function openCheckout(checkoutUrl) {
+  const destination = new URL(checkoutUrl);
+  if (destination.protocol !== 'https:' || !/(^|\.)dodopayments\.com$/.test(destination.hostname)
+    || destination.username || destination.password) throw Error('Invalid checkout destination.');
+  location.assign(destination.href);
+}
+$('personal-trial').addEventListener('submit', event => {
+  event.preventDefault();
+  run(async () => {
+    const trial = await billingPost('personal-trial', { acceptTerms: $('trial-consent').checked });
+    if (trial.ready) await account();
+    else openCheckout(trial.checkoutUrl);
+  });
+});
 $('personal-buy').addEventListener('submit', event => {
   event.preventDefault();
   run(async () => {
@@ -205,9 +242,7 @@ $('personal-buy').addEventListener('submit', event => {
       ...(convertRequestId ? { convertRequestId } : {}) });
     try {
       const { checkoutUrl } = await billingPost(`${encodeURIComponent(requestId)}/checkout`, {});
-      const destination = new URL(checkoutUrl);
-      if (destination.protocol !== 'https:' || !/(^|\.)dodopayments\.com$/.test(destination.hostname)) throw Error('Invalid checkout destination.');
-      location.assign(destination.href);
+      openCheckout(checkoutUrl);
     } catch (error) {
       await account();
       throw error;
@@ -217,6 +252,14 @@ $('personal-buy').addEventListener('submit', event => {
 async function account() {
   const serial=++accountSerial,route=new URLSearchParams(location.search);
   let value = await portalApi('me');
+  if (route.get('trial') === 'return' && value.trialAction === 'continue') {
+    try {
+      await billingPost('personal-trial', { checkOnly: true });
+      value = await portalApi('me');
+    } catch {
+      // A delayed confirmation can still be retried from Plans.
+    }
+  }
   if (route.get('billing') === 'return') {
     const selected = route.get('request');
     const pending = selected && value.requests.find(row => row.id === selected && row.state === 'purchase_pending'

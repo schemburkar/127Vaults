@@ -25,19 +25,20 @@ test('purchase preview links to local signup and keeps checkout disabled', async
   assert.equal(checkout.status, 404);
 });
 
-test('live Personal purchase is primary on pricing, home and downloads while trials and Commercial remain separate', async t => {
+test('live Personal signup unifies trials and subscriptions while retaining Commercial intake', async t => {
   const dir = await mkdtemp(join(tmpdir(), '127v-live-plans-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const live = await stageSite('public', join(dir, 'live'), { personalBuyUrl: 'https://manage.example.com/portal' });
+  const live = await stageSite('public', join(dir, 'live'), {
+    personalBuyUrl: 'https://manage.example.com/portal', personalSubscriptionTrial: true,
+  });
   for (const name of ['index.html', 'pricing.html']) {
     const html = await readFile(join(live.directory,name),'utf8');
     assert.match(html, /class="plan-cta" href="https:\/\/manage.example.com\/portal">Subscribe now/);
-    assert.match(html, /Request trial access/);
+    assert.doesNotMatch(html, /Request trial access/);
     const personal = [...html.matchAll(/<article\b[^>]*>[\s\S]*?<\/article>/g)].find(match => match[0].includes('Subscribe now'))?.[0];
     assert.ok(personal);
     assert.ok(personal.indexOf('Subscribe now') < personal.indexOf('Five users included'));
     assert.ok(personal.indexOf('Five users included') < personal.indexOf('<ul>'));
-    assert.ok(personal.indexOf('</ul>') < personal.indexOf('Request trial access'));
     if (name === 'index.html') {
       assert.match(html, /class="button primary" data-personal-subscribe href="https:\/\/manage.example.com\/portal">Subscribe to Personal/);
       assert.match(html, /<summary aria-label="More subscription options">/);
@@ -49,6 +50,9 @@ test('live Personal purchase is primary on pricing, home and downloads while tri
   const downloads = await readFile(join(live.directory,'downloads.html'),'utf8');
   assert.match(downloads,/Subscribe to Personal/);
   assert.match(downloads,/Manage downloads/);
+  const access = await readFile(join(live.directory, 'get-started.html'), 'utf8');
+  assert.doesNotMatch(access, /name="plan" value="personal"/);
+  assert.match(access, /name="plan" value="commercial" checked/);
   const testBuild = await stageSite('public',join(dir,'test'));
   const testPricing = await readFile(join(testBuild.directory,'pricing.html'),'utf8');
   assert.doesNotMatch(testPricing,/Subscribe now/);

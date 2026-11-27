@@ -40,7 +40,10 @@ async function protectRequest() {
   } finally { if (widget !== undefined) window.turnstile.remove(widget); }
 }
 const plan = new URLSearchParams(location.search).get('plan');
-if (!support && ['personal', 'commercial', 'cloud'].includes(plan)) form.querySelector(`[name="plan"][value="${plan}"]`).checked = true;
+if (!support && ['personal', 'commercial', 'cloud'].includes(plan)) {
+  const requestedPlan = form.querySelector(`[name="plan"][value="${plan}"]`);
+  if (requestedPlan) requestedPlan.checked = true;
+}
 function updatePlan() {
   const selected = form.querySelector('[name="plan"]:checked')?.value;
   const cloud = selected === 'cloud', commercial = selected === 'commercial';

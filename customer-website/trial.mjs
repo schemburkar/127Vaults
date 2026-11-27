@@ -90,7 +90,12 @@ function showLicense(record) {
   $('trial-license').hidden = !record.installationId;
   $('trial-recovery').hidden = !record.installationId;
   const expired = record.expiresAt && Date.now() >= Date.parse(record.expiresAt);
-  $('replacement-request').hidden = Boolean(record.replacementRequest) || expired;
+  $('replacement-request').hidden = record.personalTrial || Boolean(record.replacementRequest) || expired;
+  if (record.personalTrial) {
+    $('trial-activate').querySelector('button').textContent = 'Activate my 15-day trial';
+    $('bind-confirm').nextElementSibling.textContent = 'Activation binds the license to this installation and starts your 15-day trial.';
+    $('trial-terms').textContent = 'Writes stop after 15 days. Reads and exports remain available for 30 more days. Subscribe in Manage to keep using this installation.';
+  }
   $('download-license').disabled = Boolean(record.replacementRequest);
   $('replacement-status').textContent = record.replacementRequest ? 'Replacement requested. Your inviter must issue the new license. The previous license is marked revoked; download and apply its revocation if the old server is reachable.' : expired ? 'This license has expired. Replacement does not renew it; contact your inviter.' : record.replacementCount ? 'Your replacement license is ready. Download it above and install it on the approved replacement server.' : '';
   $('download-replacement-revocation').hidden = !record.replacementRequest && !record.replacementCount;
@@ -99,6 +104,7 @@ function showLicense(record) {
     : record.kind === 'development'
       ? `Development access for up to ${record.maxUsers} vault users, licensed until ${new Date(record.entitlementExpiresAt).toLocaleString()}. Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`
       : record.personalPurchase ? `Paid Personal license for up to ${record.maxUsers} vault users. Bind it to your server during setup.`
+      : record.personalTrial ? `Your 15-day Personal trial starts when you activate. Includes up to ${record.maxUsers} vault users.`
       : `Up to ${record.maxUsers} vault users. ${record.billingAvailable ? '' : 'The 10 days start when you activate. '}Invitation available until ${new Date(record.linkExpiresAt).toLocaleString()}.`;
 }
 async function download(action, filename) {

@@ -1,5 +1,7 @@
 import { encryptionKey, hash, equal, token, seal, unseal, limitIdentity } from './crypto.mjs';
-import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation } from './dodo.mjs';
+import { rawBody, reject, paidPersonalAccess, personalBuyerAllowed, convertibleInstallation, billingConfig } from './dodo.mjs';
+import { personalTrialId } from './personal-trial.mjs';
+import { personalTrialAccess } from './client-downloads.mjs';
 import { createCloudflareTrialMailer } from '../src/cloudflare-email.mjs';
 import { productionRecipient } from '../src/resend-email.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail } from './customer-email.mjs';
@@ -173,6 +175,7 @@ export async function handleCustomerPortal(request, env, store, now) {
     const row = await store.get(input.requestId);
     if (!await customerCanAccess(request, env, store, row, now)) reject(404, 'not_found');
     if (row.trial.kind === 'personal-purchase' && !paidPersonalAccess(row.trial, now)) reject(403, 'payment_required');
+    if (!personalTrialAccess(row.trial, env, now)) reject(403, 'payment_required');
     const value = token(), expiresAt = Math.min(now + 3600000, principal.kind === 'invitation' ? principal.sessionExpiresAt : Infinity);
     await store.save(row, { ...row.trial, portalInstallerHash: await hash(value), portalInstallerUntil: expiresAt, portalInstallerParent: row.trial.tokenHash });
     return json(200, { link: `${env.CUSTOMER_ORIGIN ?? env.PUBLIC_INTAKE_ORIGIN}/trial?open=1#${row.id}.${value}`, expiresAt: new Date(expiresAt).toISOString() });
@@ -186,13 +189,14 @@ export async function handleCustomerPortal(request, env, store, now) {
       if (row.contact?.plan === 'support' || row.trial?.kind === 'personal-signup') continue;
       const owned = principal.kind === 'email' ? normalize(row.contact?.email) === principal.email
         : row.id === principal.requestId && row.trial?.state === 'approved' && await equal(principal.invitationHash, row.trial.tokenHash);
-      if (!owned) continue;
+      if (!owned || (row.trial?.kind === 'personal-trial' && row.trial.trialCheckout.mode !== env.DODO_MODE)) continue;
       const personalPurchase = row.trial?.kind === 'personal-purchase';
       const paid = paidPersonalAccess(row.trial, now);
       requests.push({ id: row.id, plan: personalPurchase ? 'personal' : row.trial?.billing?.planSlug ?? row.contact.plan,
         state: row.trial?.convertedPurchaseId ? 'converted' : personalPurchase && !paid ? 'purchase_pending' : row.trial?.state ?? 'requested',
         convertible: convertibleInstallation(row.trial, conversionPlan), conversion: Boolean(row.trial?.conversionSourceId),
         kind: row.trial?.kind ?? (row.trial?.state === 'approved' ? 'trial' : null),
+        setupAvailable: row.trial?.state === 'approved' && personalTrialAccess(row.trial, env, now),
         billingMode: row.trial?.billing?.mode ?? null, createdAt: new Date(row.receivedAt).toISOString(),
         checkoutStartedAt: row.trial?.billing?.checkoutStartedAt ?? null,
         installationId: row.trial?.installationId ?? null, expiresAt: row.trial?.expiresAt ?? null,
@@ -201,11 +205,20 @@ export async function handleCustomerPortal(request, env, store, now) {
         cancelAtPeriodEnd: Boolean(row.trial?.billing?.cancelAtPeriodEnd), maxUsers: row.trial?.maxUsers ?? null });
     }
     const cloud = principal.kind === 'email' ? await cloudCustomerTenants(env, principal.email) : { tenants: [], unavailable: false };
+    let trialAction = null;
+    if (principal.kind === 'email' && personalBuyerAllowed(env, principal.email) && personalOffered(env) && env.DODO_PERSONAL_TRIAL) {
+      const config = billingConfig(env);
+      const trial = await store.get(await personalTrialId(store, config.mode, principal.email));
+      const previouslyActivated = config.mode === 'live_mode' && rows.some(row => normalize(row.contact?.email) === principal.email
+        && row.contact.plan === 'personal' && row.trial?.activatedAt
+        && !['development', 'personal-trial'].includes(row.trial.kind));
+      if (config.trial && !previouslyActivated && (!trial || trial.trial?.state === 'trial_pending')) trialAction = trial ? 'continue' : 'start';
+    }
     return json(200, { scope: principal.installationOnly ? 'installer' : principal.kind, email: principal.kind === 'email' ? principal.email : null,
       purchaseMode: personalOffered(env) && personalBuyerAllowed(env, principal.email) ? env.DODO_MODE : null,
       canBuyPersonal: principal.kind === 'email' && personalBuyerAllowed(env, principal.email) && personalOffered(env)
         && !requests.some(row => row.plan === 'personal' && row.billingStatus && row.billingMode === env.DODO_MODE),
-      requests, cloudTenants: cloud.tenants, cloudUnavailable: cloud.unavailable });
+      trialAction, requests, cloudTenants: cloud.tenants, cloudUnavailable: cloud.unavailable });
   }
   if (path === '/api/customer/logout' && request.method === 'POST') {
     await body(request, []);

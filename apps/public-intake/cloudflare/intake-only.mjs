@@ -32,6 +32,7 @@ export default { async fetch(request, env, ctx) {
     }
     catch (error) { if (error instanceof BillingError) throw error; return json(400, { error: 'invalid_request' }); }
     if (!input) return json(400, { error: 'invalid_request' });
+    if (env.PERSONAL_SUBSCRIPTION_TRIAL === '1' && input.plan === 'personal') return json(409, { error: 'use_customer_portal' });
     if (env.INTAKE_PROTECTION === '1' && !input.contactName) return json(400, { error: 'name_required' });
     if (env.INTAKE_PROTECTION === '1' && !input.trapped) {
       const error = await verifyIntake(env, request, protection, store.db);

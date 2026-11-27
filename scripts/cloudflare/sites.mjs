@@ -24,6 +24,8 @@ export function siteConfig(config, state, surface, assets) {
     delete common.assets; delete common.r2_buckets; delete common.send_email;
     common.services = [{ binding: 'ALERTS', service: `${config.workerName}-admin`, entrypoint: 'AccessRequestAlerts' }];
     common.vars = { PUBLIC_INTAKE_ORIGIN: config.origin, ADMIN_ORIGIN: config.sites.adminOrigin,
+      ...(config.billing?.mode === 'live_mode' && config.billing.personalTrial && config.customerEmail?.enabled
+        ? { PERSONAL_SUBSCRIPTION_TRIAL: '1' } : {}),
       ...(config.intakeProtection ? { INTAKE_PROTECTION: '1', TURNSTILE_SITE_KEY: config.intakeProtection.siteKey,
         INTAKE_WAIT_MS: String(config.intakeProtection.waitMs), INTAKE_COOKIE_COOLDOWN_MS: String(config.intakeProtection.cookieCooldownMs) } : {}),
       ...(config.requestAlertTo ? { REQUEST_ALERT_TO: config.requestAlertTo, REQUEST_ALERT_FROM: config.requestAlertFrom } : {}) };
@@ -77,6 +79,7 @@ export async function renderSites(config, state) {
     const assets = join(root, surface);
     if (surface !== 'intake') await stageSite(surface, assets, {
       publicOrigin: config.origin,
+      personalSubscriptionTrial: Boolean(config.billing?.personalTrial),
       personalBuyUrl: config.billing?.mode === 'live_mode' && config.billing.plans['personal-annual']?.plan === 'personal'
         && config.customerEmail?.enabled ? new URL('/portal?subscribe=personal', config.sites.customerOrigin).href : undefined,
     });

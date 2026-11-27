@@ -1,4 +1,4 @@
-import { clientGrant, clientArtifact } from './client-downloads.mjs';
+import { clientGrant, clientArtifact, personalTrialAccess } from './client-downloads.mjs';
 import { compatiblePersonalMajor } from '../../server/src/license-version.mjs';
 import { validateRequest } from '../src/validate-request.mjs';
 import { validIntakeOrigin } from '../src/intake-origin.mjs';
@@ -13,6 +13,7 @@ import { createOperatorSession, validOperatorSession, revokeOperatorSession, cle
 import { notifyNewAccessRequest, notifyRequestVolume, requestAlertsEnabled } from '../src/request-alerts.mjs';
 import { BillingError, paidPersonalAccess } from './dodo.mjs';
 import { billingWebhook, handleBilling, reconcileBilling, issuePersonalLicense, claimPersonalConversion } from './billing.mjs';
+import { personalTrialDays } from './personal-trial.mjs';
 import { handleCustomerPortal, customerCanAccess, customerInstallerGrant, pruneCustomerPortal, manualCustomerMail } from './customer-portal.mjs';
 import { resendCustomerEmailEnabled, sendCustomerEmail, pruneCustomerEmail } from './customer-email.mjs';
 
@@ -20,7 +21,9 @@ const day = 86400000;
 const activeDevelopment = (record,at) => record?.kind === 'development' && record.state === 'approved'
   && Date.parse(record.entitlementExpiresAt) > at;
 const activeExtension = (record,at) => record?.state === 'approved' && record.extendedAt && Date.parse(record.expiresAt) > at;
-const retained = (row,at) => at - row.receivedAt < 90 * day || Boolean(row.trial?.billing) || activeDevelopment(row.trial,at) || activeExtension(row.trial,at);
+const retained = (row,at) => at - row.receivedAt < 90 * day || Boolean(row.trial?.billing)
+  || Boolean(row.trial?.kind === 'personal-trial' && row.trial.trialCheckout?.paymentId)
+  || activeDevelopment(row.trial,at) || activeExtension(row.trial,at);
 const installationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 // Cache only imported keys, never request-bound D1 sessions, R2 objects or mutable trial state.
 const keyCache = new WeakMap(), issuerCache = new WeakMap();
@@ -97,7 +100,7 @@ const entitledMajor = record => record?.serverMajorVersion ?? 0;
 async function entitledRelease(env, record) {
   const current = await release(env), major = entitledMajor(record);
   let selected = current;
-  const matches = candidate => record?.kind === 'personal-purchase' ? compatiblePersonalMajor(major, candidate) : candidate === major;
+  const matches = candidate => ['personal-purchase', 'personal-trial'].includes(record?.kind) ? compatiblePersonalMajor(major, candidate) : candidate === major;
   if (!matches(serverMajor(current.catalogue))) {
     const channel = current.catalogue.previousMajors?.slice().sort((a, b) => b.majorVersion - a.majorVersion).find(v => matches(v.majorVersion));
     if (!channel) fail(409, 'licensed_major_unavailable');
@@ -208,6 +211,7 @@ async function dispatch(request, env, now, schedule) {
     if (!await store.allow('waitlist-ip', ip, 60, 3600000)) fail(429, 'rate_limited');
     const input = validateRequest(await body(request));
     if (!input) fail(400, 'invalid_request');
+    if (env.DODO_ENABLED === '1' && env.DODO_MODE === 'live_mode' && env.DODO_PERSONAL_TRIAL && input.plan === 'personal') fail(409, 'use_customer_portal');
     if (!await store.allow('waitlist-email', input.email, 3, 3600000)) fail(429, 'rate_limited');
     if (!input.trapped) {
       const { trapped: _, ...contact } = input;
@@ -294,7 +298,7 @@ async function dispatch(request, env, now, schedule) {
   const input = request.method === 'POST' ? await body(request) : null;
   if (!admin && (action==='client-installer'||action?.startsWith('client-artifacts/'))) {
     if (!['GET','HEAD'].includes(request.method)) fail(405,'method_not_allowed');
-    if (!row?.contact||!retained(row,at)||!await clientGrant(record,bearer,at)) fail(401,'client_link_unavailable');
+    if (!row?.contact||!retained(row,at)||!await clientGrant(record,bearer,at)||!personalTrialAccess(record,env,at)) fail(401,'client_link_unavailable');
     if (!await store.allow('client-downloads',ip,120,3600000)) fail(429,'rate_limited');
     const version=request.headers.get('X-127Vaults-Installer-Version');
     if(version!==null&&!installerPolicy(version,env.INSTALLER_MIN_VERSION??'0.1.0')) fail(426,'installer_update_required');
@@ -315,6 +319,7 @@ async function dispatch(request, env, now, schedule) {
     }
     if (action === 'revocation' && request.method === 'GET' && (record?.revocation || record?.previousRevocation)) return attachment('trial-revocation.json', record.revocation ?? record.previousRevocation);
     if (request.method !== 'POST') fail(405, 'method_not_allowed');
+    if (record?.kind === 'personal-trial' && !['archive', 'unarchive', 'close', 'erase'].includes(action)) fail(409, 'action_unavailable');
     if (action === 'archive' || action === 'unarchive') {
       empty(input); record = { state: 'requested', ...record, archivedAt: action === 'archive' ? new Date(at).toISOString() : null };
     } else if (action === 'approve-development') {
@@ -477,7 +482,9 @@ async function dispatch(request, env, now, schedule) {
   const installerGrant = env.CUSTOMER_PORTAL_ENABLED === '1' && await customerInstallerGrant(row, bearer, at);
   if (!record || record.state !== 'approved' || (!portalAuthorized && !installerGrant && at >= Date.parse(record.linkExpiresAt)) || !row.contact || !retained(row,at)) fail(404, 'link_unavailable');
   const personalPurchase = record.kind === 'personal-purchase';
+  const personalTrial = record.kind === 'personal-trial';
   if (personalPurchase && !paidPersonalAccess(record, at)) fail(403, 'payment_required');
+  if (personalTrial && !personalTrialAccess(record, env, at)) fail(403, 'payment_required');
   const { catalogue, publicKey, signingKey } = await entitledRelease(env, record);
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith('__Secure-127v-trial='))?.slice('__Secure-127v-trial='.length);
   const ticketValid = action?.startsWith('artifacts/') && ['GET', 'HEAD'].includes(request.method) && record.ticketHash
@@ -494,7 +501,8 @@ async function dispatch(request, env, now, schedule) {
   });
   if (!action && request.method === 'GET') return json(200, { ...summary(record, mailer), billingAvailable: Boolean(record.billing), personalPurchase,
     conversionInstallationId: record.conversionInstallationId ?? null,
-    trialDays: personalPurchase || record.kind === 'development' ? 0 : 10, payment: record.billing?.status ?? 'none',
+    trialDays: personalPurchase || record.kind === 'development' ? 0 : personalTrial ? personalTrialDays : 10,
+    personalTrial, payment: record.billing?.status ?? 'none',
     sourceRevision: catalogue.sourceRevision, artifacts: catalogue.artifacts.map(publicArtifact) });
   if (action === 'ticket' && request.method === 'POST') {
     empty(input); const value = token(); record = { ...record, ticketHash: await hash(value), ticketUntil: at + 300000 };
@@ -505,6 +513,7 @@ async function dispatch(request, env, now, schedule) {
     return attachment('replaced-license-revocation.json', record.revocation ?? record.previousRevocation);
   }
   if (action === 'replacement-request' && request.method === 'POST') {
+    if (personalTrial) fail(409, 'replacement_unavailable');
     if (record.convertedPurchaseId) fail(409, 'converted_installation');
     if (Object.keys(input).sort().join(',') !== 'installationId,reason,retired' || input.retired !== true
       || !installationUuid.test(input.installationId ?? '') || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 500) fail(400, 'invalid_request');
@@ -533,7 +542,7 @@ async function dispatch(request, env, now, schedule) {
       }
       const issuedAt = new Date(at).toISOString();
       const expiresAt = personalPurchase ? record.billing.paidThrough
-        : record.kind === 'development' ? record.entitlementExpiresAt : new Date(at + 10 * day).toISOString();
+        : record.kind === 'development' ? record.entitlementExpiresAt : new Date(at + (personalTrial ? personalTrialDays : 10) * day).toISOString();
       if (Date.parse(expiresAt) <= at) fail(409,'license_expired');
       record = { ...record, installationId, activatedAt: issuedAt, expiresAt };
       if (personalPurchase) {
@@ -542,7 +551,9 @@ async function dispatch(request, env, now, schedule) {
       }
       record.license = personalPurchase ? await issuePersonalLicense(record, signingKey, env.TRIAL_ISSUER_KEY_ID, at)
         : await signEnvelope(signingKey, env.TRIAL_ISSUER_KEY_ID, '127Vaults license v1', {
-          licenseId: crypto.randomUUID(), installationId, plan: record.kind === 'development' ? 'development' : 'commercial', majorVersion: null,
+          licenseId: crypto.randomUUID(), installationId,
+          plan: personalTrial ? 'personal' : record.kind === 'development' ? 'development' : 'commercial',
+          majorVersion: personalTrial ? record.serverMajorVersion : null,
           maxActiveUsers: record.maxUsers, issuedAt, notBefore: issuedAt, expiresAt, sequence: 1,
         });
       await store.save(row, record);
@@ -582,7 +593,7 @@ export async function prune(env, { now = () => Date.now() } = {}) {
     if(!rows.length)break;
     for (const row of rows) {
     afterId=row.id;
-    if (row.trial?.billing || activeDevelopment(row.trial,now()) || activeExtension(row.trial,now())) continue;
+    if (retained(row, now())) continue;
     const record = { ...row.trial };
     if (record.license && !record.revocation) {
       signingKey ??= (await release(env)).signingKey;
