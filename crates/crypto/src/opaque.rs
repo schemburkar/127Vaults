@@ -534,11 +534,11 @@ mod tests {
     fn exact_profile_round_trip() {
         assert_eq!(
             deterministic_protocol_vector(
-                &[7; 32],
-                b"fictitious password only",
+                &crate::random_test_bytes(),
+                &crate::random_test_bytes(),
                 binding(),
-                [8; 32],
-                [9; 32]
+                crate::random_test_bytes(),
+                crate::random_test_bytes()
             )
             .unwrap(),
             [32, 64, 192, 96, 320, 64]
@@ -546,16 +546,17 @@ mod tests {
     }
     #[test]
     fn input_bounds_are_rejected() {
+        let secret = crate::random_test_bytes();
         assert_eq!(
-            bounded_password(&[0; 31], b"x").unwrap_err(),
+            bounded_password(&secret[..31], b"x").unwrap_err(),
             Error::InvalidInput
         );
         assert_eq!(
-            bounded_password(&[0; 32], b"").unwrap_err(),
+            bounded_password(&secret, b"").unwrap_err(),
             Error::InvalidInput
         );
         assert_eq!(
-            bounded_password(&[0; 32], &vec![0; 1025]).unwrap_err(),
+            bounded_password(&secret, &vec![0; 1025]).unwrap_err(),
             Error::InvalidInput
         );
     }

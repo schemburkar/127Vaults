@@ -51,13 +51,14 @@ fn main() -> Result<(), String> {
                 &[],
             )?;
             let new_title = format!("API010-CREATE-{}", uuid::Uuid::new_v4());
+            let new_password = uuid::Uuid::new_v4().to_string();
             if stale.item_upsert(
                 &vault,
                 None,
                 &new_title,
                 "https://new.invalid",
                 "new-user",
-                "new-fiction-secret",
+                &new_password,
                 &[],
             )?["queued"]
                 != true

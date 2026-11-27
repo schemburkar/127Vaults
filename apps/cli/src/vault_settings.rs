@@ -248,6 +248,7 @@ pub fn encrypt(core: &Core, root: KeyHandle, data: &SettingsData) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand_core::{OsRng, RngCore};
 
     #[test]
     fn encrypted_pending_settings_survive_restart_and_reject_tampering() {
@@ -261,8 +262,12 @@ mod tests {
         template[65..69].copy_from_slice(&1u32.to_be_bytes());
         template[69..77].copy_from_slice(&1u64.to_be_bytes());
         let mut core = Core::new();
+        let mut password = [0; 32];
+        let mut account_secret = [0; 32];
+        OsRng.fill_bytes(&mut password);
+        OsRng.fill_bytes(&mut account_secret);
         let root = core
-            .create_root(&template, b"fixture-password", &[9; 32])
+            .create_root(&template, &password, &account_secret)
             .unwrap()
             .handle
             .unwrap();

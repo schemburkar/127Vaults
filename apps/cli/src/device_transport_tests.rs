@@ -363,6 +363,7 @@ fn migration_preserves_secrets_previews_without_writes_and_enforces_license_on_e
 
 #[test]
 fn disconnected_edit_reports_its_durable_queue_and_reconnect_reuses_the_request() {
+    let password = uuid::Uuid::new_v4().to_string();
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let unavailable = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
@@ -374,7 +375,7 @@ fn disconnected_edit_reports_its_durable_queue_and_reconnect_reuses_the_request(
             "Offline edit",
             "https://fixture.invalid",
             "offline-user",
-            "fixture-password",
+            &password,
             &[],
         )
         .unwrap();
@@ -436,6 +437,7 @@ fn disconnected_edit_reports_its_durable_queue_and_reconnect_reuses_the_request(
 
 #[test]
 fn failed_second_vault_reload_does_not_discard_first_vault_queue() {
+    let password = uuid::Uuid::new_v4().to_string();
     let (mut session, first_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
     let server = session.replica_store.load(&first_id).unwrap().unwrap();
     let second = session
@@ -461,7 +463,7 @@ fn failed_second_vault_reload_does_not_discard_first_vault_queue() {
             "Pending first vault",
             "https://fixture.invalid",
             "fixture-user",
-            "fixture-password",
+            &password,
             &[],
         )
         .unwrap();
@@ -505,6 +507,7 @@ fn failed_second_vault_reload_does_not_discard_first_vault_queue() {
 
 #[test]
 fn global_server_reload_requires_complete_authenticated_replacements() {
+    let password = uuid::Uuid::new_v4().to_string();
     for scenario in ["missing-vault", "invalid-catalogue", "verified"] {
         let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
         let server = session.replica_store.load(&vault_id).unwrap().unwrap();
@@ -516,7 +519,7 @@ fn global_server_reload_requires_complete_authenticated_replacements() {
                 "Pending offline edit",
                 "https://fixture.invalid",
                 "fixture-user",
-                "fixture-password",
+                &password,
                 &[],
             )
             .unwrap();
@@ -577,6 +580,7 @@ fn global_server_reload_requires_complete_authenticated_replacements() {
 
 #[test]
 fn global_server_reload_preserves_pending_work_until_refresh_is_verified() {
+    let password = uuid::Uuid::new_v4().to_string();
     for status in [401, 403, 503] {
         let (origin, worker) = fixture(vec![(status, json!({"error":"unavailable"}))]);
         let (mut session, vault_id, item_id) = session_with_editable_item(&origin);
@@ -588,7 +592,7 @@ fn global_server_reload_preserves_pending_work_until_refresh_is_verified() {
                 "Pending offline edit",
                 "https://fixture.invalid",
                 "fixture-user",
-                "fixture-password",
+                &password,
                 &[],
             )
             .unwrap();
@@ -1033,6 +1037,8 @@ fn missing_server_item_distinguishes_a_queued_creation_from_an_edit() {
 
 fn session_with_real_missing_item_drafts(
     queued_create: bool,
+    first_password: &str,
+    sibling_password: &str,
 ) -> (
     Session,
     String,
@@ -1086,7 +1092,7 @@ fn session_with_real_missing_item_drafts(
             "Real first draft",
             "https://fixture.invalid",
             "first-user",
-            "first-private-password",
+            first_password,
             &[],
         )
         .unwrap();
@@ -1097,7 +1103,7 @@ fn session_with_real_missing_item_drafts(
             "Real sibling draft",
             "https://fixture.invalid",
             "sibling-user",
-            "sibling-private-password",
+            sibling_password,
             &[],
         )
         .unwrap();
@@ -1125,10 +1131,11 @@ fn session_with_real_missing_item_drafts(
 
 #[test]
 fn offline_item_delete_preserves_siblings_and_exact_request_across_restart() {
+    let password = uuid::Uuid::new_v4().to_string();
     let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
     session.online = false;
     session
-        .item_upsert(&vault_id, None, "Sibling", "", "", "sibling-secret", &[])
+        .item_upsert(&vault_id, None, "Sibling", "", "", &password, &[])
         .unwrap();
     let before = session.replica_store.load(&vault_id).unwrap().unwrap();
     let result = session.item_delete(&vault_id, &item_id).unwrap();
@@ -1176,7 +1183,7 @@ fn offline_item_delete_preserves_siblings_and_exact_request_across_restart() {
     assert!(session.item_get(&vault_id, &item_id, None).is_err());
     let review = session.sync_review().unwrap();
     assert_eq!(review["items"][1]["kind"], "item.delete");
-    assert!(!review.to_string().contains("sibling-secret"));
+    assert!(!review.to_string().contains(&password));
     let reopened = crate::replica::ReplicaStore::new(&session.profile_dir)
         .load(&vault_id)
         .unwrap()
@@ -1333,7 +1340,10 @@ fn deletion_delivery_failure_keeps_exact_request_and_sync_retries_delete() {
 
 #[test]
 fn sync_review_authenticates_long_queue_without_changing_requests() {
-    let (mut session, vault_id, first_id, _, _) = session_with_real_missing_item_drafts(false);
+    let first_password = uuid::Uuid::new_v4().to_string();
+    let sibling_password = uuid::Uuid::new_v4().to_string();
+    let (mut session, vault_id, first_id, _, _) =
+        session_with_real_missing_item_drafts(false, &first_password, &sibling_password);
     for index in 0..64 {
         session
             .item_upsert(
@@ -1342,7 +1352,7 @@ fn sync_review_authenticates_long_queue_without_changing_requests() {
                 &format!("Queued review {index}"),
                 "https://fixture.invalid",
                 "first-user",
-                "first-private-password",
+                &first_password,
                 &[],
             )
             .unwrap();
@@ -1386,9 +1396,15 @@ fn sync_review_authenticates_long_queue_without_changing_requests() {
 
 #[test]
 fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
+    let first_password = uuid::Uuid::new_v4().to_string();
+    let sibling_password = uuid::Uuid::new_v4().to_string();
     for queued_create in [true, false] {
         let (mut session, vault_id, first_id, before, remote) =
-            session_with_real_missing_item_drafts(queued_create);
+            session_with_real_missing_item_drafts(
+                queued_create,
+                &first_password,
+                &sibling_password,
+            );
         let operation_id = before.pending[0].operation["opId"].as_str().unwrap();
         let responses = initial_snapshot_responses(&remote);
         // Controlled authenticated empty-catalogue state, not a production
@@ -1421,7 +1437,7 @@ fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
         let draft = session
             .conflict_draft(&vault_id, &first_id, operation_id)
             .unwrap();
-        assert_eq!(draft["password"], "first-private-password");
+        assert_eq!(draft["password"], first_password.as_str());
         session
             .resolve_conflict(&vault_id, operation_id, "server")
             .unwrap();
@@ -1440,7 +1456,7 @@ fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
             )
             .unwrap();
         assert_eq!(sibling_draft["title"], "Real sibling draft");
-        assert_eq!(sibling_draft["password"], "sibling-private-password");
+        assert_eq!(sibling_draft["password"], sibling_password.as_str());
         assert!(
             worker
                 .join()
@@ -1455,8 +1471,10 @@ fn missing_server_item_keeps_real_encrypted_sibling_until_selected_discard() {
 
 #[test]
 fn create_id_collision_preserves_real_draft_and_peer_until_explicit_choice() {
+    let first_password = uuid::Uuid::new_v4().to_string();
+    let sibling_password = uuid::Uuid::new_v4().to_string();
     let (mut session, vault_id, first_id, mut before, mut remote) =
-        session_with_real_missing_item_drafts(true);
+        session_with_real_missing_item_drafts(true, &first_password, &sibling_password);
     let operation_id = before.pending[0].operation["opId"]
         .as_str()
         .unwrap()
@@ -1498,7 +1516,7 @@ fn create_id_collision_preserves_real_draft_and_peer_until_explicit_choice() {
         session
             .conflict_draft(&vault_id, &first_id, &operation_id)
             .unwrap()["password"],
-        "first-private-password"
+        first_password.as_str()
     );
     assert_eq!(
         session
@@ -1525,7 +1543,7 @@ fn create_id_collision_preserves_real_draft_and_peer_until_explicit_choice() {
             sibling.request["body"].as_str().unwrap(),
         )
         .unwrap();
-    assert_eq!(sibling_draft["password"], "sibling-private-password");
+    assert_eq!(sibling_draft["password"], sibling_password.as_str());
     assert_eq!(
         session.item_get(&vault_id, &first_id, None).unwrap()["title"],
         "Peer at reserved ID"
@@ -1801,6 +1819,7 @@ fn session_with_editable_item(origin: &str) -> (Session, String, String) {
 
 #[test]
 fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselines() {
+    let password = uuid::Uuid::new_v4().to_string();
     let (origin, worker) = fixture(vec![
         (200, json!({"accepted":true})),
         (200, json!({"accepted":true})),
@@ -1814,7 +1833,7 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
             "First edit",
             "https://fixture.invalid",
             "fixture-user",
-            "fixture-password",
+            &password,
             &[],
         )
         .unwrap();
@@ -1826,7 +1845,7 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
             "Second edit",
             "https://fixture.invalid",
             "fixture-user",
-            "fixture-password",
+            &password,
             &[],
         )
         .unwrap();
@@ -1839,7 +1858,7 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
                 "Stale reviewed edit",
                 "https://fixture.invalid",
                 "fixture-user",
-                "fixture-password",
+                &password,
                 &[]
             )
             .unwrap_err()
@@ -1889,6 +1908,7 @@ fn consecutive_online_edits_chain_accepted_heads_without_refreshing_item_baselin
 
 #[test]
 fn acknowledged_write_cannot_be_replaced_by_pre_acknowledgement_server_history() {
+    let password = uuid::Uuid::new_v4().to_string();
     let (mut session, vault_id, item_id) = session_with_editable_item("http://127.0.0.1:1");
     let old = session.replica_store.load(&vault_id).unwrap().unwrap();
     let mut responses = initial_snapshot_responses(&old);
@@ -1910,7 +1930,7 @@ fn acknowledged_write_cannot_be_replaced_by_pre_acknowledgement_server_history()
             "Acknowledged edit",
             "https://fixture.invalid",
             "fixture-user",
-            "fixture-password",
+            &password,
             &[],
         )
         .unwrap();
@@ -1933,6 +1953,7 @@ fn acknowledged_write_cannot_be_replaced_by_pre_acknowledgement_server_history()
 
 #[test]
 fn acknowledged_write_is_pinned_by_verified_history_before_acknowledgement_is_cleared() {
+    let password = uuid::Uuid::new_v4().to_string();
     let (origin, receipt_worker) = fixture(vec![(200, json!({"accepted":true}))]);
     let (mut session, vault_id, item_id) = session_with_editable_item(&origin);
     session
@@ -1942,7 +1963,7 @@ fn acknowledged_write_is_pinned_by_verified_history_before_acknowledgement_is_cl
             "Acknowledged edit",
             "https://fixture.invalid",
             "fixture-user",
-            "fixture-password",
+            &password,
             &[],
         )
         .unwrap();

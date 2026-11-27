@@ -70,7 +70,16 @@ fn main() -> Result<(), String> {
         .as_str()
         .ok_or("archive source missing")?
         .to_owned();
-    first.item_upsert(&archive, None, "Fictitious note", "", "", "fiction", &[])?;
+    let note_password = uuid::Uuid::new_v4().to_string();
+    first.item_upsert(
+        &archive,
+        None,
+        "Fictitious note",
+        "",
+        "",
+        &note_password,
+        &[],
+    )?;
     if first.archive_vault(&archive)?["choice"] != "archive" {
         return Err("archive failed".to_owned());
     }

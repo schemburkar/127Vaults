@@ -96,6 +96,7 @@ fn verify_conflict(profile: &Path, title: &str) -> Result<(), String> {
 }
 
 fn verify_sync_review(profile: &Path) -> Result<(), String> {
+    let password = uuid::Uuid::new_v4().to_string();
     let mut session = vaults_cli::client::unlock_offline(
         profile,
         "owner_127",
@@ -114,7 +115,7 @@ fn verify_sync_review(profile: &Path) -> Result<(), String> {
         "Synthetic sync review check",
         "https://review.invalid",
         "synthetic-review-user",
-        "synthetic-review-password",
+        &password,
         &[],
     )?;
     drop(session);
@@ -140,7 +141,7 @@ fn verify_sync_review(profile: &Path) -> Result<(), String> {
     }
     let serialized = review.to_string();
     if [
-        "synthetic-review-password",
+        password.as_str(),
         "synthetic-review-user",
         "https://review.invalid",
     ]

@@ -425,6 +425,12 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     fn exercise_rotation(kind: &'static str) {
         for ambiguous in [false, true] {
+            let old_password = uuid::Uuid::new_v4().to_string();
+            let new_password = uuid::Uuid::new_v4().to_string();
+            let mut old_secret = [0u8; 32];
+            let mut new_secret = [0u8; 32];
+            OsRng.fill_bytes(&mut old_secret);
+            OsRng.fill_bytes(&mut new_secret);
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let origin = format!("http://{}", listener.local_addr().unwrap());
             let tenant = uuid::Uuid::new_v4();
@@ -441,7 +447,7 @@ mod tests {
             template[69..77].copy_from_slice(&1_u64.to_be_bytes());
             let original = session
                 .core
-                .create_root(&template, b"old fictitious password", &[9; 32])
+                .create_root(&template, old_password.as_bytes(), &old_secret)
                 .unwrap();
             session.root = original.handle.unwrap();
             let directory = session.profile_dir.clone();
@@ -581,14 +587,14 @@ mod tests {
                 }
             });
             let next_secret = if kind == "account-secret" {
-                [8_u8; 32]
+                new_secret
             } else {
-                [9_u8; 32]
+                old_secret
             };
             let next_password: &[u8] = if kind == "account-secret" {
-                b"old fictitious password"
+                old_password.as_bytes()
             } else {
-                b"new fictitious password"
+                new_password.as_bytes()
             };
             let result =
                 session.rotate_credentials("Owner", kind, &hex::encode(next_secret), next_password);
@@ -603,7 +609,7 @@ mod tests {
                 assert!(
                     !fs::read_to_string(path(&directory))
                         .unwrap()
-                        .contains("new fictitious password")
+                        .contains(&new_password)
                 );
                 assert_eq!(rotation_status(&directory).unwrap()["pending"], true);
             } else {

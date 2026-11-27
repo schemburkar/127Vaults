@@ -13,16 +13,18 @@ fn main() {
     }
     template[65..69].copy_from_slice(&1_u32.to_be_bytes());
     template[69..77].copy_from_slice(&1_u64.to_be_bytes());
-    let password = b"synthetic-benchmark-password";
-    let secret = [9_u8; 32];
+    let mut password = [0u8; 32];
+    let mut secret = [0u8; 32];
+    getrandom::fill(&mut password).expect("benchmark entropy");
+    getrandom::fill(&mut secret).expect("benchmark entropy");
     let mut core = Core::new();
-    let created = core.create_root(&template, password, &secret).unwrap();
+    let created = core.create_root(&template, &password, &secret).unwrap();
     core.lock();
     println!("Root verification: fixed 64 MiB, 3 passes, 1 lane; synthetic material only.");
     let mut elapsed = Vec::new();
     for sample in 1..=3 {
         let start = Instant::now();
-        core.unwrap_root(&created.envelope, &created.context, password, &secret)
+        core.unwrap_root(&created.envelope, &created.context, &password, &secret)
             .unwrap();
         elapsed.push(start.elapsed().as_millis());
         core.lock();

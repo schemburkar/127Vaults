@@ -1057,7 +1057,8 @@ mod tests {
     fn vendor_records_have_readable_notes_and_fields_without_raw_json() {
         let source = json!({"notes":"Readable notes","fields":[{"name":"PIN","value":"1234","type":1}],
             "details":{"sections":[{"fields":[{"t":"Text","k":"string","v":"value"}]}]},"vendorInternal":"not imported"});
-        let row = record("A", "https://example.invalid", "user", "password", &source);
+        let password = uuid::Uuid::new_v4().to_string();
+        let row = record("A", "https://example.invalid", "user", &password, &source);
         assert_eq!(row["customFields"][0]["value"], "Readable notes");
         assert_eq!(row["customFields"][0]["type"], "note");
         assert_eq!(row["customFields"][1]["label"], "PIN");

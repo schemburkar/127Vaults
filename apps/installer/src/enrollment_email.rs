@@ -181,6 +181,7 @@ mod tests {
     fn smtp_setup_preserves_config_and_rolls_back_after_a_failed_start() -> Result<()> {
         let work = std::env::temp_dir().join(format!("vaults-mail-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&work)?;
+        let password = uuid::Uuid::new_v4().to_string();
         let result = (|| {
             let config = work.join(".env");
             let secret = work.join("smtp-password");
@@ -194,13 +195,13 @@ mod tests {
                 "smtp.example.invalid",
                 "fixture",
                 "vault@example.invalid",
-                "fixture-password",
+                &password,
                 &mut || {
                     attempts += 1;
                     if attempts == 1 {
                         assert!(fs::read_to_string(&config)?.contains("SMTP_PORT=465"));
-                        assert!(!fs::read_to_string(&config)?.contains("fixture-password"));
-                        assert_eq!(fs::read_to_string(&secret)?, "fixture-password");
+                        assert!(!fs::read_to_string(&config)?.contains(&password));
+                        assert_eq!(fs::read_to_string(&secret)?, password);
                         return Err("fixture start failure".into());
                     }
                     assert_eq!(fs::read_to_string(&config)?, previous);
@@ -217,11 +218,11 @@ mod tests {
                 "smtp.example.invalid",
                 "fixture",
                 "vault@example.invalid",
-                "fixture-password",
+                &password,
                 &mut || Ok(())
             )?);
             assert!(has_settings(&fs::read_to_string(config)?));
-            assert_eq!(fs::read_to_string(secret)?, "fixture-password");
+            assert_eq!(fs::read_to_string(secret)?, password);
             Ok(())
         })();
         fs::remove_dir_all(work)?;

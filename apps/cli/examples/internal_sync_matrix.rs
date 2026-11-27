@@ -44,6 +44,7 @@ fn open(profile: &Path, offline: bool) -> Result<client::Session, String> {
 }
 
 fn stale_creations(a: &Path, b: &Path, evidence: &Path, chained_edit: bool) -> Result<(), String> {
+    let fixture_password = uuid::Uuid::new_v4().to_string();
     if validate(a)? == validate(b)? {
         return Err("two distinct fixture devices required".to_owned());
     }
@@ -70,7 +71,7 @@ fn stale_creations(a: &Path, b: &Path, evidence: &Path, chained_edit: bool) -> R
             title,
             "https://matrix.invalid",
             "fixture-user",
-            "fixture-password",
+            &fixture_password,
             &[],
         )?;
         if result["queued"] != true {
@@ -88,7 +89,7 @@ fn stale_creations(a: &Path, b: &Path, evidence: &Path, chained_edit: bool) -> R
             &titles[0],
             "https://matrix.invalid",
             "fixture-user",
-            "fixture-password",
+            &fixture_password,
             &[],
         )?;
     }
@@ -100,7 +101,7 @@ fn stale_creations(a: &Path, b: &Path, evidence: &Path, chained_edit: bool) -> R
         &format!("Sync matrix peer {run}"),
         "https://peer.invalid",
         "fixture-user",
-        "fixture-password",
+        &fixture_password,
         &[],
     )?;
     drop(peer);
@@ -255,6 +256,7 @@ fn record(evidence: &Path, report: &serde_json::Value) -> Result<(), String> {
 }
 
 fn type_roundtrips(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
+    let fixture_password = uuid::Uuid::new_v4().to_string();
     if validate(a)? == validate(b)? {
         return Err("distinct fixture devices required".to_owned());
     }
@@ -278,7 +280,7 @@ fn type_roundtrips(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
             &title,
             "https://typed.invalid",
             "fixture-user",
-            "fixture-password",
+            &fixture_password,
             &fields,
         )?;
         let item = made["itemId"]
@@ -291,7 +293,7 @@ fn type_roundtrips(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
         if value["itemType"] != kind
             || value["title"] != title
             || value["password"] != "[redacted]"
-            || reader.item_get(&vault, &item, Some("password"))? != "fixture-password"
+            || reader.item_get(&vault, &item, Some("password"))? != fixture_password
             || reader.item_get(&vault, &item, Some("matrix_secret"))? != "fixture custom secret"
         {
             return Err(format!(
@@ -306,7 +308,7 @@ fn type_roundtrips(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
             &title,
             "https://typed.invalid",
             "fixture-peer-user",
-            "fixture-password",
+            &fixture_password,
             &changed,
         )?;
         reader.sync_now()?;
@@ -330,6 +332,8 @@ fn type_roundtrips(a: &Path, b: &Path, evidence: &Path) -> Result<(), String> {
 }
 
 fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Result<(), String> {
+    let fixture_password = uuid::Uuid::new_v4().to_string();
+    let new_password = uuid::Uuid::new_v4().to_string();
     if validate(a)? == validate(b)? {
         return Err("two distinct fixture devices required".to_owned());
     }
@@ -345,7 +349,7 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
         &local_title,
         "https://fields.invalid",
         "fixture-user",
-        "fixture-password",
+        &fixture_password,
         &[],
     )?;
     offline.item_upsert(
@@ -354,7 +358,7 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
         &local_title,
         "https://fields.invalid",
         "fixture-user",
-        "fixture-new-password",
+        &new_password,
         &[],
     )?;
     drop(offline);
@@ -365,7 +369,7 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
         &server_title,
         "https://fields.invalid",
         "fixture-user",
-        "fixture-password",
+        &fixture_password,
         &[],
     )?;
     peer.sync_now()?;
@@ -382,7 +386,7 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
         .as_str()
         .ok_or("conflict operation missing")?;
     let comparison = resumed.conflict_compare(&vault, &item, operation)?;
-    if comparison["server"]["password"] != "fixture-new-password" {
+    if comparison["server"]["password"] != new_password.as_str() {
         return Err("independent queued password was lost".to_owned());
     }
     if keep_server {
@@ -395,7 +399,7 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
             &local_title,
             "https://fields.invalid",
             "fixture-user",
-            "fixture-new-password",
+            &new_password,
             &[],
         )?;
         resumed.sync_now()?;
@@ -409,13 +413,14 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
     } else {
         &local_title
     };
+    let password_preserved = secret.as_str() == Some(new_password.as_str());
     let passed = actual["title"].as_str() == Some(expected)
-        && secret == "fixture-new-password"
+        && password_preserved
         && status["pending"] == 0
         && status["conflicts"] == 0;
     record(
         evidence,
-        &json!({"scenario":"two offline updates plus peer title change","passed":passed,"kept":if keep_server{"server title"}else{"selected local title"},"independentPasswordPreserved":secret=="fixture-new-password","pending":status["pending"],"conflicts":status["conflicts"]}),
+        &json!({"scenario":"two offline updates plus peer title change","passed":passed,"kept":if keep_server{"server title"}else{"selected local title"},"independentPasswordPreserved":password_preserved,"pending":status["pending"],"conflicts":status["conflicts"]}),
     )?;
     if passed {
         Ok(())
@@ -425,6 +430,7 @@ fn field_conflicts(a: &Path, b: &Path, evidence: &Path, keep_server: bool) -> Re
 }
 
 fn create_conflict_baseline(profile: &Path, title: &str) -> Result<(String, String), String> {
+    let fixture_password = uuid::Uuid::new_v4().to_string();
     let mut initial = open(profile, false)?;
     let vault = initial.vault_list()?[0]["vaultId"]
         .as_str()
@@ -436,7 +442,7 @@ fn create_conflict_baseline(profile: &Path, title: &str) -> Result<(String, Stri
         title,
         "https://fields.invalid",
         "fixture-user",
-        "fixture-password",
+        &fixture_password,
         &[],
     )?;
     let item = made["itemId"]
