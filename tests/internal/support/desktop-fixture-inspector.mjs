@@ -18,7 +18,7 @@ export async function openDesktopFixtureInspector(origin, transport=process.plat
     const page=pages.find(page=>/^https?:\/\/tauri\.localhost\//.test(page.url()));
     assert.ok(page,'Expected the isolated Tauri webview');
     await page.waitForFunction(()=>!!window.__TAURI_INTERNALS__);
-    return {evaluate:expression=>page.evaluate(expression),close:()=>browser.close()};
+    return {evaluate:(expression, data)=>page.evaluate(expression, data),close:()=>browser.close()};
   }
   assert.equal(transport,'webkit');
   let html='';
@@ -41,12 +41,23 @@ export async function openDesktopFixtureInspector(origin, transport=process.plat
     }
   });
   await ready;
+  async function command(method, params) {
+    const id=++sequence;
+    const response=new Promise((resolve,reject)=>pending.set(id,{resolve,timer:setTimeout(()=>{pending.delete(id);reject(Error('Inspector command timed out'));},commandTimeoutMs)}));
+    ws.send(JSON.stringify({id:1000+id,method:'Target.sendMessageToTarget',params:{targetId:target,message:JSON.stringify({id,method,params})}}));
+    const reply=await response;
+    if(reply.error||reply.result?.wasThrown)throw Error('Desktop fixture evaluation failed');
+    return reply.result.result;
+  }
   return {
-    async evaluate(expression){
-      const id=++sequence;
-      const response=new Promise((resolve,reject)=>pending.set(id,{resolve,timer:setTimeout(()=>{pending.delete(id);reject(Error('Inspector command timed out'));},commandTimeoutMs)}));
-      ws.send(JSON.stringify({id:1000+id,method:'Target.sendMessageToTarget',params:{targetId:target,message:JSON.stringify({id,method:'Runtime.evaluate',params:{expression,returnByValue:true}})}}));
-      const result=await response;if(result.error||result.result?.wasThrown)throw Error('Desktop fixture evaluation failed');return result.result.result.value;
+    async evaluate(expression, data){
+      if(typeof expression==='string')return (await command('Runtime.evaluate',{expression,returnByValue:true})).value;
+      const {objectId}=await command('Runtime.evaluate',{expression:'globalThis',objectGroup:'fixture-call'});
+      try {
+        return (await command('Runtime.callFunctionOn',{objectId,functionDeclaration:String(expression),arguments:[{value:data}],returnByValue:true})).value;
+      } finally {
+        await command('Runtime.releaseObjectGroup',{objectGroup:'fixture-call'});
+      }
     },
     close(){clearTimeout(timer);ws.close();},
   };

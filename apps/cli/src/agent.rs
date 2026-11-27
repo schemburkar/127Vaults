@@ -991,7 +991,7 @@ mod tests {
             )
         });
         let send = |capability: &str| {
-            use std::io::{BufRead, Write};
+            use std::io::{BufRead, Read, Write};
             let mut stream = std::net::TcpStream::connect(address).unwrap();
             stream.set_nodelay(true).unwrap();
             // Match call(): serialize first and send one buffered line. Display
@@ -1003,13 +1003,16 @@ mod tests {
             );
             stream.write_all(request.as_bytes()).unwrap();
             let mut line = String::new();
-            std::io::BufReader::new(stream)
+            std::io::BufReader::new(stream.take(4096))
                 .read_line(&mut line)
                 .unwrap();
-            serde_json::from_str::<serde_json::Value>(&line).unwrap()
+            assert!(line.ends_with('\n'), "invalid fixture response framing");
+            serde_json::from_str::<super::Response>(&line).unwrap()
         };
-        assert_eq!(send("wrong")["ok"], false);
-        assert_eq!(send("fixture-capability")["value"]["loggedOut"], true);
+        assert!(!send("wrong").ok);
+        let response = send("fixture-capability");
+        assert!(response.ok);
+        assert_eq!(response.value["loggedOut"], true);
         assert!(worker.join().unwrap().is_ok());
         assert!(std::net::TcpStream::connect(address).is_err());
         std::fs::remove_dir_all(directory).unwrap();

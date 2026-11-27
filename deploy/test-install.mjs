@@ -1,6 +1,6 @@
 // Run from an extracted server test bundle. Never deletes a database volume.
 import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
@@ -120,7 +120,7 @@ async function networkOctet() {
   const details = networks.length ? await run(engine, ['network', 'inspect', ...networks], { quiet: true }) : '';
   const used = new Set([...details.matchAll(/172\.28\.(\d+)\.0\/24/g)].map(match => Number(match[1])));
   for (let i = 0; i < 160; i++) {
-    const candidate = 40 + (randomBytes(1)[0] % 160);
+    const candidate = randomInt(40, 200);
     if (!used.has(candidate)) return candidate;
   }
   throw Error('Could not choose a free private container subnet.');

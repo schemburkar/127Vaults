@@ -22,8 +22,9 @@ export async function attachExtensionPopup(browserSession, targetId) {
     await browserSession.send('Target.sendMessageToTarget', {sessionId,message:JSON.stringify({id,method,params})});
     return response;
   }
-  async function evaluate(expression) {
-    const result=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});
+  async function evaluate(fn, data) {
+    const result=await send('Runtime.callFunctionOn',{objectId,
+      functionDeclaration:String(fn),arguments:[{value:data}],returnByValue:true,awaitPromise:true});
     if(result.exceptionDetails)throw Error('Popup evaluation failed: '+result.exceptionDetails.text);
     return result.result?.value;
   }
@@ -34,29 +35,53 @@ export async function attachExtensionPopup(browserSession, targetId) {
   }
   class Locator {
     constructor(css,first=false,text=null){this.css=css;this.onlyFirst=first;this.text=text;}
-    elements(){
+    run(action,value){
       const visible=this.css.includes(':visible'),css=this.css.replaceAll(':visible','');
-      return `[...document.querySelectorAll(${JSON.stringify(css)})]${visible?'.filter(el=>el.getClientRects().length>0)':''}${this.text?`.filter(el=>new RegExp(${JSON.stringify(this.text.source)},${JSON.stringify(this.text.flags)}).test(el.textContent))`:''}${this.onlyFirst?'.slice(0,1)':''}`;
+      return evaluate(({css,visible,text,action,value})=>{
+        const matches = [...document.querySelectorAll(css)].filter(el =>
+          (!visible || el.getClientRects().length > 0) &&
+          (!text || new RegExp(text.source,text.flags).test(el.textContent)));
+        const el=matches[0], shown=!!el&&el.getClientRects().length>0;
+        switch(action){
+          case 'count': return value?Math.min(matches.length,1):matches.length;
+          case 'shown': return shown;
+          case 'enabled': return shown&&!el.disabled;
+          case 'has-options': return !!el?.options?.length;
+          case 'select':
+            if(!el)throw Error('Missing source selector');
+            el.value=value??el.options[0].value;
+            el.dispatchEvent(new Event('change',{bubbles:true}));
+            return;
+          case 'point': {
+            if(!el)throw Error('Missing popup action');
+            el.scrollIntoView({block:'center'});
+            const rect=el.getBoundingClientRect();
+            return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+          }
+          default: throw Error('Unsupported popup operation');
+        }
+      },{css,visible,text:this.text&&{source:this.text.source,flags:this.text.flags},action,value});
     }
     first(){return new Locator(this.css,true,this.text);}
     filter({hasText}){return new Locator(this.css,this.onlyFirst,hasText);}
-    async count(){return evaluate(this.elements()+'.length');}
-    async waitFor({state='visible'}={}){await wait(()=>evaluate(`(()=>{const el=${this.elements()}[0];return ${state==='hidden'?'!el||el.getClientRects().length===0':'!!el&&el.getClientRects().length>0'};})()`),this.css);}
-    async selectOption(value){await evaluate(`(()=>{const el=${this.elements()}[0];if(!el)throw Error('Missing source selector');el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
-    async selectFirstOption(){await wait(()=>evaluate(`!!${this.elements()}[0]?.options?.length`),'popup choices');const value=await evaluate(`${this.elements()}[0].options[0].value`);await this.selectOption(value);}
-    async waitForEnabled(){await wait(()=>evaluate(`(()=>{const el=${this.elements()}[0];return !!el&&!el.disabled&&el.getClientRects().length>0;})()`),'enabled '+this.css);}
+    async count(){return this.run('count',this.onlyFirst);}
+    async waitFor({state='visible'}={}){await wait(async()=>(await this.run('shown'))===(state!=='hidden'),this.css);}
+    async selectOption(value){await this.run('select',value);}
+    async selectFirstOption(){await wait(()=>this.run('has-options'),'popup choices');await this.run('select');}
+    async waitForEnabled(){await wait(()=>this.run('enabled'),'enabled '+this.css);}
     async click(){
-      const point=await evaluate(`(()=>{const el=${this.elements()}[0];if(!el)throw Error('Missing popup action');el.scrollIntoView({block:'center'});const rect=el.getBoundingClientRect();return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};})()`);
+      const point=await this.run('point');
       await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});
       await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point});
     }
   }
-  await send('Runtime.enable');
+  const initial=await send('Runtime.evaluate',{expression:'globalThis'});
+  const objectId=initial.result.objectId;
   return {
     locator:css=>new Locator(css),
-    snapshot:()=>evaluate('document.body.innerText'),
+    snapshot:()=>evaluate(()=>document.body.innerText),
     isClosed:async()=>!(await browserSession.send('Target.getTargets',{filter:[{}]})).targetInfos.some(info=>info.targetId===targetId),
-    waitForURL:url=>wait(()=>evaluate(`location.href===${JSON.stringify(url)}`),'popup URL'),
+    waitForURL:url=>wait(()=>evaluate(expected=>location.href===expected,url),'popup URL'),
     waitForEvent:event=>{
       if(event!=='close')throw Error('Unsupported popup event');
       return wait(async()=>!(await browserSession.send('Target.getTargets',{filter:[{}]})).targetInfos.some(info=>info.targetId===targetId),'popup close');

@@ -10,6 +10,6 @@ for(const error of ['server vault settings changed; review the conflict again','
   const calls=[],values={};const context=vm.createContext({confirmDiscard:()=>true,invoke:async command=>{calls.push(command);throw Error(error);},refreshSyncStatus:async()=>{calls.push('refresh');},friendlyError:String,notify:(...args)=>{values.notification=args;}});
   for(const setter of new Set(handler.match(/set[A-Z]\w+/g)))context[setter]=value=>{values[setter]=value;};
   vm.runInContext(ts.transpileModule(handler+'\nglobalThis.resolve=resolveVaultSettings;',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
-  await context.resolve('server');assert.deepEqual(calls,['vault_settings_resolve','refresh']);assert.equal(values.setSettingsReview,null);assert.equal(values.setSettingsConflict,undefined);assert.equal(values.notification[1],'Could not resolve settings');assert.match(values.notification[2],new RegExp(error.replace(/[()]/g,'\\$&')));
+  await context.resolve('server');assert.deepEqual(calls,['vault_settings_resolve','refresh']);assert.equal(values.setSettingsReview,null);assert.equal(values.setSettingsConflict,undefined);assert.equal(values.notification[1],'Could not resolve settings');assert.ok(values.notification[2].includes(error));
  });
 }

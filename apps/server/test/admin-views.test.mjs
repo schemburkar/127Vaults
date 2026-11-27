@@ -31,11 +31,11 @@ test('directory and detail templates escape search, account and device metadata'
   directory.error = hostile;
   directory.data = { users: [{ id: hostile, username: hostile, displayName: hostile, email: hostile, status: hostile, role: hostile, deviceCount: 0 }], total: 1, page: 1, pageSize: 25, pageCount: 1 };
   const html = directoryView('users', directory);
-  assert.doesNotMatch(html, /<img|<script|aria-label="View account details for "><|value=""><img/);
+  assert.doesNotMatch(html, /<img|<script|aria-label="View account details for "><|value=""><img/i);
   assert.match(html, /&lt;img/);
   assert.match(html, /Email unverified/);
   const details = detailsView('devices', { id: hostile, accountId: hostile, username: hostile, displayName: hostile, status: hostile, protection: hostile });
-  assert.doesNotMatch(details, /<img|<script/);
+  assert.doesNotMatch(details, /<img|<script/i);
   assert.match(details, /&lt;img/);
 });
 

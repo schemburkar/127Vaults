@@ -270,9 +270,9 @@ test('timed-out provider probes stop their descendants as well as the wrapper', 
   const directory = await mkdtemp(join(tmpdir(), 'vaults-probe-tree-'));
   const heartbeat = join(directory, 'heartbeat');
   try {
-    const provider = `const fs=require('node:fs');setInterval(()=>fs.writeFileSync(${JSON.stringify(heartbeat)},String(Date.now())),25)`;
-    const wrapper = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(provider)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
-    const result = await probe(process.execPath, ['-e', wrapper], { timeoutMs: 900 });
+    const provider = "const fs=require('node:fs');setInterval(()=>fs.writeFileSync(process.argv[1],String(Date.now())),25)";
+    const wrapper = "require('node:child_process').spawn(process.execPath,['-e',process.argv[1],'--',process.argv[2]],{stdio:'ignore'});setInterval(()=>{},1000)";
+    const result = await probe(process.execPath, ['-e', wrapper, '--', provider, heartbeat], { timeoutMs: 900 });
     assert.equal(result.reason, 'timeout');
     const last = await readFile(heartbeat, 'utf8');
     await new Promise(done => setTimeout(done, 200));
