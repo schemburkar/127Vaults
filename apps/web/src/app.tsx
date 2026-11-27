@@ -616,6 +616,7 @@ function Authentication() {
         >
           Starting secure client…
         </div>
+        <a href="https://manage.127vaults.com/portal?view=plans" target="_blank" rel="noopener noreferrer" className="mb-4 inline-block text-sm text-[#E0BB95] underline">Manage account and plans</a>
         <div id="login-flow">
           <p className={`${eyebrow} text-center`}>WELCOME BACK</p>
           <h1 className="mb-2 text-center text-[2rem] font-bold tracking-[-0.025em]">Unlock 127Vaults</h1>
@@ -882,6 +883,7 @@ function Vault() {
             />
           </div>
           <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
+            <a id="vault-license-warning" hidden href="https://manage.127vaults.com/portal?view=plans" target="_blank" rel="noopener noreferrer" className="text-amber-300 underline" aria-label="Read-only license. Manage plans">Read-only</a>
             <Button id="new-item" className="shrink-0 max-[560px]:h-11 max-[560px]:!px-3 max-[560px]:text-xs">
               <Plus aria-hidden="true" />
               <span>New item</span>
@@ -952,6 +954,12 @@ function Settings() {
           </div>
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Device ID</span><code id="profile-device" className="break-all text-xs" /></div>
           <div className="mt-3 grid gap-1 rounded-xl border border-white/8 bg-white/3 p-4"><span className="text-xs text-slate-500">Account secret</span><span id="profile-secret-status" className="text-sm" /></div>
+          <section id="profile-license" className="mt-3 grid gap-2 rounded-xl border border-white/8 bg-white/3 p-4">
+            <h4 className="font-semibold">Server license</h4>
+            <p id="profile-license-status" role="status">Checking license status…</p>
+            <p className="text-sm text-slate-400">Renew in Manage, then apply the license on the server.</p>
+            <a href="https://manage.127vaults.com/portal?view=plans" target="_blank" rel="noopener noreferrer" className="w-fit text-[#E0BB95] underline">Manage license and plans</a>
+          </section>
           <PwaControls />
         </section>
         <section className="web-settings-panel" id="settings-family" aria-labelledby="web-settings-panel-title" hidden={activeTab !== "family"}>

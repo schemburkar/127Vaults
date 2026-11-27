@@ -925,6 +925,16 @@ async function refreshEntitlement() {
   return checkLicense();
 }
 let stopLicenseStatus = () => {};
+function showLicenseStatus(license, cached = false) {
+  $("profile-license").hidden = license.scope === "cloud-tenant";
+  const date = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleDateString() : "unavailable";
+  const readOnly = license.mode === "read-only" || Date.parse(license.expiresAt) <= Date.now();
+  $("vault-license-warning").hidden = license.scope === "cloud-tenant" || !readOnly;
+  const plan = { personal: "Personal", commercial: "Commercial", trial: "Trial", development: "Development" }[license.plan];
+  const access = readOnly ? `Read-only. Reads and exports end ${date(license.readOnlyUntil)}.`
+    : `Active. Writes end ${date(license.expiresAt)}.`;
+  $("profile-license-status").textContent = [plan, access, cached ? "Last verified status." : ""].filter(Boolean).join(" · ");
+}
 function monitorLicenseStatus() {
   stopLicenseStatus();
   const generation = sessionGeneration;
@@ -934,6 +944,7 @@ function monitorLicenseStatus() {
     refreshing = true;
     try {
       const license = serverAuthenticated ? await refreshEntitlement() : checkLicense();
+      if (!disposed && generation === sessionGeneration) showLicenseStatus(license, !serverAuthenticated);
       if (!disposed && generation === sessionGeneration && serverAuthenticated && !$("vault").hidden) {
         if (!['active', 'read-only'].includes(license.mode)) { await lock(); $("state").textContent = 'A valid license or trial is required. Ask your operator for a replacement license.'; return; }
         const guidance = license.scope === 'cloud-tenant' ? 'Connected to your family vault.'
@@ -946,8 +957,8 @@ function monitorLicenseStatus() {
       }
     } catch (error) {
       if (!disposed && generation === sessionGeneration) {
-        try { if (!networkUnavailable(error)) throw error; checkLicense(); }
-        catch (failure) { await lock(); $("state").textContent = failure.message; }
+        try { if (!networkUnavailable(error)) throw error; showLicenseStatus(checkLicense(), true); }
+        catch (failure) { await lock(); status("login-status", safeError(failure), "error"); }
       }
     }
     finally { refreshing = false; }
@@ -2555,6 +2566,9 @@ async function lock(logout = true) {
   clearTimeout(sessionTimer);
   core?.lock();
   root = vault = catalogue = null; licenseEntitlement = null;
+  $("profile-license").hidden = false;
+  $("vault-license-warning").hidden = true;
+  $("profile-license-status").textContent = "Checking license status…";
   vaultId = csrf = authContext = null;
   replica = null; loadedItems = []; availableVaults = []; vaultSettings = { version: 1, names: {}, collections: [], default_view: null, removal_preference: null }; settingsRevision = null;
   browseView = null; browseItems = []; publishSettings(); applyDefaultView = false;

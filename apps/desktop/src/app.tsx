@@ -180,7 +180,11 @@ function DesktopApp() {
   const connectionInput = useRef<HTMLInputElement>(null);
   const [tailnetPeers, setTailnetPeers] = useState<{name:string;address:string}[]>([]);
   const [offlineReason, setOfflineReason] = useState<string | null>(null);
-  const [licenseStatus, setLicenseStatus] = useState<{ mode: string; plan: string | null; expiresAt: string | null; enforcement: string } | null>(null);
+  const [licenseStatus, setLicenseStatus] = useState<{ mode: string; scope?: string; plan: string | null; expiresAt: string | null; readOnlyUntil?: string | null } | null>(null);
+  const licenseReadOnly = licenseStatus?.mode === "read-only" ||
+    (licenseStatus?.mode === "active" && Date.parse(licenseStatus.expiresAt ?? "") <= Date.now());
+  const openManagePlans = () => void openUrl("https://manage.127vaults.com/portal?view=plans")
+    .catch(() => setStatus("Open manage.127vaults.com in your browser to manage your account and plans."));
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [notices, setNotices] = useState<Notice[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -1659,6 +1663,7 @@ function DesktopApp() {
               {status}
             </p>
           )}
+          <Button variant="ghost" className="mt-3 text-[#E0BB95]" onClick={openManagePlans}>Manage account and plans</Button>
           <div className="mt-5 border-t border-white/8 pt-4 text-center">
             <Button
               variant="ghost"
@@ -1694,13 +1699,9 @@ function DesktopApp() {
       <aside className={cn("desktop-sidebar row-span-2 flex flex-col border-r border-white/7 bg-[#0a0e21] p-3", compactNavOpen && "menu-open")}>
         <div className="desktop-brand mb-7 flex items-center gap-3 px-2 py-3">
           <button type="button" className="sidebar-brand-toggle flex min-w-0 items-center gap-3" aria-label={compactSidebar ? "Toggle navigation" : sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={compactSidebar ? compactNavOpen : !sidebarCollapsed} onClick={() => { if (compactSidebar) { setCompactNavOpen(open => !open); return; } const next = !sidebarCollapsed; setSidebarCollapsed(next); try { localStorage.setItem("127vaults:sidebar-collapsed", String(next)); } catch {} }}>{sidebarCollapsed && !compactSidebar && <img src="/brand-mark.svg" alt="127 Vaults" className="size-9 shrink-0" />}<strong><img src="/wordmark-red.svg" alt="127 Vaults" width="127" height="40" /></strong></button>
-          {licenseStatus && licenseStatus.mode !== "active" && <button type="button" className="desktop-license-warning text-amber-300" aria-label="License issue" title={licenseStatus.mode === "read-only"
-            ? "License expired: vault and invitation writes are blocked during the 30-day read-only period. Install a renewed license on the server."
-            : licenseStatus.mode === "revoked"
-              ? "License revoked: vault access is blocked. Ask the server operator for a replacement license."
-              : licenseStatus.mode === "locked"
-                ? "License locked: vault access is blocked. Check expiry and the server clock."
-                : "A valid license is required. Ask the operator for a signed license."}><AlertTriangle size={17} aria-hidden="true" /></button>}
+          {licenseStatus && licenseStatus.scope !== "cloud-tenant" && (licenseReadOnly || licenseStatus.mode !== "active") &&
+            <button type="button" className="desktop-license-warning text-amber-300" aria-label="View server license status"
+              title="View server license status" onClick={() => { setSettingsTab("profile"); setSettingsOpen(true); }}><AlertTriangle size={17} aria-hidden="true" /></button>}
 
         </div>
         <nav ref={node => { node?.querySelectorAll("button").forEach(button => { const label = button.textContent?.trim(); if (label && !button.getAttribute("aria-label")) { button.setAttribute("aria-label", label); button.title = label; } }); }} className="desktop-nav-content flex min-h-0 flex-1 flex-col overflow-auto" aria-label="Vaults and collections" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) setCompactNavOpen(false); }}>
@@ -2184,6 +2185,22 @@ function DesktopApp() {
             </header>
             <div ref={settingsBodyRef} id="desktop-settings-panel" role="region" aria-labelledby="desktop-settings-panel-title" className="desktop-settings-body text-sm">
               <div aria-live="polite" className="desktop-settings-notices">{notices.map((notice) => <p key={notice.id} className={cn("rounded-xl border border-white/10 p-3", notice.kind === "error" ? "text-red-300" : "text-emerald-300")}><strong>{notice.title}</strong>{notice.detail && <span className="mt-1 block text-slate-400">{notice.detail}</span>}</p>)}</div>
+            {settingsTab === "profile" && licenseStatus?.scope !== "cloud-tenant" && (
+              <section className="mb-5 grid gap-2 rounded-xl border border-white/10 p-4">
+                <h4 className="font-semibold">Server license</h4>
+                <p role="status">
+                  {licenseStatus?.plan && <span className="capitalize">{licenseStatus.plan} · </span>}
+                  {!licenseStatus ? "Checking license status…" : licenseReadOnly ? "Read-only" : <span className="capitalize">{licenseStatus.mode}</span>}
+                  {licenseReadOnly && licenseStatus?.readOnlyUntil
+                    ? `. Reads and exports end ${new Date(licenseStatus.readOnlyUntil).toLocaleDateString()}.`
+                    : licenseStatus?.mode === "active" && licenseStatus.expiresAt
+                      ? `. Writes end ${new Date(licenseStatus.expiresAt).toLocaleDateString()}.` : ""}
+                  {!online && licenseStatus ? " Last verified status." : ""}
+                </p>
+                <p className="text-slate-400">Renew in Manage, then apply the license on the server.</p>
+                <Button variant="secondary" className="w-fit" onClick={openManagePlans}>Manage license and plans</Button>
+              </section>
+            )}
             {settingsTab === "profile" && <div className="grid gap-5">{nativePasskeys?.windows && !nativePasskeys.disabled && <section className="rounded-xl border border-white/10 p-4"><h3 className="font-bold">Windows passkeys</h3><p className="mt-2 text-sm text-slate-400">{!nativePasskeys.installed || !nativePasskeys.packaged ? "Install the packaged Desktop build to use 127Vaults in the Windows passkey picker." : nativePasskeys.enabled ? "127Vaults is enabled in the Windows passkey picker." : nativePasskeys.registered ? "Registered. Enable 127Vaults in Windows Settings → Accounts → Passkeys → Advanced options." : "Register 127Vaults to save and use passkeys through Windows."} Keep Desktop unlocked while using passkeys. The browser extension handles password filling on Windows.</p><div className="mt-3 flex flex-wrap gap-2"><Button disabled={nativePasskeysBusy || !nativePasskeys.installed || !nativePasskeys.packaged} onClick={() => void updateNativePasskeys(nativePasskeys.registered ? "refresh" : "register")}>{nativePasskeys.registered ? "Refresh saved passkeys" : "Register native passkeys"}</Button><Button variant="secondary" onClick={() => void updateNativePasskeys("settings")}>Windows passkey settings</Button><Button variant="ghost" disabled={nativePasskeysBusy} onClick={() => void updateNativePasskeys("status")}>Check status</Button>{nativePasskeys.registered && <Button variant="ghost" disabled={nativePasskeysBusy} onClick={() => void updateNativePasskeys("unregister")}>Unregister provider</Button>}</div></section>}<p><span className="text-slate-400">Username</span><br /><strong>{username || "This device"}</strong></p><p><span className="text-slate-400">Device ID</span><br /><code className="break-all text-xs">{desktopInfo?.deviceId ?? "Unavailable"}</code></p><p><span className="text-slate-400">Connection</span><br />{online ? "Online" : "Offline"}</p>{!online && offlineReason && <p className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-200">{offlineReason.includes("checkpoint verification key changed") ? "The server checkpoint key differs from this encrypted replica. Your local data and pending changes are preserved. Restore the original server identity before reconnecting." : `Online unlock failed: ${friendlyError(offlineReason)}. Check the configured server and trusted certificate.`}</p>}<p><span className="text-slate-400">Account secret</span><br />{rememberedSecret ? "Remembered securely on this device for 30 days" : "Required at next unlock"}</p>{online ? <Button variant="secondary" className="w-fit" onClick={() => void synchronize()}>Sync now</Button> : <div className="grid gap-2 rounded-xl border border-white/10 p-4"><strong>Reconnect to create vaults and manage devices</strong><p className="text-xs text-slate-400">Enter your master password to verify a live session.</p>{(!rememberedSecret || showSecretEntry) && <Input aria-label="Account secret for reconnect" type="password" autoComplete="off" placeholder="Account secret" value={accountSecret} onChange={(event) => setAccountSecret(event.target.value)} />}{errors.accountSecret && <p className="text-xs text-red-300">{errors.accountSecret}</p>}<Input aria-label="Master password for reconnect" type="password" autoComplete="current-password" placeholder="Master password" value={masterPassword} onChange={(event) => setMasterPassword(event.target.value)} />{errors.masterPassword && <p className="text-xs text-red-300">{errors.masterPassword}</p>}<Button className="w-fit" disabled={busy} onClick={() => void unlock().then((connected) => { if (connected) setSettingsOpen(false); })}>Reconnect</Button></div>}</div>}
             {settingsTab === "devices" && <div aria-busy={devicesLoading}>{deviceError && <p role="alert" className="desktop-settings-message">Could not refresh devices. {deviceError}</p>}{devicesLoading && <p role="status" className="mt-5 text-slate-400">Loading devices…</p>}{!devicesLoading && !deviceError && devices.length === 0 && <p className="mt-5 text-slate-400">No devices to display. Refresh to check your registered devices.</p>}<div className="mt-5 grid gap-2">{devices.map((device) => <div key={device.deviceId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/3 p-3"><div><strong>{device.deviceId === currentDeviceId ? "This desktop" : `Device ${device.deviceId.slice(0, 8)}`}</strong><p className="mt-1 text-xs text-slate-400">{device.protectionClass ?? "Unknown"} protection · credential {device.credentialState ?? "unknown"} · {device.status ?? "unknown"}</p></div>{device.deviceId !== currentDeviceId && device.status === "active" && <Button variant="ghost" className="text-red-300" onClick={() => void revokeDevice(device.deviceId)}>Revoke</Button>}</div>)}</div><Button variant="secondary" className="mt-5" disabled={devicesLoading} onClick={() => void loadDevices()}>{devicesLoading ? "Refreshing…" : "Refresh devices"}</Button></div>}
             {settingsTab === "vaults" && <div className="grid gap-5">
